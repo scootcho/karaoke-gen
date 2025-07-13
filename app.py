@@ -818,14 +818,16 @@ def process_part_two(job_id: str, updated_correction_data: Optional[Dict[str, An
         # Initialize output generator (logs will go to Modal's stdout, not captured in job log file)
         output_generator = OutputGenerator(config=output_config, logger=None)
 
-        # Find the audio file - look for the actual downloaded file
-        track_dir = Path(track_output_dir)
-        audio_files = list(track_dir.glob(f"{artist} - {title}*.wav"))
-        if not audio_files:
-            raise Exception(f"No audio file found matching pattern: {artist} - {title}*.wav in {track_output_dir}")
+        # Get the audio file path from Phase 1 results stored in job_data
+        track_data = job_data.get("track_data", {})
+        audio_file_path = track_data.get("input_audio_wav")
         
-        audio_file_path = audio_files[0]  # Use the first match
-        log_message(job_id, "INFO", f"Found audio file: {audio_file_path}")
+        if not audio_file_path or not Path(audio_file_path).exists():
+            log_message(job_id, "ERROR", f"Audio file from Phase 1 not found: {audio_file_path}")
+            log_message(job_id, "ERROR", f"Track data keys: {list(track_data.keys()) if track_data else 'None'}")
+            raise Exception(f"Audio file from Phase 1 not accessible: {audio_file_path}")
+        
+        log_message(job_id, "INFO", f"Using audio file from Phase 1: {audio_file_path}")
 
         log_message(job_id, "INFO", "Starting video generation with corrected lyrics...")
 

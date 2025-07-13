@@ -2656,11 +2656,11 @@ function createJobActions(jobId, job) {
     }
     
     if (status === 'error') {
-        actions.push(`<button onclick="retryJob('${jobId}')" class="btn btn-warning">🔄 Retry</button>`);
+        actions.push(`<button onclick="retryJob('${jobId}')" class="btn btn-warning">🔄 Retry (From Start)</button>`);
     }
     
     if (status === 'timeout') {
-        actions.push(`<button onclick="retryJob('${jobId}')" class="btn btn-warning">🔄 Retry</button>`);
+        actions.push(`<button onclick="retryJob('${jobId}')" class="btn btn-warning">🔄 Retry (From Start)</button>`);
     }
     
     // Admin-only clone action
