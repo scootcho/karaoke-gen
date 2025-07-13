@@ -46,6 +46,7 @@ class KaraokeFinalise:
         non_interactive=False,
         user_youtube_credentials=None,  # Add support for pre-stored credentials
         server_side_mode=False,  # New parameter for server-side deployment
+        selected_instrumental_file=None,  # Add support for pre-selected instrumental file
     ):
         self.log_level = log_level
         self.log_formatter = log_formatter
@@ -103,6 +104,7 @@ class KaraokeFinalise:
         self.non_interactive = non_interactive
         self.user_youtube_credentials = user_youtube_credentials
         self.server_side_mode = server_side_mode
+        self.selected_instrumental_file = selected_instrumental_file
 
         self.suffixes = {
             "title_mov": " (Title).mov",
@@ -1625,7 +1627,15 @@ class KaraokeFinalise:
         with_vocals_file = self.find_with_vocals_file()
         base_name, artist, title = self.get_names_from_withvocals(with_vocals_file)
 
-        instrumental_audio_file = self.choose_instrumental_audio_file(base_name)
+        # Use the selected instrumental file if provided, otherwise search for one
+        if self.selected_instrumental_file:
+            if not os.path.isfile(self.selected_instrumental_file):
+                raise Exception(f"Selected instrumental file not found: {self.selected_instrumental_file}")
+            instrumental_audio_file = self.selected_instrumental_file
+            self.logger.info(f"Using pre-selected instrumental file: {instrumental_audio_file}")
+        else:
+            self.logger.info("No instrumental file pre-selected, searching for instrumental files...")
+            instrumental_audio_file = self.choose_instrumental_audio_file(base_name)
 
         input_files = self.check_input_files_exist(base_name, with_vocals_file, instrumental_audio_file)
         output_files = self.prepare_output_filenames(base_name)

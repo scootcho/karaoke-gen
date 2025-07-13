@@ -1111,7 +1111,15 @@ def process_part_three(job_id: str, selected_instrumental: Optional[str] = None)
                 keep_brand_code=False,  # Don't keep existing brand code, generate new one
                 user_youtube_credentials=youtube_credentials,  # Pass user's YouTube credentials
                 server_side_mode=True,  # CRITICAL: enable server-side mode for Modal deployment
+                selected_instrumental_file=selected_instrumental,  # Pass user-selected instrumental file
             )
+            
+            # Safety check - we should always have a selected instrumental at this point
+            if not selected_instrumental:
+                raise Exception("No instrumental file selected or auto-selected. This should never happen.")
+            
+            # Log the selected instrumental file (should always be set at this point)
+            log_message(job_id, "INFO", f"Using instrumental file: {selected_instrumental}")
                 
             # Log which features are enabled
             features_enabled = []
@@ -1169,18 +1177,6 @@ def process_part_three(job_id: str, selected_instrumental: Optional[str] = None)
             
             # Convert to string for KaraokeFinalise compatibility
             with_vocals_file = str(with_vocals_file)
-
-            # Find instrumental files
-            base_name = f"{artist} - {title}"
-
-            # If user selected a specific instrumental, create a symlink with expected name
-            if selected_instrumental:
-                log_message(job_id, "INFO", f"Using user-selected instrumental: {selected_instrumental}")
-                # Create a symlink so KaraokeFinalise can find it with the expected naming
-                expected_instrumental = f"{base_name} (Instrumental).flac"
-                if not Path(expected_instrumental).exists():
-                    Path(expected_instrumental).symlink_to(selected_instrumental)
-                    log_message(job_id, "INFO", f"Created symlink: {expected_instrumental} -> {selected_instrumental}")
 
             log_message(job_id, "INFO", "About to start KaraokeFinalise.process() - this may take several minutes...")
             
