@@ -740,7 +740,7 @@ async def process_part_one(job_id: str, youtube_url: str, cookies_str: Optional[
     gpu="any",
     volumes=VOLUME_CONFIG,
     secrets=[modal.Secret.from_name("env-vars")],
-    timeout=600,
+    timeout=1200,
     retries=0,
     cpu=8.0,
     memory=16384,
@@ -774,8 +774,21 @@ def process_part_two(job_id: str, updated_correction_data: Optional[Dict[str, An
 
         # Get job info
         track_output_dir = job_data.get("track_output_dir", f"/output/{job_id}")
-        artist = job_data.get("artist", "Unknown")
-        title = job_data.get("title", "Unknown")
+        
+        # Apply the same filename sanitization that Phase 1 uses
+        # This ensures consistent filenames across all phases
+        raw_artist = job_data.get("artist", "Unknown")
+        raw_title = job_data.get("title", "Unknown")
+        
+        # Import the same sanitization function used by KaraokePrep
+        import sys
+        sys.path.append('/root')
+        from karaoke_gen.utils import sanitize_filename
+        
+        artist = sanitize_filename(raw_artist)
+        title = sanitize_filename(raw_title)
+        
+        log_message(job_id, "INFO", f"Sanitized names for Phase 2: '{raw_artist}' -> '{artist}', '{raw_title}' -> '{title}'")
 
         # Always load the original correction data from file first
         corrections_file_path = job_data.get("corrections_file")
@@ -974,8 +987,21 @@ def process_part_three(job_id: str, selected_instrumental: Optional[str] = None)
 
         # Get job info
         track_output_dir = job_data.get("track_output_dir", f"/output/{job_id}")
-        artist = job_data.get("artist", "Unknown")
-        title = job_data.get("title", "Unknown")
+        
+        # Apply the same filename sanitization that Phase 1 uses
+        # This ensures consistent filenames across all phases
+        raw_artist = job_data.get("artist", "Unknown")
+        raw_title = job_data.get("title", "Unknown")
+        
+        # Import the same sanitization function used by KaraokePrep
+        import sys
+        sys.path.append('/root')
+        from karaoke_gen.utils import sanitize_filename
+        
+        artist = sanitize_filename(raw_artist)
+        title = sanitize_filename(raw_title)
+        
+        log_message(job_id, "INFO", f"Sanitized names for Phase 3: '{raw_artist}' -> '{artist}', '{raw_title}' -> '{title}'")
 
         # Get user's finalization preferences
         finalization_options = job_data.get("finalization_options", {})
@@ -1372,21 +1398,35 @@ def prepare_review_data(job_id: str):
         log_message(job_id, "DEBUG", f"Title from job_data: {job_data.get('title')}")
 
         # Try to extract artist/title from track_data if main job_data doesn't have them
-        artist = job_data.get("artist")
-        title = job_data.get("title")
+        raw_artist = job_data.get("artist")
+        raw_title = job_data.get("title")
         
-        if not artist or not title:
+        if not raw_artist or not raw_title:
             track_data = job_data.get("track_data", {})
             if track_data:
-                artist = artist or track_data.get("artist")
-                title = title or track_data.get("title")
-                log_message(job_id, "DEBUG", f"Extracted from track_data - Artist: {artist}, Title: {title}")
+                raw_artist = raw_artist or track_data.get("artist")
+                raw_title = raw_title or track_data.get("title")
+                log_message(job_id, "DEBUG", f"Extracted from track_data - Artist: {raw_artist}, Title: {raw_title}")
+
+        # Apply the same filename sanitization that Phase 1 uses
+        # This ensures we look for files with the correct sanitized names
+        if raw_artist and raw_title:
+            import sys
+            sys.path.append('/root')
+            from karaoke_gen.utils import sanitize_filename
+            
+            artist = sanitize_filename(raw_artist)
+            title = sanitize_filename(raw_title)
+            log_message(job_id, "DEBUG", f"Sanitized names for review data: '{raw_artist}' -> '{artist}', '{raw_title}' -> '{title}'")
+        else:
+            artist = raw_artist
+            title = raw_title
 
         # Get the corrections file path from job data
         corrections_file_path = job_data.get("corrections_file")
         
         if not corrections_file_path:
-            # Fallback to constructing the path
+            # Fallback to constructing the path using sanitized names
             track_output_dir = job_data.get("track_output_dir", f"/output/{job_id}")
             
             if artist and title:

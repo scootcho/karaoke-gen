@@ -274,7 +274,8 @@ class LyricsProcessor:
 
             # Save correction data to JSON file for review interface
             # Use the expected filename format: "{artist} - {title} (Lyrics Corrections).json"
-            corrections_filename = f"{filename_artist} - {filename_title} (Lyrics Corrections).json"
+            # Use sanitized names to be consistent with all other files created by lyrics_transcriber
+            corrections_filename = f"{sanitized_artist} - {sanitized_title} (Lyrics Corrections).json"
             corrections_filepath = os.path.join(lyrics_dir, corrections_filename)
             
             # Use the CorrectionResult's to_dict() method to serialize
