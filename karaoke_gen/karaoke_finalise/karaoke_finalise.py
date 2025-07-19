@@ -1067,7 +1067,7 @@ class KaraokeFinalise:
                     os.remove(file_path)
                     self.logger.info(f"Deleted .DS_Store file: {file_path}")
 
-        rclone_cmd = f"rclone copy -v {shlex.quote(self.public_share_dir)} {shlex.quote(self.rclone_destination)}"
+        rclone_cmd = f"rclone copy -v --ignore-existing {shlex.quote(self.public_share_dir)} {shlex.quote(self.rclone_destination)}"
         self.execute_command(rclone_cmd, "Copying to cloud destination")
 
     def post_discord_notification(self):
@@ -1192,7 +1192,7 @@ class KaraokeFinalise:
         current_dir = os.getcwd()
         
         # Use rclone copy to upload the entire current directory to the remote destination
-        rclone_upload_cmd = f"rclone copy -v {shlex.quote(current_dir)} {shlex.quote(remote_dest)}"
+        rclone_upload_cmd = f"rclone copy -v --ignore-existing {shlex.quote(current_dir)} {shlex.quote(remote_dest)}"
         
         if self.dry_run:
             self.logger.info(f"DRY RUN: Would upload current directory to: {remote_dest}")

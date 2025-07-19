@@ -251,7 +251,7 @@ def test_sync_public_share_dir_to_rclone(mock_quote, mock_execute, mock_join, mo
     mock_walk.assert_called_once_with(PUBLIC_SHARE_DIR)
     mock_remove.assert_called_once_with(ds_store_path)
     finaliser_for_org.logger.info.assert_any_call(f"Deleted .DS_Store file: {ds_store_path}")
-    expected_cmd = f"rclone copy -v '{PUBLIC_SHARE_DIR}' '{RCLONE_DEST}'"
+    expected_cmd = f"rclone copy -v --ignore-existing '{PUBLIC_SHARE_DIR}' '{RCLONE_DEST}'"
     mock_execute.assert_called_once_with(expected_cmd, "Copying to cloud destination")
     mock_quote.assert_has_calls([
         call(PUBLIC_SHARE_DIR),
