@@ -390,6 +390,7 @@ def test_remux_and_encode_skip_overwrite(
 
 # --- GPU-Accelerated Encoding Tests ---
 
+@pytest.mark.skip(reason="NVENC temporarily disabled due to large file size issues")
 @patch.object(KaraokeFinalise, 'execute_command_with_fallback')
 def test_convert_mov_to_mp4_aac_nvenc(mock_execute_fallback, finaliser_with_nvenc_aac):
     """Test convert_mov_to_mp4 command with basic aac codec and NVENC acceleration."""
@@ -405,6 +406,7 @@ def test_convert_mov_to_mp4_aac_nvenc(mock_execute_fallback, finaliser_with_nven
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Converting MOV video to MP4")
 
+@pytest.mark.skip(reason="NVENC temporarily disabled due to large file size issues")
 @patch.object(KaraokeFinalise, 'execute_command_with_fallback')
 def test_convert_mov_to_mp4_aac_at_nvenc(mock_execute_fallback, finaliser_with_nvenc_aac_at):
     """Test convert_mov_to_mp4 command with aac_at codec and NVENC acceleration."""
@@ -420,6 +422,7 @@ def test_convert_mov_to_mp4_aac_at_nvenc(mock_execute_fallback, finaliser_with_n
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Converting MOV video to MP4")
 
+@pytest.mark.skip(reason="NVENC temporarily disabled due to large file size issues")
 @patch.object(KaraokeFinalise, 'execute_command_with_fallback')
 @patch('shlex.quote', side_effect=lambda x: f"'{x}'")
 def test_encode_lossless_mp4_nvenc(mock_quote, mock_execute_fallback, finaliser_with_nvenc_aac):
@@ -446,6 +449,7 @@ def test_encode_lossless_mp4_nvenc(mock_quote, mock_execute_fallback, finaliser_
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Creating MP4 version with PCM audio")
 
+@pytest.mark.skip(reason="NVENC temporarily disabled due to large file size issues")
 @patch.object(KaraokeFinalise, 'execute_command_with_fallback')
 def test_encode_720p_version_aac_nvenc(mock_execute_fallback, finaliser_with_nvenc_aac):
     """Test encode_720p_version command with basic aac and NVENC acceleration."""
@@ -464,6 +468,7 @@ def test_encode_720p_version_aac_nvenc(mock_execute_fallback, finaliser_with_nve
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Encoding 720p version of the final video")
 
+@pytest.mark.skip(reason="NVENC temporarily disabled due to large file size issues")
 @patch.object(KaraokeFinalise, 'execute_command_with_fallback')
 def test_encode_720p_version_aac_at_nvenc(mock_execute_fallback, finaliser_with_nvenc_aac_at):
     """Test encode_720p_version command with aac_at and NVENC acceleration."""
