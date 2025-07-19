@@ -153,7 +153,8 @@ class KaraokeFinalise:
             self.ffmpeg_base_command += " -y"
 
         # Detect and configure hardware acceleration
-        self.nvenc_available = self.detect_nvenc_support()
+        # TODO: Re-enable this once we figure out why the resulting MP4s are 10x larger than when encoded with x264...
+        self.nvenc_available = False # self.detect_nvenc_support()
         self.configure_hardware_acceleration()
 
     def check_input_files_exist(self, base_name, with_vocals_file, instrumental_audio_file):
