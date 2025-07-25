@@ -1745,7 +1745,7 @@ function createJobHTML(jobId, job) {
                     <div class="job-header">
                         <div class="job-title-section">
                             <div class="job-header-line">
-                                <button onclick="copyTrackInfo('${escapeHtml(trackInfo)}')" class="copy-track-btn" title="Copy track info to clipboard">
+                                <button onclick="copyTrackInfo(this.dataset.trackInfo)" class="copy-track-btn" title="Copy track info to clipboard" data-track-info="${escapeHtml(trackInfo)}">
                                     📋
                                 </button>
                                 <span class="track-name">${trackInfo}</span>
