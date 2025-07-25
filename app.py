@@ -953,6 +953,208 @@ def process_part_two(job_id: str, updated_correction_data: Optional[Dict[str, An
 
 @app.function(
     image=karaoke_image,
+    volumes=VOLUME_CONFIG,
+    timeout=300,
+    retries=0,
+    cpu=4.0,
+    memory=8192,
+)
+def create_custom_instrumental_async(job_id: str, clean_instrumental_path: str, backing_vocals_path: str, silence_ranges: list):
+    """Create a custom instrumental by silencing specific ranges in the backing vocals before combining with clean instrumental."""
+    import os
+    import subprocess
+    from pathlib import Path
+    from pydub import AudioSegment
+    import tempfile
+
+    try:
+        log_message(job_id, "INFO", f"Creating custom instrumental - Clean: {clean_instrumental_path}, Backing vocals: {backing_vocals_path}")
+        log_message(job_id, "INFO", f"Silence ranges: {silence_ranges}")
+
+        # Validate input files exist
+        clean_instrumental_file = Path(clean_instrumental_path)
+        backing_vocals_file = Path(backing_vocals_path)
+        
+        if not clean_instrumental_file.exists():
+            raise Exception(f"Clean instrumental file not found: {clean_instrumental_path}")
+        
+        if not backing_vocals_file.exists():
+            raise Exception(f"Backing vocals file not found: {backing_vocals_path}")
+
+        # Create output directory if needed
+        output_dir = clean_instrumental_file.parent
+        
+        # Generate output filename for custom instrumental
+        # Always use the same filename so it gets overwritten each time
+        base_name = clean_instrumental_file.stem
+        
+        # Extract the base part (before model name) to create consistent custom filename
+        if "(Instrumental " in base_name:
+            # Extract everything before the model part
+            parts = base_name.split("(Instrumental ")
+            if len(parts) > 1:
+                artist_title = parts[0].strip()
+                model_part = parts[1].split(")")[0]  # Get the model name
+                base_name = f"{artist_title} (Instrumental +BV Custom {model_part})"
+            else:
+                # Fallback: just replace the instrumental part
+                base_name = base_name.replace("(Instrumental", "(Instrumental +BV Custom")
+        else:
+            # Fallback: just replace the instrumental part
+            base_name = base_name.replace("(Instrumental", "(Instrumental +BV Custom")
+        
+        custom_instrumental_path = output_dir / f"{base_name}).flac"
+        
+        # Log if we're overwriting an existing custom instrumental
+        if custom_instrumental_path.exists():
+            log_message(job_id, "INFO", f"Overwriting existing custom instrumental: {custom_instrumental_path.name}")
+        
+        log_message(job_id, "INFO", f"Custom instrumental will be saved to: {custom_instrumental_path}")
+
+        # Load backing vocals audio using pydub
+        log_message(job_id, "INFO", "Loading backing vocals audio for processing...")
+        backing_vocals = AudioSegment.from_file(str(backing_vocals_file), format="flac")
+        
+        # Apply silence to selected ranges
+        log_message(job_id, "INFO", f"Applying {len(silence_ranges)} silence ranges to backing vocals...")
+        
+        # Sort ranges by start time to process them correctly
+        sorted_ranges = sorted(silence_ranges, key=lambda x: x["start"])
+        
+        # Apply silence ranges (process in reverse order to maintain positions)
+        for i, range_data in enumerate(reversed(sorted_ranges)):
+            start_ms = int(range_data["start"] * 1000)  # Convert to milliseconds
+            end_ms = int(range_data["end"] * 1000)      # Convert to milliseconds
+            
+            # Validate range
+            if start_ms < 0 or end_ms > len(backing_vocals) or start_ms >= end_ms:
+                log_message(job_id, "WARNING", f"Invalid range {len(sorted_ranges) - i}: {start_ms}ms - {end_ms}ms, skipping")
+                continue
+            
+            # Create silent segment for this range
+            silence = AudioSegment.silent(duration=end_ms - start_ms)
+            
+            # Replace the range with silence
+            backing_vocals = backing_vocals[:start_ms] + silence + backing_vocals[end_ms:]
+            
+            log_message(job_id, "INFO", f"Applied silence to range {len(sorted_ranges) - i}: {start_ms}ms - {end_ms}ms")
+
+        # Export the modified backing vocals to a temporary file
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as temp_backing_vocals:
+            temp_backing_vocals_path = temp_backing_vocals.name
+            
+        log_message(job_id, "INFO", "Exporting modified backing vocals...")
+        backing_vocals.export(temp_backing_vocals_path, format="flac")
+        
+        try:
+            # Use FFmpeg to combine clean instrumental with modified backing vocals
+            # This reuses the same logic as the existing _generate_combined_instrumentals method
+            log_message(job_id, "INFO", "Combining clean instrumental with modified backing vocals...")
+            
+            ffmpeg_command = [
+                "ffmpeg", "-y",  # -y to overwrite output file
+                "-i", str(clean_instrumental_file),
+                "-i", temp_backing_vocals_path,
+                "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=longest:weights=1 1",
+                "-c:a", "flac",
+                str(custom_instrumental_path)
+            ]
+            
+            log_message(job_id, "DEBUG", f"Running FFmpeg command: {' '.join(ffmpeg_command)}")
+            
+            result = subprocess.run(ffmpeg_command, capture_output=True, text=True, timeout=180)
+            
+            if result.returncode != 0:
+                log_message(job_id, "ERROR", f"FFmpeg failed with return code {result.returncode}")
+                log_message(job_id, "ERROR", f"FFmpeg stderr: {result.stderr}")
+                raise Exception(f"FFmpeg failed: {result.stderr}")
+            
+            log_message(job_id, "INFO", f"FFmpeg completed successfully")
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_backing_vocals_path)
+                log_message(job_id, "DEBUG", "Cleaned up temporary backing vocals file")
+            except:
+                pass
+
+        # Verify the output file was created
+        if not custom_instrumental_path.exists():
+            raise Exception("Custom instrumental file was not created successfully")
+        
+        # Normalize the custom instrumental to match the amplitude of other instrumentals
+        # This matches the normalization process in audio_processor.py
+        log_message(job_id, "INFO", "Normalizing custom instrumental to match standard amplitude levels...")
+        try:
+            # Load the custom instrumental
+            custom_audio = AudioSegment.from_file(str(custom_instrumental_path), format="flac")
+            
+            # Calculate the peak amplitude
+            peak_amplitude = float(custom_audio.max_dBFS)
+            target_level = 0.0  # Same target as in audio_processor.py
+            
+            # Calculate the necessary gain
+            gain_db = target_level - peak_amplitude
+            
+            log_message(job_id, "DEBUG", f"Original peak: {peak_amplitude:.2f} dB, applying gain: {gain_db:.2f} dB")
+            
+            # Apply gain normalization
+            normalized_audio = custom_audio.apply_gain(gain_db)
+            
+            # Ensure the audio is not completely silent
+            if normalized_audio.rms == 0:
+                log_message(job_id, "WARNING", "Normalized audio is silent, using original audio")
+                normalized_audio = custom_audio
+            
+            # Export the normalized audio, overwriting the original file
+            normalized_audio.export(str(custom_instrumental_path), format="flac")
+            
+            log_message(job_id, "INFO", f"Custom instrumental normalized successfully (gain applied: {gain_db:.2f} dB)")
+            
+        except Exception as norm_error:
+            log_message(job_id, "WARNING", f"Failed to normalize custom instrumental: {norm_error}")
+            log_message(job_id, "WARNING", "Proceeding with unnormalized file")
+        
+        file_size = custom_instrumental_path.stat().st_size
+        log_message(job_id, "INFO", f"Custom instrumental created successfully: {custom_instrumental_path.name} ({file_size / 1024 / 1024:.1f} MB)")
+
+        # Generate visualizations for the new custom instrumental
+        try:
+            log_message(job_id, "INFO", "Generating visualizations for custom instrumental...")
+            generate_visualizations_for_file(job_id, str(custom_instrumental_path))
+            log_message(job_id, "INFO", "Custom instrumental visualizations generated successfully")
+        except Exception as viz_error:
+            log_message(job_id, "WARNING", f"Failed to generate visualizations for custom instrumental: {viz_error}")
+            # Don't fail the whole operation if visualization generation fails
+
+        # Ensure the volume is properly committed so the file is visible to other functions
+        try:
+            output_volume.commit()
+            log_message(job_id, "DEBUG", "Volume committed successfully after custom instrumental creation")
+        except Exception as commit_error:
+            log_message(job_id, "WARNING", f"Volume commit failed, but continuing: {commit_error}")
+
+        return {
+            "success": True,
+            "custom_instrumental_path": str(custom_instrumental_path.name),
+            "file_size": file_size
+        }
+
+    except Exception as e:
+        error_msg = f"Error creating custom instrumental: {str(e)}"
+        log_message(job_id, "ERROR", error_msg)
+        import traceback
+        log_message(job_id, "ERROR", f"Traceback: {traceback.format_exc()}")
+        
+        return {
+            "success": False,
+            "error": error_msg
+        }
+
+
+@app.function(
+    image=karaoke_image,
     gpu="any",
     volumes=VOLUME_CONFIG,
     secrets=[modal.Secret.from_name("env-vars")],
@@ -4970,6 +5172,11 @@ async def get_available_instrumentals(job_id: str):
     """Get list of available instrumental files for a job."""
     track_output_dir = None  # Initialize to avoid UnboundLocalError
     try:
+        # Force volume reload to see any newly created files
+        output_volume.reload()
+        import time
+        time.sleep(0.1)  # Brief pause to allow volume reload to complete
+        
         job_data = job_status_dict.get(job_id)
         if not job_data:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -4982,8 +5189,10 @@ async def get_available_instrumentals(job_id: str):
         track_dir = Path(track_output_dir)
         stems_dir = track_dir / "stems"
 
-        # Find all instrumental files
+        # Find all instrumental files (this should now include any newly created custom instrumentals)
         instrumental_files = list(track_dir.glob(f"*Instrumental*.flac"))
+        
+        log_message(job_id, "DEBUG", f"Found instrumental files: {[f.name for f in instrumental_files]}")
 
         if not instrumental_files:
             raise HTTPException(status_code=404, detail="No instrumental files found")
@@ -5002,7 +5211,12 @@ async def get_available_instrumentals(job_id: str):
                 description = ""
                 backing_vocals_file = None
 
-                if "+BV" in filename:
+                if "+BV Custom" in filename:
+                    instrumental_type = "Custom Instrumental With Backing Vocals"
+                    description = "Custom instrumental created with selective backing vocals silencing - contains your custom edits!"
+                    recommended = True  # Custom instrumentals are highly recommended since they were specifically created by the user
+                    log_message(job_id, "DEBUG", f"Detected custom instrumental: {filename}")
+                elif "+BV" in filename:
                     instrumental_type = "Instrumental With Backing Vocals"
                     description = "Typically includes background vocals and harmonies - listen all the way through first to see if this sounds good!"
                     
@@ -5017,7 +5231,7 @@ async def get_available_instrumentals(job_id: str):
                             backing_vocals_file = backing_vocals_files[0].name
                             
                 elif "model_bs_roformer" in filename:
-                    instrumental_type = "Clean Instrumental"
+                    instrumental_type = "Clean Instrumental (No Backing Vocals)"
                     description = "Pure instrumental without any vocals - safe option if you're not sure"
                     recommended = True  # Clean instrumental is safest option
                 elif "htdemucs" in filename:
@@ -5247,6 +5461,98 @@ async def get_backing_vocals_preview(job_id: str, filename: str):
     except Exception as e:
         log_message(job_id, "ERROR", f"Error serving backing vocals preview: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error serving backing vocals preview: {str(e)}")
+
+
+@api_app.post("/api/corrections/{job_id}/create-custom-instrumental")
+async def create_custom_instrumental(job_id: str, request: dict):
+    """Create a custom instrumental with silence ranges applied to backing vocals."""
+    try:
+        job_data = job_status_dict.get(job_id)
+        if not job_data:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job_data.get("status") not in ["reviewing", "awaiting_review", "ready_for_finalization"]:
+            raise HTTPException(status_code=400, detail="Job is not ready for custom instrumental creation")
+
+        # Parse request data
+        backing_vocals_file = request.get("backing_vocals_file")
+        silence_ranges = request.get("silence_ranges", [])
+
+        if not backing_vocals_file:
+            raise HTTPException(status_code=400, detail="backing_vocals_file is required")
+
+        if not silence_ranges:
+            raise HTTPException(status_code=400, detail="silence_ranges is required")
+
+        # Validate silence ranges
+        for range_data in silence_ranges:
+            if not isinstance(range_data, dict) or "start" not in range_data or "end" not in range_data:
+                raise HTTPException(status_code=400, detail="Invalid silence range format")
+
+        log_message(job_id, "INFO", f"Creating custom instrumental with {len(silence_ranges)} silence ranges")
+
+        # Get job details
+        track_output_dir = job_data.get("track_output_dir", f"/output/{job_id}")
+        track_dir = Path(track_output_dir)
+        stems_dir = track_dir / "stems"
+
+        # Find corresponding files
+        backing_vocals_path = stems_dir / backing_vocals_file
+        if not backing_vocals_path.exists():
+            raise HTTPException(status_code=404, detail="Backing vocals file not found")
+
+        # Find the corresponding clean instrumental
+        # Extract model from backing vocals filename to find matching instrumental
+        # Pattern: "Artist - Title (Backing Vocals model).flac"
+        if "(Backing Vocals " in backing_vocals_file:
+            model_part = backing_vocals_file.split("(Backing Vocals ")[1].replace(").flac", "")
+            
+            # Look for corresponding clean instrumental (exclude any +BV files, especially custom ones)
+            clean_instrumental_pattern = f"*Instrumental*{model_part.split()[0]}*.flac"
+            clean_instrumental_candidates = list(track_dir.glob(clean_instrumental_pattern))
+            
+            # Filter out any files with +BV (including custom ones) to get the original clean instrumental
+            clean_instrumental_files = [f for f in clean_instrumental_candidates if "+BV" not in f.name]
+            
+            if not clean_instrumental_files:
+                # Fallback: look for any clean instrumental without +BV
+                clean_instrumental_files = [f for f in track_dir.glob("*Instrumental*.flac") if "+BV" not in f.name]
+            
+            if not clean_instrumental_files:
+                raise HTTPException(status_code=404, detail="No clean instrumental file found for custom processing")
+            
+            # Use the first clean instrumental (should be the original, not a custom one)
+            clean_instrumental_path = clean_instrumental_files[0]
+        else:
+            raise HTTPException(status_code=400, detail="Invalid backing vocals file format")
+
+        log_message(job_id, "INFO", f"Using clean instrumental: {clean_instrumental_path.name}")
+        log_message(job_id, "INFO", f"Using backing vocals: {backing_vocals_path.name}")
+
+        # Schedule custom instrumental creation
+        result = create_custom_instrumental_async.remote(
+            job_id,
+            str(clean_instrumental_path),
+            str(backing_vocals_path),
+            silence_ranges
+        )
+
+        if result.get("success"):
+            log_message(job_id, "INFO", f"Custom instrumental created successfully: {result['custom_instrumental_path']}")
+            return JSONResponse({
+                "success": True,
+                "message": "Custom instrumental created successfully",
+                "custom_instrumental_path": result["custom_instrumental_path"]
+            })
+        else:
+            log_message(job_id, "ERROR", f"Failed to create custom instrumental: {result.get('error')}")
+            raise HTTPException(status_code=500, detail=f"Failed to create custom instrumental: {result.get('error')}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_message(job_id, "ERROR", f"Error creating custom instrumental: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating custom instrumental: {str(e)}")
 
 
 # Removed on-demand visualization generation functions - all visualizations are now pre-generated during Phase 2
@@ -6597,6 +6903,110 @@ def generate_spectrogram_visualization(y, sr, duration):
         "duration": duration,
         "sample_rate": sr
     }
+
+
+def generate_visualizations_for_file(job_id: str, file_path: str):
+    """Generate visualizations for a single audio file."""
+    import librosa
+    import json
+    import time
+    import os
+    from pathlib import Path
+    
+    try:
+        file_path_obj = Path(file_path)
+        filename = file_path_obj.name
+        
+        # Determine visualization directory (sibling to the audio file's directory)
+        if file_path_obj.parent.name == "stems":
+            viz_dir = file_path_obj.parent.parent / "visualizations"
+        else:
+            viz_dir = file_path_obj.parent / "visualizations"
+            
+        # Create visualizations directory
+        viz_dir.mkdir(exist_ok=True)
+        
+        log_message(job_id, "INFO", f"Generating visualizations for: {filename}")
+        
+        # Generate safe filename for visualization files
+        safe_filename = filename.replace(" ", "_").replace("(", "").replace(")", "").replace("&", "and")
+        
+        # Define output paths
+        waveform_file = viz_dir / f"{safe_filename}_waveform.png"
+        spectrogram_file = viz_dir / f"{safe_filename}_spectrogram.png"
+        metadata_file = viz_dir / f"{safe_filename}_metadata.json"
+        
+        # Check if visualizations already exist
+        if waveform_file.exists() and spectrogram_file.exists() and metadata_file.exists():
+            log_message(job_id, "DEBUG", f"Visualizations already exist for: {filename}")
+            return
+        
+        # Load audio file with retry logic
+        y = None
+        sr = None
+        duration = None
+        
+        max_retries = 3
+        retry_delay = 0.5
+        
+        for attempt in range(max_retries):
+            try:
+                y, sr = librosa.load(str(file_path_obj), sr=None)
+                duration = len(y) / sr
+                break
+            except (OSError, IOError, PermissionError) as e:
+                if attempt == max_retries - 1:
+                    if not file_path_obj.exists():
+                        raise Exception(f"Audio file not found: {file_path}")
+                    elif not os.access(str(file_path_obj), os.R_OK):
+                        raise Exception(f"Audio file not readable: {file_path}")
+                    else:
+                        raise Exception(f"Audio file is locked or in use: {file_path}")
+                
+                log_message(job_id, "DEBUG", f"Attempt {attempt + 1} failed for {filename}, retrying in {retry_delay}s: {str(e)}")
+                time.sleep(retry_delay)
+                retry_delay *= 2
+        
+        # Generate and save waveform
+        log_message(job_id, "DEBUG", f"Generating waveform for: {filename}")
+        waveform_data = generate_waveform_visualization(y, sr, duration)
+        
+        # Save waveform image to file
+        import base64
+        waveform_image_data = base64.b64decode(waveform_data["image_data"])
+        with open(waveform_file, 'wb') as f:
+            f.write(waveform_image_data)
+        
+        # Generate and save spectrogram
+        log_message(job_id, "DEBUG", f"Generating spectrogram for: {filename}")
+        spectrogram_data = generate_spectrogram_visualization(y, sr, duration)
+        
+        # Save spectrogram image to file
+        spectrogram_image_data = base64.b64decode(spectrogram_data["image_data"])
+        with open(spectrogram_file, 'wb') as f:
+            f.write(spectrogram_image_data)
+        
+        # Save metadata
+        file_type = "custom_instrumental" if "Custom" in filename else ("backing_vocals" if "Backing Vocals" in filename else "instrumental")
+        metadata = {
+            "filename": filename,
+            "type": file_type,
+            "duration": duration,
+            "sample_rate": sr,
+            "generated_at": time.time(),
+            "waveform_file": waveform_file.name,
+            "spectrogram_file": spectrogram_file.name,
+        }
+        
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        log_message(job_id, "SUCCESS", f"Visualizations generated successfully for: {filename}")
+        
+    except Exception as e:
+        error_msg = str(e)
+        log_message(job_id, "ERROR", f"Failed to generate visualizations for {file_path}: {error_msg}")
+        raise Exception(f"Failed to generate visualizations: {error_msg}")
 
 
 def generate_visualizations_for_job(job_id: str, track_output_dir: str):

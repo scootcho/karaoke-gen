@@ -5276,6 +5276,12 @@ function closeAudioPreview() {
 
 // Instrumental Selection Modal Functions
 let currentReviewData = null;
+// Add variables for range selection functionality
+let isSelectingRange = false;
+let rangeSelectionStart = null;
+let rangeSelectionEnd = null;
+let selectedSilenceRanges = [];
+let currentBackingVocalsFile = null;
 
 async function showInstrumentalSelectionModal(jobId, correctedData) {
     try {
@@ -5353,22 +5359,17 @@ function displayInstrumentalOptions(instrumentals) {
 }
 
 function createInstrumentalOptionHtml(instrumental) {
-    const recommendedBadge = instrumental.recommended ? '<span class="recommended-badge">⭐ RECOMMENDED</span>' : '';
-    
     return `
-        <div class="instrumental-option ${instrumental.recommended ? 'recommended' : ''}" 
-             data-filename="${instrumental.filename}" 
-             onclick="selectInstrumental('${instrumental.filename}', this)">
+        <div class="instrumental-option" 
+             data-filename="${instrumental.filename}">
             
-            ${recommendedBadge}
-            
-                <div class="instrumental-header">
-                    <div class="instrumental-title">
-                        <div class="instrumental-type">${instrumental.type}</div>
+            <div class="instrumental-header">
+                <div class="instrumental-title">
+                    <div class="instrumental-type">${instrumental.type}</div>
                     <div class="instrumental-filename">${instrumental.filename}</div>
-                    </div>
-                    <div class="instrumental-controls">
-                        <div class="audio-preview-controls">
+                </div>
+                <div class="instrumental-controls">
+                    <div class="audio-preview-controls">
                         <audio class="audio-preview-player" 
                                data-filename="${instrumental.filename}"
                                controls preload="none"
@@ -5376,9 +5377,16 @@ function createInstrumentalOptionHtml(instrumental) {
                             <!-- Audio source will be added after visualizations load -->
                             Your browser does not support the audio element.
                         </audio>
-                        </div>
+                    </div>
+                    <div class="instrumental-selection-control">
+                        <button class="btn btn-select-instrumental" 
+                                onclick="selectInstrumental('${instrumental.filename}', this)" 
+                                data-filename="${instrumental.filename}">
+                            📻 Select This Track
+                        </button>
                     </div>
                 </div>
+            </div>
             
                 <div class="instrumental-description">${instrumental.description}</div>
             
@@ -5436,6 +5444,19 @@ function createBackingVocalsVisualizationHtml(instrumental) {
                 </div>
             </div>
             
+            <!-- Range Selection Controls -->
+            <div class="range-selection-controls" style="margin: 10px 0;">
+                <div class="range-controls-header">
+                    <span class="range-controls-label">✂️ Select ranges to silence in backing vocals:</span>
+                    <button class="btn btn-small" onclick="toggleRangeSelectionMode('${instrumental.backing_vocals_file}')" 
+                            id="range-toggle-${backingVocalsId}">🎯 Start Selecting</button>
+                </div>
+                <div class="range-selection-info" id="range-info-${backingVocalsId}" style="display: none;">
+                    <small>Click and drag on the backing vocals visualization to select ranges to silence. Selected ranges will appear in red.</small>
+                </div>
+                <div class="selected-ranges-list" id="ranges-list-${backingVocalsId}"></div>
+            </div>
+            
             <div class="visualization-container backing-vocals-viz" data-filename="${instrumental.backing_vocals_file}">
                 <div class="visualization-loading" id="bv-loading-${backingVocalsId}">Loading backing vocals visualization...</div>
                 
@@ -5447,8 +5468,33 @@ function createBackingVocalsVisualizationHtml(instrumental) {
                             <div class="playhead-line"></div>
                             <div class="playhead-time">0:00</div>
                         </div>
+                        <!-- Range selection overlay -->
+                        <div class="range-selection-overlay" id="bv-range-overlay-${backingVocalsId}"></div>
                         <div class="timeline-clicks" id="bv-timeline-${backingVocalsId}" 
-                             onclick="seekToBackingVocalsPosition('${instrumental.backing_vocals_file}', event)"></div>
+                             onmousedown="handleBackingVocalsMouseDown('${instrumental.backing_vocals_file}', event)"
+                             onmousemove="handleBackingVocalsMouseMove('${instrumental.backing_vocals_file}', event)"
+                             onmouseup="handleBackingVocalsMouseUp('${instrumental.backing_vocals_file}', event)"
+                             onclick="handleBackingVocalsClick('${instrumental.backing_vocals_file}', event)"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Custom Instrumental Creation -->
+            <div class="custom-instrumental-section" id="custom-section-${backingVocalsId}" style="display: none;">
+                <div class="custom-instrumental-header">
+                    <h4>🎛️ Create Custom Instrumental</h4>
+                    <p>Create a custom instrumental track with selected backing vocals sections silenced</p>
+                </div>
+                <div class="custom-instrumental-actions">
+                    <button class="btn btn-primary" onclick="createCustomInstrumental('${instrumental.backing_vocals_file}')" 
+                            id="create-custom-${backingVocalsId}">🎵 Create Custom Instrumental</button>
+                    <button class="btn btn-secondary" onclick="clearAllRanges('${instrumental.backing_vocals_file}')" 
+                            id="clear-ranges-${backingVocalsId}">🗑️ Clear All Ranges</button>
+                </div>
+                <div class="custom-instrumental-progress" id="custom-progress-${backingVocalsId}" style="display: none;">
+                    <div class="progress-message">Creating custom instrumental...</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
                     </div>
                 </div>
             </div>
@@ -5788,24 +5834,25 @@ function enableAudioPreviews() {
 }
 
 function ensureInstrumentalSelectionWorks() {
-    // Make sure all instrumental options are clickable and the confirm button is properly set up
-    const instrumentalOptions = document.querySelectorAll('.instrumental-option');
-    console.log(`🎯 Ensuring ${instrumentalOptions.length} instrumental options are selectable`);
+    // Make sure all instrumental selection buttons are working and the confirm button is properly set up
+    const selectButtons = document.querySelectorAll('.btn-select-instrumental');
+    console.log(`🎯 Ensuring ${selectButtons.length} instrumental selection buttons are working`);
     
-    instrumentalOptions.forEach((option, index) => {
-        const filename = option.dataset.filename;
+    selectButtons.forEach((button, index) => {
+        const filename = button.dataset.filename;
         if (filename) {
-            // Ensure the click handler works by adding a backup event listener
-            option.addEventListener('click', function(e) {
-                console.log(`📍 Backup click handler for ${filename}`);
+            // Ensure the button click handler works by adding a backup event listener
+            button.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent event bubbling
+                console.log(`📍 Backup button click handler for ${filename}`);
                 selectInstrumental(filename, this);
             });
             
-            // Make sure the option is visually interactive
-            option.style.cursor = 'pointer';
-            option.style.userSelect = 'none';
+            // Make sure the button is visually interactive
+            button.style.cursor = 'pointer';
+            button.style.userSelect = 'none';
             
-            console.log(`✅ Instrumental option ${index + 1} (${filename}) is ready for selection`);
+            console.log(`✅ Instrumental selection button ${index + 1} (${filename}) is ready`);
         }
     });
     
@@ -6320,7 +6367,383 @@ function seekToBackingVocalsPosition(backingVocalsFilename, event) {
     }
 }
 
-function selectInstrumental(filename, element) {
+// Range Selection Functions for Backing Vocals Customization
+
+function toggleRangeSelectionMode(backingVocalsFilename) {
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const toggleBtn = document.getElementById(`range-toggle-${backingVocalsId}`);
+    const infoDiv = document.getElementById(`range-info-${backingVocalsId}`);
+    const customSection = document.getElementById(`custom-section-${backingVocalsId}`);
+    
+    if (!isSelectingRange || currentBackingVocalsFile !== backingVocalsFilename) {
+        // Start range selection mode
+        isSelectingRange = true;
+        currentBackingVocalsFile = backingVocalsFilename;
+        toggleBtn.textContent = '🛑 Stop Selecting';
+        toggleBtn.classList.add('active');
+        infoDiv.style.display = 'block';
+        customSection.style.display = 'block';
+        
+        // Initialize ranges for this file if not already done
+        if (!selectedSilenceRanges[backingVocalsFilename]) {
+            selectedSilenceRanges[backingVocalsFilename] = [];
+        }
+        
+        showInfo('Range selection mode enabled. Click and drag on the backing vocals visualization to select ranges to silence.');
+    } else {
+        // Stop range selection mode
+        isSelectingRange = false;
+        currentBackingVocalsFile = null;
+        toggleBtn.textContent = '🎯 Start Selecting';
+        toggleBtn.classList.remove('active');
+        infoDiv.style.display = 'none';
+        
+        showInfo('Range selection mode disabled.');
+    }
+    
+    updateRangesList(backingVocalsFilename);
+}
+
+function handleBackingVocalsMouseDown(backingVocalsFilename, event) {
+    if (!isSelectingRange || currentBackingVocalsFile !== backingVocalsFilename) {
+        return seekToBackingVocalsPosition(backingVocalsFilename, event);
+    }
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+    
+    rangeSelectionStart = percentage;
+    rangeSelectionEnd = null;
+    
+    // Add temporary visual indicator
+    showTemporaryRangeIndicator(backingVocalsFilename, percentage, percentage);
+}
+
+function handleBackingVocalsMouseMove(backingVocalsFilename, event) {
+    if (!isSelectingRange || currentBackingVocalsFile !== backingVocalsFilename || rangeSelectionStart === null) {
+        return;
+    }
+    
+    event.preventDefault();
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+    
+    // Update temporary visual indicator
+    const startPercentage = Math.min(rangeSelectionStart, percentage);
+    const endPercentage = Math.max(rangeSelectionStart, percentage);
+    
+    showTemporaryRangeIndicator(backingVocalsFilename, startPercentage, endPercentage);
+}
+
+function handleBackingVocalsMouseUp(backingVocalsFilename, event) {
+    if (!isSelectingRange || currentBackingVocalsFile !== backingVocalsFilename || rangeSelectionStart === null) {
+        return;
+    }
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const endPercentage = Math.max(0, Math.min(1, clickX / rect.width));
+    
+    rangeSelectionEnd = endPercentage;
+    
+    // Only create range if there's a meaningful selection (> 0.5% of track)
+    const startPercentage = Math.min(rangeSelectionStart, rangeSelectionEnd);
+    const finalEndPercentage = Math.max(rangeSelectionStart, rangeSelectionEnd);
+    
+    if (Math.abs(finalEndPercentage - startPercentage) > 0.005) {
+        // Add the range to selected ranges
+        if (!selectedSilenceRanges[backingVocalsFilename]) {
+            selectedSilenceRanges[backingVocalsFilename] = [];
+        }
+        
+        selectedSilenceRanges[backingVocalsFilename].push({
+            start: startPercentage,
+            end: finalEndPercentage,
+            id: Date.now() // Simple ID for removal
+        });
+        
+        showSuccess(`Added range to silence: ${(startPercentage * 100).toFixed(1)}% - ${(finalEndPercentage * 100).toFixed(1)}%`);
+    }
+    
+    // Clear temporary selection
+    rangeSelectionStart = null;
+    rangeSelectionEnd = null;
+    clearTemporaryRangeIndicator(backingVocalsFilename);
+    
+    // Update visualization and list
+    updateRangeVisualization(backingVocalsFilename);
+    updateRangesList(backingVocalsFilename);
+}
+
+function handleBackingVocalsClick(backingVocalsFilename, event) {
+    if (!isSelectingRange || currentBackingVocalsFile !== backingVocalsFilename) {
+        return seekToBackingVocalsPosition(backingVocalsFilename, event);
+    }
+    
+    // Click is handled by mousedown/mouseup for range selection
+    event.preventDefault();
+    event.stopPropagation();
+}
+
+function showTemporaryRangeIndicator(backingVocalsFilename, startPercentage, endPercentage) {
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const overlay = document.getElementById(`bv-range-overlay-${backingVocalsId}`);
+    
+    if (!overlay) return;
+    
+    // Clear existing temporary indicator
+    const existing = overlay.querySelector('.temp-range-indicator');
+    if (existing) existing.remove();
+    
+    // Create new temporary indicator
+    const indicator = document.createElement('div');
+    indicator.className = 'temp-range-indicator';
+    indicator.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: ${startPercentage * 100}%;
+        width: ${(endPercentage - startPercentage) * 100}%;
+        height: 100%;
+        background-color: rgba(255, 0, 0, 0.3);
+        border: 1px dashed #ff0000;
+        pointer-events: none;
+        z-index: 5;
+    `;
+    
+    overlay.appendChild(indicator);
+}
+
+function clearTemporaryRangeIndicator(backingVocalsFilename) {
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const overlay = document.getElementById(`bv-range-overlay-${backingVocalsId}`);
+    
+    if (!overlay) return;
+    
+    const existing = overlay.querySelector('.temp-range-indicator');
+    if (existing) existing.remove();
+}
+
+function updateRangeVisualization(backingVocalsFilename) {
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const overlay = document.getElementById(`bv-range-overlay-${backingVocalsId}`);
+    
+    if (!overlay) return;
+    
+    // Clear existing range indicators (but not temporary ones)
+    overlay.querySelectorAll('.range-indicator').forEach(el => el.remove());
+    
+    // Add indicators for all selected ranges
+    const ranges = selectedSilenceRanges[backingVocalsFilename] || [];
+    ranges.forEach((range, index) => {
+        const indicator = document.createElement('div');
+        indicator.className = 'range-indicator';
+        indicator.dataset.rangeId = range.id;
+        indicator.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: ${range.start * 100}%;
+            width: ${(range.end - range.start) * 100}%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.5);
+            border: 1px solid #ff0000;
+            pointer-events: none;
+            z-index: 4;
+        `;
+        
+        // Add range label
+        const label = document.createElement('div');
+        label.style.cssText = `
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            font-size: 10px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 1px 3px;
+            border-radius: 2px;
+            pointer-events: none;
+        `;
+        label.textContent = `${index + 1}`;
+        indicator.appendChild(label);
+        
+        overlay.appendChild(indicator);
+    });
+}
+
+function updateRangesList(backingVocalsFilename) {
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const listElement = document.getElementById(`ranges-list-${backingVocalsId}`);
+    
+    if (!listElement) return;
+    
+    const ranges = selectedSilenceRanges[backingVocalsFilename] || [];
+    
+    if (ranges.length === 0) {
+        listElement.innerHTML = '<div class="no-ranges">No ranges selected</div>';
+        return;
+    }
+    
+    const rangesHtml = ranges.map((range, index) => {
+        // Get audio duration for time display
+        const audioPlayer = document.querySelector(`audio[data-filename="${backingVocalsFilename}"]`);
+        const duration = audioPlayer ? audioPlayer.duration || 0 : 0;
+        
+        const startTime = range.start * duration;
+        const endTime = range.end * duration;
+        
+        const formatTime = (seconds) => {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        };
+        
+        return `
+            <div class="range-item">
+                <span class="range-number">${index + 1}.</span>
+                <span class="range-times">${formatTime(startTime)} - ${formatTime(endTime)}</span>
+                <span class="range-percentage">(${(range.start * 100).toFixed(1)}% - ${(range.end * 100).toFixed(1)}%)</span>
+                <button class="btn btn-small btn-danger" onclick="removeRange('${backingVocalsFilename}', ${range.id})">✕</button>
+            </div>
+        `;
+    }).join('');
+    
+    listElement.innerHTML = `
+        <div class="ranges-header">Selected ranges to silence:</div>
+        <div class="ranges-items">${rangesHtml}</div>
+    `;
+}
+
+function removeRange(backingVocalsFilename, rangeId) {
+    if (!selectedSilenceRanges[backingVocalsFilename]) return;
+    
+    selectedSilenceRanges[backingVocalsFilename] = selectedSilenceRanges[backingVocalsFilename].filter(
+        range => range.id !== rangeId
+    );
+    
+    updateRangeVisualization(backingVocalsFilename);
+    updateRangesList(backingVocalsFilename);
+    
+    showInfo('Range removed');
+}
+
+function clearAllRanges(backingVocalsFilename) {
+    selectedSilenceRanges[backingVocalsFilename] = [];
+    
+    updateRangeVisualization(backingVocalsFilename);
+    updateRangesList(backingVocalsFilename);
+    
+    showInfo('All ranges cleared');
+}
+
+async function createCustomInstrumental(backingVocalsFilename) {
+    const ranges = selectedSilenceRanges[backingVocalsFilename] || [];
+    
+    if (ranges.length === 0) {
+        showError('Please select at least one range to silence before creating custom instrumental');
+        return;
+    }
+    
+    const backingVocalsId = backingVocalsFilename.replace(/[^a-zA-Z0-9]/g, '_');
+    const progressElement = document.getElementById(`custom-progress-${backingVocalsId}`);
+    const createButton = document.getElementById(`create-custom-${backingVocalsId}`);
+    
+    try {
+        // Show progress
+        progressElement.style.display = 'block';
+        createButton.disabled = true;
+        
+        showInfo('Creating custom instrumental with selected silence ranges...');
+        
+        // Convert percentage ranges to time ranges
+        const audioPlayer = document.querySelector(`audio[data-filename="${backingVocalsFilename}"]`);
+        const duration = audioPlayer ? audioPlayer.duration || 0 : 0;
+        
+        if (duration === 0) {
+            throw new Error('Audio duration not available - please wait for audio to load');
+        }
+        
+        const timeRanges = ranges.map(range => ({
+            start: range.start * duration,
+            end: range.end * duration
+        }));
+        
+        console.log('Creating custom instrumental with ranges:', timeRanges);
+        
+        // Send request to backend
+        const response = await authenticatedFetch(`${API_BASE_URL}/corrections/${currentJobId}/create-custom-instrumental`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                backing_vocals_file: backingVocalsFilename,
+                silence_ranges: timeRanges
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to create custom instrumental: ${response.status} ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        showSuccess('Custom instrumental created successfully!');
+        
+        // Hide progress
+        progressElement.style.display = 'none';
+        createButton.disabled = false;
+        
+        // Refresh the instrumental options to include the new custom track
+        showInfo('Refreshing instrumental options...');
+        await refreshInstrumentalOptions();
+        
+    } catch (error) {
+        console.error('Error creating custom instrumental:', error);
+        showError(`Failed to create custom instrumental: ${error.message}`);
+        
+        // Hide progress
+        progressElement.style.display = 'none';
+        createButton.disabled = false;
+    }
+}
+
+async function refreshInstrumentalOptions() {
+    try {
+        // Re-fetch instrumentals
+        const response = await authenticatedFetch(`${API_BASE_URL}/corrections/${currentJobId}/instrumentals`);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to refresh instrumentals: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Update the instrumental options display
+        displayInstrumentalOptions(data.instrumentals);
+        
+        // Re-initialize visualizations
+        setTimeout(() => {
+            initializeAllVisualizations(data.instrumentals);
+        }, 100);
+        
+        showSuccess('Instrumental options refreshed');
+        
+    } catch (error) {
+        console.error('Error refreshing instrumental options:', error);
+        showError(`Failed to refresh instrumental options: ${error.message}`);
+    }
+}
+
+function selectInstrumental(filename, buttonElement) {
     console.log('🎵 selectInstrumental called with:', filename);
     
     try {
@@ -6329,14 +6752,31 @@ function selectInstrumental(filename, element) {
             opt.classList.remove('selected');
         });
         
-        // Add selection to clicked option
-        if (element) {
-            element.classList.add('selected');
+        // Remove selected state from all buttons
+        document.querySelectorAll('.btn-select-instrumental').forEach(btn => {
+            btn.classList.remove('selected');
+            btn.textContent = '📻 Select This Track';
+        });
+        
+        // Find the container for this instrumental option
+        let instrumentalContainer = null;
+        if (buttonElement) {
+            // The button is inside the instrumental option container
+            instrumentalContainer = buttonElement.closest('.instrumental-option');
         } else {
-            console.warn('Element not provided to selectInstrumental, finding by filename');
-            const targetElement = document.querySelector(`[data-filename="${filename}"]`);
-            if (targetElement) {
-                targetElement.classList.add('selected');
+            console.warn('Button element not provided to selectInstrumental, finding by filename');
+            instrumentalContainer = document.querySelector(`[data-filename="${filename}"]`);
+        }
+        
+        // Add selection to the container and update button
+        if (instrumentalContainer) {
+            instrumentalContainer.classList.add('selected');
+            
+            // Update the button text and state
+            const selectButton = instrumentalContainer.querySelector('.btn-select-instrumental');
+            if (selectButton) {
+                selectButton.classList.add('selected');
+                selectButton.textContent = '✅ Selected';
             }
         }
         

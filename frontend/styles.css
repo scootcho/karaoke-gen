@@ -3953,24 +3953,7 @@ html {
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
-.instrumental-option.recommended {
-    border-color: var(--accent-yellow);
-    background: rgba(255, 223, 107, 0.1);
-}
 
-.instrumental-option.recommended::before {
-    content: "⭐ RECOMMENDED";
-    position: absolute;
-    top: -8px;
-    right: 12px;
-    background: var(--accent-yellow);
-    color: var(--background-color);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-}
 
 .instrumental-header {
     display: flex;
@@ -4078,6 +4061,46 @@ html {
     padding: 40px 20px;
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* Instrumental Selection Button */
+.instrumental-selection-control {
+    margin-left: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.btn-select-instrumental {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #e91e63 100%);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    min-width: 140px;
+    text-align: center;
+}
+
+.btn-select-instrumental:hover {
+    background: linear-gradient(135deg, #e91e63 0%, var(--primary-color) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 122, 204, 0.4);
+}
+
+.btn-select-instrumental.selected {
+    background: linear-gradient(135deg, var(--success-color) 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+}
+
+.btn-select-instrumental.selected:hover {
+    background: linear-gradient(135deg, #059669 0%, var(--success-color) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
 }
 
 /* Responsive Design Enhancements */
@@ -5572,25 +5595,7 @@ html {
     background: rgba(255, 122, 204, 0.05);
 }
 
-.instrumental-option.recommended .visualization-container {
-    border-color: #fbbf24;
-    background: rgba(251, 191, 36, 0.1);
-}
 
-.instrumental-option.recommended .visualization-display {
-    border-color: #fbbf24;
-    box-shadow: 0 0 8px rgba(251, 191, 36, 0.3);
-}
-
-.instrumental-option.recommended.selected .visualization-container {
-    border-color: #ff7acc;
-    background: rgba(255, 122, 204, 0.1);
-}
-
-.instrumental-option.recommended.selected .visualization-display {
-    border-color: #ff7acc;
-    box-shadow: 0 0 8px rgba(255, 122, 204, 0.3);
-}
 
 /* Responsive design for smaller screens */
 @media (max-width: 768px) {
@@ -5647,6 +5652,260 @@ html {
 /* Error states */
 .visualization-loading[style*="color: #ef4444"] {
     color: #ef4444 !important;
+}
+
+/* Range Selection Controls for Backing Vocals */
+.range-selection-controls {
+    background-color: #2a3139;
+    border: 1px solid #3a4149;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+}
+
+.range-controls-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.range-controls-label {
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.range-selection-info {
+    background-color: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--success-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--success-color);
+}
+
+.selected-ranges-list {
+    margin-top: 12px;
+}
+
+.ranges-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.ranges-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.range-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.range-number {
+    font-weight: 600;
+    color: var(--error-color);
+    min-width: 20px;
+}
+
+.range-times {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--success-color);
+    min-width: 80px;
+}
+
+.range-percentage {
+    color: var(--text-secondary);
+    font-size: 12px;
+    flex: 1;
+}
+
+.no-ranges {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 12px;
+}
+
+/* Range Selection Overlay */
+.range-selection-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.range-indicator {
+    user-select: none;
+}
+
+.temp-range-indicator {
+    user-select: none;
+}
+
+/* Custom Instrumental Section */
+.custom-instrumental-section {
+    background-color: rgba(255, 122, 204, 0.1);
+    border: 1px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.custom-instrumental-header h4 {
+    margin: 0 0 4px 0;
+    color: var(--primary-color);
+}
+
+.custom-instrumental-header p {
+    margin: 0 0 12px 0;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.custom-instrumental-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.custom-instrumental-progress {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.progress-message {
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 8px;
+}
+
+.progress-bar {
+    background-color: var(--background-color);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background-color: var(--primary-color);
+    height: 100%;
+    border-radius: 4px;
+    animation: progress-pulse 2s ease-in-out infinite;
+    width: 100%;
+}
+
+@keyframes progress-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* Active range selection mode */
+.btn.active {
+    background-color: var(--error-color) !important;
+    color: white !important;
+    border-color: var(--error-color) !important;
+}
+
+/* Timeline in range selection mode */
+.timeline-clicks.range-selection-active {
+    cursor: crosshair;
+}
+
+/* Visualization Mode Toggle */
+.visualization-mode-toggle {
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: var(--surface-color);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.mode-toggle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.mode-toggle-header h4 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 16px;
+}
+
+.mode-toggle-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.mode-toggle-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    background-color: var(--surface-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    transition: all 0.2s ease;
+}
+
+.mode-toggle-btn:hover {
+    background-color: var(--hover-color);
+    border-color: var(--text-secondary);
+}
+
+.mode-toggle-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.mode-description {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* Range selection responsive design */
+@media (max-width: 768px) {
+    .range-controls-header {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+    
+    .custom-instrumental-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .range-item {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    
+    .range-times {
+        min-width: 60px;
+        font-size: 12px;
+    }
 }
 
 /* Highlight animation for job notifications */
