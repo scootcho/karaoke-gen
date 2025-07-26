@@ -24,6 +24,47 @@ Karaoke Generator is a comprehensive tool for creating high-quality karaoke vide
 pip install karaoke-gen
 ```
 
+## Remote Audio Separation 🌐
+
+Karaoke Generator now supports remote audio separation using the Audio Separator API. This allows you to offload the compute-intensive audio separation to a remote GPU server while keeping the rest of the workflow local.
+
+### Benefits of Remote Processing
+- **Save Local Resources**: No more laptop CPU/GPU consumption during separation
+- **Faster Processing**: GPU-accelerated separation on dedicated hardware
+- **Cost Effective**: ~$0.019 per separation job on Modal.com (with $30/month free credits)
+- **Multiple Models**: Process with multiple separation models efficiently
+
+### Setup Remote Processing
+
+1. **Deploy Audio Separator API** (using Modal.com):
+   ```bash
+   pip install modal
+   modal setup
+   modal deploy audio_separator/remote/deploy_modal.py
+   ```
+
+2. **Set Environment Variable**:
+   ```bash
+   export AUDIO_SEPARATOR_API_URL="https://USERNAME--audio-separator-api.modal.run"
+   ```
+
+3. **Run Karaoke Generator Normally**:
+   ```bash
+   karaoke-gen "Rick Astley" "Never Gonna Give You Up"
+   ```
+
+The tool will automatically detect the `AUDIO_SEPARATOR_API_URL` environment variable and use remote processing instead of local separation. If the remote API is unavailable, it will gracefully fall back to local processing.
+
+### Remote vs Local Processing
+
+| Aspect | Remote Processing | Local Processing |
+|--------|------------------|------------------|
+| **Resource Usage** | Minimal local CPU/GPU | High local CPU/GPU |
+| **Processing Time** | ~2-5 minutes | ~15-45 minutes |
+| **Cost** | ~$0.019 per job | Free (but uses local resources) |
+| **Requirements** | Internet connection | Local GPU recommended |
+| **Setup** | One-time API deployment | Audio separator models download |
+
 ## Quick Start
 
 ```bash

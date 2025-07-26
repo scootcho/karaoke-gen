@@ -566,16 +566,16 @@ class KaraokePrep:
                     "instrumental": instrumental_path,
                     "vocals": None,
                 }
+            elif "separated_audio" not in processed_track or not processed_track["separated_audio"]:
+                # Only run separation if it wasn't already done in parallel processing
+                self.logger.info(f"Separation was not completed in parallel processing, running separation for track: {self.title} by {self.artist}")
+                # Delegate to AudioProcessor (called directly, not in thread here)
+                separation_results = self.audio_processor.process_audio_separation(
+                    audio_file=processed_track["input_audio_wav"], artist_title=artist_title, track_output_dir=track_output_dir
+                )
+                processed_track["separated_audio"] = separation_results
             else:
-                # Only run separation if not skipped
-                if not self.skip_separation:
-                    self.logger.info(f"Separating audio for track: {self.title} by {self.artist}")
-                    # Delegate to AudioProcessor (called directly, not in thread here)
-                    separation_results = self.audio_processor.process_audio_separation(
-                        audio_file=processed_track["input_audio_wav"], artist_title=artist_title, track_output_dir=track_output_dir
-                    )
-                    processed_track["separated_audio"] = separation_results
-                # We don't need an else here, if skip_separation is true, separated_audio remains the default empty dict
+                self.logger.info("Audio separation was already completed in parallel processing, skipping duplicate separation.")
 
             self.logger.info("Script finished, audio downloaded, lyrics fetched and audio separated!")
 

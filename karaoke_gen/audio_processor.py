@@ -12,6 +12,14 @@ import psutil
 from datetime import datetime
 from pydub import AudioSegment
 
+# Try to import the remote API client if available
+try:
+    from audio_separator.remote import AudioSeparatorAPIClient
+    REMOTE_API_AVAILABLE = True
+except ImportError:
+    REMOTE_API_AVAILABLE = False
+    AudioSeparatorAPIClient = None
+
 
 # Placeholder class or functions for audio processing
 class AudioProcessor:
@@ -104,9 +112,36 @@ class AudioProcessor:
         self.logger.info(f"Separation complete! Output file(s): {vocals_path} {instrumental_path}")
 
     def process_audio_separation(self, audio_file, artist_title, track_output_dir):
+        # Check if we should use remote API
+        remote_api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
+        if remote_api_url:
+            if not REMOTE_API_AVAILABLE:
+                self.logger.warning("AUDIO_SEPARATOR_API_URL is set but remote API client is not available. "
+                                  "Please ensure audio-separator is updated to a version that includes remote API support. "
+                                  "Falling back to local processing.")
+            else:
+                self.logger.info(f"Using remote audio separator API at: {remote_api_url}")
+                try:
+                    return self._process_audio_separation_remote(audio_file, artist_title, track_output_dir, remote_api_url)
+                except Exception as e:
+                    error_str = str(e)
+                    # Don't fall back for download failures - these indicate API issues that should be fixed
+                    if ("no files were downloaded" in error_str or 
+                        "failed to produce essential" in error_str):
+                        self.logger.error(f"Remote API processing failed with download/file organization issue: {error_str}")
+                        self.logger.error("This indicates an audio-separator API issue that should be fixed. Not falling back to local processing.")
+                        raise e
+                    else:
+                        # Fall back for other types of errors (network issues, etc.)
+                        self.logger.error(f"Remote API processing failed: {error_str}")
+                        self.logger.info("Falling back to local audio separation")
+        else:
+            self.logger.info("AUDIO_SEPARATOR_API_URL not set, using local audio separation. "
+                           "Set this environment variable to use remote GPU processing.")
+        
         from audio_separator.separator import Separator
 
-        self.logger.info(f"Starting audio separation process for {artist_title}")
+        self.logger.info(f"Starting local audio separation process for {artist_title}")
 
         # Define lock file path in system temp directory
         lock_file_path = os.path.join(tempfile.gettempdir(), "audio_separator.lock")
@@ -203,33 +238,34 @@ class AudioProcessor:
             self._normalize_audio_files(result, artist_title, track_output_dir)
 
             # Create Audacity LOF file
-            lof_path = os.path.join(stems_dir, f"{artist_title} (Audacity).lof")
-            first_model = list(result["backing_vocals"].keys())[0]
+            if result["backing_vocals"]:
+                lof_path = os.path.join(stems_dir, f"{artist_title} (Audacity).lof")
+                first_model = list(result["backing_vocals"].keys())[0]
 
-            files_to_include = [
-                audio_file,  # Original audio
-                result["clean_instrumental"]["instrumental"],  # Clean instrumental
-                result["backing_vocals"][first_model]["backing_vocals"],  # Backing vocals
-                result["combined_instrumentals"][first_model],  # Combined instrumental+BV
-            ]
+                files_to_include = [
+                    audio_file,  # Original audio
+                    result["clean_instrumental"]["instrumental"],  # Clean instrumental
+                    result["backing_vocals"][first_model]["backing_vocals"],  # Backing vocals
+                    result["combined_instrumentals"][first_model],  # Combined instrumental+BV
+                ]
 
-            # Convert to absolute paths
-            files_to_include = [os.path.abspath(f) for f in files_to_include]
+                # Convert to absolute paths
+                files_to_include = [os.path.abspath(f) for f in files_to_include]
 
-            with open(lof_path, "w") as lof:
-                for file_path in files_to_include:
-                    lof.write(f'file "{file_path}"\n')
+                with open(lof_path, "w") as lof:
+                    for file_path in files_to_include:
+                        lof.write(f'file "{file_path}"\n')
 
-            self.logger.info(f"Created Audacity LOF file: {lof_path}")
-            result["audacity_lof"] = lof_path
+                self.logger.info(f"Created Audacity LOF file: {lof_path}")
+                result["audacity_lof"] = lof_path
 
-            # Launch Audacity with multiple tracks
-            if sys.platform == "darwin":  # Check if we're on macOS
-                if lof_path and os.path.exists(lof_path):
-                    self.logger.info(f"Launching Audacity with LOF file: {lof_path}")
-                    os.system(f'open -a Audacity "{lof_path}"')
-                else:
-                    self.logger.debug("Audacity LOF file not available or not found")
+                # Launch Audacity with multiple tracks
+                if sys.platform == "darwin":  # Check if we're on macOS
+                    if lof_path and os.path.exists(lof_path):
+                        self.logger.info(f"Launching Audacity with LOF file: {lof_path}")
+                        os.system(f'open -a Audacity "{lof_path}"')
+                    else:
+                        self.logger.debug("Audacity LOF file not available or not found")
 
             self.logger.info("Audio separation, combination, and normalization process completed")
             return result
@@ -241,6 +277,288 @@ class AudioProcessor:
                 os.remove(lock_file_path)
             except OSError:
                 pass
+
+    def _process_audio_separation_remote(self, audio_file, artist_title, track_output_dir, remote_api_url):
+        """Process audio separation using remote API with proper two-stage workflow."""
+        self.logger.info(f"Starting remote audio separation process for {artist_title}")
+        
+        # Initialize the API client
+        api_client = AudioSeparatorAPIClient(remote_api_url, self.logger)
+        
+        stems_dir = self._create_stems_directory(track_output_dir)
+        result = {"clean_instrumental": {}, "other_stems": {}, "backing_vocals": {}, "combined_instrumentals": {}}
+
+        if os.environ.get("KARAOKE_GEN_SKIP_AUDIO_SEPARATION"):
+            return result
+
+        try:
+            # Stage 1: Process original song with clean instrumental model + other stems models
+            stage1_models = []
+            if self.clean_instrumental_model:
+                stage1_models.append(self.clean_instrumental_model)
+            stage1_models.extend(self.other_stems_models)
+            
+            self.logger.info(f"Stage 1: Submitting audio separation job with models: {stage1_models}")
+            
+            # Submit the first stage job
+            stage1_result = api_client.separate_audio_and_wait(
+                audio_file,
+                models=stage1_models,
+                timeout=1800,  # 30 minutes timeout
+                poll_interval=15,  # Check every 15 seconds
+                download=True,
+                output_dir=stems_dir,
+                output_format=self.lossless_output_format.lower()
+            )
+            
+            if stage1_result["status"] != "completed":
+                raise Exception(f"Stage 1 remote audio separation failed: {stage1_result.get('error', 'Unknown error')}")
+            
+            self.logger.info(f"Stage 1 completed. Downloaded {len(stage1_result['downloaded_files'])} files")
+            
+            # Check if we actually got the expected files for Stage 1
+            if len(stage1_result["downloaded_files"]) == 0:
+                error_msg = ("Stage 1 audio separation completed successfully but no files were downloaded. "
+                           "This indicates a filename encoding or API issue in the audio-separator remote service. "
+                           f"Expected files for models {stage1_models} but got 0.")
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Organize the stage 1 results
+            result = self._organize_stage1_remote_results(
+                stage1_result["downloaded_files"], artist_title, track_output_dir, stems_dir
+            )
+            
+            # Validate that we got the essential clean instrumental outputs
+            if not result["clean_instrumental"].get("vocals") or not result["clean_instrumental"].get("instrumental"):
+                missing = []
+                if not result["clean_instrumental"].get("vocals"):
+                    missing.append("clean vocals")
+                if not result["clean_instrumental"].get("instrumental"):
+                    missing.append("clean instrumental")
+                error_msg = (f"Stage 1 completed but failed to produce essential clean instrumental outputs: {', '.join(missing)}. "
+                           "This may indicate a model naming or file organization issue in the remote API.")
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Stage 2: Process clean vocals with backing vocals models (if we have both)
+            if result["clean_instrumental"].get("vocals") and self.backing_vocals_models:
+                self.logger.info(f"Stage 2: Processing clean vocals for backing vocals separation...")
+                vocals_path = result["clean_instrumental"]["vocals"]
+                
+                stage2_result = api_client.separate_audio_and_wait(
+                    vocals_path,
+                    models=self.backing_vocals_models,
+                    timeout=900,  # 15 minutes timeout for backing vocals
+                    poll_interval=10,
+                    download=True,
+                    output_dir=stems_dir,
+                    output_format=self.lossless_output_format.lower()
+                )
+                
+                if stage2_result["status"] == "completed":
+                    self.logger.info(f"Stage 2 completed. Downloaded {len(stage2_result['downloaded_files'])} files")
+                    
+                    # Check if we actually got the expected files
+                    if len(stage2_result["downloaded_files"]) == 0:
+                        error_msg = ("Stage 2 backing vocals separation completed successfully but no files were downloaded. "
+                                   "This indicates a filename encoding or API issue in the audio-separator remote service. "
+                                   "Expected 2 files (lead vocals + backing vocals) but got 0.")
+                        self.logger.error(error_msg)
+                        raise Exception(error_msg)
+                    
+                    # Organize the stage 2 results (backing vocals)
+                    backing_vocals_result = self._organize_stage2_remote_results(
+                        stage2_result["downloaded_files"], artist_title, stems_dir
+                    )
+                    result["backing_vocals"] = backing_vocals_result
+                else:
+                    error_msg = f"Stage 2 backing vocals separation failed: {stage2_result.get('error', 'Unknown error')}"
+                    self.logger.error(error_msg)
+                    raise Exception(error_msg)
+            else:
+                result["backing_vocals"] = {}
+            
+            # Generate combined instrumentals
+            if result["clean_instrumental"].get("instrumental") and result["backing_vocals"]:
+                result["combined_instrumentals"] = self._generate_combined_instrumentals(
+                    result["clean_instrumental"]["instrumental"], result["backing_vocals"], artist_title, track_output_dir
+                )
+            else:
+                result["combined_instrumentals"] = {}
+            
+            # Normalize audio files
+            self._normalize_audio_files(result, artist_title, track_output_dir)
+
+            # Create Audacity LOF file
+            if result["backing_vocals"]:
+                lof_path = os.path.join(stems_dir, f"{artist_title} (Audacity).lof")
+                first_model = list(result["backing_vocals"].keys())[0]
+
+                files_to_include = [
+                    audio_file,  # Original audio
+                    result["clean_instrumental"]["instrumental"],  # Clean instrumental
+                    result["backing_vocals"][first_model]["backing_vocals"],  # Backing vocals
+                    result["combined_instrumentals"][first_model],  # Combined instrumental+BV
+                ]
+
+                # Convert to absolute paths
+                files_to_include = [os.path.abspath(f) for f in files_to_include]
+
+                with open(lof_path, "w") as lof:
+                    for file_path in files_to_include:
+                        lof.write(f'file "{file_path}"\n')
+
+                self.logger.info(f"Created Audacity LOF file: {lof_path}")
+                result["audacity_lof"] = lof_path
+
+                # Launch Audacity with multiple tracks
+                if sys.platform == "darwin":  # Check if we're on macOS
+                    if lof_path and os.path.exists(lof_path):
+                        self.logger.info(f"Launching Audacity with LOF file: {lof_path}")
+                        os.system(f'open -a Audacity "{lof_path}"')
+                    else:
+                        self.logger.debug("Audacity LOF file not available or not found")
+
+            self.logger.info("Remote audio separation, combination, and normalization process completed")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error during remote audio separation: {str(e)}")
+            raise e
+
+    def _organize_stage1_remote_results(self, downloaded_files, artist_title, track_output_dir, stems_dir):
+        """Organize stage 1 separation results (clean instrumental + other stems)."""
+        result = {"clean_instrumental": {}, "other_stems": {}}
+        
+        for file_path in downloaded_files:
+            filename = os.path.basename(file_path)
+            self.logger.debug(f"Stage 1 - Processing downloaded file: {filename}")
+            
+            # Determine which model and stem type this file represents
+            model_name = None
+            stem_type = None
+            
+            # Extract model name and stem type from filename
+            # Expected format: "audio_(StemType)_modelname.ext"
+            if "_(Vocals)_" in filename:
+                stem_type = "Vocals"
+                model_name = filename.split("_(Vocals)_")[1].split(".")[0]
+            elif "_(Instrumental)_" in filename:
+                stem_type = "Instrumental"
+                model_name = filename.split("_(Instrumental)_")[1].split(".")[0]
+            elif "_(Drums)_" in filename:
+                stem_type = "Drums"
+                model_name = filename.split("_(Drums)_")[1].split(".")[0]
+            elif "_(Bass)_" in filename:
+                stem_type = "Bass"
+                model_name = filename.split("_(Bass)_")[1].split(".")[0]
+            elif "_(Other)_" in filename:
+                stem_type = "Other"
+                model_name = filename.split("_(Other)_")[1].split(".")[0]
+            elif "_(Guitar)_" in filename:
+                stem_type = "Guitar"
+                model_name = filename.split("_(Guitar)_")[1].split(".")[0]
+            elif "_(Piano)_" in filename:
+                stem_type = "Piano"
+                model_name = filename.split("_(Piano)_")[1].split(".")[0]
+            else:
+                # Try to extract stem type from parentheses
+                import re
+                match = re.search(r'_\(([^)]+)\)_([^.]+)', filename)
+                if match:
+                    stem_type = match.group(1)
+                    model_name = match.group(2)
+                else:
+                    self.logger.warning(f"Could not parse stem type and model from filename: {filename}")
+                    continue
+            
+            # Check if this model name matches the clean instrumental model
+            is_clean_instrumental_model = (
+                model_name == self.clean_instrumental_model or 
+                self.clean_instrumental_model.startswith(model_name) or
+                model_name.startswith(self.clean_instrumental_model.split('.')[0])
+            )
+            
+            if is_clean_instrumental_model:
+                if stem_type == "Vocals":
+                    target_path = os.path.join(stems_dir, f"{artist_title} (Vocals {self.clean_instrumental_model}).{self.lossless_output_format}")
+                    shutil.move(file_path, target_path)
+                    result["clean_instrumental"]["vocals"] = target_path
+                elif stem_type == "Instrumental":
+                    target_path = os.path.join(track_output_dir, f"{artist_title} (Instrumental {self.clean_instrumental_model}).{self.lossless_output_format}")
+                    shutil.move(file_path, target_path)
+                    result["clean_instrumental"]["instrumental"] = target_path
+            
+            elif any(model_name == os_model or os_model.startswith(model_name) or model_name.startswith(os_model.split('.')[0]) for os_model in self.other_stems_models):
+                # Find the matching other stems model
+                matching_os_model = None
+                for os_model in self.other_stems_models:
+                    if model_name == os_model or os_model.startswith(model_name) or model_name.startswith(os_model.split('.')[0]):
+                        matching_os_model = os_model
+                        break
+                
+                if matching_os_model:
+                    if matching_os_model not in result["other_stems"]:
+                        result["other_stems"][matching_os_model] = {}
+                    
+                    target_path = os.path.join(stems_dir, f"{artist_title} ({stem_type} {matching_os_model}).{self.lossless_output_format}")
+                    shutil.move(file_path, target_path)
+                    result["other_stems"][matching_os_model][stem_type] = target_path
+        
+        return result
+
+    def _organize_stage2_remote_results(self, downloaded_files, artist_title, stems_dir):
+        """Organize stage 2 separation results (backing vocals)."""
+        result = {}
+        
+        for file_path in downloaded_files:
+            filename = os.path.basename(file_path)
+            self.logger.debug(f"Stage 2 - Processing downloaded file: {filename}")
+            
+            # Determine which model and stem type this file represents
+            model_name = None
+            stem_type = None
+            
+            # Extract model name and stem type from filename
+            if "_(Vocals)_" in filename:
+                stem_type = "Vocals"
+                model_name = filename.split("_(Vocals)_")[1].split(".")[0]
+            elif "_(Instrumental)_" in filename:
+                stem_type = "Instrumental"
+                model_name = filename.split("_(Instrumental)_")[1].split(".")[0]
+            else:
+                # Try to extract stem type from parentheses
+                import re
+                match = re.search(r'_\(([^)]+)\)_([^.]+)', filename)
+                if match:
+                    stem_type = match.group(1)
+                    model_name = match.group(2)
+                else:
+                    self.logger.warning(f"Could not parse stem type and model from filename: {filename}")
+                    continue
+            
+            # Find the matching backing vocals model
+            matching_bv_model = None
+            for bv_model in self.backing_vocals_models:
+                if model_name == bv_model or bv_model.startswith(model_name) or model_name.startswith(bv_model.split('.')[0]):
+                    matching_bv_model = bv_model
+                    break
+            
+            if matching_bv_model:
+                if matching_bv_model not in result:
+                    result[matching_bv_model] = {}
+                
+                if stem_type == "Vocals":
+                    target_path = os.path.join(stems_dir, f"{artist_title} (Lead Vocals {matching_bv_model}).{self.lossless_output_format}")
+                    shutil.move(file_path, target_path)
+                    result[matching_bv_model]["lead_vocals"] = target_path
+                elif stem_type == "Instrumental":
+                    target_path = os.path.join(stems_dir, f"{artist_title} (Backing Vocals {matching_bv_model}).{self.lossless_output_format}")
+                    shutil.move(file_path, target_path)
+                    result[matching_bv_model]["backing_vocals"] = target_path
+        
+        return result
 
     def _create_stems_directory(self, track_output_dir):
         stems_dir = os.path.join(track_output_dir, "stems")

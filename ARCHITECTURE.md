@@ -19,10 +19,14 @@ The tool runs two major operations concurrently:
   - `model_bs_roformer_ep_317_sdr_12.9755.ckpt` (clean instrumental)
   - `htdemucs_6s.yaml` (6-stem separation)
   - `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt` (backing vocals)
+- **Processing Options**:
+  - **Remote Processing**: When `AUDIO_SEPARATOR_API_URL` environment variable is set, uploads audio to remote API for GPU-accelerated separation
+  - **Local Processing**: Falls back to local separation using available hardware
 - **Hardware Requirements**: 
-  - GPU acceleration preferred (uses Apple Silicon MPS, CUDA, or CPU fallback)
-  - Significant processing time (12+ minutes for a ~5-minute song)
-  - Large model files (requires dedicated model storage directory)
+  - **Remote**: Internet connection, minimal local resources
+  - **Local**: GPU acceleration preferred (uses Apple Silicon MPS, CUDA, or CPU fallback)
+  - Significant processing time (2-5 minutes remote, 12+ minutes local for a ~5-minute song)
+  - Large model files (requires dedicated model storage directory for local processing)
 - **Output**: Multiple stems (vocals, instrumental, backing vocals, drums, bass, etc.)
 
 #### **Lyrics Processing**
@@ -72,6 +76,11 @@ Creates multiple synchronized lyric formats:
    - Check for existing videos
 
 ### **Optional Integrations**
+- **Audio Separator API**: Remote audio separation processing
+  - Offloads compute-intensive audio separation to remote GPU servers
+  - Activated by setting `AUDIO_SEPARATOR_API_URL` environment variable
+  - Supports multiple models in single upload for efficiency
+  - Graceful fallback to local processing if unavailable
 - **Discord Webhooks**: Completion notifications
 - **Email APIs**: Draft creation for delivery notifications
 - **Rclone**: Cloud storage synchronization (Google Drive, Dropbox)
