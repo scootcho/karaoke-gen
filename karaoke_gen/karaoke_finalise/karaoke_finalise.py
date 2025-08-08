@@ -412,26 +412,33 @@ class KaraokeFinalise:
         if "items" in response and len(response["items"]) > 0:
             for item in response["items"]:
                 found_title = item["snippet"]["title"]
-                similarity_score = fuzz.ratio(youtube_title.lower(), found_title.lower())
-                if similarity_score >= 70:  # 70% similarity
+
+                # In server-side mode, require an exact match to avoid false positives.
+                # Otherwise, use fuzzy matching for interactive CLI usage.
+                if self.server_side_mode:
+                    is_match = youtube_title.lower() == found_title.lower()
+                    similarity_score = 100 if is_match else 0
+                else:
+                    similarity_score = fuzz.ratio(youtube_title.lower(), found_title.lower())
+                    is_match = similarity_score >= 70
+
+                if is_match:
                     found_id = item["id"]["videoId"]
                     self.logger.info(
                         f"Potential match found on YouTube channel with ID: {found_id} and title: {found_title} (similarity: {similarity_score}%)"
                     )
-                    
-                    # In non-interactive mode, automatically confirm if similarity is high enough
+
+                    # In non-interactive mode (server mode), we don't prompt. Just record the match and return.
                     if self.non_interactive:
-                        self.logger.info(f"Non-interactive mode, automatically confirming match with similarity score {similarity_score}%")
+                        self.logger.info(f"Non-interactive mode, found a match.")
                         self.youtube_video_id = found_id
                         self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
-                        self.skip_notifications = True
                         return True
-                    
+
                     confirmation = input(f"Is '{found_title}' the video you are finalising? (y/n): ").strip().lower()
                     if confirmation == "y":
                         self.youtube_video_id = found_id
                         self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
-                        self.skip_notifications = True
                         return True
 
         self.logger.info(f"No matching video found with title: {youtube_title}")
@@ -483,8 +490,12 @@ class KaraokeFinalise:
             max_length = 95
             youtube_title = self.truncate_to_nearest_word(youtube_title, max_length)
 
+            # In server-side mode, we should always replace videos if an exact match is found.
+            # Otherwise, respect the replace_existing flag from CLI.
+            should_replace = True if self.server_side_mode else replace_existing
+
             if self.check_if_video_title_exists_on_youtube_channel(youtube_title):
-                if replace_existing:
+                if should_replace:
                     self.logger.info(f"Video already exists on YouTube, deleting before re-upload: {self.youtube_url}")
                     if self.delete_youtube_video(self.youtube_video_id):
                         self.logger.info(f"Successfully deleted existing video, proceeding with upload")

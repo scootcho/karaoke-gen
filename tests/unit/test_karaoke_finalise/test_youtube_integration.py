@@ -308,7 +308,6 @@ def test_check_if_video_title_exists_found_confirm(mock_input, mock_fuzz_ratio, 
     assert exists is True
     assert finaliser_for_yt.youtube_video_id == found_video_id
     assert finaliser_for_yt.youtube_url == f"https://www.youtube.com/watch?v={found_video_id}"
-    assert finaliser_for_yt.skip_notifications is True # Should skip notifications if found
     mock_fuzz_ratio.assert_called_once_with(youtube_title.lower(), found_video_title.lower())
     mock_input.assert_called_once()
 
@@ -376,7 +375,6 @@ def test_check_if_video_title_exists_non_interactive(mock_input, mock_fuzz_ratio
 
     assert exists is True
     assert finaliser_for_yt.youtube_video_id == found_video_id
-    assert finaliser_for_yt.skip_notifications is True
     mock_input.assert_not_called() # No prompt in non-interactive
 
 @patch.object(KaraokeFinalise, 'authenticate_youtube')
