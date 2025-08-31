@@ -67,6 +67,7 @@ class KaraokePrep:
         subtitle_offset_ms=0,
         # Style Configuration
         style_params_json=None,
+        style_overrides=None,
         # Add the new parameter
         skip_separation=False,
         # YouTube/Online Configuration
@@ -124,13 +125,23 @@ class KaraokePrep:
 
         # Style Config - Keep needed ones
         self.render_bounding_boxes = render_bounding_boxes # Passed to VideoGenerator
-        self.style_params_json = style_params_json # Passed to LyricsProcessor
+        self.style_params_json = style_params_json
+        self.style_overrides = style_overrides
+        self.temp_style_file = None
 
         # YouTube/Online Config
         self.cookies_str = cookies_str # Passed to metadata extraction and file download
 
         # Load style parameters using the config module
-        self.style_params = load_style_params(self.style_params_json, self.logger)
+        self.style_params = load_style_params(self.style_params_json, self.style_overrides, self.logger)
+
+        # If overrides were applied, write to a temp file and update the path
+        if self.style_overrides:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as temp_file:
+                json.dump(self.style_params, temp_file, indent=2)
+                self.temp_style_file = temp_file.name
+                self.style_params_json = self.temp_style_file
+                self.logger.info(f"Style overrides applied. Using temporary style file: {self.temp_style_file}")
 
         # Set up title and end formats using the config module
         self.title_format = setup_title_format(self.style_params)
@@ -198,6 +209,15 @@ class KaraokePrep:
             os.makedirs(self.output_dir)
         else:
             self.logger.debug(f"Overall output dir {self.output_dir} already exists")
+
+    def __del__(self):
+        # Cleanup the temporary style file if it was created
+        if self.temp_style_file and os.path.exists(self.temp_style_file):
+            try:
+                os.remove(self.temp_style_file)
+                self.logger.debug(f"Removed temporary style file: {self.temp_style_file}")
+            except OSError as e:
+                self.logger.warning(f"Error removing temporary style file {self.temp_style_file}: {e}")
 
     # Compatibility methods for tests - these call the new functions in metadata.py
     def extract_info_for_online_media(self, input_url=None, input_artist=None, input_title=None):

@@ -46,15 +46,43 @@ DEFAULT_STYLE_PARAMS = {
 }
 
 
-def load_style_params(style_params_json, logger):
+def apply_style_overrides(style_params, overrides, logger):
+    """Recursively applies overrides to the style parameters."""
+    for key, value in overrides.items():
+        keys = key.split('.')
+        current_level = style_params
+        for i, k in enumerate(keys):
+            if i == len(keys) - 1:
+                if k in current_level:
+                    # Attempt to cast the value to the type of the existing value
+                    try:
+                        original_type = type(current_level[k])
+                        if original_type == bool:
+                            # Handle boolean conversion
+                            value = value.lower() in ('true', '1', 't', 'y', 'yes')
+                        else:
+                            value = original_type(value)
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Could not cast override value '{value}' for key '{key}' to original type. Using as string. Error: {e}")
+                    current_level[k] = value
+                    logger.info(f"Overrode style: {key} = {value}")
+                else:
+                    logger.warning(f"Override key '{key}' not found in style parameters.")
+            elif k in current_level and isinstance(current_level[k], dict):
+                current_level = current_level[k]
+            else:
+                logger.warning(f"Override key part '{k}' not found or not a dictionary for key '{key}'.")
+                break
+
+
+def load_style_params(style_params_json, style_overrides, logger):
     """Loads style parameters from a JSON file or uses defaults."""
+    style_params = {}
     if style_params_json:
         try:
             with open(style_params_json, "r") as f:
                 style_params = json.loads(f.read())
                 logger.info(f"Loaded style parameters from {style_params_json}")
-                # You might want to add validation here to ensure the structure matches expectations
-                return style_params
         except FileNotFoundError:
             logger.error(f"Style parameters configuration file not found: {style_params_json}")
             sys.exit(1)
@@ -66,7 +94,12 @@ def load_style_params(style_params_json, logger):
             sys.exit(1)
     else:
         logger.info("No style parameters JSON file provided. Using default styles.")
-        return DEFAULT_STYLE_PARAMS
+        style_params = DEFAULT_STYLE_PARAMS
+
+    if style_overrides:
+        apply_style_overrides(style_params, style_overrides, logger)
+
+    return style_params
 
 def setup_title_format(style_params):
     """Sets up the title format dictionary from style parameters."""

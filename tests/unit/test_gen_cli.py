@@ -87,6 +87,7 @@ def mock_base_args():
         subtitle_offset_ms=0,
         skip_transcription_review=False,
         style_params_json=None,
+        style_override=None,
         enable_cdg=False,
         enable_txt=False,
         brand_prefix=None,
@@ -655,3 +656,29 @@ async def test_clipboard_copy_failure(mock_copy, mock_exists, mock_chdir, mock_k
         call("http://share.link/fake"),
         call("http://youtu.be/fake")
     ], any_order=True)
+
+
+@patch("karaoke_gen.utils.gen_cli.KaraokePrep")
+async def test_style_override_parsing(mock_kprep_class, mock_base_args):
+    """Test that --style_override arguments are parsed correctly."""
+    mock_base_args.args = ["Artist", "Title"]
+    mock_base_args.style_override = ["intro.background_image=new_image.png", "end.video_duration=10"]
+
+    mock_kprep_instance = MagicMock()
+    mock_kprep_class.return_value = mock_kprep_instance
+    mock_kprep_instance.process = AsyncMock(return_value=[MOCK_PREP_TRACK])
+
+    with patch("karaoke_gen.utils.gen_cli.argparse.ArgumentParser") as mock_parser, \
+         patch("karaoke_gen.utils.gen_cli.os.chdir"), \
+         patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True), \
+         patch("karaoke_gen.utils.gen_cli.KaraokeFinalise"):
+        mock_parser.return_value.parse_args.return_value = mock_base_args
+        await gen_cli.async_main()
+
+    mock_kprep_class.assert_called_once()
+    prep_kwargs = mock_kprep_class.call_args.kwargs
+    expected_overrides = {
+        "intro.background_image": "new_image.png",
+        "end.video_duration": "10"
+    }
+    assert prep_kwargs["style_overrides"] == expected_overrides

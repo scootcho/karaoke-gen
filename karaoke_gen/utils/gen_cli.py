@@ -215,6 +215,11 @@ async def async_main():
         "--style_params_json",
         help="Optional: Path to JSON file containing style configuration. Example: --style_params_json='/path/to/style_params.json'",
     )
+    style_group.add_argument(
+        "--style_override",
+        action="append",
+        help="Optional: Override a style parameter. Can be used multiple times. Example: --style_override 'intro.background_image=/path/to/new_image.png'",
+    )
 
     # Finalisation Configuration
     finalise_group = parser.add_argument_group("Finalisation Configuration")
@@ -282,6 +287,17 @@ async def async_main():
     )
 
     args = parser.parse_args()
+
+    # Process style overrides
+    style_overrides = {}
+    if args.style_override:
+        for override in args.style_override:
+            try:
+                key, value = override.split("=", 1)
+                style_overrides[key] = value
+            except ValueError:
+                logger.error(f"Invalid style override format: {override}. Must be in 'key=value' format.")
+                sys.exit(1)
 
     # Handle test email template case first
     if args.test_email_template:
@@ -354,6 +370,7 @@ async def async_main():
             skip_transcription_review=args.skip_transcription_review,
             subtitle_offset_ms=args.subtitle_offset_ms,
             style_params_json=args.style_params_json,
+            style_overrides=style_overrides,
         )
         # No await needed for constructor
         kprep = kprep_coroutine
@@ -671,6 +688,7 @@ async def async_main():
         skip_transcription_review=args.skip_transcription_review,
         subtitle_offset_ms=args.subtitle_offset_ms,
         style_params_json=args.style_params_json,
+        style_overrides=style_overrides,
     )
     # No await needed for constructor
     kprep = kprep_coroutine
