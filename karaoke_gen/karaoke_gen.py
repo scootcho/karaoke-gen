@@ -496,7 +496,7 @@ class KaraokePrep:
                 # Check if separation_future was the placeholder or a real task
                 # The result index in `results` depends on whether transcription_future existed
                 separation_result_index = 1 if transcription_future else 0
-                if separation_future is not None and not isinstance(separation_future, asyncio.Task) and len(results) > separation_result_index:
+                if separation_future is not None and isinstance(separation_future, asyncio.Task) and len(results) > separation_result_index:
                     self.logger.info("Processing separation results...")
                     try:
                         separation_results = results[separation_result_index]

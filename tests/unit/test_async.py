@@ -374,6 +374,31 @@ class TestAsync:
             assert mock_transcribe.call_count > 0
     
     @pytest.mark.asyncio
+    async def test_separation_runs_only_once(self, basic_karaoke_gen, temp_dir):
+        """Verify that audio separation is only run once during parallel processing."""
+        basic_karaoke_gen.input_media = os.path.join(temp_dir, "input.mp4")
+        basic_karaoke_gen.artist = "Test Artist"
+        basic_karaoke_gen.title = "Test Title"
+        basic_karaoke_gen.output_dir = temp_dir
+        
+        with open(basic_karaoke_gen.input_media, "w") as f:
+            f.write("mock video content")
+
+        with patch.object(basic_karaoke_gen.file_handler, 'setup_output_paths', return_value=(temp_dir, "Test Artist - Test Title")), \
+             patch.object(basic_karaoke_gen.file_handler, 'copy_input_media', return_value=os.path.join(temp_dir, "copied.mp4")), \
+             patch.object(basic_karaoke_gen.file_handler, 'convert_to_wav', return_value=os.path.join(temp_dir, "converted.wav")), \
+             patch.object(basic_karaoke_gen.file_handler, '_file_exists', return_value=False), \
+             patch.object(basic_karaoke_gen.lyrics_processor, 'transcribe_lyrics', AsyncMock(return_value={'corrected_lyrics_text_filepath': 'lyrics.txt'})), \
+             patch.object(basic_karaoke_gen.audio_processor, 'process_audio_separation', return_value={'instrumental': 'inst.flac'}) as mock_separation, \
+             patch.object(basic_karaoke_gen.video_generator, 'create_title_video'), \
+             patch.object(basic_karaoke_gen.video_generator, 'create_end_video'):
+
+            await basic_karaoke_gen.prep_single_track()
+
+            # The core assertion: was separation called only once?
+            mock_separation.assert_called_once()
+    
+    @pytest.mark.asyncio
     async def test_shutdown(self, basic_karaoke_gen):
         """Test the shutdown signal handler."""
         # Mock signal
