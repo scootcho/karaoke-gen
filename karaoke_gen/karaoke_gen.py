@@ -392,6 +392,10 @@ class KaraokePrep:
                 self.logger.info("Skipping lyrics fetch as requested.")
                 processed_track["lyrics"] = None
                 processed_track["processed_lyrics"] = None
+                # No countdown padding when lyrics are skipped
+                processed_track["countdown_padding_added"] = False
+                processed_track["countdown_padding_seconds"] = 0.0
+                processed_track["padded_vocals_audio"] = None
             else:
                 lyrics_artist = self.lyrics_artist or self.artist
                 lyrics_title = self.lyrics_title or self.title
@@ -483,6 +487,20 @@ class KaraokePrep:
                             if isinstance(transcriber_outputs, dict):
                                 self.lyrics = transcriber_outputs.get("corrected_lyrics_text")
                                 processed_track["lyrics"] = transcriber_outputs.get("corrected_lyrics_text_filepath")
+                                
+                                # Capture countdown padding information
+                                processed_track["countdown_padding_added"] = transcriber_outputs.get("countdown_padding_added", False)
+                                processed_track["countdown_padding_seconds"] = transcriber_outputs.get("countdown_padding_seconds", 0.0)
+                                processed_track["padded_vocals_audio"] = transcriber_outputs.get("padded_audio_filepath")
+                                
+                                if processed_track["countdown_padding_added"]:
+                                    self.logger.info(
+                                        f"=== COUNTDOWN PADDING DETECTED ==="
+                                    )
+                                    self.logger.info(
+                                        f"Vocals have been padded with {processed_track['countdown_padding_seconds']}s of silence. "
+                                        f"Instrumental tracks will be padded after separation to maintain synchronization."
+                                    )
                             else:
                                 self.logger.warning(f"Unexpected type for transcriber_outputs: {type(transcriber_outputs)}, value: {transcriber_outputs}")
                         else:
@@ -586,6 +604,23 @@ class KaraokePrep:
                     "instrumental": instrumental_path,
                     "vocals": None,
                 }
+                
+                # If countdown padding was added to vocals, pad the custom instrumental too
+                if processed_track.get("countdown_padding_added", False):
+                    padding_seconds = processed_track["countdown_padding_seconds"]
+                    self.logger.info(
+                        f"Countdown padding detected - applying {padding_seconds}s padding to custom instrumental"
+                    )
+                    
+                    base, ext = os.path.splitext(instrumental_path)
+                    padded_instrumental_path = f"{base} (Padded){ext}"
+                    
+                    if not self.file_handler._file_exists(padded_instrumental_path):
+                        self.audio_processor.pad_audio_file(instrumental_path, padded_instrumental_path, padding_seconds)
+                    
+                    # Update the path to use the padded version
+                    processed_track["separated_audio"]["Custom"]["instrumental"] = padded_instrumental_path
+                    self.logger.info(f"✓ Custom instrumental has been padded and synchronized with vocals")
             elif "separated_audio" not in processed_track or not processed_track["separated_audio"]:
                 # Only run separation if it wasn't already done in parallel processing
                 self.logger.info(f"Separation was not completed in parallel processing, running separation for track: {self.title} by {self.artist}")
@@ -596,6 +631,31 @@ class KaraokePrep:
                 processed_track["separated_audio"] = separation_results
             else:
                 self.logger.info("Audio separation was already completed in parallel processing, skipping duplicate separation.")
+
+            # Apply countdown padding to instrumental files if needed
+            if processed_track.get("countdown_padding_added", False):
+                padding_seconds = processed_track["countdown_padding_seconds"]
+                self.logger.info(
+                    f"=== APPLYING COUNTDOWN PADDING TO INSTRUMENTALS ==="
+                )
+                self.logger.info(
+                    f"Applying {padding_seconds}s padding to all instrumental files to sync with vocal countdown"
+                )
+                
+                # Apply padding using AudioProcessor
+                padded_separation_result = self.audio_processor.apply_countdown_padding_to_instrumentals(
+                    separation_result=processed_track["separated_audio"],
+                    padding_seconds=padding_seconds,
+                    artist_title=artist_title,
+                    track_output_dir=track_output_dir,
+                )
+                
+                # Update processed_track with padded file paths
+                processed_track["separated_audio"] = padded_separation_result
+                
+                self.logger.info(
+                    f"✓ All instrumental files have been padded and are now synchronized with vocals"
+                )
 
             self.logger.info("Script finished, audio downloaded, lyrics fetched and audio separated!")
 

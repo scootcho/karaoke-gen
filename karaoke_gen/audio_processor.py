@@ -52,6 +52,60 @@ class AudioProcessor:
             self.logger.info(f"File already exists, skipping creation: {file_path}")
         return exists
 
+    def pad_audio_file(self, input_audio, output_audio, padding_seconds):
+        """
+        Add silence to the start of an audio file using ffmpeg.
+        
+        This ensures the instrumental tracks are synchronized with vocals when
+        countdown padding has been applied by the LyricsTranscriber.
+        
+        Args:
+            input_audio: Path to input audio file
+            output_audio: Path for output padded audio file
+            padding_seconds: Amount of silence to add in seconds (e.g., 3.0)
+        
+        Raises:
+            Exception: If ffmpeg command fails
+        """
+        self.logger.info(f"Padding audio file with {padding_seconds}s of silence: {input_audio}")
+        
+        # Use ffmpeg to prepend silence to the audio file
+        # This matches the approach used in LyricsTranscriber for vocal padding
+        cmd = [
+            "ffmpeg",
+            "-y",  # Overwrite output file
+            "-hide_banner",
+            "-loglevel", "error",
+            "-f", "lavfi",
+            "-t", str(padding_seconds),
+            "-i", f"anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-i", input_audio,
+            "-filter_complex", "[0:a][1:a]concat=n=2:v=0:a=1[out]",
+            "-map", "[out]",
+            "-c:a", self.lossless_output_format.lower(),
+            output_audio,
+        ]
+        
+        try:
+            import subprocess
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout
+                check=True
+            )
+            self.logger.info(f"Successfully padded audio file: {output_audio}")
+            
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Failed to pad audio file {input_audio}: {e.stderr}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+        except subprocess.TimeoutExpired:
+            error_msg = f"Timeout while padding audio file {input_audio}"
+            self.logger.error(error_msg)
+            raise Exception(error_msg)
+
     def separate_audio(self, audio_file, model_name, artist_title, track_output_dir, instrumental_path, vocals_path):
         if audio_file is None or not os.path.isfile(audio_file):
             raise Exception("Error: Invalid audio source provided.")
@@ -717,3 +771,68 @@ class AudioProcessor:
 
         self.logger.info(f"Normalized audio saved, replacing: {output_path}")
         self.logger.debug(f"Original peak: {peak_amplitude} dB, Applied gain: {gain_db} dB")
+
+    def apply_countdown_padding_to_instrumentals(self, separation_result, padding_seconds, artist_title, track_output_dir):
+        """
+        Apply countdown padding to all instrumental audio files.
+        
+        When LyricsTranscriber adds countdown padding to vocals, this method ensures
+        all instrumental tracks are padded by the same amount to maintain synchronization.
+        
+        Args:
+            separation_result: Dictionary containing paths to separated audio files
+            padding_seconds: Amount of padding to apply (e.g., 3.0)
+            artist_title: Artist and title string for naming padded files
+            track_output_dir: Output directory for padded files
+            
+        Returns:
+            Dictionary with updated paths to padded instrumental files
+        """
+        self.logger.info(
+            f"Applying {padding_seconds}s countdown padding to all instrumental files to match vocal padding"
+        )
+        
+        padded_result = {
+            "clean_instrumental": {},
+            "other_stems": {},
+            "backing_vocals": {},
+            "combined_instrumentals": {},
+        }
+        
+        # Pad clean instrumental
+        if "clean_instrumental" in separation_result and separation_result["clean_instrumental"].get("instrumental"):
+            original_instrumental = separation_result["clean_instrumental"]["instrumental"]
+            
+            # Insert "Padded" before the file extension
+            base, ext = os.path.splitext(original_instrumental)
+            padded_instrumental = f"{base} (Padded){ext}"
+            
+            if not self._file_exists(padded_instrumental):
+                self.logger.info(f"Padding clean instrumental: {original_instrumental}")
+                self.pad_audio_file(original_instrumental, padded_instrumental, padding_seconds)
+            
+            padded_result["clean_instrumental"]["instrumental"] = padded_instrumental
+            padded_result["clean_instrumental"]["vocals"] = separation_result["clean_instrumental"].get("vocals")
+        
+        # Pad combined instrumentals (instrumental + backing vocals)
+        if "combined_instrumentals" in separation_result:
+            for model, combined_path in separation_result["combined_instrumentals"].items():
+                base, ext = os.path.splitext(combined_path)
+                padded_combined = f"{base} (Padded){ext}"
+                
+                if not self._file_exists(padded_combined):
+                    self.logger.info(f"Padding combined instrumental ({model}): {combined_path}")
+                    self.pad_audio_file(combined_path, padded_combined, padding_seconds)
+                
+                padded_result["combined_instrumentals"][model] = padded_combined
+        
+        # Copy over other stems and backing vocals without padding
+        # (these are typically not used in final output, but preserve the structure)
+        padded_result["other_stems"] = separation_result.get("other_stems", {})
+        padded_result["backing_vocals"] = separation_result.get("backing_vocals", {})
+        
+        self.logger.info(
+            f"✓ Countdown padding applied to {len(padded_result['combined_instrumentals']) + 1} instrumental file(s)"
+        )
+        
+        return padded_result

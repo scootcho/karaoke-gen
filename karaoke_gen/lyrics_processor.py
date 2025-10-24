@@ -286,6 +286,17 @@ class LyricsProcessor:
             
             self.logger.info(f"Saved correction data to {corrections_filepath}")
 
+        # Capture countdown padding information for syncing with instrumental audio
+        transcriber_outputs["countdown_padding_added"] = getattr(results, "countdown_padding_added", False)
+        transcriber_outputs["countdown_padding_seconds"] = getattr(results, "countdown_padding_seconds", 0.0)
+        transcriber_outputs["padded_audio_filepath"] = getattr(results, "padded_audio_filepath", None)
+        
+        if transcriber_outputs["countdown_padding_added"]:
+            self.logger.info(
+                f"Countdown padding detected: {transcriber_outputs['countdown_padding_seconds']}s added to vocals. "
+                f"Instrumental audio will need to be padded accordingly."
+            )
+
         if transcriber_outputs:
             self.logger.info(f"*** Transcriber Filepath Outputs: ***")
             for key, value in transcriber_outputs.items():
