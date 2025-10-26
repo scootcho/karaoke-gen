@@ -141,6 +141,9 @@ karaoke-gen --enable_txt "Rick Astley" "Never Gonna Give You Up"
 # Upload to YouTube
 karaoke-gen --youtube_client_secrets_file="path/to/client_secret.json" --youtube_description_file="path/to/description.txt" "Rick Astley" "Never Gonna Give You Up"
 
+# Draft completion emails (requires youtube_client_secrets_file for Gmail OAuth)
+karaoke-gen --email_template_file="path/to/template.txt" --youtube_client_secrets_file="path/to/client_secret.json" "Rick Astley" "Never Gonna Give You Up"
+
 # Organize files with brand code
 karaoke-gen --brand_prefix="BRAND" --organised_dir="path/to/Tracks-Organized" "Rick Astley" "Never Gonna Give You Up"
 ```

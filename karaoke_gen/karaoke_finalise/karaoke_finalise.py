@@ -1376,6 +1376,12 @@ class KaraokeFinalise:
             self.logger.info("Email template file not provided, skipping email draft creation.")
             return
 
+        if not self.youtube_client_secrets_file:
+            self.logger.error("Email template file was provided, but youtube_client_secrets_file is required for Gmail authentication.")
+            self.logger.error("Please provide --youtube_client_secrets_file parameter to enable email draft creation.")
+            self.logger.info("Skipping email draft creation.")
+            return
+
         with open(self.email_template_file, "r") as f:
             template = f.read()
 
