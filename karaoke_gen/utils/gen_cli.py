@@ -220,6 +220,16 @@ async def async_main():
         action="append",
         help="Optional: Override a style parameter. Can be used multiple times. Example: --style_override 'intro.background_image=/path/to/new_image.png'",
     )
+    style_group.add_argument(
+        "--background_video",
+        help="Optional: Path to video file to use as background instead of static image. Example: --background_video='/path/to/video.mp4'",
+    )
+    style_group.add_argument(
+        "--background_video_darkness",
+        type=int,
+        default=0,
+        help="Optional: Darkness overlay percentage (0-100) for video background (default: %(default)s). Example: --background_video_darkness=50",
+    )
 
     # Finalisation Configuration
     finalise_group = parser.add_argument_group("Finalisation Configuration")
@@ -371,6 +381,8 @@ async def async_main():
             subtitle_offset_ms=args.subtitle_offset_ms,
             style_params_json=args.style_params_json,
             style_overrides=style_overrides,
+            background_video=args.background_video,
+            background_video_darkness=args.background_video_darkness,
         )
         # No await needed for constructor
         kprep = kprep_coroutine
@@ -689,6 +701,8 @@ async def async_main():
         subtitle_offset_ms=args.subtitle_offset_ms,
         style_params_json=args.style_params_json,
         style_overrides=style_overrides,
+        background_video=args.background_video,
+        background_video_darkness=args.background_video_darkness,
     )
     # No await needed for constructor
     kprep = kprep_coroutine

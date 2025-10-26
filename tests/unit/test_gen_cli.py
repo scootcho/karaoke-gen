@@ -88,6 +88,8 @@ def mock_base_args():
         skip_transcription_review=False,
         style_params_json=None,
         style_override=None,
+        background_video=None,
+        background_video_darkness=0,
         enable_cdg=False,
         enable_txt=False,
         brand_prefix=None,

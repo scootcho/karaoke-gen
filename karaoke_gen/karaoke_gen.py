@@ -28,6 +28,7 @@ from .file_handler import FileHandler
 from .audio_processor import AudioProcessor
 from .lyrics_processor import LyricsProcessor
 from .video_generator import VideoGenerator
+from .video_background_processor import VideoBackgroundProcessor
 
 
 class KaraokePrep:
@@ -70,6 +71,9 @@ class KaraokePrep:
         style_overrides=None,
         # Add the new parameter
         skip_separation=False,
+        # Video Background Configuration
+        background_video=None,
+        background_video_darkness=0,
         # YouTube/Online Configuration
         cookies_str=None,
     ):
@@ -128,6 +132,10 @@ class KaraokePrep:
         self.style_params_json = style_params_json
         self.style_overrides = style_overrides
         self.temp_style_file = None
+
+        # Video Background Config
+        self.background_video = background_video
+        self.background_video_darkness = background_video_darkness
 
         # YouTube/Online Config
         self.cookies_str = cookies_str # Passed to metadata extraction and file download
@@ -191,6 +199,16 @@ class KaraokePrep:
              output_png=self.output_png,
              output_jpg=self.output_jpg,
         )
+
+        # Instantiate VideoBackgroundProcessor if background_video is provided
+        if self.background_video:
+            self.logger.info(f"Video background enabled: {self.background_video}")
+            self.video_background_processor = VideoBackgroundProcessor(
+                logger=self.logger,
+                ffmpeg_base_command=self.ffmpeg_base_command,
+            )
+        else:
+            self.video_background_processor = None
 
         self.logger.debug(f"Initialized title_format with extra_text: {self.title_format['extra_text']}")
         self.logger.debug(f"Initialized title_format with extra_text_region: {self.title_format['extra_text_region']}")
@@ -493,6 +511,9 @@ class KaraokePrep:
                                 processed_track["countdown_padding_seconds"] = transcriber_outputs.get("countdown_padding_seconds", 0.0)
                                 processed_track["padded_vocals_audio"] = transcriber_outputs.get("padded_audio_filepath")
                                 
+                                # Store ASS filepath for video background processing
+                                processed_track["ass_filepath"] = transcriber_outputs.get("ass_filepath")
+                                
                                 if processed_track["countdown_padding_added"]:
                                     self.logger.info(
                                         f"=== COUNTDOWN PADDING DETECTED ==="
@@ -543,6 +564,78 @@ class KaraokePrep:
                     self.logger.info("Skipping processing of separation results as separation was not run.")
 
                 self.logger.info("=== Parallel Processing Complete ===")
+
+            # Apply video background if requested and lyrics were processed
+            if self.video_background_processor and processed_track.get("lyrics"):
+                self.logger.info("=== Processing Video Background ===")
+                
+                # Find the With Vocals video file
+                with_vocals_video = os.path.join(track_output_dir, f"{artist_title} (With Vocals).mkv")
+                
+                # Get ASS file from transcriber outputs if available
+                ass_file = processed_track.get("ass_filepath")
+                
+                # If not in processed_track, try to find it in common locations
+                if not ass_file or not os.path.exists(ass_file):
+                    self.logger.info("ASS filepath not found in transcriber outputs, searching for it...")
+                    from .utils import sanitize_filename
+                    sanitized_artist = sanitize_filename(self.artist)
+                    sanitized_title = sanitize_filename(self.title)
+                    lyrics_dir = os.path.join(track_output_dir, "lyrics")
+                    
+                    possible_ass_files = [
+                        os.path.join(lyrics_dir, f"{sanitized_artist} - {sanitized_title}.ass"),
+                        os.path.join(track_output_dir, f"{sanitized_artist} - {sanitized_title}.ass"),
+                        os.path.join(lyrics_dir, f"{artist_title}.ass"),
+                        os.path.join(track_output_dir, f"{artist_title}.ass"),
+                        os.path.join(track_output_dir, f"{artist_title} (Karaoke).ass"),
+                        os.path.join(lyrics_dir, f"{artist_title} (Karaoke).ass"),
+                    ]
+                    
+                    for possible_file in possible_ass_files:
+                        if os.path.exists(possible_file):
+                            ass_file = possible_file
+                            self.logger.info(f"Found ASS subtitle file: {ass_file}")
+                            break
+                
+                if os.path.exists(with_vocals_video) and ass_file and os.path.exists(ass_file):
+                    self.logger.info(f"Found With Vocals video, will replace with video background: {with_vocals_video}")
+                    self.logger.info(f"Using ASS subtitle file: {ass_file}")
+                    
+                    # Get audio duration
+                    audio_duration = self.video_background_processor.get_audio_duration(processed_track["input_audio_wav"])
+                    
+                    # Check if we need to use the padded audio instead
+                    if processed_track.get("countdown_padding_added") and processed_track.get("padded_vocals_audio"):
+                        self.logger.info(f"Using padded vocals audio for video background processing")
+                        audio_for_video = processed_track["padded_vocals_audio"]
+                    else:
+                        audio_for_video = processed_track["input_audio_wav"]
+                    
+                    # Process video background
+                    try:
+                        self.video_background_processor.process_video_background(
+                            video_path=self.background_video,
+                            audio_path=audio_for_video,
+                            ass_subtitles_path=ass_file,
+                            output_path=with_vocals_video,
+                            darkness_percent=self.background_video_darkness,
+                            audio_duration=audio_duration,
+                        )
+                        self.logger.info(f"✓ Video background applied, With Vocals video updated: {with_vocals_video}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to apply video background: {e}")
+                        self.logger.exception("Full traceback:")
+                        # Continue with original video if background processing fails
+                else:
+                    if not os.path.exists(with_vocals_video):
+                        self.logger.warning(f"With Vocals video not found at {with_vocals_video}, skipping video background processing")
+                    elif not ass_file or not os.path.exists(ass_file):
+                        self.logger.warning("Could not find ASS subtitle file, skipping video background processing")
+                        if 'possible_ass_files' in locals():
+                            self.logger.warning("Searched locations:")
+                            for possible_file in possible_ass_files:
+                                self.logger.warning(f"  - {possible_file}")
 
             output_image_filepath_noext = os.path.join(track_output_dir, f"{artist_title} (Title)")
             processed_track["title_image_png"] = f"{output_image_filepath_noext}.png"

@@ -112,6 +112,23 @@ karaoke-gen --lyrics_file="path/to/lyrics.txt" "Rick Astley" "Never Gonna Give Y
 karaoke-gen --subtitle_offset_ms=500 "Rick Astley" "Never Gonna Give You Up"
 ```
 
+### Video Background
+
+```bash
+# Use a video as background instead of static image
+karaoke-gen --background_video="path/to/video.mp4" "Rick Astley" "Never Gonna Give You Up"
+
+# Use a video background with darkening overlay (0-100%)
+karaoke-gen --background_video="path/to/video.mp4" --background_video_darkness=50 "Rick Astley" "Never Gonna Give You Up"
+```
+
+The video background feature automatically:
+- Scales the video to 4K resolution (3840x2160) with intelligent cropping
+- Loops the video if it's shorter than the audio
+- Trims the video if it's longer than the audio
+- Applies an optional darkening overlay to improve subtitle readability
+- Renders synchronized ASS subtitles on top of the video
+
 ### Finalisation Options
 
 ```bash
