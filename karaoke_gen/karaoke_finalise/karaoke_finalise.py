@@ -760,13 +760,13 @@ class KaraokeFinalise:
         # Hardware-accelerated version
         gpu_command = (
             f'{self.ffmpeg_base_command} {self.hwaccel_decode_flags} -i "{input_file}" '
-            f'-c:v {self.video_encoder} {self.get_nvenc_quality_settings("high")} -c:a {self.aac_codec} {self.mp4_flags} "{output_file}"'
+            f'-c:v {self.video_encoder} {self.get_nvenc_quality_settings("high")} -c:a {self.aac_codec} -ar 48000 {self.mp4_flags} "{output_file}"'
         )
         
         # Software fallback version
         cpu_command = (
             f'{self.ffmpeg_base_command} -i "{input_file}" '
-            f'-c:v libx264 -c:a {self.aac_codec} {self.mp4_flags} "{output_file}"'
+            f'-c:v libx264 -c:a {self.aac_codec} -ar 48000 {self.mp4_flags} "{output_file}"'
         )
         
         self.execute_command_with_fallback(gpu_command, cpu_command, "Converting MOV video to MP4")
@@ -796,7 +796,7 @@ class KaraokeFinalise:
         # Hardware acceleration doesn't provide significant benefit for copy operations
         ffmpeg_command = (
             f'{self.ffmpeg_base_command} -i "{input_file}" '
-            f'-c:v copy -c:a {self.aac_codec} -b:a 320k {self.mp4_flags} "{output_file}"'
+            f'-c:v copy -c:a {self.aac_codec} -ar 48000 -b:a 320k {self.mp4_flags} "{output_file}"'
         )
         self.execute_command(ffmpeg_command, "Creating MP4 version with AAC audio")
 
@@ -817,14 +817,14 @@ class KaraokeFinalise:
             f'{self.ffmpeg_base_command} {self.hwaccel_decode_flags} -i "{input_file}" '
             f'-c:v {self.video_encoder} -vf "{self.scale_filter}=1280:720" '
             f'{self.get_nvenc_quality_settings("medium")} -b:v 2000k '
-            f'-c:a {self.aac_codec} -b:a 128k {self.mp4_flags} "{output_file}"'
+            f'-c:a {self.aac_codec} -ar 48000 -b:a 128k {self.mp4_flags} "{output_file}"'
         )
         
         # Software fallback version
         cpu_command = (
             f'{self.ffmpeg_base_command} -i "{input_file}" '
             f'-c:v libx264 -vf "scale=1280:720" -b:v 2000k -preset medium -tune animation '
-            f'-c:a {self.aac_codec} -b:a 128k {self.mp4_flags} "{output_file}"'
+            f'-c:a {self.aac_codec} -ar 48000 -b:a 128k {self.mp4_flags} "{output_file}"'
         )
         
         self.execute_command_with_fallback(gpu_command, cpu_command, "Encoding 720p version of the final video")
