@@ -5,7 +5,20 @@
 ![Tests](https://github.com/nomadkaraoke/karaoke-gen/workflows/Test%20and%20Publish/badge.svg)
 ![Test Coverage](https://codecov.io/gh/nomadkaraoke/karaoke-gen/branch/main/graph/badge.svg)
 
-Generate karaoke videos with instrumental audio and synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens, uploading the resulting video to YouTube.
+Generate karaoke videos with instrumental audio and synchronized lyrics. Available as both a **CLI tool** and a **web application**.
+
+## ✨ Two Ways to Use Karaoke Generator
+
+### 1. Command Line Interface (CLI)
+Traditional Python package for local karaoke generation - perfect for batch processing and automation.
+
+### 2. Web Application
+Modern web interface for easy karaoke creation - no installation required!
+- **Frontend**: https://gen.nomadkaraoke.com
+- **Technology**: React + TypeScript on Cloudflare Pages
+- **Backend**: FastAPI on Google Cloud Run
+
+[Learn more about the web version →](docs/NEW-ARCHITECTURE.md)
 
 ## Overview
 
@@ -174,6 +187,41 @@ pytest -m integration
 ```
 
 Unit tests run quickly and provide fast feedback, while integration tests are slower but test the full workflow end-to-end.
+
+## Web Application
+
+Want to use karaoke generation without installing anything? Check out our web app!
+
+**Features**:
+- Submit jobs from YouTube URLs
+- Upload your own audio files
+- Real-time progress tracking
+- Download generated karaoke videos
+- Mobile-friendly interface
+
+**Access**: https://gen.nomadkaraoke.com
+
+**Documentation**:
+- [Architecture Overview](docs/NEW-ARCHITECTURE.md)
+- [Deployment Guide](docs/CLOUDFLARE-PAGES-DEPLOYMENT.md)
+- [Backend API](backend/README.md)
+- [Frontend Development](frontend-react/README.md)
+
+## Project Structure
+
+```
+karaoke-gen/
+├── karaoke_gen/           # Core CLI package (shared by CLI and web)
+├── backend/               # Web application backend (FastAPI)
+├── frontend-react/        # Web application frontend (React)
+├── docs/                  # Documentation
+├── tests/                 # Test suite
+└── README.md             # This file
+```
+
+## Contributing
+
+Contributions are welcome! Please see our contributing guidelines.
 
 ## License
 
