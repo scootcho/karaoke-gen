@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.workers.audio_worker import process_audio_separation
 from backend.workers.lyrics_worker import process_lyrics_transcription
 from backend.workers.screens_worker import generate_screens
+from backend.workers.video_worker import generate_video
 
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,30 @@ async def trigger_screens_worker(
         status="started",
         job_id=job_id,
         message="Screens generation worker started"
+    )
+
+
+@router.post("/workers/video", response_model=WorkerResponse)
+async def trigger_video_worker(
+    request: WorkerRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger final video generation and encoding worker.
+    
+    This is called after user selects their preferred instrumental.
+    This is the longest-running stage (15-20 minutes).
+    """
+    job_id = request.job_id
+    logger.info(f"Triggering video worker for job {job_id}")
+    
+    # Add task to background tasks
+    background_tasks.add_task(generate_video, job_id)
+    
+    return WorkerResponse(
+        status="started",
+        job_id=job_id,
+        message="Video generation worker started"
     )
 
 

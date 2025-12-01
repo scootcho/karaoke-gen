@@ -18,7 +18,7 @@
 - ✅ Deployed to Cloud Run
 - ✅ CLI workflow documented comprehensively
 
-### Phase 1.2: Async Processing Infrastructure 🚧 IN PROGRESS (~75% complete)
+### Phase 1.2: Async Processing Infrastructure ✅ COMPLETE (100%)
 - ✅ **Step 1.2.1:** Job state machine (21 states, validated transitions)
 - ✅ **Step 1.2.2:** Worker infrastructure (background tasks, internal API)
 - ✅ **Step 1.2.3:** Audio separation worker (complete with karaoke_gen integration)
@@ -26,8 +26,16 @@
 - ✅ **Step 1.2.5:** Human-in-the-loop API endpoints (review + selection)
 - ✅ **Step 1.2.6:** Worker coordination (parallel processing sync)
 - ✅ **Step 1.2.7:** Secret Manager integration
-- ⏭️ **Step 1.2.8:** Screens generation worker (TODO - next)
-- ⏭️ **Step 1.2.9:** End-to-end testing (TODO)
+- ✅ **Step 1.2.8:** Screens generation worker (complete)
+- ✅ **Step 1.2.9:** Worker service (centralized triggering)
+
+### Phase 1.3: Video Generation & Finalization 🚧 IN PROGRESS (~30% complete)
+- ✅ **Step 1.3.1:** Video worker structure (complete)
+- ✅ **Step 1.3.2:** Internal API endpoint (complete)
+- ⏭️ **Step 1.3.3:** KaraokeFinalise methods implementation (TODO - next)
+- ⏭️ **Step 1.3.4:** Cloud Build integration for encoding (TODO)
+- ⏭️ **Step 1.3.5:** CDG/TXT package generation (TODO)
+- ⏭️ **Step 1.3.6:** End-to-end testing (TODO)
 
 ---
 
