@@ -27,7 +27,7 @@ async def create_job(
     """Create a new karaoke generation job from a URL."""
     try:
         # Create job
-        job_create = JobCreate(url=request.url)
+        job_create = JobCreate(url=str(request.url))
         job = job_manager.create_job(job_create)
         
         # Start processing in background

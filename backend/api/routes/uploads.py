@@ -45,7 +45,7 @@ async def upload_file(
         
         # Upload file to GCS
         gcs_path = f"uploads/{job.job_id}/{file.filename}"
-        await storage_service.upload_fileobj(
+        storage_service.upload_fileobj(
             file.file,
             gcs_path,
             content_type=file.content_type
