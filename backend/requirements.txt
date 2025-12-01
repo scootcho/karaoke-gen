@@ -1,12 +1,13 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-python-multipart==0.0.6
-google-cloud-firestore==2.14.0
-google-cloud-storage==2.14.0
-google-cloud-secret-manager==2.18.0
-python-dotenv==1.0.0
+fastapi>=0.104.0,<1.0.0
+uvicorn[standard]>=0.24.0,<1.0.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+python-multipart>=0.0.6,<1.0.0
+httpx>=0.25.0,<1.0.0
+google-cloud-firestore>=2.14.0,<3.0.0
+google-cloud-storage>=2.14.0,<3.0.0
+google-cloud-secret-manager>=2.18.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
 
 # karaoke-gen dependencies (will be installed from parent dir in Dockerfile)
 # Using explicit dependencies instead of -e ../

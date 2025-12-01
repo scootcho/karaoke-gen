@@ -1,95 +1,242 @@
-# Karaoke Generation Backend
+# Backend Development Setup
 
-## Overview
+## One-Time Setup
 
-This is the backend service for the web-based karaoke generation system. It provides a REST API for job submission, status tracking, and result download.
+### 1. Create Virtual Environment
 
-## Architecture
-
-- **FastAPI**: Modern Python web framework
-- **Google Cloud Run**: Serverless container platform
-- **Firestore**: NoSQL database for job state
-- **Cloud Storage**: File storage for uploads and outputs
-- **karaoke_gen**: Shared CLI modules for processing
-
-## Local Development
-
-### Prerequisites
-
-- Python 3.11+
-- Google Cloud SDK (for local testing with GCP services)
-- FFmpeg and audio processing libraries
-
-### Setup
-
-1. Install dependencies:
 ```bash
+cd /Users/andrew/Projects/karaoke-gen
+python3 -m venv backend/venv
+```
+
+### 2. Activate Virtual Environment
+
+```bash
+source backend/venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+**IMPORTANT:** Use Python 3.12 (not 3.13/3.14 - pydantic has compatibility issues)
+
+```bash
+# Backend dependencies
+pip install -r backend/requirements.txt
+
+# Install karaoke_gen in development mode
+pip install -e .
+
+# Install lyrics_transcriber submodule
+pip install -e lyrics_transcriber_local/
+
+# Install Google API client (for YouTube upload)
+pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+```
+
+### 4. Add Shell Alias (Optional)
+
+Add to `~/.zshrc`:
+
+```bash
+alias backend='cd /Users/andrew/Projects/karaoke-gen && source backend/venv/bin/activate'
+```
+
+Then you can just run:
+```bash
+backend
+# Now you're in the project directory with venv activated!
+```
+
+---
+
+## Daily Workflow
+
+### Before Making Changes
+
+```bash
+# Activate venv
+source backend/venv/bin/activate
+
+# Or if you set up the alias:
+backend
+```
+
+### After Making Changes
+
+```bash
+# 1. Run full validation (catches import errors!)
+python3 backend/validate.py
+
+# 2. If validation passes, deploy
+./scripts/deploy.sh
+```
+
+---
+
+## Validation Options
+
+### Full Validation (Recommended - Requires venv)
+
+```bash
+source backend/venv/bin/activate
+python3 backend/validate.py
+```
+
+**Catches:**
+- ✅ Syntax errors
+- ✅ **Import errors** (like the processing_service issue!)
+- ✅ Configuration issues
+- ✅ FastAPI app creation problems
+- ✅ Missing dependencies
+
+**This would have caught the ModuleNotFoundError!**
+
+### Quick Check (No venv needed)
+
+```bash
+./backend/quick-check.sh
+```
+
+**Catches:**
+- ✅ Syntax errors
+- ✅ Missing files
+- ✅ Some obvious import issues
+
+**Good for quick checks, but won't catch all import errors**
+
+---
+
+## Example: Complete Development Session
+
+```bash
+# 1. Activate environment
+backend  # or: source backend/venv/bin/activate
+
+# 2. Make your changes
+vim backend/api/routes/jobs.py
+
+# 3. Validate (catches import errors!)
+python3 backend/validate.py
+# ✅ All validations passed!
+
+# 4. Deploy
+./scripts/deploy.sh
+
+# 5. Test
+export BACKEND_URL="https://karaoke-backend-ipzqd2k4yq-uc.a.run.app"
+export AUTH_TOKEN=$(gcloud auth print-identity-token)
+curl -H "Authorization: Bearer $AUTH_TOKEN" $BACKEND_URL/api/health
+```
+
+---
+
+## What About karaoke_gen Imports?
+
+The backend imports from `karaoke_gen` (the CLI package):
+
+```python
+from karaoke_gen.karaoke_gen import KaraokePrep
+from karaoke_gen.audio_processor import AudioProcessor
+```
+
+**Options:**
+
+### Option 1: Install in development mode (Recommended)
+
+```bash
+source backend/venv/bin/activate
+pip install -e .
+```
+
+This makes `karaoke_gen` available in the venv without copying files.
+
+### Option 2: Use system Python
+
+Your system Python already has `karaoke_gen` installed, so validation will work even if the venv doesn't have it (Python will fall back to system packages).
+
+---
+
+## Running the Backend Locally
+
+```bash
+# Activate venv
+source backend/venv/bin/activate
+
+# Set required environment variables
+export GOOGLE_CLOUD_PROJECT="nomadkaraoke"
+export GCS_BUCKET_NAME="karaoke-gen-storage-nomadkaraoke"
+
+# Optional: Point to local credentials
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+
+# Run the server
 cd backend
-pip install -r requirements.txt
+uvicorn main:app --reload --port 8080
 ```
 
-2. Set up environment variables:
+Visit: http://localhost:8080/api/health
+
+---
+
+## Troubleshooting
+
+### "No module named 'fastapi'"
+
+**Fix:**
 ```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
-export GCS_BUCKET_NAME=karaoke-gen-storage
-export AUDIO_SEPARATOR_API_URL=https://your-audio-separator-api
-export AUDIOSHAKE_API_KEY=your-key
-export GENIUS_API_KEY=your-key
+source backend/venv/bin/activate
+pip install -r backend/requirements.txt
 ```
 
-3. Run locally:
+### "No module named 'karaoke_gen'"
+
+**Fix:**
 ```bash
-uvicorn backend.main:app --reload --port 8080
+source backend/venv/bin/activate
+cd /Users/andrew/Projects/karaoke-gen
+pip install -e .
 ```
 
-4. Access API docs at: http://localhost:8080/docs
+### Validation passes locally but fails in Cloud Run
 
-## API Endpoints
+**Check:**
+1. Is `requirements.txt` up to date?
+2. Did you add a new dependency without adding it to `requirements.txt`?
+3. Run: `pip freeze | grep <package-name>`
 
-### Health Check
-- `GET /api/health` - Health check
-- `GET /api/readiness` - Readiness check for Cloud Run
+---
 
-### Jobs
-- `POST /api/jobs` - Create job from URL
-- `GET /api/jobs/{job_id}` - Get job status
-- `GET /api/jobs` - List all jobs
-- `DELETE /api/jobs/{job_id}` - Delete job
+## Updating Dependencies
 
-### Upload
-- `POST /api/upload` - Upload audio file and create job
-
-## Deployment to Cloud Run
-
-### Build and deploy:
+When you add new packages:
 
 ```bash
-# Build container
-gcloud builds submit --tag gcr.io/PROJECT_ID/karaoke-backend
+# 1. Install in venv
+source backend/venv/bin/activate
+pip install new-package
 
-# Deploy to Cloud Run
-gcloud run deploy karaoke-backend \
-  --image gcr.io/PROJECT_ID/karaoke-backend \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --memory 2Gi \
-  --cpu 2 \
-  --timeout 600 \
-  --max-instances 10 \
-  --set-env-vars GOOGLE_CLOUD_PROJECT=PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage
+# 2. Update requirements.txt
+pip freeze > backend/requirements.txt
+
+# 3. Or manually add just the new package:
+echo "new-package==1.2.3" >> backend/requirements.txt
+
+# 4. Validate
+python3 backend/validate.py
+
+# 5. Deploy
+./scripts/deploy.sh
 ```
 
-## Configuration
+---
 
-All configuration is managed through environment variables. See `config.py` for available options.
+## Summary
 
-## Integration with karaoke_gen CLI
+**Best practice workflow:**
 
-This backend reuses the existing `karaoke_gen` package for all processing logic. There is no code duplication - the same modules used by the CLI are used by the web backend.
+1. **One-time setup:** Create venv and install dependencies
+2. **Daily:** Activate venv when working on backend
+3. **Before deploy:** Run `python3 backend/validate.py` (catches import errors!)
+4. **Deploy:** Use `./scripts/deploy.sh`
 
-Key integration points:
-- `backend/services/processing_service.py` uses `KaraokePrep` from `karaoke_gen`
-- Audio separation automatically uses remote API when `AUDIO_SEPARATOR_API_URL` is set
-- All processing logic is identical to the CLI version
-
+**The import error would have been caught if you ran validation in a venv!** ✅

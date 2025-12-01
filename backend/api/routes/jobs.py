@@ -21,7 +21,6 @@ from backend.models.requests import (
     CancelJobRequest
 )
 from backend.services.job_manager import JobManager
-from backend.services.processing_service import ProcessingService
 from backend.services.worker_service import get_worker_service
 from backend.config import get_settings
 
@@ -31,7 +30,6 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 # Initialize services
 job_manager = JobManager()
-processing_service = ProcessingService()
 worker_service = get_worker_service()
 settings = get_settings()
 

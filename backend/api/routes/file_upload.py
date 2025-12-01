@@ -65,18 +65,18 @@ async def upload_and_create_job(
             content_type=file.content_type or 'audio/flac'
         )
         
-        # Update job with GCS path
+        # Update job with GCS path BEFORE triggering workers
         job_manager.update_job(job.job_id, {
             'input_media_gcs_path': gcs_path,
             'filename': file.filename
         })
         
-        logger.info(f"File uploaded successfully for job {job.job_id}")
+        logger.info(f"File uploaded successfully for job {job.job_id}, GCS path: {gcs_path}")
         
         # Trigger the workflow (audio and lyrics workers in parallel)
-        # Same as URL-based jobs
-        background_tasks.add_task(worker_service.trigger_audio_worker, job.job_id)
-        background_tasks.add_task(worker_service.trigger_lyrics_worker, job.job_id)
+        # Note: Workers are triggered AFTER the job is updated with the GCS path
+        await worker_service.trigger_audio_worker(job.job_id)
+        await worker_service.trigger_lyrics_worker(job.job_id)
         
         return {
             "status": "success",

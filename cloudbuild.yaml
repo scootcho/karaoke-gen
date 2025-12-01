@@ -21,6 +21,22 @@ steps:
       - 'backend/Dockerfile'
       - '.'
 
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'karaoke-backend'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--set-env-vars'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production'
+
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID'
