@@ -8,7 +8,6 @@ google-cloud-storage==2.14.0
 google-cloud-secret-manager==2.18.0
 python-dotenv==1.0.0
 
-# Include the existing karaoke-gen package as dependency
-# This will install from the parent directory
--e ../
+# karaoke-gen dependencies (will be installed from parent dir in Dockerfile)
+# Using explicit dependencies instead of -e ../
 

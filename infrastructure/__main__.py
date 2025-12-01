@@ -1,0 +1,137 @@
+"""
+Pulumi infrastructure for Karaoke Generator backend on Google Cloud Platform.
+
+This replaces the manual setup scripts with proper Infrastructure as Code.
+"""
+import pulumi
+import pulumi_gcp as gcp
+from pulumi_gcp import storage, firestore, secretmanager, artifactregistry, cloudrun, serviceaccount
+
+# Get the current GCP project
+project = gcp.organizations.get_project()
+project_id = project.project_id
+
+# Create Firestore Database
+firestore_db = firestore.Database(
+    "karaoke-firestore",
+    project=project_id,
+    name="(default)",
+    location_id="us-central1",
+    type="FIRESTORE_NATIVE",
+    concurrency_mode="PESSIMISTIC",
+    app_engine_integration_mode="DISABLED",
+)
+
+# Create Cloud Storage Bucket
+bucket = storage.Bucket(
+    "karaoke-storage",
+    name=f"karaoke-gen-storage-{project_id}",
+    location="US-CENTRAL1",
+    force_destroy=False,  # Prevent accidental deletion
+    uniform_bucket_level_access=True,
+    lifecycle_rules=[
+        storage.BucketLifecycleRuleArgs(
+            action=storage.BucketLifecycleRuleActionArgs(type="Delete"),
+            condition=storage.BucketLifecycleRuleConditionArgs(
+                age=7,
+                matches_prefixes=["temp/", "uploads/"]
+            ),
+        ),
+    ],
+)
+
+# Create Artifact Registry Repository for Docker images
+artifact_repo = artifactregistry.Repository(
+    "karaoke-artifact-repo",
+    repository_id="karaoke-repo",
+    location="us-central1",
+    format="DOCKER",
+    description="Docker repository for karaoke backend images",
+)
+
+# Create Service Account for Cloud Run
+service_account = serviceaccount.Account(
+    "karaoke-backend-sa",
+    account_id="karaoke-backend",
+    display_name="Karaoke Backend Service Account",
+)
+
+# Grant Firestore permissions
+firestore_iam = gcp.projects.IAMMember(
+    "karaoke-backend-firestore-access",
+    project=project_id,
+    role="roles/datastore.user",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Storage permissions
+storage_iam = gcp.projects.IAMMember(
+    "karaoke-backend-storage-access",
+    project=project_id,
+    role="roles/storage.objectAdmin",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Secret Manager permissions
+secrets_iam = gcp.projects.IAMMember(
+    "karaoke-backend-secrets-access",
+    project=project_id,
+    role="roles/secretmanager.secretAccessor",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Cloud Build service accounts access to Artifact Registry
+# Cloud Build uses multiple service accounts depending on the context
+cloudbuild_service_accounts = [
+    f"serviceAccount:{project.number}@cloudbuild.gserviceaccount.com",  # Default Cloud Build SA
+    f"serviceAccount:service-{project.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com",  # Cloud Build service agent
+    f"serviceAccount:{project.number}-compute@developer.gserviceaccount.com",  # Compute service account
+]
+
+artifact_registry_iam = artifactregistry.RepositoryIamBinding(
+    "cloudbuild-artifact-registry-access",
+    repository=artifact_repo.name,
+    location=artifact_repo.location,
+    role="roles/artifactregistry.writer",
+    members=cloudbuild_service_accounts,
+)
+
+# Create secrets (you'll need to add the actual secret values manually or via pulumi config)
+config = pulumi.Config()
+
+# AudioShake API Key Secret
+audioshake_secret = secretmanager.Secret(
+    "audioshake-api-key",
+    secret_id="audioshake-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Genius API Key Secret
+genius_secret = secretmanager.Secret(
+    "genius-api-key",
+    secret_id="genius-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Audio Separator API URL Secret
+audio_separator_secret = secretmanager.Secret(
+    "audio-separator-api-url",
+    secret_id="audio-separator-api-url",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Export important values
+pulumi.export("project_id", project_id)
+pulumi.export("bucket_name", bucket.name)
+pulumi.export("firestore_database", firestore_db.name)
+pulumi.export("service_account_email", service_account.email)
+pulumi.export("artifact_repo_url", artifact_repo.name.apply(
+    lambda name: f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo"
+))
+
