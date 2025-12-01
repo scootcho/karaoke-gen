@@ -519,3 +519,123 @@ Once you've verified the backend works via CLI:
 
 For automated testing, see `backend/tests/test_api_integration.py`.
 
+-----------------
+
+
+Response from Andrew:
+
+so, I ran these commands to test the backend, and while technically all of the responses look right, it's obviously not actually doing anything as both jobs supposedly "complete" in less than a second.
+
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ export AUTH_TOKEN=$(gcloud auth print-identity-token)
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ export SERVICE_URL="https://karaoke-backend-718638054799.us-central1.run.app"
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ curl -H "Authorization: Bearer $AUTH_TOKEN" $SERVICE_URL/api/health | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    52  100    52    0     0    152      0 --:--:-- --:--:-- --:--:--   152
+{
+  "status": "healthy",
+  "service": "karaoke-gen-backend"
+}
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ curl -X POST \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' \
+  $SERVICE_URL/api/jobs | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   131  100    77  100    54     85     59 --:--:-- --:--:-- --:--:--   145
+{
+  "status": "success",
+  "job_id": "d6108e79",
+  "message": "Job created successfully"
+}
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ export JOB_ID="d6108e79"
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ curl -H "Authorization: Bearer $AUTH_TOKEN" $SERVICE_URL/api/jobs/$JOB_ID | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   586  100   586    0     0   1126      0 --:--:-- --:--:-- --:--:--  1126
+{
+  "job_id": "d6108e79",
+  "status": "complete",
+  "progress": 100,
+  "created_at": "2025-12-01T02:19:25.595465",
+  "updated_at": "2025-12-01T02:19:25.862304Z",
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "artist": null,
+  "title": null,
+  "filename": null,
+  "track_output_dir": null,
+  "audio_hash": null,
+  "timeline": [
+    {
+      "status": "processing",
+      "timestamp": "2025-12-01T02:19:25.738020",
+      "progress": 10,
+      "message": "Starting karaoke generation"
+    },
+    {
+      "status": "complete",
+      "timestamp": "2025-12-01T02:19:25.862264",
+      "progress": 100,
+      "message": "Karaoke generation complete"
+    }
+  ],
+  "output_files": {},
+  "download_urls": {},
+  "error_message": null
+}
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ ll input/waterloo.wav
+-rw-r--r--@ 1 andrew  staff    28M Jun 29 17:07 input/waterloo.wav
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ curl -X POST \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -F "file=@/Users/andrew/Projects/karaoke-gen/input/waterloo.flac" \
+  -F "artist=ABBA" \
+  -F "title=Waterloo" \
+  $SERVICE_URL/api/upload | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 20.3M  100    95  100 20.3M      9  2173k  0:00:10  0:00:09  0:00:01 1524k
+{
+  "status": "success",
+  "job_id": "d07a7f46",
+  "message": "File uploaded and job created successfully"
+}
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ export JOB_ID="d07a7f46"
+(base) ➜  karaoke-gen git:(replace-modal-with-google-cloud) ✗ curl -H "Authorization: Bearer $AUTH_TOKEN" $SERVICE_URL/api/jobs/$JOB_ID | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   564  100   564    0     0   1034      0 --:--:-- --:--:-- --:--:--  1034
+{
+  "job_id": "d07a7f46",
+  "status": "complete",
+  "progress": 100,
+  "created_at": "2025-12-01T02:24:05.491187",
+  "updated_at": "2025-12-01T02:24:07.255171Z",
+  "url": null,
+  "artist": "ABBA",
+  "title": "Waterloo",
+  "filename": "waterloo.flac",
+  "track_output_dir": null,
+  "audio_hash": null,
+  "timeline": [
+    {
+      "status": "processing",
+      "timestamp": "2025-12-01T02:24:06.449626",
+      "progress": 10,
+      "message": "Starting karaoke generation"
+    },
+    {
+      "status": "complete",
+      "timestamp": "2025-12-01T02:24:07.255132",
+      "progress": 100,
+      "message": "Karaoke generation complete"
+    }
+  ],
+  "output_files": {},
+  "download_urls": {},
+  "error_message": null
+}
+
+what's going on here, I assume there's some kinda no-op / hard coded success?
+
