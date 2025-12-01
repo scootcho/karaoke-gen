@@ -96,6 +96,15 @@ artifact_registry_iam = artifactregistry.RepositoryIamBinding(
     members=cloudbuild_service_accounts,
 )
 
+# Grant Cloud Build compute service account logging permissions
+# This fixes the "does not have permission to write logs" warning
+cloudbuild_logging_iam = gcp.projects.IAMMember(
+    "cloudbuild-logging-access",
+    project=project_id,
+    role="roles/logging.logWriter",
+    member=f"serviceAccount:{project.number}-compute@developer.gserviceaccount.com",
+)
+
 # Create secrets (you'll need to add the actual secret values manually or via pulumi config)
 config = pulumi.Config()
 
@@ -126,6 +135,20 @@ audio_separator_secret = secretmanager.Secret(
     ),
 )
 
+# Create Cloud Run Domain Mapping
+# Maps api.nomadkaraoke.com to the karaoke-backend service
+domain_mapping = cloudrun.DomainMapping(
+    "karaoke-backend-domain",
+    location="us-central1",
+    name="api.nomadkaraoke.com",
+    metadata=cloudrun.DomainMappingMetadataArgs(
+        namespace=project_id,
+    ),
+    spec=cloudrun.DomainMappingSpecArgs(
+        route_name="karaoke-backend",
+    ),
+)
+
 # Export important values
 pulumi.export("project_id", project_id)
 pulumi.export("bucket_name", bucket.name)
@@ -134,4 +157,18 @@ pulumi.export("service_account_email", service_account.email)
 pulumi.export("artifact_repo_url", artifact_repo.name.apply(
     lambda name: f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo"
 ))
+pulumi.export("backend_url", "https://api.nomadkaraoke.com")
+pulumi.export("backend_default_url", "https://karaoke-backend-ipzqd2k4yq-uc.a.run.app")
+
+# Export DNS configuration needed for Cloudflare
+# These are the records to add to your Cloudflare DNS
+domain_mapping.statuses.apply(
+    lambda statuses: pulumi.export("dns_records", {
+        "type": "CNAME",
+        "name": "api",
+        "value": "ghs.googlehosted.com",
+        "ttl": 300,
+        "proxied": False  # Must be false for Cloud Run domain verification
+    })
+)
 

@@ -31,14 +31,32 @@ gcloud builds submit --config cloudbuild.yaml
 
 ### Step 2: Test with Real Audio File
 
-Use the backend API to submit a test job:
+Use the backend API to submit a test job. You can either upload a local file or use a YouTube URL:
+
+#### Option A: Upload Local File (Recommended for Quick Testing)
 
 ```bash
 # Set your Cloud Run URL
-BACKEND_URL="https://karaoke-backend-<hash>-uc.a.run.app"
+export BACKEND_URL="https://karaoke-backend-ipzqd2k4yq-uc.a.run.app"
+export AUTH_TOKEN=$(gcloud auth print-identity-token)
 
-# Submit a job with a short song (use waterloo30sec.flac for quick test)
+# Upload waterloo30sec.flac (30 seconds = quick test)
+curl -X POST "$BACKEND_URL/api/jobs/upload" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -F "file=@/Users/andrew/Projects/karaoke-gen/input/waterloo30sec.flac" \
+  -F "artist=ABBA" \
+  -F "title=Waterloo"
+
+# Note the job_id from response
+JOB_ID="<job_id_from_response>"
+```
+
+#### Option B: YouTube URL
+
+```bash
+# Submit a job with a YouTube URL
 curl -X POST "$BACKEND_URL/api/jobs" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://www.youtube.com/watch?v=Sj_9CiNkkn4",
@@ -48,12 +66,19 @@ curl -X POST "$BACKEND_URL/api/jobs" \
 
 # Note the job_id from response
 JOB_ID="<job_id_from_response>"
+```
 
+**Note:** YouTube URL download is not yet implemented in the workers. Use Option A (file upload) for now!
+
+### Step 3: Monitor Progress
+
+```bash
 # Monitor progress (run this multiple times or use watch)
-curl "$BACKEND_URL/api/jobs/$JOB_ID" | jq '{status, progress, message}'
+curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq '{status, progress, message}'
 
 # Or use watch to monitor continuously
-watch -n 5 "curl -s $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, message}'"
+watch -n 5 "curl -s -H 'Authorization: Bearer \$(gcloud auth print-identity-token)' $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, message}'"
 ```
 
 **Expected Timeline:**
@@ -68,19 +93,22 @@ watch -n 5 "curl -s $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, messa
 
 **Total:** ~30-45 minutes (including your interaction time)
 
-### Step 3: Interact at Human Checkpoints
+### Step 4: Interact at Human Checkpoints
 
 #### A. Review Lyrics (when status = AWAITING_REVIEW)
 
 ```bash
 # Get review data
-curl "$BACKEND_URL/api/jobs/$JOB_ID/review-data" | jq .
+curl -s "$BACKEND_URL/api/jobs/$JOB_ID/review-data" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq .
 
 # Start review
-curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/start-review"
+curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/start-review" \
+  -H "Authorization: Bearer $AUTH_TOKEN"
 
-# Submit corrections (or just accept as-is)
+# Submit corrections (or just accept as-is with empty object)
 curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/corrections" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "corrected_lyrics_json": {}
@@ -91,19 +119,22 @@ curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/corrections" \
 
 ```bash
 # Get instrumental options
-curl "$BACKEND_URL/api/jobs/$JOB_ID/instrumental-options" | jq .
+curl -s "$BACKEND_URL/api/jobs/$JOB_ID/instrumental-options" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq .
 
 # Select instrumental (clean or with_backing)
 curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/select-instrumental" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"selection": "clean"}'
 ```
 
-### Step 4: Download Final Videos (when status = COMPLETE)
+### Step 5: Download Final Videos (when status = COMPLETE)
 
 ```bash
 # Get all download URLs
-curl "$BACKEND_URL/api/jobs/$JOB_ID" | jq '.file_urls.finals'
+curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq '.file_urls.finals'
 
 # Download a format (URLs are signed, valid for 2 hours)
 curl -o lossless_4k.mp4 "<signed_url_from_above>"

@@ -21,6 +21,7 @@ class FirestoreService:
         """Initialize Firestore client."""
         self.db = firestore.Client(project=settings.google_cloud_project)
         self.collection = settings.firestore_collection
+        self.tokens_collection = "auth_tokens"  # Collection for access tokens
         
     def create_job(self, job: Job) -> None:
         """Create a new job in Firestore."""
@@ -131,4 +132,87 @@ class FirestoreService:
         except Exception as e:
             logger.error(f"Error deleting job {job_id}: {e}")
             raise
+    
+    # ============================================
+    # Token Management Methods
+    # ============================================
+    
+    def create_token(self, token: str, token_data: Dict[str, Any]) -> None:
+        """Create a new access token in Firestore."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc_ref.set(token_data)
+            logger.info(f"Created token in Firestore")
+        except Exception as e:
+            logger.error(f"Error creating token: {e}")
+            raise
+    
+    def get_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get token data by token string."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return None
+            
+            return doc.to_dict()
+        except Exception as e:
+            logger.error(f"Error getting token: {e}")
+            return None
+    
+    def update_token(self, token: str, updates: Dict[str, Any]) -> None:
+        """Update token data."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc_ref.update(updates)
+            logger.info(f"Updated token in Firestore")
+        except Exception as e:
+            logger.error(f"Error updating token: {e}")
+            raise
+    
+    def increment_token_usage(self, token: str, job_id: str) -> None:
+        """Increment token usage count and add job to history."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            
+            # Use Firestore transaction to ensure atomic increment
+            @firestore.transactional
+            def update_in_transaction(transaction, doc_ref):
+                snapshot = doc_ref.get(transaction=transaction)
+                if not snapshot.exists:
+                    raise ValueError("Token not found")
+                
+                data = snapshot.to_dict()
+                current_usage = data.get("usage_count", 0)
+                jobs = data.get("jobs", [])
+                
+                # Increment usage
+                transaction.update(doc_ref, {
+                    "usage_count": current_usage + 1,
+                    "last_used": datetime.utcnow(),
+                    "jobs": firestore.ArrayUnion([{
+                        "job_id": job_id,
+                        "created_at": datetime.utcnow()
+                    }])
+                })
+            
+            transaction = self.db.transaction()
+            update_in_transaction(transaction, doc_ref)
+            
+            logger.info(f"Incremented token usage for job {job_id}")
+        except Exception as e:
+            logger.error(f"Error incrementing token usage: {e}")
+            raise
+    
+    def list_tokens(self) -> List[Dict[str, Any]]:
+        """List all tokens (admin only)."""
+        try:
+            docs = self.db.collection(self.tokens_collection).stream()
+            tokens = [doc.to_dict() for doc in docs]
+            logger.info(f"Retrieved {len(tokens)} tokens from Firestore")
+            return tokens
+        except Exception as e:
+            logger.error(f"Error listing tokens: {e}")
+            return []
 

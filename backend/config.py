@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     spotify_cookie: Optional[str] = os.getenv("SPOTIFY_COOKIE_SP_DC")
     rapidapi_key: Optional[str] = os.getenv("RAPIDAPI_KEY")
     
+    # Authentication
+    admin_tokens: Optional[str] = os.getenv("ADMIN_TOKENS")  # Comma-separated list
+    
     # Application
     environment: str = os.getenv("ENVIRONMENT", "development")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")

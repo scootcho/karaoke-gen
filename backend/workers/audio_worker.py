@@ -160,27 +160,45 @@ async def download_audio(
     job
 ) -> Optional[str]:
     """
-    Download audio file from GCS to local temp directory.
+    Download or fetch audio file to local temp directory.
+    
+    Handles two cases:
+    1. Uploaded file: Download from GCS using input_media_gcs_path
+    2. URL (YouTube, etc.): Download using yt-dlp or other tools
     
     Returns:
         Path to downloaded audio file, or None if failed
     """
     try:
-        # Get input file URL from job
-        input_url = job.file_urls.get('input')
-        if not input_url:
-            logger.error(f"Job {job_id}: No input file URL found")
+        # Case 1: File was uploaded to GCS
+        if job.input_media_gcs_path:
+            logger.info(f"Job {job_id}: Downloading uploaded file from GCS: {job.input_media_gcs_path}")
+            local_path = os.path.join(temp_dir, job.filename or "input.flac")
+            storage.download_file(job.input_media_gcs_path, local_path)
+            logger.info(f"Job {job_id}: Downloaded uploaded file to {local_path}")
+            return local_path
+        
+        # Case 2: URL download (from file_urls if already downloaded, or from job.url)
+        if job.file_urls and job.file_urls.get('input'):
+            # Already downloaded and stored in GCS
+            input_url = job.file_urls.get('input')
+            local_path = os.path.join(temp_dir, "input.flac")
+            storage.download_file(input_url, local_path)
+            logger.info(f"Job {job_id}: Downloaded audio from GCS: {input_url}")
+            return local_path
+        
+        # Case 3: Fresh URL that needs downloading
+        if job.url:
+            # TODO: Implement YouTube/URL download using yt-dlp
+            # For now, this should be handled by a separate download worker
+            logger.error(f"Job {job_id}: URL download not yet implemented")
             return None
         
-        # Download from GCS
-        local_path = os.path.join(temp_dir, "input.flac")
-        storage.download_file(input_url, local_path)
-        
-        logger.info(f"Job {job_id}: Downloaded audio to {local_path}")
-        return local_path
+        logger.error(f"Job {job_id}: No input source found (no GCS path, file_urls, or URL)")
+        return None
         
     except Exception as e:
-        logger.error(f"Job {job_id}: Failed to download audio: {e}")
+        logger.error(f"Job {job_id}: Failed to download audio: {e}", exc_info=True)
         return None
 
 
