@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.api.routes import health, jobs, uploads
+from backend.api.routes import health, jobs, uploads, internal
 
 
 # Configure logging
@@ -53,6 +53,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
+app.include_router(internal.router, prefix="/api")  # Internal worker endpoints
 
 
 @app.get("/")
