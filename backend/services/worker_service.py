@@ -37,11 +37,17 @@ class WorkerService:
         Get base URL for internal API calls.
         
         In production: Cloud Run service URL
+        In test: TEST_SERVER_URL
         In development: localhost
         
         Returns:
             Base URL for API calls
         """
+        # Check for test environment override
+        test_url = os.getenv("TEST_SERVER_URL")
+        if test_url:
+            return test_url
+        
         # Check if running in Cloud Run
         cloud_run_url = self.settings.google_cloud_project
         if cloud_run_url and self.settings.environment == "production":

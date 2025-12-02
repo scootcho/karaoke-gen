@@ -2,35 +2,35 @@
 Shared pytest fixtures for backend tests.
 
 Provides common mocks and test utilities across all test modules.
+
+NOTE: Module-level mocks are NOT applied here to allow emulator tests to work.
+Individual tests must mock dependencies as needed.
 """
 import pytest
 from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from datetime import datetime, UTC
 from fastapi.testclient import TestClient
 
-# Mock Google Cloud modules before any imports
-import sys
-sys.modules['google.cloud.firestore'] = MagicMock()
-sys.modules['google.cloud.storage'] = MagicMock()
-
 from backend.models.job import Job, JobStatus, JobCreate
 
 
 @pytest.fixture
 def mock_firestore():
-    """Mock Firestore client."""
-    with patch('backend.services.firestore_service.firestore') as mock:
+    """Mock Firestore client for unit tests."""
+    # Mock at module level for unit tests
+    with patch('google.cloud.firestore.Client') as mock_cls:
         client = MagicMock()
-        mock.Client.return_value = client
+        mock_cls.return_value = client
         yield client
 
 
 @pytest.fixture
 def mock_storage_client():
-    """Mock GCS Storage client."""
-    with patch('backend.services.storage_service.storage') as mock:
+    """Mock GCS Storage client for unit tests."""
+    # Mock at module level for unit tests  
+    with patch('google.cloud.storage.Client') as mock_cls:
         client = MagicMock()
-        mock.Client.return_value = client
+        mock_cls.return_value = client
         yield client
 
 

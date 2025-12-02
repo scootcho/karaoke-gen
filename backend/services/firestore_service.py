@@ -39,10 +39,16 @@ class FirestoreService:
             doc_ref = self.db.collection(self.collection).document(job_id)
             doc = doc_ref.get()
             
+            logger.debug(f"Fetching job {job_id} from collection {self.collection}")
+            logger.debug(f"Document exists: {doc.exists}")
+            
             if not doc.exists:
                 return None
             
             data = doc.to_dict()
+            logger.debug(f"Document data keys: {list(data.keys()) if data else 'None'}")
+            logger.debug(f"Document data: {data}")
+            
             return Job(**data)
         except Exception as e:
             logger.error(f"Error getting job {job_id}: {e}")

@@ -5,10 +5,10 @@ This directory contains all documentation for the karaoke-gen project, organized
 ## 📋 Current Status (Updated: 2025-12-01)
 
 **Project:** Migrating from Modal-based monolithic web app to scalable cloud architecture  
-**Backend:** ✅ Phase 1.3 Nearly Complete (Workers + Video Generation)  
+**Backend:** ✅ Phase 1.3 Complete (Workers + Video Generation)  
 **Frontend:** ⏸️ Not started (waiting for backend stability)  
 **Deployment:** ✅ Cloud Run with custom domain (api.nomadkaraoke.com)  
-**Testing:** 🔄 In progress (fixing Firestore consistency issues)
+**Testing:** ✅ Complete (62 unit tests + 11 emulator integration tests, all passing)
 
 ---
 
@@ -50,6 +50,7 @@ How to deploy and operate the system.
 
 | File | Purpose |
 |------|---------|
+| **`EMULATOR-TESTING.md`** | **Local integration testing** with Firestore/GCS emulators |
 | **`SETUP-VENV.md`** | **Quick venv setup** (Python 3.12, dependencies) |
 | **`LOCAL-VALIDATION.md`** | **Validate before deploying** (catches import errors) |
 | **`OBSERVABILITY-GUIDE.md`** | **Debug production issues** (logs, metrics, debug script) |
@@ -90,9 +91,10 @@ What to do next after current phase completes. Gets updated frequently.
 3. Read `01-reference/KARAOKE-GEN-CLI-WORKFLOW.md` - how the CLI works
 
 ### I want to work on the backend:
-1. Read `01-reference/API-MANUAL-TESTING.md` - test the API
-2. Read `03-deployment/TESTING-BACKEND.md` - run automated tests
-3. Read `03-deployment/INFRASTRUCTURE-AS-CODE.md` - manage infrastructure
+1. Read `03-deployment/EMULATOR-TESTING.md` - run local integration tests
+2. Read `01-reference/API-MANUAL-TESTING.md` - test the API manually
+3. Read `03-deployment/LOCAL-VALIDATION.md` - validate before deploying
+4. Read `03-deployment/INFRASTRUCTURE-AS-CODE.md` - manage infrastructure
 
 ### I want to deploy:
 1. Read `03-deployment/INFRASTRUCTURE-AS-CODE.md` - provision infrastructure
