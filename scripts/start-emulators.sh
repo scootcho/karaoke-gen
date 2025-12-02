@@ -58,20 +58,40 @@ fi
 
 echo ""
 echo "⏳ Waiting for emulators to be ready..."
-sleep 5
 
-# Test if emulators are responding
-echo ""
-if curl -s http://127.0.0.1:8080 > /dev/null 2>&1; then
-    echo "✅ Firestore emulator is ready"
-else
-    echo "⚠️  Firestore emulator may not be ready yet"
+# Wait for Firestore emulator with retries (up to 30 seconds)
+FIRESTORE_READY=false
+for i in {1..30}; do
+    if curl -s http://127.0.0.1:8080 > /dev/null 2>&1; then
+        FIRESTORE_READY=true
+        echo "✅ Firestore emulator is ready (after ${i}s)"
+        break
+    fi
+    sleep 1
+done
+
+if [ "$FIRESTORE_READY" = false ]; then
+    echo "❌ Firestore emulator failed to start after 30s"
+    echo "Checking emulator logs:"
+    tail -20 "$EMULATOR_LOG_DIR/firestore.log" 2>&1 || echo "No logs found"
+    exit 1
 fi
 
-if curl -s http://127.0.0.1:4443/storage/v1/b > /dev/null 2>&1; then
-    echo "✅ GCS emulator is ready"
-else
-    echo "⚠️  GCS emulator may not be ready yet"
+# Wait for GCS emulator with retries (up to 10 seconds)
+GCS_READY=false
+for i in {1..10}; do
+    if curl -s http://127.0.0.1:4443/storage/v1/b > /dev/null 2>&1; then
+        GCS_READY=true
+        echo "✅ GCS emulator is ready (after ${i}s)"
+        break
+    fi
+    sleep 1
+done
+
+if [ "$GCS_READY" = false ]; then
+    echo "❌ GCS emulator failed to start after 10s"
+    docker logs test-gcs-emulator 2>&1 | tail -20 || echo "No logs found"
+    exit 1
 fi
 
 echo ""

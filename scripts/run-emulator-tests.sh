@@ -39,11 +39,16 @@ fi
 echo ""
 echo "Step 3/3: Running emulator integration tests..."
 echo ""
+echo "Environment check:"
+echo "  FIRESTORE_EMULATOR_HOST=$FIRESTORE_EMULATOR_HOST"
+echo "  STORAGE_EMULATOR_HOST=$STORAGE_EMULATOR_HOST"
+echo "  GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT"
+echo ""
 
 cd "$PROJECT_ROOT"
 
-# Run the emulator integration tests
-if pytest backend/tests/emulator/ -v --tb=short --color=yes; then
+# Run the emulator integration tests with more verbose output on failure
+if pytest backend/tests/emulator/ -v --tb=short --color=yes --log-cli-level=ERROR; then
     echo ""
     echo "✅ All emulator integration tests passed!"
     echo ""
@@ -51,6 +56,15 @@ if pytest backend/tests/emulator/ -v --tb=short --color=yes; then
 else
     echo ""
     echo "❌ Some emulator integration tests failed"
+    echo ""
+    echo "Debugging info:"
+    echo "Firestore emulator status:"
+    curl -s http://127.0.0.1:8080 && echo "  Firestore responding" || echo "  Firestore NOT responding"
+    echo "GCS emulator status:"
+    curl -s http://127.0.0.1:4443/storage/v1/b && echo "  GCS responding" || echo "  GCS NOT responding"
+    echo ""
+    echo "Firestore emulator logs (last 30 lines):"
+    tail -30 "$PROJECT_ROOT/.emulator-logs/firestore.log" 2>&1 || echo "  No logs found"
     echo ""
     exit 1
 fi
