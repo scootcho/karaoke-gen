@@ -1,0 +1,108 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main, replace-modal-with-google-cloud ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      
+      - name: Run unit tests
+        run: |
+          cd backend
+          PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH pytest \
+            tests/test_models.py \
+            tests/test_job_manager.py \
+            tests/test_file_upload.py \
+            tests/test_services.py \
+            -v --tb=short
+  
+  emulator-tests:
+    name: Emulator Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Install Firestore emulator
+        run: |
+          gcloud components install cloud-firestore-emulator --quiet
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      
+      - name: Start Docker for GCS emulator
+        run: |
+          docker pull fsouza/fake-gcs-server:latest
+      
+      - name: Run emulator integration tests
+        run: |
+          cd $GITHUB_WORKSPACE
+          chmod +x scripts/*.sh
+          ./scripts/run-emulator-tests.sh
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/htmlcov/
+          retention-days: 7
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install flake8 black isort
+      
+      - name: Run validation
+        run: |
+          cd backend
+          python validate.py
+
