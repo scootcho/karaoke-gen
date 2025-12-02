@@ -20,7 +20,7 @@ if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
 else
     echo "📦 Starting Firestore emulator on port 8080..."
     gcloud beta emulators firestore start \
-        --host-port=localhost:8080 \
+        --host-port=127.0.0.1:8080 \
         > "$EMULATOR_LOG_DIR/firestore.log" 2>&1 &
     
     FIRESTORE_PID=$!
@@ -62,13 +62,13 @@ sleep 5
 
 # Test if emulators are responding
 echo ""
-if curl -s http://localhost:8080 > /dev/null 2>&1; then
+if curl -s http://127.0.0.1:8080 > /dev/null 2>&1; then
     echo "✅ Firestore emulator is ready"
 else
     echo "⚠️  Firestore emulator may not be ready yet"
 fi
 
-if curl -s http://localhost:4443/storage/v1/b > /dev/null 2>&1; then
+if curl -s http://127.0.0.1:4443/storage/v1/b > /dev/null 2>&1; then
     echo "✅ GCS emulator is ready"
 else
     echo "⚠️  GCS emulator may not be ready yet"
@@ -78,8 +78,8 @@ echo ""
 echo "🎉 Emulators started successfully!"
 echo ""
 echo "Environment variables to use:"
-echo "  export FIRESTORE_EMULATOR_HOST=localhost:8080"
-echo "  export STORAGE_EMULATOR_HOST=http://localhost:4443"
+echo "  export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080"
+echo "  export STORAGE_EMULATOR_HOST=http://127.0.0.1:4443"
 echo "  export GOOGLE_CLOUD_PROJECT=test-project"
 echo ""
 echo "To stop emulators, run: ./scripts/stop-emulators.sh"

@@ -9,9 +9,9 @@ import requests
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
-# Set emulator environment variables
-os.environ["FIRESTORE_EMULATOR_HOST"] = "localhost:8080"
-os.environ["STORAGE_EMULATOR_HOST"] = "http://localhost:4443"
+# Set emulator environment variables (use 127.0.0.1 to force IPv4)
+os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8080"
+os.environ["STORAGE_EMULATOR_HOST"] = "http://127.0.0.1:4443"
 os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
 os.environ["GCS_BUCKET_NAME"] = "test-bucket"
 os.environ["FIRESTORE_COLLECTION"] = "test-jobs"
@@ -27,7 +27,7 @@ def setup_gcs_bucket():
     """Create GCS bucket in emulator before all tests."""
     try:
         response = requests.post(
-            "http://localhost:4443/storage/v1/b",
+            "http://127.0.0.1:4443/storage/v1/b",
             json={"name": "test-bucket"},
             params={"project": "test-project"}
         )

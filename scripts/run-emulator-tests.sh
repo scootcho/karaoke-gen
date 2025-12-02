@@ -20,8 +20,8 @@ echo ""
 trap "$SCRIPT_DIR/stop-emulators.sh" EXIT
 
 # Set environment variables for tests
-export FIRESTORE_EMULATOR_HOST="localhost:8080"
-export STORAGE_EMULATOR_HOST="http://localhost:4443"
+export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
+export STORAGE_EMULATOR_HOST="http://127.0.0.1:4443"
 export GOOGLE_CLOUD_PROJECT="test-project"
 export GCS_BUCKET_NAME="test-bucket"
 export FIRESTORE_COLLECTION="jobs"
