@@ -24,6 +24,8 @@ if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
         mock_credentials = MagicMock()
         mock_credentials.token = 'fake-token'
         mock_credentials.valid = True
+        mock_credentials.universe_domain = 'googleapis.com'  # Required by google-cloud-storage
+        mock_credentials.project_id = 'test-project'
         google.auth.default = MagicMock(return_value=(mock_credentials, 'test-project'))
     except ImportError:
         # If google.auth not installed, that's ok for some tests
