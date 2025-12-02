@@ -6,10 +6,24 @@ Provides common mocks and test utilities across all test modules.
 NOTE: Module-level mocks are NOT applied here to allow emulator tests to work.
 Individual tests must mock dependencies as needed.
 """
+import os
 import pytest
 from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from datetime import datetime, UTC
 from fastapi.testclient import TestClient
+
+# Mock google.auth for unit tests if not using emulator
+# This prevents DefaultCredentialsError during imports
+if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
+    import sys
+    from unittest.mock import MagicMock
+    
+    # Mock google.auth.default
+    mock_auth = MagicMock()
+    mock_credentials = MagicMock()
+    mock_auth.default.return_value = (mock_credentials, 'test-project')
+    sys.modules['google.auth'] = mock_auth
+    sys.modules['google.auth.exceptions'] = MagicMock()
 
 from backend.models.job import Job, JobStatus, JobCreate
 
