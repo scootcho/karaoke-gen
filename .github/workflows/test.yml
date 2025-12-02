@@ -137,17 +137,22 @@ jobs:
     # Only deploy on push to the branch (not on PRs)
     if: github.event_name == 'push' && github.ref == 'refs/heads/replace-modal-with-google-cloud'
     
+    permissions:
+      contents: read
+      id-token: write  # Required for Workload Identity Federation
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: false
       
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud (Workload Identity)
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
