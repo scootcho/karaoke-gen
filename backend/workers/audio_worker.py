@@ -64,12 +64,7 @@ async def process_audio_separation(job_id: str) -> bool:
         # Initialize karaoke_gen components
         artist_title = f"{job.artist} - {job.title}" if job.artist and job.title else f"job_{job_id}"
         
-        file_handler = FileHandler(
-            input_media=audio_path,
-            song_dir=temp_dir,
-            artist_title=artist_title
-        )
-        
+        # Note: FileHandler signature changed in refactor - using AudioProcessor directly
         audio_processor = AudioProcessor(
             logger=logger,
             model_file_dir=None,  # Not needed for remote API
@@ -94,7 +89,7 @@ async def process_audio_separation(job_id: str) -> bool:
         )
         
         await audio_processor.process_separation_stage_1(
-            audio_path=file_handler.input_media_path
+            audio_path=audio_path
         )
         
         # Upload Stage 1 stems to GCS

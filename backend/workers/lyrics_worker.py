@@ -195,17 +195,16 @@ async def download_audio(
         Path to downloaded audio file, or None if failed
     """
     try:
-        # Get input file URL from job
-        input_url = job.file_urls.get('input')
-        if not input_url:
-            logger.error(f"Job {job_id}: No input file URL found")
+        # Download uploaded file from GCS using input_media_gcs_path
+        if not job.input_media_gcs_path:
+            logger.error(f"Job {job_id}: No input_media_gcs_path found")
             return None
         
         # Download from GCS
-        local_path = os.path.join(temp_dir, "input.flac")
-        storage.download_file(input_url, local_path)
+        local_path = os.path.join(temp_dir, job.filename or "input.flac")
+        storage.download_file(job.input_media_gcs_path, local_path)
         
-        logger.info(f"Job {job_id}: Downloaded audio to {local_path}")
+        logger.info(f"Job {job_id}: Downloaded audio from {job.input_media_gcs_path} to {local_path}")
         return local_path
         
     except Exception as e:
