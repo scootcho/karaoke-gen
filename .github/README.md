@@ -4,13 +4,15 @@ This directory contains GitHub Actions workflows for automated testing and deplo
 
 ## Workflows
 
-### `test.yml` - Automated Testing
+### `test.yml` - Automated Testing & Deployment (CI/CD)
 
 **Triggers:**
 - Push to `main` or `replace-modal-with-google-cloud` branches
 - Pull requests to `main`
 
 **Jobs:**
+
+#### Testing Phase (runs in parallel)
 
 1. **Unit Tests** (~30s)
    - Runs 62 unit tests with mocked dependencies
@@ -21,15 +23,30 @@ This directory contains GitHub Actions workflows for automated testing and deplo
    - Runs 11 integration tests against local GCP emulators
    - Tests real Firestore and GCS interactions
    - Requires:
+     - Java 21 (for Firestore emulator)
      - Google Cloud SDK (for Firestore emulator)
      - Docker (for GCS emulator via fake-gcs-server)
    - Uses the same `scripts/run-emulator-tests.sh` as local development
 
 3. **Code Quality** (~20s)
-   - Runs `backend/validate.py` for syntax and import checks
-   - Optional: Can add flake8, black, isort checks
+   - Basic Python syntax validation
+   - Import checks
+   - Optional: flake8, black, isort
 
-**Total Runtime:** ~3 minutes
+#### Deployment Phase (runs after all tests pass)
+
+4. **Deploy to Cloud Run** (~3-4min)
+   - **Only runs on push to `replace-modal-with-google-cloud` branch** (not on PRs)
+   - Builds Docker image and pushes to Artifact Registry
+   - Deploys to Cloud Run with proper configuration
+   - Verifies deployment health
+   - **Requires GitHub secrets:**
+     - `GCP_SA_KEY` - Service account key JSON
+     - `ADMIN_TOKENS` - Admin authentication tokens
+
+**Total Runtime:** 
+- **Testing only** (PRs): ~3 minutes
+- **Testing + Deployment** (push to branch): ~7 minutes
 
 ## Local vs CI
 
@@ -86,11 +103,26 @@ The CI will automatically pick them up!
 3. Review CI logs for missing dependencies
 4. Run tests in a clean venv locally
 
+## Setting Up Continuous Deployment
+
+The CD pipeline is configured but requires GitHub secrets to be set. See the [CD Setup Guide](../docs/03-deployment/CD-SETUP.md) for detailed instructions.
+
+**Quick setup:**
+
+1. Create GCP service account with deployment permissions
+2. Download service account key JSON
+3. Add GitHub secrets:
+   - `GCP_SA_KEY` - Full service account key JSON content
+   - `ADMIN_TOKENS` - Comma-separated admin tokens
+
+Once configured, every push to `replace-modal-with-google-cloud` will automatically deploy to Cloud Run after all tests pass.
+
 ## Future Enhancements
 
 - [ ] Add test coverage reporting (coveralls, codecov)
-- [ ] Add deployment workflow (deploy to Cloud Run on merge to main)
+- [x] ✅ Add deployment workflow (deploy to Cloud Run after tests pass)
 - [ ] Add frontend tests (when frontend is built)
 - [ ] Add performance benchmarking
 - [ ] Add security scanning (dependabot, snyk)
+- [ ] Migrate to Workload Identity Federation (more secure than service account keys)
 

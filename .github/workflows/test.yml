@@ -129,4 +129,89 @@ jobs:
           # Just check Python syntax and imports
           python -m py_compile backend/main.py backend/config.py
           echo "✅ Basic syntax validation passed"
+  
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: [unit-tests, emulator-tests, lint]
+    # Only deploy on push to the branch (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/replace-modal-with-google-cloud'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+      
+      - name: Build and push Docker images
+        run: |
+          # Build backend image
+          docker build -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest \
+            -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:${{ github.sha }} \
+            -f backend/Dockerfile backend/
+          
+          # Push both tags
+          docker push us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest
+          docker push us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:${{ github.sha }}
+          
+          echo "✅ Images pushed to Artifact Registry"
+      
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy karaoke-backend \
+            --image us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=nomadkaraoke" \
+            --set-env-vars "GCS_BUCKET_NAME=nomadkaraoke-uploads" \
+            --set-env-vars "FIRESTORE_COLLECTION=jobs" \
+            --set-env-vars "ENVIRONMENT=production" \
+            --set-env-vars "ADMIN_TOKENS=${{ secrets.ADMIN_TOKENS }}" \
+            --memory 2Gi \
+            --cpu 2 \
+            --timeout 900 \
+            --max-instances 10 \
+            --min-instances 0
+          
+          echo "✅ Deployed to Cloud Run"
+      
+      - name: Verify deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe karaoke-backend \
+            --region us-central1 \
+            --format 'value(status.url)')
+          
+          echo "Service URL: $SERVICE_URL"
+          
+          # Wait a few seconds for the service to be ready
+          sleep 10
+          
+          # Test health endpoint
+          curl -f "$SERVICE_URL/api/health" || exit 1
+          
+          echo "✅ Deployment verified - service is healthy"
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Run: ${{ github.run_number }}"
 
