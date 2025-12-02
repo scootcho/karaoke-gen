@@ -68,94 +68,27 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # Validate we have artist and title
-        if not job.artist or not job.title:
-            raise Exception("Artist and title are required for lyrics processing")
+        # TODO: Implement actual lyrics transcription
+        # The karaoke_gen.lyrics_processor.LyricsProcessor class is CLI-oriented
+        # and requires different parameters than we have in the API context.
+        #
+        # Options for implementation:
+        # 1. Call AudioShake API directly for transcription
+        # 2. Call Genius/Spotify/Musixmatch APIs for reference lyrics
+        # 3. Refactor karaoke_gen to have API-friendly classes
+        # 4. Use lyrics_transcriber library directly
+        #
+        # For now, marking as complete to test the rest of the workflow
         
-        # Initialize lyrics processor
-        lyrics_processor = LyricsProcessor(
-            logger=logger,
-            artist=job.artist,
-            title=job.title,
-            audio_filepath=audio_path,
-            output_dir=temp_dir
-        )
+        logger.warning(f"Job {job_id}: Lyrics transcription not yet implemented - marking as complete for testing")
         
-        # Set API keys from Secret Manager
-        await configure_api_keys(settings)
-        
-        # Stage 1: Fetch reference lyrics
-        logger.info(f"Job {job_id}: Fetching reference lyrics")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.TRANSCRIBING,
-            progress=25,
-            message="Fetching lyrics from Genius/Spotify"
-        )
-        
-        reference_lyrics = await fetch_reference_lyrics(
-            job_id=job_id,
-            lyrics_processor=lyrics_processor,
-            job_manager=job_manager,
-            storage=storage,
-            temp_dir=temp_dir
-        )
-        
-        # Stage 2: Transcribe audio with AudioShake
-        logger.info(f"Job {job_id}: Transcribing audio with AudioShake")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.TRANSCRIBING,
-            progress=30,
-            message="Transcribing audio (AudioShake API, 1-2 min)"
-        )
-        
-        transcription = await transcribe_audio(
-            job_id=job_id,
-            lyrics_processor=lyrics_processor
-        )
-        
-        if not transcription:
-            raise Exception("Audio transcription failed")
-        
-        # Stage 3: Automatic correction
-        logger.info(f"Job {job_id}: Running automatic lyrics correction")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.CORRECTING,
-            progress=40,
-            message="Correcting lyrics automatically"
-        )
-        
-        corrections = await generate_corrections(
-            job_id=job_id,
-            lyrics_processor=lyrics_processor,
-            transcription=transcription,
-            reference_lyrics=reference_lyrics
-        )
-        
-        if not corrections:
-            raise Exception("Lyrics correction failed")
-        
-        # Stage 4: Upload corrections and audio for review
-        logger.info(f"Job {job_id}: Uploading corrections for human review")
-        await upload_review_data(
-            job_id=job_id,
-            job_manager=job_manager,
-            storage=storage,
-            temp_dir=temp_dir,
-            corrections=corrections,
-            audio_path=audio_path,
-            reference_lyrics=reference_lyrics
-        )
-        
-        # Mark lyrics processing complete
-        logger.info(f"Job {job_id}: Lyrics processing complete")
+        # Mark lyrics processing complete (stubbed)
+        logger.info(f"Job {job_id}: Lyrics processing complete (stubbed)")
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.LYRICS_COMPLETE,
             progress=45,
-            message="Lyrics ready for review"
+            message="Lyrics processing complete (stubbed for testing)"
         )
         
         # Check if audio is also complete and transition to next stage if so

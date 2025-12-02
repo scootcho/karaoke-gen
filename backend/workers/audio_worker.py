@@ -61,70 +61,33 @@ async def process_audio_separation(job_id: str) -> bool:
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # Initialize karaoke_gen components
-        artist_title = f"{job.artist} - {job.title}" if job.artist and job.title else f"job_{job_id}"
+        # TODO: Implement actual audio separation
+        # The karaoke_gen.audio_processor.AudioProcessor class is CLI-oriented
+        # and requires many parameters that we don't have in the API context.
+        # 
+        # Options for implementation:
+        # 1. Call external audio separation API (Modal, Replicate, etc.)
+        # 2. Refactor karaoke_gen to have API-friendly classes
+        # 3. Run audio-separator library directly in Cloud Run
+        #
+        # For now, marking as complete to test the rest of the workflow
         
-        # Note: FileHandler signature changed in refactor - using AudioProcessor directly
-        audio_processor = AudioProcessor(
-            logger=logger,
-            model_file_dir=None,  # Not needed for remote API
-            output_dir=temp_dir
-        )
+        logger.warning(f"Job {job_id}: Audio separation not yet implemented - marking as complete for testing")
         
-        # Set environment for remote processing
-        audio_separator_url = await settings.get_secret("audio-separator-api-url")
-        if audio_separator_url:
-            os.environ["AUDIO_SEPARATOR_API_URL"] = audio_separator_url
-            logger.info("Using remote audio separator API")
-        else:
-            logger.warning("No audio separator URL configured, will use local processing (slow!)")
-        
-        # Stage 1: Clean instrumental separation
-        logger.info(f"Job {job_id}: Starting separation stage 1 (clean instrumental)")
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.SEPARATING_STAGE1,
-            progress=20,
-            message="Separating audio (Stage 1/2): Clean instrumental"
+            progress=40,
+            message="Audio separation (stubbed for testing)"
         )
         
-        await audio_processor.process_separation_stage_1(
-            audio_path=audio_path
-        )
-        
-        # Upload Stage 1 stems to GCS
-        await upload_stage1_stems(job_id, temp_dir, job_manager, storage, audio_processor)
-        
-        # Stage 2: Backing vocals separation
-        logger.info(f"Job {job_id}: Starting separation stage 2 (backing vocals)")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.SEPARATING_STAGE2,
-            progress=35,
-            message="Separating audio (Stage 2/2): Backing vocals"
-        )
-        
-        await audio_processor.process_separation_stage_2(
-            vocals_path=audio_processor.vocals_path
-        )
-        
-        # Upload Stage 2 stems to GCS
-        await upload_stage2_stems(job_id, temp_dir, job_manager, storage, audio_processor)
-        
-        # Post-processing: Generate combined instrumentals
-        logger.info(f"Job {job_id}: Post-processing audio")
-        await audio_processor.post_process_stems()
-        
-        # Upload final instrumentals
-        await upload_final_instrumentals(job_id, job_manager, storage, audio_processor)
-        
-        # Mark audio processing complete
-        logger.info(f"Job {job_id}: Audio separation complete")
+        # Mark audio processing complete (stubbed)
+        logger.info(f"Job {job_id}: Audio separation complete (stubbed)")
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.AUDIO_COMPLETE,
             progress=45,
-            message="Audio separation complete"
+            message="Audio separation complete (stubbed for testing)"
         )
         
         # This will check if lyrics are also complete and transition to next stage if so
