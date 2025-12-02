@@ -9,9 +9,9 @@ Handles the lyrics processing track of parallel processing:
 5. Upload all data to GCS
 6. Transition to AWAITING_REVIEW state
 
-Integrates with:
-- karaoke_gen.lyrics_processor.LyricsProcessor for lyrics fetching
-- lyrics_transcriber library for transcription and correction
+Re-uses:
+- karaoke_gen.lyrics_processor.LyricsProcessor for lyrics fetching and orchestration
+- lyrics_transcriber library (submodule) for transcription and correction
 """
 import logging
 import os
@@ -33,14 +33,56 @@ from karaoke_gen.lyrics_processor import LyricsProcessor
 logger = logging.getLogger(__name__)
 
 
+def create_lyrics_processor(temp_dir: str, style_params_json: Optional[str] = None) -> LyricsProcessor:
+    """
+    Create a LyricsProcessor instance configured for Cloud Run processing.
+    
+    This reuses the karaoke_gen LyricsProcessor with settings optimized for Cloud Run:
+    - Uses AudioShake API for transcription (via AUDIOSHAKE_API_TOKEN env var)
+    - Uses Genius/Spotify/Musixmatch APIs for reference lyrics (via env vars)
+    - Skips interactive review (will be handled by separate React UI)
+    - Generates corrections JSON for review interface
+    
+    Args:
+        temp_dir: Temporary directory for processing
+        style_params_json: Optional path to style parameters JSON file
+        
+    Returns:
+        Configured LyricsProcessor instance
+    """
+    # Configure logger for LyricsProcessor
+    lyrics_logger = logging.getLogger("karaoke_gen.lyrics_processor")
+    lyrics_logger.setLevel(logging.INFO)
+    
+    return LyricsProcessor(
+        logger=lyrics_logger,
+        style_params_json=style_params_json,
+        lyrics_file=None,  # Will fetch from APIs
+        skip_transcription=False,  # We want transcription
+        skip_transcription_review=True,  # Skip interactive review (use React UI instead)
+        render_video=False,  # Skip video generation for now (will be done after review)
+        subtitle_offset_ms=0  # No offset by default
+    )
+
+
 async def process_lyrics_transcription(job_id: str) -> bool:
     """
-    Process lyrics transcription and correction for a job.
+    Process lyrics transcription and correction for a job using karaoke_gen.LyricsProcessor.
     
     This is the main entry point for the lyrics worker.
     Called asynchronously from the job submission endpoint.
     
     Runs in parallel with audio_worker, coordinated via job state.
+    
+    Workflow:
+    1. Download audio from GCS
+    2. Create LyricsProcessor instance
+    3. Run transcription (calls AudioShake API internally)
+    4. Fetch reference lyrics from Genius/Spotify/Musixmatch
+    5. Run automatic correction using lyrics_transcriber library
+    6. Generate corrections JSON for review interface
+    7. Upload results to GCS
+    8. Transition to AWAITING_REVIEW state
     
     Args:
         job_id: Job ID to process
@@ -63,39 +105,59 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     try:
         logger.info(f"Starting lyrics transcription for job {job_id}")
         
+        # Ensure required environment variables are set
+        if not os.environ.get("AUDIOSHAKE_API_TOKEN"):
+            logger.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
+        
         # Download audio file from GCS
         audio_path = await download_audio(job_id, temp_dir, storage, job)
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # TODO: Implement actual lyrics transcription
-        # The karaoke_gen.lyrics_processor.LyricsProcessor class is CLI-oriented
-        # and requires different parameters than we have in the API context.
-        #
-        # Options for implementation:
-        # 1. Call AudioShake API directly for transcription
-        # 2. Call Genius/Spotify/Musixmatch APIs for reference lyrics
-        # 3. Refactor karaoke_gen to have API-friendly classes
-        # 4. Use lyrics_transcriber library directly
-        #
-        # For now, marking as complete to test the rest of the workflow
+        # Update job status: Starting transcription
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.TRANSCRIBING_LYRICS,
+            progress=10,
+            message="Starting lyrics transcription via AudioShake"
+        )
         
-        logger.warning(f"Job {job_id}: Lyrics transcription not yet implemented - marking as complete for testing")
+        # Create LyricsProcessor instance (reuses karaoke_gen code)
+        lyrics_processor = create_lyrics_processor(temp_dir)
         
-        # Mark lyrics processing complete (stubbed)
-        logger.info(f"Job {job_id}: Lyrics processing complete (stubbed)")
+        # Run transcription + correction
+        # This will:
+        # 1. Fetch reference lyrics from Genius/Spotify/Musixmatch
+        # 2. Transcribe audio via AudioShake API
+        # 3. Run automatic correction with lyrics_transcriber
+        # 4. Generate corrections JSON (no interactive review)
+        # 5. Skip video generation (render_video=False)
+        logger.info(f"Job {job_id}: Calling lyrics_processor.transcribe_lyrics()")
+        result = lyrics_processor.transcribe_lyrics(
+            input_audio_wav=audio_path,
+            artist=job.artist,
+            title=job.title,
+            track_output_dir=temp_dir
+        )
+        
+        logger.info(f"Job {job_id}: Transcription complete, uploading results")
+        
+        # Upload lyrics results to GCS
+        await upload_lyrics_results(job_id, temp_dir, result, storage, job_manager)
+        
+        logger.info(f"Job {job_id}: All lyrics data uploaded successfully")
+        
+        # Update progress
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.LYRICS_COMPLETE,
             progress=45,
-            message="Lyrics processing complete (stubbed for testing)"
+            message="Lyrics transcription complete"
         )
         
-        # Check if audio is also complete and transition to next stage if so
+        # Mark lyrics processing complete
+        # This will check if audio is also complete and transition to next stage if so
         job_manager.mark_lyrics_complete(job_id)
-        
-        # If both audio and lyrics are complete, job will auto-transition to GENERATING_SCREENS
-        # Otherwise, it waits for audio to complete
         
         return True
         
@@ -145,200 +207,90 @@ async def download_audio(
         return None
 
 
-async def configure_api_keys(settings) -> None:
-    """
-    Configure API keys from Secret Manager.
-    
-    Sets environment variables that lyrics_processor expects:
-    - AUDIOSHAKE_API_TOKEN
-    - GENIUS_API_TOKEN
-    - SPOTIFY_COOKIE_SP_DC
-    - RAPIDAPI_KEY
-    """
-    # AudioShake (required for transcription)
-    audioshake_key = settings.get_secret("audioshake-api-key")
-    if audioshake_key:
-        os.environ["AUDIOSHAKE_API_TOKEN"] = audioshake_key
-        logger.info("AudioShake API key configured")
-    else:
-        logger.warning("No AudioShake API key found - transcription will fail")
-    
-    # Genius (optional - lyrics source)
-    genius_key = settings.get_secret("genius-api-key")
-    if genius_key:
-        os.environ["GENIUS_API_TOKEN"] = genius_key
-        logger.info("Genius API key configured")
-    
-    # Spotify (optional - lyrics source)
-    spotify_cookie = settings.get_secret("spotify-cookie")
-    if spotify_cookie:
-        os.environ["SPOTIFY_COOKIE_SP_DC"] = spotify_cookie
-        logger.info("Spotify cookie configured")
-    
-    # RapidAPI (optional - Musixmatch access)
-    rapidapi_key = settings.get_secret("rapidapi-key")
-    if rapidapi_key:
-        os.environ["RAPIDAPI_KEY"] = rapidapi_key
-        logger.info("RapidAPI key configured")
-
-
-async def fetch_reference_lyrics(
+async def upload_lyrics_results(
     job_id: str,
-    lyrics_processor: LyricsProcessor,
-    job_manager: JobManager,
-    storage: StorageService,
-    temp_dir: str
-) -> Optional[str]:
-    """
-    Fetch reference lyrics from multiple sources.
-    
-    Tries in order:
-    1. Genius API
-    2. Spotify API (via RapidAPI)
-    3. Musixmatch API (via RapidAPI)
-    
-    Returns:
-        Best available lyrics text, or None if all sources fail
-    """
-    try:
-        # LyricsProcessor.fetch_lyrics() tries multiple sources automatically
-        reference_lyrics = await lyrics_processor.fetch_lyrics()
-        
-        if reference_lyrics:
-            # Save reference lyrics to file
-            lyrics_file = os.path.join(temp_dir, "reference_lyrics.txt")
-            with open(lyrics_file, 'w', encoding='utf-8') as f:
-                f.write(reference_lyrics)
-            
-            logger.info(f"Job {job_id}: Reference lyrics fetched successfully")
-            return reference_lyrics
-        else:
-            logger.warning(f"Job {job_id}: No reference lyrics found from any source")
-            return None
-            
-    except Exception as e:
-        logger.warning(f"Job {job_id}: Error fetching reference lyrics: {e}")
-        return None
-
-
-async def transcribe_audio(
-    job_id: str,
-    lyrics_processor: LyricsProcessor
-) -> Optional[Dict[str, Any]]:
-    """
-    Transcribe audio using AudioShake API.
-    
-    Returns word-level timestamps and confidence scores.
-    
-    Returns:
-        Transcription data dict, or None if failed
-    """
-    try:
-        # LyricsProcessor.transcribe_audio() handles AudioShake API
-        # Returns dict with word-level data
-        transcription = await lyrics_processor.transcribe_audio()
-        
-        if transcription and 'words' in transcription:
-            word_count = len(transcription['words'])
-            logger.info(f"Job {job_id}: Transcription complete ({word_count} words)")
-            return transcription
-        else:
-            logger.error(f"Job {job_id}: Transcription returned no words")
-            return None
-            
-    except Exception as e:
-        logger.error(f"Job {job_id}: Transcription error: {e}", exc_info=True)
-        return None
-
-
-async def generate_corrections(
-    job_id: str,
-    lyrics_processor: LyricsProcessor,
-    transcription: Dict[str, Any],
-    reference_lyrics: Optional[str]
-) -> Optional[Dict[str, Any]]:
-    """
-    Generate corrected lyrics using LyricsTranscriber algorithms.
-    
-    Uses:
-    - ExtendAnchorHandler: Extends known-good word sequences
-    - SyllablesMatchHandler: Matches by syllable count
-    - Confidence-based correction
-    
-    Returns:
-        Corrections JSON suitable for review interface, or None if failed
-    """
-    try:
-        # LyricsProcessor.generate_corrections() uses LyricsTranscriber
-        # Returns corrections JSON with:
-        # - lines: Array of corrected lines with timestamps
-        # - metadata: Song info, timestamps, etc.
-        corrections = await lyrics_processor.generate_corrections(
-            transcription=transcription,
-            reference_lyrics=reference_lyrics
-        )
-        
-        if corrections and 'lines' in corrections:
-            line_count = len(corrections['lines'])
-            logger.info(f"Job {job_id}: Corrections generated ({line_count} lines)")
-            return corrections
-        else:
-            logger.error(f"Job {job_id}: Corrections generation returned no lines")
-            return None
-            
-    except Exception as e:
-        logger.error(f"Job {job_id}: Correction error: {e}", exc_info=True)
-        return None
-
-
-async def upload_review_data(
-    job_id: str,
-    job_manager: JobManager,
-    storage: StorageService,
     temp_dir: str,
-    corrections: Dict[str, Any],
-    audio_path: str,
-    reference_lyrics: Optional[str]
+    transcription_result: Dict[str, Any],
+    storage: StorageService,
+    job_manager: JobManager
 ) -> None:
     """
-    Upload all data needed for human review interface.
+    Upload all lyrics transcription results to GCS.
     
-    Uploads:
-    1. corrections.json - For review interface
-    2. audio.flac - For playback in review interface
-    3. reference_lyrics.txt - For comparison
+    The transcription_result dict from LyricsProcessor.transcribe_lyrics() contains:
+    - lrc_filepath: Path to LRC file (timed lyrics)
+    - ass_filepath: Path to ASS file (karaoke subtitles, may be video file)
+    
+    Additional files in lyrics directory:
+    - Corrections JSON (for review interface)
+    - Reference lyrics (from Genius/Spotify/Musixmatch)
+    - Uncorrected transcription
+    
+    Args:
+        job_id: Job ID
+        temp_dir: Temporary directory with results
+        transcription_result: Result dict from LyricsProcessor
+        storage: StorageService instance
+        job_manager: JobManager instance
     """
-    # Upload corrections JSON
-    corrections_file = os.path.join(temp_dir, "corrections.json")
-    with open(corrections_file, 'w', encoding='utf-8') as f:
-        json.dump(corrections, f, indent=2)
+    logger.info(f"Job {job_id}: Uploading lyrics results to GCS")
     
-    corrections_gcs_path = f"jobs/{job_id}/lyrics/corrections.json"
-    corrections_url = storage.upload_file(corrections_file, corrections_gcs_path)
-    job_manager.update_file_url(job_id, 'lyrics', 'corrections', corrections_url)
-    logger.info(f"Job {job_id}: Uploaded corrections JSON")
+    lyrics_dir = os.path.join(temp_dir, "lyrics")
     
-    # Upload audio for review playback
-    audio_gcs_path = f"jobs/{job_id}/lyrics/audio.flac"
-    audio_url = storage.upload_file(audio_path, audio_gcs_path)
-    job_manager.update_file_url(job_id, 'lyrics', 'audio', audio_url)
-    logger.info(f"Job {job_id}: Uploaded audio for review")
+    # Upload LRC file (timed lyrics)
+    if transcription_result.get("lrc_filepath") and os.path.exists(transcription_result["lrc_filepath"]):
+        gcs_path = f"jobs/{job_id}/lyrics/karaoke.lrc"
+        url = storage.upload_file(transcription_result["lrc_filepath"], gcs_path)
+        job_manager.update_file_url(job_id, 'lyrics', 'lrc', url)
+        logger.info(f"Job {job_id}: Uploaded LRC file")
+    
+    # Upload corrections JSON (for review interface)
+    corrections_file = os.path.join(lyrics_dir, "corrections.json")
+    if os.path.exists(corrections_file):
+        gcs_path = f"jobs/{job_id}/lyrics/corrections.json"
+        url = storage.upload_file(corrections_file, gcs_path)
+        job_manager.update_file_url(job_id, 'lyrics', 'corrections', url)
+        logger.info(f"Job {job_id}: Uploaded corrections JSON")
+        
+        # Load corrections to get metadata
+        try:
+            with open(corrections_file, 'r', encoding='utf-8') as f:
+                corrections_data = json.load(f)
+            
+            # Store metadata in state_data
+            job_manager.update_state_data(job_id, 'lyrics_metadata', {
+                'line_count': len(corrections_data.get('lines', [])),
+                'has_corrections': True,
+                'ready_for_review': True
+            })
+        except Exception as e:
+            logger.warning(f"Job {job_id}: Could not parse corrections JSON: {e}")
     
     # Upload reference lyrics if available
-    if reference_lyrics:
-        reference_file = os.path.join(temp_dir, "reference_lyrics.txt")
-        with open(reference_file, 'w', encoding='utf-8') as f:
-            f.write(reference_lyrics)
-        
-        reference_gcs_path = f"jobs/{job_id}/lyrics/reference.txt"
-        reference_url = storage.upload_file(reference_file, reference_gcs_path)
-        job_manager.update_file_url(job_id, 'lyrics', 'reference', reference_url)
-        logger.info(f"Job {job_id}: Uploaded reference lyrics")
+    reference_files = [
+        f"{job.artist} - {job.title} (Lyrics Genius).txt",
+        f"{job.artist} - {job.title} (Lyrics Spotify).txt",
+        f"{job.artist} - {job.title} (Lyrics Musixmatch).txt"
+    ]
     
-    # Store metadata in state_data
-    job_manager.update_state_data(job_id, 'lyrics_metadata', {
-        'line_count': len(corrections.get('lines', [])),
-        'has_reference': reference_lyrics is not None,
-        'ready_for_review': True
-    })
+    for ref_filename in reference_files:
+        ref_path = os.path.join(lyrics_dir, ref_filename)
+        if os.path.exists(ref_path):
+            gcs_path = f"jobs/{job_id}/lyrics/{ref_filename}"
+            url = storage.upload_file(ref_path, gcs_path)
+            logger.info(f"Job {job_id}: Uploaded reference lyrics: {ref_filename}")
+            break  # Only upload first available reference
+    
+    # Upload uncorrected transcription if available
+    uncorrected_file = os.path.join(lyrics_dir, f"{job.artist} - {job.title} (Lyrics Uncorrected).txt")
+    if os.path.exists(uncorrected_file):
+        gcs_path = f"jobs/{job_id}/lyrics/uncorrected.txt"
+        url = storage.upload_file(uncorrected_file, gcs_path)
+        job_manager.update_file_url(job_id, 'lyrics', 'uncorrected', url)
+        logger.info(f"Job {job_id}: Uploaded uncorrected transcription")
+    
+    # Get job object for artist/title
+    job = job_manager.get_job(job_id)
+    
+    logger.info(f"Job {job_id}: All lyrics results uploaded successfully")
 

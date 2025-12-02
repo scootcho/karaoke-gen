@@ -6,13 +6,13 @@ Handles the audio processing track of parallel processing:
 2. Stage 2: Backing vocals separation (Modal API, 2-3 min)
 3. Post-processing: Combine instrumentals, normalize, generate Audacity LOF
 
-Integrates with karaoke_gen.audio_processor.AudioProcessor for remote GPU separation.
+Re-uses karaoke_gen.audio_processor.AudioProcessor for remote GPU separation.
 """
 import logging
 import os
 import shutil
 import tempfile
-from typing import Optional
+from typing import Optional, Dict, Any
 from pathlib import Path
 
 from backend.models.job import JobStatus
@@ -22,18 +22,72 @@ from backend.config import get_settings
 
 # Import from karaoke_gen package
 from karaoke_gen.audio_processor import AudioProcessor
-from karaoke_gen.file_handler import FileHandler
 
 
 logger = logging.getLogger(__name__)
 
 
+def create_audio_processor(temp_dir: str) -> AudioProcessor:
+    """
+    Create an AudioProcessor instance configured for remote API processing.
+    
+    This reuses the karaoke_gen AudioProcessor with settings optimized for Cloud Run:
+    - Uses remote Modal API (via AUDIO_SEPARATOR_API_URL env var)
+    - No local models needed (model_file_dir=None)
+    - FLAC output format for quality
+    - Standard model configurations from karaoke-gen CLI
+    
+    Args:
+        temp_dir: Temporary directory for processing
+        
+    Returns:
+        Configured AudioProcessor instance
+    """
+    # Configure logger for AudioProcessor
+    audio_logger = logging.getLogger("karaoke_gen.audio_processor")
+    audio_logger.setLevel(logging.INFO)
+    
+    # Model configurations (same as CLI defaults)
+    clean_instrumental_model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+    backing_vocals_models = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+    other_stems_models = ["htdemucs_6s.yaml"]  # For 6-stem separation (bass, drums, etc.)
+    
+    # FFmpeg command for combining audio files
+    ffmpeg_base_command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-nostats",
+        "-y"
+    ]
+    
+    return AudioProcessor(
+        logger=audio_logger,
+        log_level=logging.INFO,
+        log_formatter=None,  # Not needed for our use case
+        model_file_dir=None,  # No local models, using remote API
+        lossless_output_format="FLAC",
+        clean_instrumental_model=clean_instrumental_model,
+        backing_vocals_models=backing_vocals_models,
+        other_stems_models=other_stems_models,
+        ffmpeg_base_command=ffmpeg_base_command
+    )
+
+
 async def process_audio_separation(job_id: str) -> bool:
     """
-    Process audio separation for a job.
+    Process audio separation for a job using karaoke_gen.AudioProcessor.
     
     This is the main entry point for the audio worker.
     Called asynchronously from the job submission endpoint.
+    
+    Workflow:
+    1. Download audio from GCS
+    2. Stage 1: Separate with clean instrumental + other stems models (Modal API)
+    3. Stage 2: Separate vocals for backing vocals (Modal API)
+    4. Post-process: Combine instrumentals, normalize audio
+    5. Upload all stems to GCS
+    6. Mark job as AUDIO_COMPLETE
     
     Args:
         job_id: Job ID to process
@@ -56,40 +110,55 @@ async def process_audio_separation(job_id: str) -> bool:
     try:
         logger.info(f"Starting audio separation for job {job_id}")
         
+        # Ensure AUDIO_SEPARATOR_API_URL is set
+        if not os.environ.get("AUDIO_SEPARATOR_API_URL"):
+            raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
+                          "Cannot perform audio separation without remote API access.")
+        
         # Download audio file from GCS
         audio_path = await download_audio(job_id, temp_dir, storage, job)
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # TODO: Implement actual audio separation
-        # The karaoke_gen.audio_processor.AudioProcessor class is CLI-oriented
-        # and requires many parameters that we don't have in the API context.
-        # 
-        # Options for implementation:
-        # 1. Call external audio separation API (Modal, Replicate, etc.)
-        # 2. Refactor karaoke_gen to have API-friendly classes
-        # 3. Run audio-separator library directly in Cloud Run
-        #
-        # For now, marking as complete to test the rest of the workflow
-        
-        logger.warning(f"Job {job_id}: Audio separation not yet implemented - marking as complete for testing")
-        
+        # Update job status: Starting separation
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.SEPARATING_STAGE1,
-            progress=40,
-            message="Audio separation (stubbed for testing)"
+            progress=10,
+            message="Starting audio separation (Stage 1: Clean instrumental)"
         )
         
-        # Mark audio processing complete (stubbed)
-        logger.info(f"Job {job_id}: Audio separation complete (stubbed)")
+        # Create AudioProcessor instance (reuses karaoke_gen code)
+        audio_processor = create_audio_processor(temp_dir)
+        
+        # Format artist-title for file naming (matches CLI behavior)
+        artist_title = f"{job.artist} - {job.title}"
+        
+        # Run audio separation (calls Modal API internally)
+        # This returns a dict with paths to all separated stems
+        logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
+        separation_result = audio_processor.process_audio_separation(
+            audio_file=audio_path,
+            artist_title=artist_title,
+            track_output_dir=temp_dir
+        )
+        
+        logger.info(f"Job {job_id}: Audio separation complete, organizing results")
+        
+        # Update progress
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.AUDIO_COMPLETE,
             progress=45,
-            message="Audio separation complete (stubbed for testing)"
+            message="Audio separation complete, uploading stems"
         )
         
+        # Upload all stems to GCS
+        await upload_separation_results(job_id, separation_result, storage, job_manager)
+        
+        logger.info(f"Job {job_id}: All stems uploaded successfully")
+        
+        # Mark audio processing complete
         # This will check if lyrics are also complete and transition to next stage if so
         job_manager.mark_audio_complete(job_id)
         
@@ -160,67 +229,94 @@ async def download_audio(
         return None
 
 
-async def upload_stage1_stems(
+async def upload_separation_results(
     job_id: str,
-    temp_dir: str,
-    job_manager: JobManager,
+    separation_result: Dict[str, Any],
     storage: StorageService,
-    audio_processor: AudioProcessor
+    job_manager: JobManager
 ) -> None:
-    """Upload Stage 1 separation results to GCS."""
-    stems_to_upload = {
-        'instrumental_clean': audio_processor.instrumental_path,
-        'vocals': audio_processor.vocals_path,
-    }
+    """
+    Upload all audio separation results to GCS.
     
-    # Also upload 6-stem separation results if available
-    if hasattr(audio_processor, 'stems') and audio_processor.stems:
-        for stem_name in ['bass', 'drums', 'guitar', 'piano', 'other']:
-            stem_path = audio_processor.stems.get(stem_name)
+    The separation_result dict from AudioProcessor.process_audio_separation() contains:
+    - clean_instrumental: Dict with 'vocals' and 'instrumental' paths
+    - other_stems: Dict with stem paths (bass, drums, guitar, piano, other)
+    - backing_vocals: Dict with model-keyed paths to lead_vocals and backing_vocals
+    - combined_instrumentals: Dict with model-keyed paths to instrumental+BV files
+    
+    Args:
+        job_id: Job ID
+        separation_result: Result dict from AudioProcessor
+        storage: StorageService instance
+        job_manager: JobManager instance
+    """
+    logger.info(f"Job {job_id}: Uploading separation results to GCS")
+    
+    # Upload clean instrumental + vocals (Stage 1, clean model)
+    if separation_result.get("clean_instrumental"):
+        clean = separation_result["clean_instrumental"]
+        
+        if clean.get("instrumental") and os.path.exists(clean["instrumental"]):
+            gcs_path = f"jobs/{job_id}/stems/instrumental_clean.flac"
+            url = storage.upload_file(clean["instrumental"], gcs_path)
+            job_manager.update_file_url(job_id, 'stems', 'instrumental_clean', url)
+            logger.info(f"Job {job_id}: Uploaded clean instrumental")
+        
+        if clean.get("vocals") and os.path.exists(clean["vocals"]):
+            gcs_path = f"jobs/{job_id}/stems/vocals_clean.flac"
+            url = storage.upload_file(clean["vocals"], gcs_path)
+            job_manager.update_file_url(job_id, 'stems', 'vocals_clean', url)
+            logger.info(f"Job {job_id}: Uploaded clean vocals")
+    
+    # Upload other stems (Stage 1, htdemucs 6-stem)
+    if separation_result.get("other_stems"):
+        for stem_name, stem_path in separation_result["other_stems"].items():
             if stem_path and os.path.exists(stem_path):
-                stems_to_upload[stem_name] = stem_path
+                gcs_path = f"jobs/{job_id}/stems/{stem_name.lower()}.flac"
+                url = storage.upload_file(stem_path, gcs_path)
+                job_manager.update_file_url(job_id, 'stems', stem_name.lower(), url)
+                logger.info(f"Job {job_id}: Uploaded {stem_name} stem")
     
-    for stem_type, local_path in stems_to_upload.items():
-        if local_path and os.path.exists(local_path):
-            gcs_path = f"jobs/{job_id}/stems/{stem_type}.flac"
-            url = storage.upload_file(local_path, gcs_path)
-            job_manager.update_file_url(job_id, 'stems', stem_type, url)
-            logger.info(f"Job {job_id}: Uploaded {stem_type} stem")
-
-
-async def upload_stage2_stems(
-    job_id: str,
-    temp_dir: str,
-    job_manager: JobManager,
-    storage: StorageService,
-    audio_processor: AudioProcessor
-) -> None:
-    """Upload Stage 2 separation results to GCS."""
-    stems_to_upload = {
-        'backing_vocals': audio_processor.backing_vocals_path,
-        'lead_vocals': audio_processor.lead_vocals_path,
-    }
+    # Upload backing vocals separation (Stage 2)
+    if separation_result.get("backing_vocals"):
+        # backing_vocals is a dict keyed by model name
+        for model_name, bv_stems in separation_result["backing_vocals"].items():
+            if bv_stems.get("lead_vocals") and os.path.exists(bv_stems["lead_vocals"]):
+                gcs_path = f"jobs/{job_id}/stems/lead_vocals.flac"
+                url = storage.upload_file(bv_stems["lead_vocals"], gcs_path)
+                job_manager.update_file_url(job_id, 'stems', 'lead_vocals', url)
+                logger.info(f"Job {job_id}: Uploaded lead vocals")
+            
+            if bv_stems.get("backing_vocals") and os.path.exists(bv_stems["backing_vocals"]):
+                gcs_path = f"jobs/{job_id}/stems/backing_vocals.flac"
+                url = storage.upload_file(bv_stems["backing_vocals"], gcs_path)
+                job_manager.update_file_url(job_id, 'stems', 'backing_vocals', url)
+                logger.info(f"Job {job_id}: Uploaded backing vocals")
+            
+            # Only process first model (we typically only use one backing vocals model)
+            break
     
-    for stem_type, local_path in stems_to_upload.items():
-        if local_path and os.path.exists(local_path):
-            gcs_path = f"jobs/{job_id}/stems/{stem_type}.flac"
-            url = storage.upload_file(local_path, gcs_path)
-            job_manager.update_file_url(job_id, 'stems', stem_type, url)
-            logger.info(f"Job {job_id}: Uploaded {stem_type} stem")
-
-
-async def upload_final_instrumentals(
-    job_id: str,
-    job_manager: JobManager,
-    storage: StorageService,
-    audio_processor: AudioProcessor
-) -> None:
-    """Upload combined instrumental tracks to GCS."""
-    # Upload instrumental with backing vocals
-    if hasattr(audio_processor, 'instrumental_with_backing_path') and audio_processor.instrumental_with_backing_path:
-        if os.path.exists(audio_processor.instrumental_with_backing_path):
-            gcs_path = f"jobs/{job_id}/stems/instrumental_with_backing.flac"
-            url = storage.upload_file(audio_processor.instrumental_with_backing_path, gcs_path)
-            job_manager.update_file_url(job_id, 'stems', 'instrumental_with_backing', url)
-            logger.info(f"Job {job_id}: Uploaded instrumental with backing vocals")
+    # Upload combined instrumentals (instrumental + backing vocals)
+    if separation_result.get("combined_instrumentals"):
+        # combined_instrumentals is a dict keyed by model name
+        for model_name, combined_path in separation_result["combined_instrumentals"].items():
+            if combined_path and os.path.exists(combined_path):
+                gcs_path = f"jobs/{job_id}/stems/instrumental_with_backing.flac"
+                url = storage.upload_file(combined_path, gcs_path)
+                job_manager.update_file_url(job_id, 'stems', 'instrumental_with_backing', url)
+                logger.info(f"Job {job_id}: Uploaded instrumental with backing vocals")
+            
+            # Only process first model
+            break
+    
+    # Store instrumental options in state_data for later selection
+    instrumental_options = {}
+    if separation_result.get("clean_instrumental", {}).get("instrumental"):
+        instrumental_options["clean"] = f"jobs/{job_id}/stems/instrumental_clean.flac"
+    if separation_result.get("combined_instrumentals"):
+        instrumental_options["with_backing"] = f"jobs/{job_id}/stems/instrumental_with_backing.flac"
+    
+    if instrumental_options:
+        job_manager.update_state_data(job_id, 'instrumental_options', instrumental_options)
+        logger.info(f"Job {job_id}: Stored instrumental options: {list(instrumental_options.keys())}")
 
