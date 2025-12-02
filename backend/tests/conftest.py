@@ -12,18 +12,22 @@ from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from datetime import datetime, UTC
 from fastapi.testclient import TestClient
 
-# Mock google.auth for unit tests if not using emulator
+# Mock google.auth.default for unit tests if not using emulator
 # This prevents DefaultCredentialsError during imports
 if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
-    import sys
     from unittest.mock import MagicMock
     
-    # Mock google.auth.default
-    mock_auth = MagicMock()
-    mock_credentials = MagicMock()
-    mock_auth.default.return_value = (mock_credentials, 'test-project')
-    sys.modules['google.auth'] = mock_auth
-    sys.modules['google.auth.exceptions'] = MagicMock()
+    # Only mock the default() function, not the entire module
+    # This allows other google.auth imports to work normally
+    try:
+        import google.auth
+        mock_credentials = MagicMock()
+        mock_credentials.token = 'fake-token'
+        mock_credentials.valid = True
+        google.auth.default = MagicMock(return_value=(mock_credentials, 'test-project'))
+    except ImportError:
+        # If google.auth not installed, that's ok for some tests
+        pass
 
 from backend.models.job import Job, JobStatus, JobCreate
 
