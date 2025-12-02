@@ -72,7 +72,7 @@ jobs:
       
       - name: Install Firestore emulator
         run: |
-          gcloud components install cloud-firestore-emulator --quiet
+          gcloud components install beta cloud-firestore-emulator --quiet
       
       - name: Install dependencies
         run: |
