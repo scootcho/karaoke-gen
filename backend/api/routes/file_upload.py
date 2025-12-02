@@ -71,6 +71,19 @@ async def upload_and_create_job(
             'filename': file.filename
         })
         
+        # Verify the update by refetching the job
+        updated_job = job_manager.get_job(job.job_id)
+        if not hasattr(updated_job, 'input_media_gcs_path') or not updated_job.input_media_gcs_path:
+            # Wait a moment for Firestore consistency
+            import asyncio
+            await asyncio.sleep(0.5)
+            updated_job = job_manager.get_job(job.job_id)
+            if not hasattr(updated_job, 'input_media_gcs_path') or not updated_job.input_media_gcs_path:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to update job with GCS path"
+                )
+        
         logger.info(f"File uploaded successfully for job {job.job_id}, GCS path: {gcs_path}")
         
         # Trigger the workflow (audio and lyrics workers in parallel)

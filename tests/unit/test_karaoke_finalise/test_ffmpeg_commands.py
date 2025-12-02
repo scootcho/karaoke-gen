@@ -138,11 +138,11 @@ def test_convert_mov_to_mp4_aac(mock_execute_fallback, finaliser_with_aac):
     
     expected_gpu_cmd = (
         f'{finaliser_with_aac.ffmpeg_base_command}  -i "{WITH_VOCALS_MOV}" '
-        f'-c:v libx264 -preset p4 -tune hq -cq 18 -c:a aac {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
+        f'-c:v libx264 -preset p4 -tune hq -cq 18 -c:a aac -ar 48000 {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
     )
     expected_cpu_cmd = (
         f'{finaliser_with_aac.ffmpeg_base_command} -i "{WITH_VOCALS_MOV}" '
-        f'-c:v libx264 -c:a aac {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
+        f'-c:v libx264 -c:a aac -ar 48000 {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Converting MOV video to MP4")
 
@@ -153,11 +153,11 @@ def test_convert_mov_to_mp4_aac_at(mock_execute_fallback, finaliser_with_aac_at)
     
     expected_gpu_cmd = (
         f'{finaliser_with_aac_at.ffmpeg_base_command}  -i "{WITH_VOCALS_MOV}" '
-        f'-c:v libx264 -preset p4 -tune hq -cq 18 -c:a aac_at {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
+        f'-c:v libx264 -preset p4 -tune hq -cq 18 -c:a aac_at -ar 48000 {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
     )
     expected_cpu_cmd = (
         f'{finaliser_with_aac_at.ffmpeg_base_command} -i "{WITH_VOCALS_MOV}" '
-        f'-c:v libx264 -c:a aac_at {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
+        f'-c:v libx264 -c:a aac_at -ar 48000 {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["with_vocals_mp4"]}"'
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Converting MOV video to MP4")
 
@@ -195,7 +195,7 @@ def test_encode_lossy_mp4_aac(mock_execute, finaliser_with_aac):
     finaliser_with_aac.encode_lossy_mp4(OUTPUT_FILES["final_karaoke_lossless_mp4"], OUTPUT_FILES["final_karaoke_lossy_mp4"])
     expected_cmd = (
         f'{finaliser_with_aac.ffmpeg_base_command} -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
-        f'-c:v copy -c:a aac -b:a 320k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_mp4"]}"'
+        f'-c:v copy -c:a aac -ar 48000 -b:a 320k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_mp4"]}"'
     )
     mock_execute.assert_called_once_with(expected_cmd, "Creating MP4 version with AAC audio")
 
@@ -205,7 +205,7 @@ def test_encode_lossy_mp4_aac_at(mock_execute, finaliser_with_aac_at):
     finaliser_with_aac_at.encode_lossy_mp4(OUTPUT_FILES["final_karaoke_lossless_mp4"], OUTPUT_FILES["final_karaoke_lossy_mp4"])
     expected_cmd = (
         f'{finaliser_with_aac_at.ffmpeg_base_command} -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
-        f'-c:v copy -c:a aac_at -b:a 320k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_mp4"]}"'
+        f'-c:v copy -c:a aac_at -ar 48000 -b:a 320k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_mp4"]}"'
     )
     mock_execute.assert_called_once_with(expected_cmd, "Creating MP4 version with AAC audio")
 
@@ -228,12 +228,12 @@ def test_encode_720p_version_aac(mock_execute_fallback, finaliser_with_aac):
         f'{finaliser_with_aac.ffmpeg_base_command}  -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
         f'-c:v libx264 -vf "scale=1280:720" '
         f'-preset p4 -cq 23 -b:v 2000k '
-        f'-c:a aac -b:a 128k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
+        f'-c:a aac -ar 48000 -b:a 128k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
     )
     expected_cpu_cmd = (
         f'{finaliser_with_aac.ffmpeg_base_command} -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
         f'-c:v libx264 -vf "scale=1280:720" -b:v 2000k -preset medium -tune animation '
-        f'-c:a aac -b:a 128k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
+        f'-c:a aac -ar 48000 -b:a 128k {finaliser_with_aac.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Encoding 720p version of the final video")
 
@@ -246,12 +246,12 @@ def test_encode_720p_version_aac_at(mock_execute_fallback, finaliser_with_aac_at
         f'{finaliser_with_aac_at.ffmpeg_base_command}  -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
         f'-c:v libx264 -vf "scale=1280:720" '
         f'-preset p4 -cq 23 -b:v 2000k '
-        f'-c:a aac_at -b:a 128k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
+        f'-c:a aac_at -ar 48000 -b:a 128k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
     )
     expected_cpu_cmd = (
         f'{finaliser_with_aac_at.ffmpeg_base_command} -i "{OUTPUT_FILES["final_karaoke_lossless_mp4"]}" '
         f'-c:v libx264 -vf "scale=1280:720" -b:v 2000k -preset medium -tune animation '
-        f'-c:a aac_at -b:a 128k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
+        f'-c:a aac_at -ar 48000 -b:a 128k {finaliser_with_aac_at.mp4_flags} "{OUTPUT_FILES["final_karaoke_lossy_720p_mp4"]}"'
     )
     mock_execute_fallback.assert_called_once_with(expected_gpu_cmd, expected_cpu_cmd, "Encoding 720p version of the final video")
 

@@ -152,6 +152,7 @@ class Job(BaseModel):
     artist: Optional[str] = None
     title: Optional[str] = None
     filename: Optional[str] = None               # Original uploaded filename
+    input_media_gcs_path: Optional[str] = None   # GCS path to uploaded file
     
     # User preferences
     enable_cdg: bool = True                      # Generate CDG+MP3 package

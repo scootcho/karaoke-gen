@@ -20,8 +20,19 @@ steps:
       - '-f'
       - 'backend/Dockerfile'
       - '.'
+  
+  # Push images to Artifact Registry (must happen before deploy)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID'
+  
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'
 
-  # Deploy to Cloud Run
+  # Deploy to Cloud Run (after images are pushed)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:

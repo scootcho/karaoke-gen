@@ -1,43 +1,55 @@
-# What's Next: Testing Phase 1.3
+# What's Next: Fixing Production Issues
 
-**Current Status:** Phase 1.3 video generation worker is implemented but **untested**.
+**Current Status:** Phase 1.3 deployed to production, encountering Firestore consistency issues
 
-**Your Next Actions:** You have 2 options depending on what you want to do.
+**Latest Deployment:** ✅ Revision 00007 (2025-12-01 07:30 UTC)
+- Custom domain: `https://api.nomadkaraoke.com` ✅
+- SSL certificate: ✅ Working
+- Health endpoint: ✅ Working  
+- File upload: 🔄 Fixing Firestore race condition
+
+**Your Next Actions:** Wait for current build to complete, then test again
 
 ---
 
-## Option A: Deploy & Test End-to-End (Recommended)
+## Current Build Status
 
-This will test the entire workflow with real audio processing.
+**Build in progress:** Fixing Firestore consistency issue
 
-### Step 1: Deploy Updated Backend to Cloud Run
+**What changed:**
+- Added verification step after Firestore update
+- Workers now wait for job update to be visible
+- 500ms retry if update not immediately available
 
-The backend code is ready, but needs to be deployed:
-
+**Build command running:**
 ```bash
-# From project root
-cd /Users/andrew/Projects/karaoke-gen
-
-# Build and push new Docker image (with video worker)
-gcloud builds submit --config cloudbuild.yaml
-
-# This will:
-# 1. Build new Docker image with video worker
-# 2. Push to Artifact Registry
-# 3. Cloud Run will automatically deploy latest image
+gcloud builds submit --config cloudbuild.yaml --timeout=20m
 ```
 
-**Time:** ~5-10 minutes
+**Expected completion:** ~2-3 minutes from now
 
-### Step 2: Test with Real Audio File
+---
 
-Use the backend API to submit a test job. You can either upload a local file or use a YouTube URL:
+## Step 1: Wait for Build to Complete
 
-#### Option A: Upload Local File (Recommended for Quick Testing)
+Monitor build status:
+```bash
+# Check latest build
+gcloud builds list --limit=1
+
+# Or watch the log file
+tail -f /tmp/karaoke-final-deploy.log
+```
+
+---
+
+## Step 2: Test the Fixed Deployment
+
+Once build completes, test with real audio file:
 
 ```bash
-# Set your Cloud Run URL
-export BACKEND_URL="https://karaoke-backend-ipzqd2k4yq-uc.a.run.app"
+# Use custom domain (SSL working!)
+export BACKEND_URL="https://api.nomadkaraoke.com"
 export AUTH_TOKEN=$(gcloud auth print-identity-token)
 
 # Upload waterloo30sec.flac (30 seconds = quick test)
@@ -48,7 +60,7 @@ curl -X POST "$BACKEND_URL/api/jobs/upload" \
   -F "title=Waterloo"
 
 # Note the job_id from response
-JOB_ID="<job_id_from_response>"
+export JOB_ID="<job_id_from_response>"
 ```
 
 #### Option B: YouTube URL
@@ -70,15 +82,33 @@ JOB_ID="<job_id_from_response>"
 
 **Note:** YouTube URL download is not yet implemented in the workers. Use Option A (file upload) for now!
 
-### Step 3: Monitor Progress
+---
+
+## Step 3: Monitor Progress
+
+### Option A: Use Debug Script (Recommended)
 
 ```bash
-# Monitor progress (run this multiple times or use watch)
-curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq '{status, progress, message}'
+./scripts/debug-job.sh $JOB_ID
+```
 
-# Or use watch to monitor continuously
-watch -n 5 "curl -s -H 'Authorization: Bearer \$(gcloud auth print-identity-token)' $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, message}'"
+This shows:
+- Job status & progress
+- Complete timeline
+- GCS files
+- Cloud Run logs
+- Error details (if any)
+
+### Option B: Manual Monitoring
+
+```bash
+# Quick status
+curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | \
+  jq '{status, progress, error_message}'
+
+# Or watch continuously
+watch -n 5 "curl -s -H 'Authorization: Bearer $AUTH_TOKEN' $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, error_message}'"
 ```
 
 **Expected Timeline:**

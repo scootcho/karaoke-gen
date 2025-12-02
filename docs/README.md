@@ -2,12 +2,13 @@
 
 This directory contains all documentation for the karaoke-gen project, organized by purpose.
 
-## 📋 Current Status
+## 📋 Current Status (Updated: 2025-12-01)
 
 **Project:** Migrating from Modal-based monolithic web app to scalable cloud architecture  
-**Backend:** ✅ Phase 1.1 Complete (FastAPI on Google Cloud Run)  
+**Backend:** ✅ Phase 1.3 Nearly Complete (Workers + Video Generation)  
 **Frontend:** ⏸️ Not started (waiting for backend stability)  
-**Testing:** ✅ Complete (17/17 tests passing)
+**Deployment:** ✅ Cloud Run with custom domain (api.nomadkaraoke.com)  
+**Testing:** 🔄 In progress (fixing Firestore consistency issues)
 
 ---
 
@@ -29,28 +30,33 @@ Core system documentation that doesn't change often.
 | `KARAOKE-GEN-CLI-WORKFLOW.md` | Complete technical breakdown of CLI workflow (8 stages) |
 | `ARCHITECTURE.md` | Original CLI architecture documentation |
 | `API-MANUAL-TESTING.md` | How to manually test backend API with curl |
+| `AUTHENTICATION.md` | Token-based authentication system (implemented) |
+| `CLOUD-RUN-ARCHITECTURE.md` | How Cloud Run works, containers, scaling, concurrency |
 
 ### `02-implementation-history/` - Session Logs
 Historical records of implementation sessions. Useful for understanding decisions made.
 
 | File | Date | Purpose |
 |------|------|---------|
-| `SESSION-SUMMARY-2025-12-01.md` | 2025-12-01 | Backend Phase 1.1 completion summary |
-| `BUG-FIXES-2025-12-01.md` | 2025-12-01 | Backend bugs fixed during testing |
-| `TEST-RESULTS-2025-12-01.md` | 2025-12-01 | Backend integration test results |
-| `CLEANUP-COMPLETE.md` | 2025-12-01 | Deprecated file cleanup summary |
-| `IMPLEMENTATION-COMPLETE.md` | 2025-12-01 | Phase 1.1 implementation details |
+| `PHASE-1-2-PROGRESS.md` | 2025-12-01 | Async job processing, workers, state machine |
+| `PHASE-1-3-PROGRESS.md` | 2025-12-01 | Video generation worker implementation |
+| `AUTHENTICATION-IMPLEMENTATION.md` | 2025-12-01 | Token-based auth system implementation |
+| `FIRST-TEST-FIXES.md` | 2025-12-01 | Environment variables & race condition fixes |
+| `FILE-UPLOAD-IMPLEMENTATION.md` | 2025-12-01 | File upload endpoint implementation |
+| `DOCKER-BUILD-OPTIMIZATION.md` | 2025-12-01 | Build caching improvements (20min → 2min) |
 
 ### `03-deployment/` - Deployment Guides
 How to deploy and operate the system.
 
 | File | Purpose |
 |------|---------|
-| `INFRASTRUCTURE-AS-CODE.md` | Pulumi IaC setup and usage |
-| `CLOUD-RUN-DEPLOYMENT.md` | Deploying backend to Cloud Run |
-| `CLOUDBUILD-PERMISSIONS-FIX.md` | Cloud Build permission troubleshooting |
-| `CLOUDFLARE-PAGES-DEPLOYMENT.md` | Frontend deployment (future) |
-| `TESTING-BACKEND.md` | Running backend tests |
+| **`SETUP-VENV.md`** | **Quick venv setup** (Python 3.12, dependencies) |
+| **`LOCAL-VALIDATION.md`** | **Validate before deploying** (catches import errors) |
+| **`OBSERVABILITY-GUIDE.md`** | **Debug production issues** (logs, metrics, debug script) |
+| `CUSTOM-DOMAIN-SETUP.md` | Setting up api.nomadkaraoke.com |
+| `WHY-BUILD-DIDNT-DEPLOY.md` | Cloud Build deployment troubleshooting |
+| `VENV-SETUP-COMPLETE.md` | Complete venv setup walkthrough |
+| `OBSERVABILITY-IMPROVEMENTS.md` | Observability improvements made |
 
 ### `archived/` - Old/Deprecated Files
 Historical documents no longer relevant to current architecture.
@@ -98,17 +104,34 @@ What to do next after current phase completes. Gets updated frequently.
 
 ---
 
-## 🎯 Current Phase: Backend Stability
+## 🎯 Current Phase: Backend Workers & Testing
 
-**Goal:** Ensure backend works perfectly before touching frontend
+**Goal:** Complete async job processing and fix production issues
 
-**Status:** ✅ Phase 1.1 Complete
-- Backend API deployed to Cloud Run
-- All infrastructure in Pulumi
-- 17/17 integration tests passing
-- Manual API testing documented
+**Status:** ✅ Phase 1.3 Nearly Complete
+- ✅ Backend API deployed to Cloud Run
+- ✅ All infrastructure in Pulumi  
+- ✅ Custom domain with SSL (api.nomadkaraoke.com)
+- ✅ 4 workers implemented (audio, lyrics, screens, video)
+- ✅ 21-state job state machine
+- ✅ Human-in-the-loop API endpoints
+- ✅ Local validation & debug tooling
+- ✅ Token-based authentication system
+- 🔄 **Current:** Fixing Firestore consistency issues
 
-**Next:** Phase 1.2 - Async job processing (audio separation, lyrics transcription)
+**What Works:**
+- Health endpoint
+- Job creation
+- File uploads to GCS
+- Firestore job storage
+- Environment variables
+- Cloud Build deployment
+
+**What's Being Fixed:**
+- Firestore eventual consistency causing race condition
+- Workers seeing stale job data
+
+**Next:** Phase 1.4 - End-to-end testing with real job processing
 
 See `NEXT-STEPS.md` for detailed next actions.
 
