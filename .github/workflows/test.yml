@@ -65,6 +65,12 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       
+      - name: Set up Java 21 (required by Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
