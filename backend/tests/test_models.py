@@ -1,9 +1,17 @@
 """
-Unit tests for Pydantic models - simplified version that matches actual models.
+Unit tests for Pydantic models.
 
-Tests validate that our data models work correctly.
+Tests validate that our data models work correctly, including:
+- Basic field validation
+- Nested dictionary structures (file_urls, state_data)
+- Serialization/deserialization round-trips (simulating Firestore)
+- Real-world data structures from workers
+
+These tests catch type mismatches that would cause runtime errors when
+reading data back from Firestore.
 """
 import pytest
+import json
 from datetime import datetime, UTC
 from pydantic import ValidationError
 
@@ -206,6 +214,367 @@ class TestModelValidation:
                 job_id="test123"
                 # Missing required fields: status, created_at, updated_at
             )
+
+
+class TestFileUrlsNestedStructure:
+    """
+    Test that file_urls field correctly handles nested dictionaries.
+    
+    THIS IS THE TEST THAT WOULD HAVE CAUGHT THE Dict[str, str] vs Dict[str, Any] BUG!
+    
+    Workers store nested structures like:
+    {
+        "stems": {"instrumental_clean": "gs://...", "vocals": "gs://..."},
+        "lyrics": {"corrections": "gs://...", "lrc": "gs://..."},
+        ...
+    }
+    
+    If file_urls is typed as Dict[str, str], this will fail on deserialization.
+    """
+    
+    def test_file_urls_with_nested_stems(self):
+        """Test that file_urls accepts nested stems dictionary."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.AUDIO_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls={
+                "stems": {
+                    "instrumental_clean": "gs://bucket/jobs/test123/stems/instrumental_clean.flac",
+                    "instrumental_with_backing": "gs://bucket/jobs/test123/stems/instrumental_with_backing.flac",
+                    "vocals_clean": "gs://bucket/jobs/test123/stems/vocals_clean.flac",
+                    "lead_vocals": "gs://bucket/jobs/test123/stems/lead_vocals.flac",
+                    "backing_vocals": "gs://bucket/jobs/test123/stems/backing_vocals.flac",
+                    "bass": "gs://bucket/jobs/test123/stems/bass.flac",
+                    "drums": "gs://bucket/jobs/test123/stems/drums.flac",
+                }
+            }
+        )
+        
+        assert job.file_urls["stems"]["instrumental_clean"] == "gs://bucket/jobs/test123/stems/instrumental_clean.flac"
+        assert len(job.file_urls["stems"]) == 7
+    
+    def test_file_urls_with_nested_lyrics(self):
+        """Test that file_urls accepts nested lyrics dictionary."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.LYRICS_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls={
+                "lyrics": {
+                    "corrections": "gs://bucket/jobs/test123/lyrics/corrections.json",
+                    "audio": "gs://bucket/jobs/test123/lyrics/audio.flac",
+                    "lrc": "gs://bucket/jobs/test123/lyrics/karaoke.lrc",
+                    "uncorrected": "gs://bucket/jobs/test123/lyrics/uncorrected.txt",
+                }
+            }
+        )
+        
+        assert job.file_urls["lyrics"]["corrections"] == "gs://bucket/jobs/test123/lyrics/corrections.json"
+    
+    def test_file_urls_full_worker_structure(self):
+        """
+        Test with the full structure that workers actually create.
+        
+        This simulates what actually gets stored in Firestore after
+        all workers have run.
+        """
+        full_file_urls = {
+            "input": {
+                "audio": "gs://bucket/jobs/test123/input/waterloo.flac"
+            },
+            "stems": {
+                "instrumental_clean": "gs://bucket/jobs/test123/stems/instrumental_clean.flac",
+                "instrumental_with_backing": "gs://bucket/jobs/test123/stems/instrumental_with_backing.flac",
+                "vocals_clean": "gs://bucket/jobs/test123/stems/vocals_clean.flac",
+                "lead_vocals": "gs://bucket/jobs/test123/stems/lead_vocals.flac",
+                "backing_vocals": "gs://bucket/jobs/test123/stems/backing_vocals.flac",
+            },
+            "lyrics": {
+                "corrections": "gs://bucket/jobs/test123/lyrics/corrections.json",
+                "lrc": "gs://bucket/jobs/test123/lyrics/karaoke.lrc",
+            },
+            "screens": {
+                "title": "gs://bucket/jobs/test123/screens/title.mov",
+                "end": "gs://bucket/jobs/test123/screens/end.mov",
+            },
+            "videos": {
+                "with_vocals": "gs://bucket/jobs/test123/videos/with_vocals.mkv",
+            },
+            "finals": {
+                "lossless_4k_mp4": "gs://bucket/jobs/test123/finals/lossless_4k.mp4",
+                "lossy_720p_mp4": "gs://bucket/jobs/test123/finals/lossy_720p.mp4",
+            }
+        }
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls=full_file_urls
+        )
+        
+        # Verify nested access works
+        assert job.file_urls["stems"]["instrumental_clean"].endswith("instrumental_clean.flac")
+        assert job.file_urls["lyrics"]["corrections"].endswith("corrections.json")
+        assert job.file_urls["finals"]["lossy_720p_mp4"].endswith("lossy_720p.mp4")
+    
+    def test_file_urls_roundtrip_serialization(self):
+        """
+        Test that file_urls survives serialization/deserialization.
+        
+        This simulates what happens when we:
+        1. Create a Job with nested file_urls
+        2. Serialize to dict (for Firestore)
+        3. Deserialize back to Job (reading from Firestore)
+        
+        THIS IS THE KEY TEST - it would catch the Dict[str, str] bug!
+        """
+        original_file_urls = {
+            "stems": {
+                "instrumental_clean": "gs://bucket/stems/clean.flac",
+                "vocals": "gs://bucket/stems/vocals.flac",
+            },
+            "lyrics": {
+                "corrections": "gs://bucket/lyrics/corrections.json",
+            }
+        }
+        
+        # Create job
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls=original_file_urls
+        )
+        
+        # Serialize to dict (simulates writing to Firestore)
+        job_dict = job.model_dump()
+        
+        # Convert to JSON and back (simulates Firestore storage)
+        json_str = json.dumps(job_dict, default=str)
+        restored_dict = json.loads(json_str)
+        
+        # Deserialize back to Job (simulates reading from Firestore)
+        restored_job = Job(**restored_dict)
+        
+        # Verify nested structure survived
+        assert restored_job.file_urls["stems"]["instrumental_clean"] == "gs://bucket/stems/clean.flac"
+        assert restored_job.file_urls["stems"]["vocals"] == "gs://bucket/stems/vocals.flac"
+        assert restored_job.file_urls["lyrics"]["corrections"] == "gs://bucket/lyrics/corrections.json"
+
+
+class TestStateDataNestedStructure:
+    """Test that state_data field correctly handles nested dictionaries."""
+    
+    def test_state_data_with_instrumental_options(self):
+        """Test state_data with instrumental options structure."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            state_data={
+                "instrumental_options": {
+                    "clean": "gs://bucket/jobs/test123/stems/instrumental_clean.flac",
+                    "with_backing": "gs://bucket/jobs/test123/stems/instrumental_with_backing.flac",
+                },
+                "audio_complete": True,
+                "lyrics_complete": True,
+            }
+        )
+        
+        assert job.state_data["instrumental_options"]["clean"].endswith("clean.flac")
+        assert job.state_data["audio_complete"] is True
+    
+    def test_state_data_with_lyrics_metadata(self):
+        """Test state_data with lyrics metadata structure."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.LYRICS_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            state_data={
+                "lyrics_metadata": {
+                    "line_count": 42,
+                    "has_corrections": True,
+                    "ready_for_review": True,
+                },
+                "corrected_lyrics": {
+                    "lines": [
+                        {"text": "Hello world", "start_time": 1.0, "end_time": 2.0}
+                    ],
+                    "metadata": {"song": "Test Song"}
+                }
+            }
+        )
+        
+        assert job.state_data["lyrics_metadata"]["line_count"] == 42
+        assert len(job.state_data["corrected_lyrics"]["lines"]) == 1
+    
+    def test_state_data_roundtrip_serialization(self):
+        """Test that state_data survives serialization/deserialization."""
+        original_state_data = {
+            "instrumental_selection": "clean",
+            "review_notes": "Looks good!",
+            "complex_nested": {
+                "level1": {
+                    "level2": {
+                        "value": 123
+                    }
+                }
+            }
+        }
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            state_data=original_state_data
+        )
+        
+        # Serialize and deserialize
+        job_dict = job.model_dump()
+        json_str = json.dumps(job_dict, default=str)
+        restored_dict = json.loads(json_str)
+        restored_job = Job(**restored_dict)
+        
+        # Verify nested structure survived
+        assert restored_job.state_data["complex_nested"]["level1"]["level2"]["value"] == 123
+
+
+class TestWorkerIdsNestedStructure:
+    """Test that worker_ids field correctly handles nested dictionaries."""
+    
+    def test_worker_ids_with_all_workers(self):
+        """Test worker_ids with all worker types."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.GENERATING_VIDEO,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            worker_ids={
+                "audio_worker": "cloud-run-request-12345",
+                "lyrics_worker": "cloud-run-request-67890",
+                "screens_worker": "cloud-run-request-11111",
+                "video_worker": "cloud-run-request-22222",
+            }
+        )
+        
+        assert job.worker_ids["audio_worker"] == "cloud-run-request-12345"
+        assert len(job.worker_ids) == 4
+
+
+class TestJobModelIntegration:
+    """
+    Integration tests that simulate real Firestore interactions.
+    
+    These tests verify that the Job model works correctly when used
+    the same way as our actual services.
+    """
+    
+    def test_simulate_job_manager_update_file_url(self):
+        """
+        Simulate what JobManager.update_file_url does.
+        
+        This is the pattern that caused the bug - updating nested file_urls.
+        """
+        # Start with a fresh job
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls={}
+        )
+        
+        # Simulate update_file_url('test123', 'stems', 'instrumental_clean', 'gs://...')
+        # This creates nested structure: {"stems": {"instrumental_clean": "gs://..."}}
+        if "stems" not in job.file_urls:
+            job.file_urls["stems"] = {}
+        job.file_urls["stems"]["instrumental_clean"] = "gs://bucket/stems/clean.flac"
+        
+        # Simulate Firestore roundtrip
+        job_dict = job.model_dump()
+        restored_job = Job(**job_dict)
+        
+        # This is what was failing with Dict[str, str]!
+        assert restored_job.file_urls["stems"]["instrumental_clean"] == "gs://bucket/stems/clean.flac"
+    
+    def test_simulate_audio_worker_completion(self):
+        """Simulate the data structure created when audio worker completes."""
+        # This is the actual structure created by audio_worker.py
+        file_urls = {
+            "stems": {
+                "instrumental_clean": "gs://bucket/jobs/abc123/stems/instrumental_clean.flac",
+                "vocals_clean": "gs://bucket/jobs/abc123/stems/vocals_clean.flac",
+                "lead_vocals": "gs://bucket/jobs/abc123/stems/lead_vocals.flac",
+                "backing_vocals": "gs://bucket/jobs/abc123/stems/backing_vocals.flac",
+                "instrumental_with_backing": "gs://bucket/jobs/abc123/stems/instrumental_with_backing.flac",
+            }
+        }
+        
+        state_data = {
+            "instrumental_options": {
+                "clean": "jobs/abc123/stems/instrumental_clean.flac",
+                "with_backing": "jobs/abc123/stems/instrumental_with_backing.flac",
+            }
+        }
+        
+        job = Job(
+            job_id="abc123",
+            status=JobStatus.AUDIO_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="ABBA",
+            title="Waterloo",
+            file_urls=file_urls,
+            state_data=state_data
+        )
+        
+        # Roundtrip
+        restored_job = Job(**job.model_dump())
+        
+        assert len(restored_job.file_urls["stems"]) == 5
+        assert "instrumental_options" in restored_job.state_data
+    
+    def test_simulate_lyrics_worker_completion(self):
+        """Simulate the data structure created when lyrics worker completes."""
+        file_urls = {
+            "lyrics": {
+                "corrections": "gs://bucket/jobs/abc123/lyrics/corrections.json",
+                "lrc": "gs://bucket/jobs/abc123/lyrics/karaoke.lrc",
+                "uncorrected": "gs://bucket/jobs/abc123/lyrics/uncorrected.txt",
+            }
+        }
+        
+        state_data = {
+            "lyrics_metadata": {
+                "line_count": 50,
+                "has_corrections": True,
+                "ready_for_review": True,
+            }
+        }
+        
+        job = Job(
+            job_id="abc123",
+            status=JobStatus.LYRICS_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            file_urls=file_urls,
+            state_data=state_data
+        )
+        
+        # Roundtrip
+        restored_job = Job(**job.model_dump())
+        
+        assert restored_job.file_urls["lyrics"]["corrections"].endswith("corrections.json")
+        assert restored_job.state_data["lyrics_metadata"]["line_count"] == 50
 
 
 if __name__ == "__main__":
