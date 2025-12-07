@@ -184,7 +184,7 @@ jobs:
             --region us-central1 \
             --allow-unauthenticated \
             --set-env-vars "GOOGLE_CLOUD_PROJECT=nomadkaraoke" \
-            --set-env-vars "GCS_BUCKET_NAME=nomadkaraoke-uploads" \
+            --set-env-vars "GCS_BUCKET_NAME=karaoke-gen-storage-nomadkaraoke" \
             --set-env-vars "FIRESTORE_COLLECTION=jobs" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "ADMIN_TOKENS=${{ secrets.ADMIN_TOKENS }}" \
