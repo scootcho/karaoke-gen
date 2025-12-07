@@ -117,7 +117,7 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         # Update job status: Starting transcription
         job_manager.transition_to_state(
             job_id=job_id,
-            new_status=JobStatus.TRANSCRIBING_LYRICS,
+            new_status=JobStatus.TRANSCRIBING,
             progress=10,
             message="Starting lyrics transcription via AudioShake"
         )

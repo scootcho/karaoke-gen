@@ -362,8 +362,19 @@ async def upload_separation_results(
     
     # Upload other stems (Stage 1, htdemucs 6-stem)
     if separation_result.get("other_stems"):
-        for stem_name, stem_path in separation_result["other_stems"].items():
-            if stem_path and os.path.exists(stem_path):
+        for stem_name, stem_value in separation_result["other_stems"].items():
+            # Handle both string paths and nested dicts
+            if isinstance(stem_value, str):
+                stem_path = stem_value
+            elif isinstance(stem_value, dict):
+                # Some models return nested dicts like {"path": "/path/to/file"}
+                stem_path = stem_value.get("path") or stem_value.get("file")
+                logger.debug(f"Job {job_id}: other_stems[{stem_name}] is dict: {stem_value}")
+            else:
+                logger.warning(f"Job {job_id}: Unexpected type for other_stems[{stem_name}]: {type(stem_value)}")
+                continue
+            
+            if stem_path and isinstance(stem_path, str) and os.path.exists(stem_path):
                 gcs_path = f"jobs/{job_id}/stems/{stem_name.lower()}.flac"
                 url = storage.upload_file(stem_path, gcs_path)
                 job_manager.update_file_url(job_id, 'stems', stem_name.lower(), url)
