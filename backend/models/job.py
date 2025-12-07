@@ -181,7 +181,7 @@ class Job(BaseModel):
     timeline: List[TimelineEvent] = Field(default_factory=list)
     
     # File URLs (GCS storage)
-    file_urls: Dict[str, str] = Field(default_factory=dict)
+    file_urls: Dict[str, Any] = Field(default_factory=dict)
     """
     File storage URLs. Structure:
     {
