@@ -27,6 +27,69 @@ from karaoke_gen.audio_processor import AudioProcessor
 logger = logging.getLogger(__name__)
 
 
+async def download_from_url(url: str, temp_dir: str, artist: str, title: str) -> Optional[str]:
+    """
+    Download audio from a URL (YouTube, etc.) using yt-dlp.
+    
+    Args:
+        url: URL to download from
+        temp_dir: Temporary directory to save to
+        artist: Artist name for filename
+        title: Song title for filename
+        
+    Returns:
+        Path to downloaded audio file, or None if failed
+    """
+    try:
+        import yt_dlp
+        
+        # Create output filename
+        safe_artist = "".join(c for c in artist if c.isalnum() or c in " -_").strip()
+        safe_title = "".join(c for c in title if c.isalnum() or c in " -_").strip()
+        output_template = os.path.join(temp_dir, f"{safe_artist} - {safe_title}.%(ext)s")
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_template,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'flac',
+                'preferredquality': '0',  # Best quality
+            }],
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        logger.info(f"Downloading from URL: {url}")
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            
+            # The output file will have .flac extension after postprocessing
+            expected_output = os.path.join(temp_dir, f"{safe_artist} - {safe_title}.flac")
+            
+            if os.path.exists(expected_output):
+                logger.info(f"Downloaded audio to: {expected_output}")
+                return expected_output
+            
+            # Check for any audio file in temp_dir
+            for f in os.listdir(temp_dir):
+                if f.endswith(('.flac', '.wav', '.mp3', '.m4a', '.opus', '.webm')):
+                    full_path = os.path.join(temp_dir, f)
+                    logger.info(f"Found downloaded audio: {full_path}")
+                    return full_path
+            
+            logger.error(f"No audio file found after download")
+            return None
+            
+    except ImportError:
+        logger.error("yt-dlp not installed. Cannot download from URL.")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to download from URL {url}: {e}", exc_info=True)
+        return None
+
+
 def create_audio_processor(temp_dir: str) -> AudioProcessor:
     """
     Create an AudioProcessor instance configured for remote API processing.
@@ -216,10 +279,24 @@ async def download_audio(
         
         # Case 3: Fresh URL that needs downloading
         if job.url:
-            # TODO: Implement YouTube/URL download using yt-dlp
-            # For now, this should be handled by a separate download worker
-            logger.error(f"Job {job_id}: URL download not yet implemented")
-            return None
+            logger.info(f"Job {job_id}: Downloading from URL: {job.url}")
+            local_path = await download_from_url(job.url, temp_dir, job.artist, job.title)
+            
+            if local_path and os.path.exists(local_path):
+                # Upload to GCS and update job
+                gcs_path = f"jobs/{job_id}/input/{os.path.basename(local_path)}"
+                url = storage.upload_file(local_path, gcs_path)
+                
+                # Update job with GCS path for lyrics worker
+                job_manager = JobManager()
+                job_manager.firestore.update_job(job_id, {'input_media_gcs_path': gcs_path})
+                job_manager.update_file_url(job_id, 'input', 'audio', url)
+                
+                logger.info(f"Job {job_id}: Downloaded and uploaded audio to GCS: {gcs_path}")
+                return local_path
+            else:
+                logger.error(f"Job {job_id}: Failed to download from URL: {job.url}")
+                return None
         
         logger.error(f"Job {job_id}: No input source found (no GCS path, file_urls, or URL)")
         return None

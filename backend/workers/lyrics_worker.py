@@ -109,8 +109,8 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         if not os.environ.get("AUDIOSHAKE_API_TOKEN"):
             logger.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
         
-        # Download audio file from GCS
-        audio_path = await download_audio(job_id, temp_dir, storage, job)
+        # Download audio file from GCS (waits for audio worker if URL job)
+        audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager)
         if not audio_path:
             raise Exception("Failed to download audio file")
         
@@ -181,29 +181,71 @@ async def download_audio(
     job_id: str,
     temp_dir: str,
     storage: StorageService,
-    job
+    job,
+    job_manager: JobManager,
+    max_wait_seconds: int = 300
 ) -> Optional[str]:
     """
     Download audio file from GCS to local temp directory.
     
+    For URL jobs, the audio worker downloads from YouTube first and uploads to GCS.
+    We wait for the input_media_gcs_path to be set by the audio worker.
+    
+    Args:
+        job_id: Job ID
+        temp_dir: Temporary directory for download
+        storage: StorageService instance
+        job: Job object
+        job_manager: JobManager instance
+        max_wait_seconds: Maximum time to wait for audio worker to download
+    
     Returns:
         Path to downloaded audio file, or None if failed
     """
+    import time
+    
     try:
-        # Download uploaded file from GCS using input_media_gcs_path
-        if not job.input_media_gcs_path:
-            logger.error(f"Job {job_id}: No input_media_gcs_path found")
+        # If input_media_gcs_path is already set, download directly
+        if job.input_media_gcs_path:
+            local_path = os.path.join(temp_dir, job.filename or "input.flac")
+            storage.download_file(job.input_media_gcs_path, local_path)
+            logger.info(f"Job {job_id}: Downloaded audio from {job.input_media_gcs_path} to {local_path}")
+            return local_path
+        
+        # For URL jobs, wait for audio worker to download and upload to GCS
+        if job.url:
+            logger.info(f"Job {job_id}: Waiting for audio worker to download from URL...")
+            
+            start_time = time.time()
+            poll_interval = 5  # seconds
+            
+            while time.time() - start_time < max_wait_seconds:
+                # Refresh job from Firestore
+                updated_job = job_manager.get_job(job_id)
+                
+                if updated_job and updated_job.input_media_gcs_path:
+                    # Audio worker has uploaded the file
+                    local_path = os.path.join(temp_dir, "input.flac")
+                    storage.download_file(updated_job.input_media_gcs_path, local_path)
+                    logger.info(f"Job {job_id}: Downloaded audio from {updated_job.input_media_gcs_path}")
+                    return local_path
+                
+                # Check if audio worker failed
+                if updated_job and updated_job.status == JobStatus.FAILED:
+                    logger.error(f"Job {job_id}: Audio worker failed, cannot proceed with lyrics")
+                    return None
+                
+                # Wait before next poll
+                time.sleep(poll_interval)
+            
+            logger.error(f"Job {job_id}: Timed out waiting for audio download (waited {max_wait_seconds}s)")
             return None
         
-        # Download from GCS
-        local_path = os.path.join(temp_dir, job.filename or "input.flac")
-        storage.download_file(job.input_media_gcs_path, local_path)
-        
-        logger.info(f"Job {job_id}: Downloaded audio from {job.input_media_gcs_path} to {local_path}")
-        return local_path
+        logger.error(f"Job {job_id}: No input_media_gcs_path found and no URL")
+        return None
         
     except Exception as e:
-        logger.error(f"Job {job_id}: Failed to download audio: {e}")
+        logger.error(f"Job {job_id}: Failed to download audio: {e}", exc_info=True)
         return None
 
 
