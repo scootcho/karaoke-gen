@@ -29,7 +29,12 @@ logger = logging.getLogger(__name__)
 
 async def download_from_url(url: str, temp_dir: str, artist: str, title: str) -> Optional[str]:
     """
-    Download audio from a URL (YouTube, etc.) using yt-dlp.
+    Download audio from a URL (YouTube, etc.) using karaoke_gen.FileHandler.
+    
+    Uses the battle-tested FileHandler from karaoke_gen which includes:
+    - Anti-detection options (user agent, headers, delays)
+    - Cookie support for authenticated downloads
+    - Retry logic
     
     Args:
         url: URL to download from
@@ -41,49 +46,59 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
         Path to downloaded audio file, or None if failed
     """
     try:
-        import yt_dlp
+        from karaoke_gen.file_handler import FileHandler
+        from karaoke_gen.utils import sanitize_filename
         
-        # Create output filename
-        safe_artist = "".join(c for c in artist if c.isalnum() or c in " -_").strip()
-        safe_title = "".join(c for c in title if c.isalnum() or c in " -_").strip()
-        output_template = os.path.join(temp_dir, f"{safe_artist} - {safe_title}.%(ext)s")
+        # Create FileHandler instance
+        file_handler = FileHandler(
+            logger=logger,
+            ffmpeg_base_command="ffmpeg -hide_banner -loglevel error -nostats -y",
+            create_track_subfolders=False,
+            dry_run=False
+        )
         
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': output_template,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'flac',
-                'preferredquality': '0',  # Best quality
-            }],
-            'quiet': True,
-            'no_warnings': True,
-        }
+        # Create output filename (without extension)
+        safe_artist = sanitize_filename(artist) if artist else "Unknown"
+        safe_title = sanitize_filename(title) if title else "Unknown"
+        output_filename_no_extension = os.path.join(temp_dir, f"{safe_artist} - {safe_title}")
         
+        # Get YouTube cookies from environment variable if available
+        # This helps bypass "Sign in to confirm you're not a bot" errors
+        cookies_str = os.environ.get("YOUTUBE_COOKIES")
+        if cookies_str:
+            logger.info("Using YouTube cookies for download authentication")
+        else:
+            logger.info("No YOUTUBE_COOKIES env var set - attempting download without cookies")
+        
+        # Download using FileHandler (includes anti-detection features)
         logger.info(f"Downloading from URL: {url}")
+        downloaded_file = file_handler.download_video(
+            url=url,
+            output_filename_no_extension=output_filename_no_extension,
+            cookies_str=cookies_str
+        )
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        if downloaded_file and os.path.exists(downloaded_file):
+            logger.info(f"Downloaded video: {downloaded_file}")
             
-            # The output file will have .flac extension after postprocessing
-            expected_output = os.path.join(temp_dir, f"{safe_artist} - {safe_title}.flac")
+            # Convert to WAV for processing
+            wav_file = file_handler.convert_to_wav(
+                input_filename=downloaded_file,
+                output_filename_no_extension=output_filename_no_extension
+            )
             
-            if os.path.exists(expected_output):
-                logger.info(f"Downloaded audio to: {expected_output}")
-                return expected_output
-            
-            # Check for any audio file in temp_dir
-            for f in os.listdir(temp_dir):
-                if f.endswith(('.flac', '.wav', '.mp3', '.m4a', '.opus', '.webm')):
-                    full_path = os.path.join(temp_dir, f)
-                    logger.info(f"Found downloaded audio: {full_path}")
-                    return full_path
-            
-            logger.error(f"No audio file found after download")
+            if wav_file and os.path.exists(wav_file):
+                logger.info(f"Converted to WAV: {wav_file}")
+                return wav_file
+            else:
+                logger.error("WAV conversion failed")
+                return None
+        else:
+            logger.error("Download failed - no file returned")
             return None
             
-    except ImportError:
-        logger.error("yt-dlp not installed. Cannot download from URL.")
+    except ImportError as e:
+        logger.error(f"Import error: {e}. Check karaoke_gen installation.")
         return None
     except Exception as e:
         logger.error(f"Failed to download from URL {url}: {e}", exc_info=True)
