@@ -45,10 +45,16 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+      - '--memory'
+      - '4Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '900'
       - '--set-env-vars'
       - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run'
-      - '--update-env-vars'
-      - 'AUDIOSHAKE_API_TOKEN=${_AUDIOSHAKE_API_TOKEN},GENIUS_API_TOKEN=${_GENIUS_API_TOKEN},RAPIDAPI_KEY=${_RAPIDAPI_KEY},SPOTIFY_COOKIE_SP_DC=${_SPOTIFY_COOKIE}'
+      - '--set-secrets'
+      - 'AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest'
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'

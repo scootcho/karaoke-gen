@@ -165,10 +165,10 @@ jobs:
       
       - name: Build and push Docker images
         run: |
-          # Build backend image
+          # Build backend image (context must be repo root for pyproject.toml and karaoke_gen/)
           docker build -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest \
             -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:${{ github.sha }} \
-            -f backend/Dockerfile backend/
+            -f backend/Dockerfile .
           
           # Push both tags
           docker push us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest
