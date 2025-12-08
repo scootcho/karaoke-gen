@@ -34,6 +34,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
+from backend.workers.style_helper import load_style_config, StyleConfig
 
 # Import from karaoke_gen package
 from karaoke_gen.video_generator import VideoGenerator
@@ -83,25 +84,34 @@ async def generate_screens(job_id: str) -> bool:
             message="Generating title and end screens"
         )
         
+        # Load style configuration (downloads assets from GCS if available)
+        style_config = await load_style_config(job, storage, temp_dir)
+        if style_config.has_custom_styles():
+            logger.info(f"Job {job_id}: Using custom style configuration")
+        else:
+            logger.info(f"Job {job_id}: Using default style configuration")
+        
         # Initialize video generator
         video_generator = _create_video_generator(temp_dir)
         
-        # Generate title screen
+        # Generate title screen with style config
         title_screen_path = await _generate_title_screen(
             job_id=job_id,
             job=job,
             video_generator=video_generator,
+            style_config=style_config,
             temp_dir=temp_dir
         )
         
         if not title_screen_path:
             raise Exception("Title screen generation failed")
         
-        # Generate end screen
+        # Generate end screen with style config
         end_screen_path = await _generate_end_screen(
             job_id=job_id,
             job=job,
             video_generator=video_generator,
+            style_config=style_config,
             temp_dir=temp_dir
         )
         
@@ -206,72 +216,15 @@ def _create_video_generator(temp_dir: str) -> VideoGenerator:
     )
 
 
-def _get_title_format() -> Dict[str, Any]:
-    """
-    Get title screen format parameters.
-    
-    Single Responsibility: Style configuration separated.
-    Uses the same defaults as karaoke_gen.config.setup_title_format().
-    
-    Returns:
-        Title format dict
-    """
-    return {
-        "background_color": "#000000",
-        "background_image": None,
-        "font": None,  # Will use default font
-        "title_region": "200,700,3440,400",  # x,y,width,height
-        "title_color": "#FFFFFF",
-        "title_gradient": None,
-        "title_text_transform": "none",
-        "artist_region": "200,1100,3440,300",
-        "artist_color": "#CCCCCC",
-        "artist_gradient": None,
-        "artist_text_transform": "none",
-        "extra_text": None,
-        "extra_text_region": None,
-        "extra_text_color": "#FFFFFF",
-        "extra_text_gradient": None,
-    }
-
-
-def _get_end_format() -> Dict[str, Any]:
-    """
-    Get end screen format parameters.
-    
-    Single Responsibility: Style configuration separated.
-    Uses the same defaults as karaoke_gen.config.setup_end_format().
-    
-    Returns:
-        End format dict
-    """
-    return {
-        "background_color": "#000000",
-        "background_image": None,
-        "font": None,  # Will use default font
-        "title_region": "200,900,3440,400",  # Centered on screen
-        "title_color": "#FFFFFF",
-        "title_gradient": None,
-        "title_text_transform": "none",
-        "artist_region": None,  # No artist on end screen by default
-        "artist_color": "#CCCCCC",
-        "artist_gradient": None,
-        "artist_text_transform": "none",
-        "extra_text": "Thank you for singing!",
-        "extra_text_region": "200,1300,3440,200",
-        "extra_text_color": "#AAAAAA",
-        "extra_text_gradient": None,
-    }
-
-
 async def _generate_title_screen(
     job_id: str,
     job,
     video_generator: VideoGenerator,
+    style_config: StyleConfig,
     temp_dir: str
 ) -> Optional[str]:
     """
-    Generate title screen video.
+    Generate title screen video with custom style configuration.
     
     Single Responsibility: Only handles title screen generation.
     
@@ -279,6 +232,7 @@ async def _generate_title_screen(
         job_id: Job ID
         job: Job object with artist/title
         video_generator: Video generator instance
+        style_config: Style configuration with formats and assets
         temp_dir: Temporary directory
         
     Returns:
@@ -292,8 +246,11 @@ async def _generate_title_screen(
         output_image_filepath_noext = os.path.join(temp_dir, f"{artist_title} (Title)")
         output_video_filepath = os.path.join(temp_dir, f"{artist_title} (Title).mov")
         
-        # Get title format settings
-        title_format = _get_title_format()
+        # Get title format settings from style config
+        title_format = style_config.get_intro_format()
+        intro_duration = style_config.intro_video_duration
+        
+        logger.info(f"Job {job_id}: Title format - bg_image: {title_format.get('background_image')}, font: {title_format.get('font')}")
         
         # Generate title screen (synchronous method)
         video_generator.create_title_video(
@@ -302,8 +259,8 @@ async def _generate_title_screen(
             format=title_format,
             output_image_filepath_noext=output_image_filepath_noext,
             output_video_filepath=output_video_filepath,
-            existing_title_image=None,
-            intro_video_duration=5  # 5 second intro
+            existing_title_image=title_format.get('existing_image'),
+            intro_video_duration=intro_duration
         )
         
         if os.path.exists(output_video_filepath):
@@ -322,10 +279,11 @@ async def _generate_end_screen(
     job_id: str,
     job,
     video_generator: VideoGenerator,
+    style_config: StyleConfig,
     temp_dir: str
 ) -> Optional[str]:
     """
-    Generate end screen video.
+    Generate end screen video with custom style configuration.
     
     Single Responsibility: Only handles end screen generation.
     
@@ -333,6 +291,7 @@ async def _generate_end_screen(
         job_id: Job ID
         job: Job object with artist/title
         video_generator: Video generator instance
+        style_config: Style configuration with formats and assets
         temp_dir: Temporary directory
         
     Returns:
@@ -346,8 +305,11 @@ async def _generate_end_screen(
         output_image_filepath_noext = os.path.join(temp_dir, f"{artist_title} (End)")
         output_video_filepath = os.path.join(temp_dir, f"{artist_title} (End).mov")
         
-        # Get end format settings
-        end_format = _get_end_format()
+        # Get end format settings from style config
+        end_format = style_config.get_end_format()
+        end_duration = style_config.end_video_duration
+        
+        logger.info(f"Job {job_id}: End format - bg_image: {end_format.get('background_image')}, font: {end_format.get('font')}")
         
         # Generate end screen (synchronous method)
         video_generator.create_end_video(
@@ -356,8 +318,8 @@ async def _generate_end_screen(
             format=end_format,
             output_image_filepath_noext=output_image_filepath_noext,
             output_video_filepath=output_video_filepath,
-            existing_end_image=None,
-            end_video_duration=5  # 5 second outro
+            existing_end_image=end_format.get('existing_image'),
+            end_video_duration=end_duration
         )
         
         if os.path.exists(output_video_filepath):

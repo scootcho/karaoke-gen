@@ -2,14 +2,13 @@
 """
 Remote CLI for karaoke-gen - Submit jobs to a cloud-hosted backend.
 
-This CLI allows users to use karaoke-gen with cloud processing instead of local.
+This CLI provides the same interface as karaoke-gen but processes jobs on a cloud backend.
 Set KARAOKE_GEN_URL environment variable to your cloud backend URL.
 
 Usage:
     karaoke-gen-remote <filepath> <artist> <title>
     karaoke-gen-remote --resume <job_id>
 """
-import argparse
 import json
 import logging
 import os
@@ -21,22 +20,12 @@ import urllib.parse
 import webbrowser
 from dataclasses import dataclass
 from enum import Enum
-from importlib import metadata
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
 
-
-# ANSI color codes for terminal output
-class Colors:
-    RED = '\033[0;31m'
-    GREEN = '\033[0;32m'
-    YELLOW = '\033[1;33m'
-    BLUE = '\033[0;34m'
-    CYAN = '\033[0;36m'
-    BOLD = '\033[1m'
-    NC = '\033[0m'  # No Color
+from .cli_args import create_parser, process_style_overrides, is_url, is_file
 
 
 class JobStatus(str, Enum):
@@ -78,86 +67,16 @@ class Config:
     auth_token: Optional[str] = None
 
 
-def get_color_for_status(status: str) -> str:
-    """Get color code for a job status."""
-    status_colors = {
-        # Yellow for pending/initial states
-        "pending": Colors.YELLOW,
-        "downloading": Colors.YELLOW,
-        # Blue for processing states
-        "separating_stage1": Colors.BLUE,
-        "separating_stage2": Colors.BLUE,
-        "transcribing": Colors.BLUE,
-        "correcting": Colors.BLUE,
-        "generating_screens": Colors.BLUE,
-        "applying_padding": Colors.BLUE,
-        "rendering_video": Colors.BLUE,
-        "encoding": Colors.BLUE,
-        "packaging": Colors.BLUE,
-        "generating_video": Colors.BLUE,
-        # Cyan for waiting states
-        "awaiting_review": Colors.CYAN,
-        "in_review": Colors.CYAN,
-        "awaiting_instrumental_selection": Colors.CYAN,
-        # Green for completion
-        "complete": Colors.GREEN,
-        "audio_complete": Colors.GREEN,
-        "lyrics_complete": Colors.GREEN,
-        "review_complete": Colors.GREEN,
-        "instrumental_selected": Colors.GREEN,
-        # Red for errors
-        "failed": Colors.RED,
-        "error": Colors.RED,
-        "cancelled": Colors.RED,
-    }
-    return status_colors.get(status, Colors.NC)
-
-
-def print_status(status: str) -> str:
-    """Format status with color."""
-    color = get_color_for_status(status)
-    return f"{color}{status}{Colors.NC}"
-
-
-def print_progress_bar(progress: int, width: int = 40) -> str:
-    """Create a progress bar string."""
-    filled = int(progress * width / 100)
-    empty = width - filled
-    bar = '█' * filled + '░' * empty
-    return f"[{bar}] {progress:3d}%"
-
-
-def print_header(title: str, char: str = "═") -> None:
-    """Print a styled header."""
-    line = char * 63
-    print(f"{Colors.YELLOW}{line}{Colors.NC}")
-    print(f"{Colors.BOLD}{Colors.CYAN}  {title}{Colors.NC}")
-    print(f"{Colors.YELLOW}{line}{Colors.NC}")
-    print()
-
-
-def print_error(message: str) -> None:
-    """Print an error message."""
-    print(f"{Colors.RED}Error: {message}{Colors.NC}", file=sys.stderr)
-
-
-def print_success(message: str) -> None:
-    """Print a success message."""
-    print(f"{Colors.GREEN}✓ {message}{Colors.NC}")
-
-
-def print_info(message: str) -> None:
-    """Print an info message."""
-    print(f"{Colors.CYAN}{message}{Colors.NC}")
-
-
 class RemoteKaraokeClient:
     """Client for interacting with the karaoke-gen cloud backend."""
     
-    ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'}
+    ALLOWED_AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'}
+    ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+    ALLOWED_FONT_EXTENSIONS = {'.ttf', '.otf', '.woff', '.woff2'}
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, logger: logging.Logger):
         self.config = config
+        self.logger = logger
         self.session = requests.Session()
         self._setup_auth()
     
@@ -196,26 +115,150 @@ class RemoteKaraokeClient:
         response = self.session.request(method, url, **kwargs)
         return response
     
-    def submit_job(self, filepath: str, artist: str, title: str) -> Dict[str, Any]:
-        """Submit a new karaoke generation job."""
+    def _parse_style_params(self, style_params_path: str) -> Dict[str, str]:
+        """
+        Parse style_params.json and extract file paths that need to be uploaded.
+        
+        Returns a dict mapping asset_key -> local_file_path for files that exist.
+        """
+        asset_files = {}
+        
+        try:
+            with open(style_params_path, 'r') as f:
+                style_params = json.load(f)
+        except Exception as e:
+            self.logger.warning(f"Failed to parse style_params.json: {e}")
+            return asset_files
+        
+        # Map of style param paths to asset keys
+        file_mappings = [
+            ('intro', 'background_image', 'style_intro_background'),
+            ('intro', 'font', 'style_font'),
+            ('karaoke', 'background_image', 'style_karaoke_background'),
+            ('karaoke', 'font_path', 'style_font'),
+            ('end', 'background_image', 'style_end_background'),
+            ('end', 'font', 'style_font'),
+            ('cdg', 'font_path', 'style_font'),
+            ('cdg', 'instrumental_background', 'style_cdg_instrumental_background'),
+            ('cdg', 'title_screen_background', 'style_cdg_title_background'),
+            ('cdg', 'outro_background', 'style_cdg_outro_background'),
+        ]
+        
+        for section, key, asset_key in file_mappings:
+            if section in style_params and key in style_params[section]:
+                file_path = style_params[section][key]
+                if file_path and os.path.isfile(file_path):
+                    # Don't duplicate font uploads
+                    if asset_key not in asset_files:
+                        asset_files[asset_key] = file_path
+                        self.logger.info(f"  Found style asset: {asset_key} -> {file_path}")
+        
+        return asset_files
+    
+    def submit_job(
+        self, 
+        filepath: str, 
+        artist: str, 
+        title: str,
+        style_params_path: Optional[str] = None,
+        enable_cdg: bool = True,
+        enable_txt: bool = True,
+        brand_prefix: Optional[str] = None,
+        discord_webhook_url: Optional[str] = None,
+        youtube_description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit a new karaoke generation job with optional style configuration.
+        
+        Args:
+            filepath: Path to audio file
+            artist: Artist name
+            title: Song title
+            style_params_path: Path to style_params.json (optional)
+            enable_cdg: Generate CDG+MP3 package
+            enable_txt: Generate TXT+MP3 package
+            brand_prefix: Brand code prefix (e.g., "NOMAD")
+            discord_webhook_url: Discord webhook for notifications
+            youtube_description: YouTube video description
+        """
         file_path = Path(filepath)
         
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {filepath}")
         
         ext = file_path.suffix.lower()
-        if ext not in self.ALLOWED_EXTENSIONS:
+        if ext not in self.ALLOWED_AUDIO_EXTENSIONS:
             raise ValueError(
                 f"Unsupported file type: {ext}. "
-                f"Allowed: {', '.join(self.ALLOWED_EXTENSIONS)}"
+                f"Allowed: {', '.join(self.ALLOWED_AUDIO_EXTENSIONS)}"
             )
         
-        print(f"{Colors.BOLD}Uploading file...{Colors.NC}")
+        self.logger.info(f"Uploading audio file: {filepath}")
         
-        with open(filepath, 'rb') as f:
-            files = {'file': (file_path.name, f)}
-            data = {'artist': artist, 'title': title}
-            response = self._request('POST', '/api/jobs/upload', files=files, data=data)
+        # Prepare files dict for multipart upload
+        files_to_upload = {}
+        files_to_close = []
+        
+        try:
+            # Main audio file
+            audio_file = open(filepath, 'rb')
+            files_to_close.append(audio_file)
+            files_to_upload['file'] = (file_path.name, audio_file)
+            
+            # Parse style params and find referenced files
+            style_assets = {}
+            if style_params_path and os.path.isfile(style_params_path):
+                self.logger.info(f"Parsing style configuration: {style_params_path}")
+                style_assets = self._parse_style_params(style_params_path)
+                
+                # Upload style_params.json
+                style_file = open(style_params_path, 'rb')
+                files_to_close.append(style_file)
+                files_to_upload['style_params'] = (Path(style_params_path).name, style_file, 'application/json')
+                self.logger.info(f"  Will upload style_params.json")
+            
+            # Upload each style asset file
+            for asset_key, asset_path in style_assets.items():
+                if os.path.isfile(asset_path):
+                    asset_file = open(asset_path, 'rb')
+                    files_to_close.append(asset_file)
+                    # Determine content type
+                    ext = Path(asset_path).suffix.lower()
+                    if ext in self.ALLOWED_IMAGE_EXTENSIONS:
+                        content_type = f'image/{ext[1:]}'
+                    elif ext in self.ALLOWED_FONT_EXTENSIONS:
+                        content_type = 'font/ttf'
+                    else:
+                        content_type = 'application/octet-stream'
+                    files_to_upload[asset_key] = (Path(asset_path).name, asset_file, content_type)
+                    self.logger.info(f"  Will upload {asset_key}: {asset_path}")
+            
+            # Prepare form data
+            data = {
+                'artist': artist,
+                'title': title,
+                'enable_cdg': str(enable_cdg).lower(),
+                'enable_txt': str(enable_txt).lower(),
+            }
+            
+            if brand_prefix:
+                data['brand_prefix'] = brand_prefix
+            if discord_webhook_url:
+                data['discord_webhook_url'] = discord_webhook_url
+            if youtube_description:
+                data['youtube_description'] = youtube_description
+            
+            self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
+            
+            response = self._request('POST', '/api/jobs/upload', files=files_to_upload, data=data)
+            
+        finally:
+            # Close all opened files
+            for f in files_to_close:
+                try:
+                    f.close()
+                except:
+                    pass
         
         if response.status_code != 200:
             try:
@@ -282,14 +325,15 @@ class RemoteKaraokeClient:
 
 
 class JobMonitor:
-    """Monitor job progress with interactive elements."""
+    """Monitor job progress with verbose logging."""
     
-    def __init__(self, client: RemoteKaraokeClient, config: Config):
+    def __init__(self, client: RemoteKaraokeClient, config: Config, logger: logging.Logger):
         self.client = client
         self.config = config
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
         self._review_opened = False
         self._instrumental_prompted = False
+        self._last_timeline_index = 0
     
     def open_browser(self, url: str) -> None:
         """Open URL in the default browser."""
@@ -302,7 +346,7 @@ class JobMonitor:
             else:
                 webbrowser.open(url)
         except Exception:
-            print(f"Please open: {url}")
+            self.logger.info(f"Please open in browser: {url}")
     
     def open_review_ui(self, job_id: str) -> None:
         """Open the lyrics review UI in browser."""
@@ -321,25 +365,20 @@ class JobMonitor:
         if audio_hash:
             url += f"&audioHash={audio_hash}"
         
-        print_info("Opening lyrics review UI in browser...")
-        print(f"URL: {Colors.BOLD}{url}{Colors.NC}")
-        print()
-        
+        self.logger.info(f"Opening lyrics review UI: {url}")
         self.open_browser(url)
     
     def handle_review(self, job_id: str) -> None:
         """Handle the lyrics review interaction."""
-        print_header("LYRICS REVIEW NEEDED")
-        
-        print("The transcription is ready for review.")
-        print("Please review and correct the lyrics in the browser.")
-        print()
+        self.logger.info("=" * 60)
+        self.logger.info("LYRICS REVIEW NEEDED")
+        self.logger.info("=" * 60)
+        self.logger.info("The transcription is ready for review.")
+        self.logger.info("Please review and correct the lyrics in the browser.")
         
         self.open_review_ui(job_id)
         
-        print(f"{Colors.YELLOW}Waiting for review to be completed in the browser...{Colors.NC}")
-        print(f"{Colors.CYAN}(Polling for status change every {self.config.poll_interval}s){Colors.NC}")
-        print()
+        self.logger.info(f"Waiting for review completion (polling every {self.config.poll_interval}s)...")
         
         # Poll until status changes from review states
         while True:
@@ -348,14 +387,9 @@ class JobMonitor:
                 current_status = job_data.get('status', 'unknown')
                 
                 if current_status in ['awaiting_review', 'in_review']:
-                    # Still in review, keep waiting
-                    print(f"\r\033[K  Status: {current_status} - still waiting for review completion...", end='', flush=True)
                     time.sleep(self.config.poll_interval)
                 else:
-                    # Status changed, review is complete
-                    print(f"\r\033[K")
-                    print_success(f"Review completed (status: {current_status})")
-                    print()
+                    self.logger.info(f"Review completed, status: {current_status}")
                     return
             except Exception as e:
                 self.logger.warning(f"Error checking review status: {e}")
@@ -363,30 +397,18 @@ class JobMonitor:
     
     def handle_instrumental_selection(self, job_id: str) -> None:
         """Handle instrumental selection interaction."""
-        print_header("INSTRUMENTAL SELECTION NEEDED")
-        
-        print("Choose which instrumental track to use for the final video:")
-        print()
-        print(f"  {Colors.BOLD}1){Colors.NC} Clean Instrumental (no backing vocals)")
-        print("     Best for songs where you want ONLY the lead vocal removed")
-        print()
-        print(f"  {Colors.BOLD}2){Colors.NC} Instrumental with Backing Vocals")
-        print("     Best for songs where backing vocals add to the karaoke experience")
-        print()
-        
-        # Try to get audio URLs for preview hint
-        try:
-            options = self.client.get_instrumental_options(job_id)
-            if options.get('options'):
-                print(f"{Colors.CYAN}Tip: You can preview the audio files:{Colors.NC}")
-                for opt in options['options']:
-                    label = opt.get('label', opt.get('id', ''))
-                    audio_url = opt.get('audio_url', '')
-                    if audio_url:
-                        print(f"  {label}: {audio_url}")
-                print()
-        except Exception:
-            pass
+        self.logger.info("=" * 60)
+        self.logger.info("INSTRUMENTAL SELECTION NEEDED")
+        self.logger.info("=" * 60)
+        self.logger.info("")
+        self.logger.info("Choose which instrumental track to use for the final video:")
+        self.logger.info("")
+        self.logger.info("  1) Clean Instrumental (no backing vocals)")
+        self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
+        self.logger.info("")
+        self.logger.info("  2) Instrumental with Backing Vocals")
+        self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
+        self.logger.info("")
         
         selection = ""
         while not selection:
@@ -397,24 +419,21 @@ class JobMonitor:
                 elif choice == '2':
                     selection = 'with_backing'
                 else:
-                    print_error("Invalid choice. Please enter 1 or 2.")
+                    self.logger.error("Invalid choice. Please enter 1 or 2.")
             except KeyboardInterrupt:
                 print()
                 raise
         
-        print()
-        print(f"Submitting selection: {Colors.BOLD}{selection}{Colors.NC}...")
+        self.logger.info(f"Submitting selection: {selection}")
         
         try:
             result = self.client.select_instrumental(job_id, selection)
             if result.get('status') == 'success':
-                print_success(f"Selection submitted: {selection}")
+                self.logger.info(f"Selection submitted successfully: {selection}")
             else:
-                print_error(f"Error submitting selection: {result}")
+                self.logger.error(f"Error submitting selection: {result}")
         except Exception as e:
-            print_error(f"Error submitting selection: {e}")
-        
-        print()
+            self.logger.error(f"Error submitting selection: {e}")
     
     def download_outputs(self, job_id: str, job_data: Dict[str, Any]) -> None:
         """Download all output files for a completed job."""
@@ -424,67 +443,63 @@ class JobMonitor:
         output_dir = Path(self.config.output_dir) / f"{artist}-{title}-{job_id}"
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        print(f"{Colors.BOLD}Downloading output files to: {Colors.CYAN}{output_dir}{Colors.NC}")
-        print()
+        self.logger.info(f"Downloading output files to: {output_dir}")
         
         file_urls = job_data.get('file_urls', {})
         
-        # Download final videos (most important)
+        # Download final videos
         finals = file_urls.get('finals', {})
         if finals:
-            print(f"  {Colors.BOLD}Final Videos:{Colors.NC}")
+            self.logger.info("Downloading final videos...")
             for key, blob_path in finals.items():
                 if blob_path:
                     filename = Path(blob_path).name
                     local_path = output_dir / filename
-                    print(f"    Downloading {filename}... ", end='', flush=True)
+                    self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
-                        print(f"{Colors.GREEN}✓{Colors.NC}")
+                        self.logger.info(f"    OK: {local_path}")
                     else:
-                        print(f"{Colors.RED}✗{Colors.NC}")
-            print()
+                        self.logger.warning(f"    FAILED: {filename}")
         
         # Download lyrics files
         lyrics = file_urls.get('lyrics', {})
         if lyrics:
             lyrics_dir = output_dir / 'lyrics'
             lyrics_dir.mkdir(exist_ok=True)
-            print(f"  {Colors.BOLD}Lyrics:{Colors.NC}")
+            self.logger.info("Downloading lyrics files...")
             for key in ['ass', 'lrc', 'corrected_txt']:
                 blob_path = lyrics.get(key)
                 if blob_path:
                     filename = Path(blob_path).name
                     local_path = lyrics_dir / filename
-                    print(f"    Downloading {filename}... ", end='', flush=True)
+                    self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
-                        print(f"{Colors.GREEN}✓{Colors.NC}")
+                        self.logger.info(f"    OK: {local_path}")
                     else:
-                        print(f"{Colors.RED}✗{Colors.NC}")
-            print()
+                        self.logger.warning(f"    FAILED: {filename}")
         
-        # Download stems (optional - can be large)
+        # Download stems
         stems = file_urls.get('stems', {})
         if stems:
             stems_dir = output_dir / 'stems'
             stems_dir.mkdir(exist_ok=True)
-            print(f"  {Colors.BOLD}Audio Stems:{Colors.NC}")
+            self.logger.info("Downloading audio stems...")
             for key, blob_path in stems.items():
                 if blob_path:
                     filename = Path(blob_path).name
                     local_path = stems_dir / filename
-                    print(f"    Downloading {filename}... ", end='', flush=True)
+                    self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
-                        print(f"{Colors.GREEN}✓{Colors.NC}")
+                        self.logger.info(f"    OK: {local_path}")
                     else:
-                        print(f"{Colors.RED}✗{Colors.NC}")
-            print()
+                        self.logger.warning(f"    FAILED: {filename}")
         
-        print_success(f"All files downloaded to: {Colors.BOLD}{output_dir}{Colors.NC}")
-        print()
+        self.logger.info(f"All files downloaded to: {output_dir}")
         
-        # List downloaded files
-        print(f"{Colors.BOLD}Downloaded files:{Colors.NC}")
-        for file_path in output_dir.rglob('*'):
+        # List downloaded files with sizes
+        self.logger.info("")
+        self.logger.info("Downloaded files:")
+        for file_path in sorted(output_dir.rglob('*')):
             if file_path.is_file():
                 size = file_path.stat().st_size
                 if size > 1024 * 1024:
@@ -493,126 +508,139 @@ class JobMonitor:
                     size_str = f"{size / 1024:.1f} KB"
                 else:
                     size_str = f"{size} B"
-                print(f"  {file_path} ({size_str})")
-        print()
+                rel_path = file_path.relative_to(output_dir)
+                self.logger.info(f"  {rel_path} ({size_str})")
     
-    def show_completion_info(self, job_id: str, job_data: Dict[str, Any]) -> None:
-        """Display job completion info and download files."""
-        print(f"{Colors.GREEN}{'═' * 63}{Colors.NC}")
-        print(f"{Colors.BOLD}{Colors.GREEN}  JOB COMPLETE!{Colors.NC}")
-        print(f"{Colors.GREEN}{'═' * 63}{Colors.NC}")
-        print()
+    def log_timeline_updates(self, job_data: Dict[str, Any]) -> None:
+        """Log any new timeline events."""
+        timeline = job_data.get('timeline', [])
         
-        self.download_outputs(job_id, job_data)
-    
-    def show_error_info(self, job_data: Dict[str, Any]) -> None:
-        """Display error info for failed jobs."""
-        print(f"{Colors.RED}{'═' * 63}{Colors.NC}")
-        print(f"{Colors.BOLD}{Colors.RED}  JOB FAILED{Colors.NC}")
-        print(f"{Colors.RED}{'═' * 63}{Colors.NC}")
-        print()
+        # Log any new events since last check
+        for i, event in enumerate(timeline):
+            if i >= self._last_timeline_index:
+                timestamp = event.get('timestamp', '')
+                status = event.get('status', '')
+                message = event.get('message', '')
+                progress = event.get('progress', '')
+                
+                # Format timestamp if present
+                if timestamp:
+                    # Truncate to just time portion if it's a full ISO timestamp
+                    if 'T' in timestamp:
+                        timestamp = timestamp.split('T')[1][:8]
+                
+                log_parts = []
+                if timestamp:
+                    log_parts.append(f"[{timestamp}]")
+                if status:
+                    log_parts.append(f"[{status}]")
+                if progress:
+                    log_parts.append(f"[{progress}%]")
+                if message:
+                    log_parts.append(message)
+                
+                if log_parts:
+                    self.logger.info(" ".join(log_parts))
         
-        error_message = job_data.get('error_message', 'Unknown error')
-        print(f"{Colors.RED}Error: {error_message}{Colors.NC}")
-        
-        error_details = job_data.get('error_details')
-        if error_details:
-            print()
-            print(f"{Colors.BOLD}Details:{Colors.NC}")
-            if isinstance(error_details, dict):
-                print(json.dumps(error_details, indent=2))
-            else:
-                print(error_details)
-        print()
+        self._last_timeline_index = len(timeline)
     
     def monitor(self, job_id: str) -> int:
         """Monitor job progress until completion."""
         last_status = ""
-        last_message = ""
         
-        print(f"{Colors.BOLD}Monitoring job: {job_id}{Colors.NC}")
-        print(f"Service: {self.config.service_url}")
-        print()
+        self.logger.info(f"Monitoring job: {job_id}")
+        self.logger.info(f"Service URL: {self.config.service_url}")
+        self.logger.info("")
         
         while True:
             try:
                 job_data = self.client.get_job(job_id)
                 
                 status = job_data.get('status', 'unknown')
-                progress = job_data.get('progress', 0)
-                timeline = job_data.get('timeline', [])
-                message = timeline[-1].get('message', '') if timeline else ''
                 artist = job_data.get('artist', '')
                 title = job_data.get('title', '')
                 
-                # Update display if something changed
-                if status != last_status or message != last_message:
-                    # Clear line and print status
-                    print(f"\r\033[K{print_status(status)} | {print_progress_bar(progress)} | {message}")
+                # Log timeline updates (shows worker progress)
+                self.log_timeline_updates(job_data)
+                
+                # Log status changes
+                if status != last_status:
+                    self.logger.info(f"Status changed: {last_status} -> {status}")
                     last_status = status
-                    last_message = message
                 
                 # Handle human interaction points
                 if status in ['awaiting_review', 'in_review']:
                     if not self._review_opened:
-                        print()
+                        self.logger.info("")
                         self.handle_review(job_id)
                         self._review_opened = True
+                        self._last_timeline_index = 0  # Reset to catch any events during review
                         # Refresh auth token after potentially long review
                         self.client.refresh_auth()
                 
                 elif status == 'awaiting_instrumental_selection':
                     if not self._instrumental_prompted:
-                        print()
+                        self.logger.info("")
                         self.handle_instrumental_selection(job_id)
                         self._instrumental_prompted = True
                 
                 elif status == 'complete':
-                    print()
-                    self.show_completion_info(job_id, job_data)
+                    self.logger.info("")
+                    self.logger.info("=" * 60)
+                    self.logger.info("JOB COMPLETE!")
+                    self.logger.info("=" * 60)
+                    self.logger.info(f"Track: {artist} - {title}")
+                    self.logger.info("")
+                    self.download_outputs(job_id, job_data)
                     return 0
                 
                 elif status in ['failed', 'error']:
-                    print()
-                    self.show_error_info(job_data)
+                    self.logger.info("")
+                    self.logger.error("=" * 60)
+                    self.logger.error("JOB FAILED")
+                    self.logger.error("=" * 60)
+                    error_message = job_data.get('error_message', 'Unknown error')
+                    self.logger.error(f"Error: {error_message}")
+                    error_details = job_data.get('error_details')
+                    if error_details:
+                        self.logger.error(f"Details: {json.dumps(error_details, indent=2)}")
                     return 1
                 
                 elif status == 'cancelled':
-                    print()
-                    print(f"{Colors.YELLOW}Job was cancelled{Colors.NC}")
+                    self.logger.info("")
+                    self.logger.warning("Job was cancelled")
                     return 1
                 
                 time.sleep(self.config.poll_interval)
                 
             except KeyboardInterrupt:
-                print()
-                print(f"{Colors.YELLOW}Monitoring interrupted. Job ID: {job_id}{Colors.NC}")
-                print(f"Resume with: karaoke-gen-remote --resume {job_id}")
+                self.logger.info("")
+                self.logger.warning(f"Monitoring interrupted. Job ID: {job_id}")
+                self.logger.info(f"Resume with: karaoke-gen-remote --resume {job_id}")
                 return 130
             except Exception as e:
                 self.logger.warning(f"Error polling job status: {e}")
                 time.sleep(self.config.poll_interval)
 
 
-def check_prerequisites() -> bool:
+def check_prerequisites(logger: logging.Logger) -> bool:
     """Check that required tools are available."""
-    # Check for gcloud (optional but recommended)
+    # Check for gcloud
     try:
         subprocess.run(['gcloud', '--version'], capture_output=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f"{Colors.YELLOW}Warning: gcloud CLI not found. Authentication may be limited.{Colors.NC}")
+        logger.warning("gcloud CLI not found. Authentication may be limited.")
     
-    # Check for gsutil (required for downloads)
+    # Check for gsutil
     try:
         subprocess.run(['gsutil', 'version'], capture_output=True, check=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f"{Colors.YELLOW}Warning: gsutil not found. File downloads may fail.{Colors.NC}")
-        print("Install with: pip install gsutil")
+        logger.warning("gsutil not found. File downloads may fail. Install with: pip install gsutil")
     
     return True
 
 
-def get_auth_token() -> Optional[str]:
+def get_auth_token(logger: logging.Logger) -> Optional[str]:
     """Get authentication token from environment or gcloud."""
     # Check environment variable first
     token = os.environ.get('KARAOKE_GEN_AUTH_TOKEN')
@@ -634,6 +662,7 @@ def get_auth_token() -> Optional[str]:
 
 def main():
     """Main entry point for the remote CLI."""
+    # Set up logging - same format as gen_cli.py
     logger = logging.getLogger(__name__)
     log_handler = logging.StreamHandler()
     log_formatter = logging.Formatter(
@@ -643,97 +672,36 @@ def main():
     log_handler.setFormatter(log_formatter)
     logger.addHandler(log_handler)
     
-    # Get version
-    try:
-        package_version = metadata.version("karaoke-gen")
-    except metadata.PackageNotFoundError:
-        package_version = "unknown"
-    
-    parser = argparse.ArgumentParser(
-        description="Submit karaoke generation jobs to a cloud-hosted backend.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  karaoke-gen-remote ./song.mp3 "ABBA" "Waterloo"
-  karaoke-gen-remote --resume abc12345
-
-Environment variables:
-  KARAOKE_GEN_URL       Backend URL (required, or set via --service-url)
-  REVIEW_UI_URL         Lyrics review UI URL (default: http://localhost:5173)
-  POLL_INTERVAL         Seconds between status polls (default: 5)
-  KARAOKE_GEN_BUCKET    GCS bucket name (default: karaoke-gen-storage-nomadkaraoke)
-  KARAOKE_GEN_AUTH_TOKEN  Override auth token (optional, uses gcloud by default)
-        """
-    )
-    
-    parser.add_argument(
-        "-v", "--version",
-        action="version",
-        version=f"%(prog)s {package_version}"
-    )
-    
-    parser.add_argument(
-        "args",
-        nargs="*",
-        help="<filepath> <artist> <title> for new jobs"
-    )
-    
-    parser.add_argument(
-        "--resume", "-r",
-        metavar="JOB_ID",
-        help="Resume monitoring an existing job"
-    )
-    
-    parser.add_argument(
-        "--service-url",
-        default=os.environ.get('KARAOKE_GEN_URL', 'http://localhost:8000'),
-        help="Backend service URL (or set KARAOKE_GEN_URL env var)"
-    )
-    
-    parser.add_argument(
-        "--review-ui-url",
-        default=os.environ.get('REVIEW_UI_URL', 'http://localhost:5173'),
-        help="Lyrics review UI URL (default: http://localhost:5173)"
-    )
-    
-    parser.add_argument(
-        "--poll-interval",
-        type=int,
-        default=int(os.environ.get('POLL_INTERVAL', '5')),
-        help="Seconds between status polls (default: 5)"
-    )
-    
-    parser.add_argument(
-        "--output-dir",
-        default="output",
-        help="Directory to save output files (default: output)"
-    )
-    
-    parser.add_argument(
-        "--log-level",
-        default="warning",
-        choices=['debug', 'info', 'warning', 'error'],
-        help="Logging level (default: warning)"
-    )
-    
+    # Use shared CLI parser
+    parser = create_parser(prog="karaoke-gen-remote")
     args = parser.parse_args()
     
     # Set log level
     log_level = getattr(logging, args.log_level.upper())
     logger.setLevel(log_level)
     
+    # Check for KARAOKE_GEN_URL - this is REQUIRED for remote mode
+    if not args.service_url:
+        logger.error("KARAOKE_GEN_URL environment variable is required for karaoke-gen-remote")
+        logger.error("")
+        logger.error("Please set it to your cloud backend URL:")
+        logger.error("  export KARAOKE_GEN_URL=https://your-backend.run.app")
+        logger.error("")
+        logger.error("Or pass it via command line:")
+        logger.error("  karaoke-gen-remote --service-url https://your-backend.run.app ...")
+        return 1
+    
     # Check prerequisites
-    check_prerequisites()
+    check_prerequisites(logger)
     
     # Get auth token
-    print("Authenticating...")
-    auth_token = get_auth_token()
+    logger.info("Authenticating with GCP...")
+    auth_token = get_auth_token(logger)
     if auth_token:
-        print_success("Authenticated")
+        logger.info("Authenticated successfully")
     else:
-        print(f"{Colors.YELLOW}Warning: No authentication token found. Requests may fail.{Colors.NC}")
-        print("Run: gcloud auth login")
-    print()
+        logger.warning("No authentication token found. Requests may fail.")
+        logger.warning("Run: gcloud auth login")
     
     # Create config
     config = Config(
@@ -745,14 +713,15 @@ Environment variables:
     )
     
     # Create client
-    client = RemoteKaraokeClient(config)
-    monitor = JobMonitor(client, config)
+    client = RemoteKaraokeClient(config, logger)
+    monitor = JobMonitor(client, config, logger)
     
     # Handle resume mode
     if args.resume:
-        print_header("Karaoke Generator - Resume Job")
-        print(f"  Job ID: {Colors.CYAN}{args.resume}{Colors.NC}")
-        print()
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Resume Job")
+        logger.info("=" * 60)
+        logger.info(f"Job ID: {args.resume}")
         
         try:
             # Verify job exists
@@ -761,58 +730,170 @@ Environment variables:
             title = job_data.get('title', 'Unknown')
             status = job_data.get('status', 'unknown')
             
-            print(f"  Artist: {Colors.CYAN}{artist}{Colors.NC}")
-            print(f"  Title:  {Colors.CYAN}{title}{Colors.NC}")
-            print(f"  Status: {print_status(status)}")
-            print()
+            logger.info(f"Artist: {artist}")
+            logger.info(f"Title: {title}")
+            logger.info(f"Current status: {status}")
+            logger.info("")
             
             return monitor.monitor(args.resume)
         except ValueError as e:
-            print_error(str(e))
+            logger.error(str(e))
             return 1
         except Exception as e:
-            print_error(f"Error resuming job: {e}")
+            logger.error(f"Error resuming job: {e}")
             return 1
     
-    # Handle new job submission
-    if len(args.args) < 3:
+    # Warn about unsupported features
+    if args.finalise_only:
+        logger.error("--finalise-only is not supported in remote mode")
+        return 1
+    
+    if args.edit_lyrics:
+        logger.error("--edit-lyrics is not yet supported in remote mode")
+        return 1
+    
+    if args.test_email_template:
+        logger.error("--test_email_template is not supported in remote mode")
+        return 1
+    
+    # Warn about features that are not yet supported in remote mode
+    ignored_features = []
+    if args.prep_only:
+        ignored_features.append("--prep-only")
+    if args.skip_separation:
+        ignored_features.append("--skip-separation")
+    if args.skip_transcription:
+        ignored_features.append("--skip-transcription")
+    if args.lyrics_only:
+        ignored_features.append("--lyrics-only")
+    if args.existing_instrumental:
+        ignored_features.append("--existing_instrumental")
+    if args.background_video:
+        ignored_features.append("--background_video")
+    # These are now supported but server-side handling may be partial
+    if args.organised_dir:
+        ignored_features.append("--organised_dir (local-only)")
+    if args.organised_dir_rclone_root:
+        ignored_features.append("--organised_dir_rclone_root (local-only)")
+    if args.public_share_dir:
+        ignored_features.append("--public_share_dir (local-only)")
+    if args.youtube_client_secrets_file:
+        ignored_features.append("--youtube_client_secrets_file (not yet implemented)")
+    if args.rclone_destination:
+        ignored_features.append("--rclone_destination (local-only)")
+    if args.email_template_file:
+        ignored_features.append("--email_template_file (not yet implemented)")
+    
+    if ignored_features:
+        logger.warning(f"The following options are not yet supported in remote mode and will be ignored:")
+        for feature in ignored_features:
+            logger.warning(f"  - {feature}")
+    
+    # Handle new job submission - parse input arguments same as gen_cli
+    input_media, artist, title, filename_pattern = None, None, None, None
+    
+    if not args.args:
         parser.print_help()
         return 1
     
-    filepath = args.args[0]
-    artist = args.args[1]
-    title = args.args[2]
-    
-    # Validate file exists
-    if not os.path.isfile(filepath):
-        print_error(f"File not found: {filepath}")
+    # Allow 3 forms of positional arguments:
+    # 1. URL or Media File only
+    # 2. Artist and Title only
+    # 3. URL, Artist, and Title
+    if args.args and (is_url(args.args[0]) or is_file(args.args[0])):
+        input_media = args.args[0]
+        if len(args.args) > 2:
+            artist = args.args[1]
+            title = args.args[2]
+        elif len(args.args) > 1:
+            artist = args.args[1]
+        else:
+            logger.error("Input media provided without Artist and Title")
+            return 1
+    elif os.path.isdir(args.args[0]):
+        logger.error("Folder processing is not yet supported in remote mode")
+        return 1
+    elif len(args.args) > 1:
+        artist = args.args[0]
+        title = args.args[1]
+        logger.error("YouTube search is not yet supported in remote mode. Please provide a file path.")
+        return 1
+    else:
+        parser.print_help()
         return 1
     
-    print_header("Karaoke Generator - Job Submission")
-    print(f"  File:   {Colors.CYAN}{filepath}{Colors.NC}")
-    print(f"  Artist: {Colors.CYAN}{artist}{Colors.NC}")
-    print(f"  Title:  {Colors.CYAN}{title}{Colors.NC}")
-    print()
+    # For now, remote mode only supports file uploads
+    if not input_media or not os.path.isfile(input_media):
+        logger.error("Remote mode currently only supports local file uploads")
+        logger.error("Please provide a path to an audio file (mp3, wav, flac, m4a, ogg, aac)")
+        return 1
+    
+    # Validate artist and title are provided
+    if not artist or not title:
+        logger.error("Artist and Title are required")
+        parser.print_help()
+        return 1
+    
+    logger.info("=" * 60)
+    logger.info("Karaoke Generator (Remote) - Job Submission")
+    logger.info("=" * 60)
+    logger.info(f"File: {input_media}")
+    logger.info(f"Artist: {artist}")
+    logger.info(f"Title: {title}")
+    if args.style_params_json:
+        logger.info(f"Style: {args.style_params_json}")
+    logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
+    if args.brand_prefix:
+        logger.info(f"Brand: {args.brand_prefix}")
+    if args.discord_webhook_url:
+        logger.info(f"Discord: enabled")
+    logger.info(f"Service URL: {config.service_url}")
+    logger.info(f"Review UI: {config.review_ui_url}")
+    logger.info("")
+    
+    # Read youtube description from file if provided
+    youtube_description = None
+    if args.youtube_description_file and os.path.isfile(args.youtube_description_file):
+        try:
+            with open(args.youtube_description_file, 'r') as f:
+                youtube_description = f.read()
+            logger.info(f"Loaded YouTube description from: {args.youtube_description_file}")
+        except Exception as e:
+            logger.warning(f"Failed to read YouTube description file: {e}")
     
     try:
-        # Submit job
-        result = client.submit_job(filepath, artist, title)
+        # Submit job with all options
+        result = client.submit_job(
+            filepath=input_media,
+            artist=artist,
+            title=title,
+            style_params_path=args.style_params_json,
+            enable_cdg=args.enable_cdg,
+            enable_txt=args.enable_txt,
+            brand_prefix=args.brand_prefix,
+            discord_webhook_url=args.discord_webhook_url,
+            youtube_description=youtube_description,
+        )
         job_id = result.get('job_id')
+        style_assets = result.get('style_assets_uploaded', [])
         
-        print_success(f"Job submitted: {Colors.BOLD}{job_id}{Colors.NC}")
-        print()
+        logger.info(f"Job submitted successfully: {job_id}")
+        if style_assets:
+            logger.info(f"Style assets uploaded: {', '.join(style_assets)}")
+        logger.info("")
         
         # Monitor job
         return monitor.monitor(job_id)
         
     except FileNotFoundError as e:
-        print_error(str(e))
+        logger.error(str(e))
         return 1
     except ValueError as e:
-        print_error(str(e))
+        logger.error(str(e))
         return 1
     except Exception as e:
-        print_error(f"Error: {e}")
+        logger.error(f"Error: {e}")
+        logger.exception("Full error details:")
         return 1
 
 

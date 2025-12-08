@@ -170,6 +170,27 @@ class Job(BaseModel):
     webhook_url: Optional[str] = None            # Webhook for notifications
     user_email: Optional[str] = None             # Email for notifications
     
+    # Style configuration (uploaded files)
+    style_params_gcs_path: Optional[str] = None  # GCS path to style_params.json
+    style_assets: Dict[str, str] = Field(default_factory=dict)
+    """
+    GCS paths to style asset files:
+    {
+        "intro_background": "gs://bucket/jobs/{job_id}/style/intro_bg.png",
+        "karaoke_background": "gs://bucket/jobs/{job_id}/style/karaoke_bg.png",
+        "end_background": "gs://bucket/jobs/{job_id}/style/end_bg.png",
+        "font": "gs://bucket/jobs/{job_id}/style/font.ttf",
+        "cdg_instrumental_background": "gs://bucket/jobs/{job_id}/style/cdg_instr.png",
+        "cdg_title_background": "gs://bucket/jobs/{job_id}/style/cdg_title.png",
+        "cdg_outro_background": "gs://bucket/jobs/{job_id}/style/cdg_outro.png"
+    }
+    """
+    
+    # Finalisation configuration
+    brand_prefix: Optional[str] = None           # Brand code prefix (e.g., "NOMAD")
+    discord_webhook_url: Optional[str] = None    # Discord notification webhook
+    youtube_description_template: Optional[str] = None  # YouTube description template text
+    
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
@@ -288,6 +309,7 @@ class JobCreate(BaseModel):
     url: Optional[str] = None
     artist: Optional[str] = None
     title: Optional[str] = None
+    filename: Optional[str] = None  # Original uploaded filename
     
     # Optional preferences
     enable_cdg: bool = True
@@ -296,6 +318,15 @@ class JobCreate(BaseModel):
     youtube_description: Optional[str] = None
     webhook_url: Optional[str] = None
     user_email: Optional[str] = None
+    
+    # Style configuration (will be populated after file upload)
+    style_params_gcs_path: Optional[str] = None
+    style_assets: Dict[str, str] = Field(default_factory=dict)
+    
+    # Finalisation configuration
+    brand_prefix: Optional[str] = None
+    discord_webhook_url: Optional[str] = None
+    youtube_description_template: Optional[str] = None
     
     @validator('url', 'artist', 'title')
     def validate_inputs(cls, v):

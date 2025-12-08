@@ -1,11 +1,13 @@
 """
-File upload route for local file submission.
+File upload route for local file submission with style configuration support.
 """
+import json
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pathlib import Path
+from typing import Optional, List
 
-from backend.models.job import JobCreate
+from backend.models.job import JobCreate, JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
@@ -19,98 +21,226 @@ storage_service = StorageService()
 worker_service = get_worker_service()
 
 
+# File extension validation
+ALLOWED_AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'}
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+ALLOWED_FONT_EXTENSIONS = {'.ttf', '.otf', '.woff', '.woff2'}
+
+
 @router.post("/jobs/upload")
 async def upload_and_create_job(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    artist: str = Form(...),
-    title: str = Form(...)
+    # Required fields
+    file: UploadFile = File(..., description="Audio file to process"),
+    artist: str = Form(..., description="Artist name"),
+    title: str = Form(..., description="Song title"),
+    # Style configuration files (optional)
+    style_params: Optional[UploadFile] = File(None, description="Style parameters JSON file"),
+    style_intro_background: Optional[UploadFile] = File(None, description="Intro/title screen background image"),
+    style_karaoke_background: Optional[UploadFile] = File(None, description="Karaoke video background image"),
+    style_end_background: Optional[UploadFile] = File(None, description="End screen background image"),
+    style_font: Optional[UploadFile] = File(None, description="Font file (TTF/OTF)"),
+    style_cdg_instrumental_background: Optional[UploadFile] = File(None, description="CDG instrumental background"),
+    style_cdg_title_background: Optional[UploadFile] = File(None, description="CDG title screen background"),
+    style_cdg_outro_background: Optional[UploadFile] = File(None, description="CDG outro screen background"),
+    # Processing options
+    enable_cdg: bool = Form(True, description="Generate CDG+MP3 package"),
+    enable_txt: bool = Form(True, description="Generate TXT+MP3 package"),
+    # Finalisation options
+    brand_prefix: Optional[str] = Form(None, description="Brand code prefix (e.g., NOMAD)"),
+    enable_youtube_upload: bool = Form(False, description="Upload to YouTube"),
+    youtube_description: Optional[str] = Form(None, description="YouTube video description text"),
+    discord_webhook_url: Optional[str] = Form(None, description="Discord webhook URL for notifications"),
+    webhook_url: Optional[str] = Form(None, description="Generic webhook URL"),
+    user_email: Optional[str] = Form(None, description="User email for notifications"),
 ):
     """
-    Upload an audio file and create a karaoke generation job.
+    Upload an audio file and create a karaoke generation job with full style configuration.
     
     This endpoint:
-    1. Uploads the file to GCS
-    2. Creates a job in Firestore with the GCS path
-    3. Triggers the audio and lyrics workers
+    1. Validates all uploaded files
+    2. Creates a job in Firestore
+    3. Uploads all files to GCS (audio, style JSON, images, fonts)
+    4. Updates job with GCS paths
+    5. Triggers the audio and lyrics workers
     
-    The job will go through the full worker pipeline including human interaction points.
+    Style Configuration:
+    - style_params: JSON file with style configuration (fonts, colors, regions)
+    - style_*_background: Background images for various screens
+    - style_font: Custom font file
+    
+    The style_params JSON can reference the uploaded images/fonts by their original
+    filenames, and the backend will update the paths to GCS locations.
     """
     try:
-        # Validate file type
-        allowed_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'}
+        # Validate main audio file type
         file_ext = Path(file.filename).suffix.lower()
-        
-        if file_ext not in allowed_extensions:
+        if file_ext not in ALLOWED_AUDIO_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+                detail=f"Invalid audio file type '{file_ext}'. Allowed: {', '.join(ALLOWED_AUDIO_EXTENSIONS)}"
             )
+        
+        # Validate style files if provided
+        if style_params and not style_params.filename.endswith('.json'):
+            raise HTTPException(status_code=400, detail="Style params must be a JSON file")
+        
+        for img_file, name in [
+            (style_intro_background, "intro_background"),
+            (style_karaoke_background, "karaoke_background"),
+            (style_end_background, "end_background"),
+            (style_cdg_instrumental_background, "cdg_instrumental_background"),
+            (style_cdg_title_background, "cdg_title_background"),
+            (style_cdg_outro_background, "cdg_outro_background"),
+        ]:
+            if img_file:
+                ext = Path(img_file.filename).suffix.lower()
+                if ext not in ALLOWED_IMAGE_EXTENSIONS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid image file type '{ext}' for {name}. Allowed: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+                    )
+        
+        if style_font:
+            ext = Path(style_font.filename).suffix.lower()
+            if ext not in ALLOWED_FONT_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid font file type '{ext}'. Allowed: {', '.join(ALLOWED_FONT_EXTENSIONS)}"
+                )
         
         # Create job first to get job_id
         job_create = JobCreate(
             artist=artist,
             title=title,
-            filename=file.filename
+            filename=file.filename,
+            enable_cdg=enable_cdg,
+            enable_txt=enable_txt,
+            brand_prefix=brand_prefix,
+            enable_youtube_upload=enable_youtube_upload,
+            youtube_description=youtube_description,
+            discord_webhook_url=discord_webhook_url,
+            webhook_url=webhook_url,
+            user_email=user_email,
         )
         job = job_manager.create_job(job_create)
+        job_id = job.job_id
         
-        # Upload file to GCS
-        gcs_path = f"uploads/{job.job_id}/{file.filename}"
-        logger.info(f"Uploading {file.filename} to GCS: {gcs_path}")
+        logger.info(f"Created job {job_id} for {artist} - {title}")
         
+        # Upload main audio file to GCS
+        audio_gcs_path = f"uploads/{job_id}/audio/{file.filename}"
+        logger.info(f"Uploading audio to GCS: {audio_gcs_path}")
         storage_service.upload_fileobj(
             file.file,
-            gcs_path,
+            audio_gcs_path,
             content_type=file.content_type or 'audio/flac'
         )
         
-        # Update job with GCS path BEFORE triggering workers
-        job_manager.update_job(job.job_id, {
-            'input_media_gcs_path': gcs_path,
-            'filename': file.filename
-        })
+        # Track style assets
+        style_assets = {}
         
-        # Verify the update by refetching the job
-        updated_job = job_manager.get_job(job.job_id)
+        # Upload style files if provided
+        if style_params:
+            style_gcs_path = f"uploads/{job_id}/style/style_params.json"
+            logger.info(f"Uploading style params to GCS: {style_gcs_path}")
+            storage_service.upload_fileobj(
+                style_params.file,
+                style_gcs_path,
+                content_type='application/json'
+            )
+            style_assets['style_params'] = style_gcs_path
+        
+        # Upload background images
+        for img_file, asset_key in [
+            (style_intro_background, "intro_background"),
+            (style_karaoke_background, "karaoke_background"),
+            (style_end_background, "end_background"),
+            (style_cdg_instrumental_background, "cdg_instrumental_background"),
+            (style_cdg_title_background, "cdg_title_background"),
+            (style_cdg_outro_background, "cdg_outro_background"),
+        ]:
+            if img_file:
+                gcs_path = f"uploads/{job_id}/style/{asset_key}{Path(img_file.filename).suffix.lower()}"
+                logger.info(f"Uploading {asset_key} to GCS: {gcs_path}")
+                storage_service.upload_fileobj(
+                    img_file.file,
+                    gcs_path,
+                    content_type=img_file.content_type or 'image/png'
+                )
+                style_assets[asset_key] = gcs_path
+        
+        # Upload font file
+        if style_font:
+            font_gcs_path = f"uploads/{job_id}/style/font{Path(style_font.filename).suffix.lower()}"
+            logger.info(f"Uploading font to GCS: {font_gcs_path}")
+            storage_service.upload_fileobj(
+                style_font.file,
+                font_gcs_path,
+                content_type='font/ttf'
+            )
+            style_assets['font'] = font_gcs_path
+        
+        # Update job with all GCS paths
+        update_data = {
+            'input_media_gcs_path': audio_gcs_path,
+            'filename': file.filename,
+            'enable_cdg': enable_cdg,
+            'enable_txt': enable_txt,
+        }
+        
+        if style_assets:
+            update_data['style_assets'] = style_assets
+            if 'style_params' in style_assets:
+                update_data['style_params_gcs_path'] = style_assets['style_params']
+        
+        if brand_prefix:
+            update_data['brand_prefix'] = brand_prefix
+        if discord_webhook_url:
+            update_data['discord_webhook_url'] = discord_webhook_url
+        if youtube_description:
+            update_data['youtube_description_template'] = youtube_description
+        
+        job_manager.update_job(job_id, update_data)
+        
+        # Verify the update
+        updated_job = job_manager.get_job(job_id)
         if not hasattr(updated_job, 'input_media_gcs_path') or not updated_job.input_media_gcs_path:
-            # Wait a moment for Firestore consistency
             import asyncio
             await asyncio.sleep(0.5)
-            updated_job = job_manager.get_job(job.job_id)
+            updated_job = job_manager.get_job(job_id)
             if not hasattr(updated_job, 'input_media_gcs_path') or not updated_job.input_media_gcs_path:
                 raise HTTPException(
                     status_code=500,
-                    detail="Failed to update job with GCS path"
+                    detail="Failed to update job with GCS paths"
                 )
         
-        logger.info(f"File uploaded successfully for job {job.job_id}, GCS path: {gcs_path}")
+        logger.info(f"All files uploaded for job {job_id}")
+        if style_assets:
+            logger.info(f"Style assets: {list(style_assets.keys())}")
         
-        # Transition job to DOWNLOADING state before triggering workers
-        # This is required by the state machine: PENDING -> DOWNLOADING -> SEPARATING_STAGE1/TRANSCRIBING
-        from backend.models.job import JobStatus
+        # Transition job to DOWNLOADING state
         job_manager.transition_to_state(
-            job_id=job.job_id,
+            job_id=job_id,
             new_status=JobStatus.DOWNLOADING,
             progress=5,
-            message="File uploaded, preparing to process"
+            message="Files uploaded, preparing to process"
         )
         
-        # Trigger both workers in parallel using background tasks
-        # They run independently and coordinate via job state
-        background_tasks.add_task(worker_service.trigger_audio_worker, job.job_id)
-        background_tasks.add_task(worker_service.trigger_lyrics_worker, job.job_id)
+        # Trigger workers
+        background_tasks.add_task(worker_service.trigger_audio_worker, job_id)
+        background_tasks.add_task(worker_service.trigger_lyrics_worker, job_id)
         
         return {
             "status": "success",
-            "job_id": job.job_id,
-            "message": "File uploaded successfully. Processing started.",
-            "filename": file.filename
+            "job_id": job_id,
+            "message": "Files uploaded successfully. Processing started.",
+            "filename": file.filename,
+            "style_assets_uploaded": list(style_assets.keys()) if style_assets else []
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uploading file: {e}", exc_info=True)
+        logger.error(f"Error uploading files: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
