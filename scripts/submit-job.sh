@@ -168,7 +168,26 @@ get_job() {
 # Open review UI in browser
 open_review_ui() {
     local job_id="$1"
-    local url="$REVIEW_UI_URL/?jobId=$job_id"
+    local auth_token="$2"
+    
+    # The review UI expects baseApiUrl pointing to the review API endpoint
+    # Format: SERVICE_URL/api/review/{job_id}
+    local base_api_url="$SERVICE_URL/api/review/$job_id"
+    
+    # URL encode the API URL for the query string
+    local encoded_api_url
+    encoded_api_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$base_api_url', safe=''))")
+    
+    # Also get the audio hash from the job data for the review UI
+    local job_response
+    job_response=$(get_job "$job_id" "$auth_token")
+    local audio_hash
+    audio_hash=$(echo "$job_response" | jq -r '.audio_hash // ""')
+    
+    local url="$REVIEW_UI_URL/?baseApiUrl=$encoded_api_url"
+    if [ -n "$audio_hash" ] && [ "$audio_hash" != "null" ]; then
+        url="$url&audioHash=$audio_hash"
+    fi
     
     echo -e "${CYAN}Opening lyrics review UI in browser...${NC}"
     echo -e "URL: ${BOLD}$url${NC}"
@@ -197,7 +216,7 @@ handle_review() {
     echo -e "Please review and correct the lyrics in the browser."
     echo ""
     
-    open_review_ui "$job_id"
+    open_review_ui "$job_id" "$auth_token"
     
     echo -e "${YELLOW}Press Enter when you have completed the review...${NC}"
     read -r
