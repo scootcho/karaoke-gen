@@ -96,13 +96,10 @@ async def upload_and_create_job(
             message="File uploaded, preparing to process"
         )
         
-        # Trigger the workflow in the background (non-blocking)
-        # This returns immediately while workers process asynchronously
-        async def trigger_workers():
-            await worker_service.trigger_audio_worker(job.job_id)
-            await worker_service.trigger_lyrics_worker(job.job_id)
-        
-        background_tasks.add_task(trigger_workers)
+        # Trigger both workers in parallel using background tasks
+        # They run independently and coordinate via job state
+        background_tasks.add_task(worker_service.trigger_audio_worker, job.job_id)
+        background_tasks.add_task(worker_service.trigger_lyrics_worker, job.job_id)
         
         return {
             "status": "success",
