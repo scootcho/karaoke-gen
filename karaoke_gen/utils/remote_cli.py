@@ -437,10 +437,20 @@ class JobMonitor:
     
     def download_outputs(self, job_id: str, job_data: Dict[str, Any]) -> None:
         """Download all output files for a completed job."""
-        artist = job_data.get('artist', 'Unknown').replace(' ', '_')
-        title = job_data.get('title', 'Unknown').replace(' ', '_')
+        artist = job_data.get('artist', 'Unknown')
+        title = job_data.get('title', 'Unknown')
+        brand_code = job_data.get('state_data', {}).get('brand_code')
         
-        output_dir = Path(self.config.output_dir) / f"{artist}-{title}-{job_id}"
+        # Use brand code in folder name if available
+        if brand_code:
+            folder_name = f"{brand_code} - {artist} - {title}"
+        else:
+            folder_name = f"{artist} - {title}"
+        
+        # Sanitize folder name
+        folder_name = "".join(c for c in folder_name if c.isalnum() or c in " -_").strip()
+        
+        output_dir = Path(self.config.output_dir) / folder_name
         output_dir.mkdir(parents=True, exist_ok=True)
         
         self.logger.info(f"Downloading output files to: {output_dir}")
@@ -453,7 +463,39 @@ class JobMonitor:
             self.logger.info("Downloading final videos...")
             for key, blob_path in finals.items():
                 if blob_path:
-                    filename = Path(blob_path).name
+                    # Use descriptive filename
+                    ext = Path(blob_path).suffix
+                    if 'lossless_4k_mp4' in key:
+                        filename = f"{artist} - {title} (Final Karaoke Lossless 4k).mp4"
+                    elif 'lossless_4k_mkv' in key:
+                        filename = f"{artist} - {title} (Final Karaoke Lossless 4k).mkv"
+                    elif 'lossy_4k' in key:
+                        filename = f"{artist} - {title} (Final Karaoke Lossy 4k).mp4"
+                    elif 'lossy_720p' in key:
+                        filename = f"{artist} - {title} (Final Karaoke Lossy 720p).mp4"
+                    else:
+                        filename = Path(blob_path).name
+                    
+                    local_path = output_dir / filename
+                    self.logger.info(f"  Downloading {filename}...")
+                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                        self.logger.info(f"    OK: {local_path}")
+                    else:
+                        self.logger.warning(f"    FAILED: {filename}")
+        
+        # Download CDG/TXT packages
+        packages = file_urls.get('packages', {})
+        if packages:
+            self.logger.info("Downloading karaoke packages...")
+            for key, blob_path in packages.items():
+                if blob_path:
+                    if 'cdg' in key.lower():
+                        filename = f"{artist} - {title} (Final Karaoke CDG).zip"
+                    elif 'txt' in key.lower():
+                        filename = f"{artist} - {title} (Final Karaoke TXT).zip"
+                    else:
+                        filename = Path(blob_path).name
+                    
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
@@ -464,21 +506,20 @@ class JobMonitor:
         # Download lyrics files
         lyrics = file_urls.get('lyrics', {})
         if lyrics:
-            lyrics_dir = output_dir / 'lyrics'
-            lyrics_dir.mkdir(exist_ok=True)
             self.logger.info("Downloading lyrics files...")
             for key in ['ass', 'lrc', 'corrected_txt']:
                 blob_path = lyrics.get(key)
                 if blob_path:
-                    filename = Path(blob_path).name
-                    local_path = lyrics_dir / filename
+                    ext = Path(blob_path).suffix
+                    filename = f"{artist} - {title} (Karaoke){ext}"
+                    local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
         
-        # Download stems
+        # Download stems (optional - in subfolder)
         stems = file_urls.get('stems', {})
         if stems:
             stems_dir = output_dir / 'stems'
@@ -494,14 +535,26 @@ class JobMonitor:
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
         
+        self.logger.info("")
         self.logger.info(f"All files downloaded to: {output_dir}")
+        
+        # Show summary
+        state_data = job_data.get('state_data', {})
+        if brand_code:
+            self.logger.info(f"Brand Code: {brand_code}")
+        
+        youtube_url = state_data.get('youtube_url')
+        if youtube_url:
+            self.logger.info(f"YouTube URL: {youtube_url}")
         
         # List downloaded files with sizes
         self.logger.info("")
         self.logger.info("Downloaded files:")
+        total_size = 0
         for file_path in sorted(output_dir.rglob('*')):
             if file_path.is_file():
                 size = file_path.stat().st_size
+                total_size += size
                 if size > 1024 * 1024:
                     size_str = f"{size / (1024 * 1024):.1f} MB"
                 elif size > 1024:
@@ -510,6 +563,14 @@ class JobMonitor:
                     size_str = f"{size} B"
                 rel_path = file_path.relative_to(output_dir)
                 self.logger.info(f"  {rel_path} ({size_str})")
+        
+        if total_size > 1024 * 1024 * 1024:
+            total_str = f"{total_size / (1024 * 1024 * 1024):.2f} GB"
+        elif total_size > 1024 * 1024:
+            total_str = f"{total_size / (1024 * 1024):.1f} MB"
+        else:
+            total_str = f"{total_size / 1024:.1f} KB"
+        self.logger.info(f"Total: {total_str}")
     
     def log_timeline_updates(self, job_data: Dict[str, Any]) -> None:
         """Log any new timeline events."""
