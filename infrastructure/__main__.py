@@ -105,6 +105,110 @@ cloudbuild_logging_iam = gcp.projects.IAMMember(
     member=f"serviceAccount:{project.number}-compute@developer.gserviceaccount.com",
 )
 
+# ==================== GitHub Actions Deployer Service Account ====================
+# This service account is used by GitHub Actions CI/CD via Workload Identity Federation
+
+github_actions_sa = serviceaccount.Account(
+    "github-actions-deployer-sa",
+    account_id="github-actions-deployer",
+    display_name="GitHub Actions Deployer",
+    description="Service account for GitHub Actions CD via Workload Identity",
+)
+
+# Grant Cloud Run admin permissions
+github_actions_run_admin = gcp.projects.IAMMember(
+    "github-actions-run-admin",
+    project=project_id,
+    role="roles/run.admin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant service account user permissions (to deploy Cloud Run with other SA)
+github_actions_sa_user = gcp.projects.IAMMember(
+    "github-actions-sa-user",
+    project=project_id,
+    role="roles/iam.serviceAccountUser",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Artifact Registry writer permissions
+github_actions_artifact_writer = gcp.projects.IAMMember(
+    "github-actions-artifact-writer",
+    project=project_id,
+    role="roles/artifactregistry.writer",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Cloud Build permissions - REQUIRED for gcloud builds submit
+github_actions_cloudbuild = gcp.projects.IAMMember(
+    "github-actions-cloudbuild",
+    project=project_id,
+    role="roles/cloudbuild.builds.editor",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Storage Admin for Cloud Build bucket uploads
+github_actions_storage = gcp.projects.IAMMember(
+    "github-actions-storage-admin",
+    project=project_id,
+    role="roles/storage.admin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Logging write permissions for Cloud Build logs
+github_actions_logging = gcp.projects.IAMMember(
+    "github-actions-logging",
+    project=project_id,
+    role="roles/logging.logWriter",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Service Usage Consumer - required for serviceusage.services.use permission
+github_actions_service_usage = gcp.projects.IAMMember(
+    "github-actions-service-usage",
+    project=project_id,
+    role="roles/serviceusage.serviceUsageConsumer",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# ==================== Workload Identity Federation ====================
+# Allows GitHub Actions to authenticate without service account keys
+
+workload_identity_pool = gcp.iam.WorkloadIdentityPool(
+    "github-actions-pool",
+    workload_identity_pool_id="github-actions-pool",
+    display_name="GitHub Actions Pool",
+    description="Workload Identity Pool for GitHub Actions",
+    disabled=False,
+)
+
+workload_identity_provider = gcp.iam.WorkloadIdentityPoolProvider(
+    "github-actions-provider",
+    workload_identity_pool_id=workload_identity_pool.workload_identity_pool_id,
+    workload_identity_pool_provider_id="github-actions-provider",
+    display_name="GitHub Actions Provider",
+    attribute_mapping={
+        "google.subject": "assertion.sub",
+        "attribute.actor": "assertion.actor",
+        "attribute.repository": "assertion.repository",
+        "attribute.repository_owner": "assertion.repository_owner",
+    },
+    attribute_condition="assertion.repository_owner == 'nomadkaraoke'",
+    oidc=gcp.iam.WorkloadIdentityPoolProviderOidcArgs(
+        issuer_uri="https://token.actions.githubusercontent.com",
+    ),
+)
+
+# Allow GitHub Actions to impersonate the service account
+github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
+    "github-actions-wif-binding",
+    service_account_id=github_actions_sa.name,
+    role="roles/iam.workloadIdentityUser",
+    members=[workload_identity_pool.name.apply(
+        lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-gen"
+    )],
+)
+
 # Create secrets (you'll need to add the actual secret values manually or via pulumi config)
 config = pulumi.Config()
 
@@ -159,6 +263,10 @@ pulumi.export("artifact_repo_url", artifact_repo.name.apply(
 ))
 pulumi.export("backend_url", "https://api.nomadkaraoke.com")
 pulumi.export("backend_default_url", "https://karaoke-backend-ipzqd2k4yq-uc.a.run.app")
+
+# GitHub Actions CD exports
+pulumi.export("github_actions_service_account", github_actions_sa.email)
+pulumi.export("workload_identity_provider", workload_identity_provider.name)
 
 # Export DNS configuration needed for Cloudflare
 # These are the records to add to your Cloudflare DNS
