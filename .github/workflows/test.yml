@@ -188,6 +188,10 @@ jobs:
             --set-env-vars "FIRESTORE_COLLECTION=jobs" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "ADMIN_TOKENS=${{ secrets.ADMIN_TOKENS }}" \
+            --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest" \
+            --set-secrets "GENIUS_API_TOKEN=genius-api-key:latest" \
+            --set-secrets "SPOTIFY_COOKIE=spotify-cookie:latest" \
+            --set-secrets "RAPIDAPI_KEY=rapidapi-key:latest" \
             --memory 16Gi \
             --cpu 8 \
             --cpu-boost \
