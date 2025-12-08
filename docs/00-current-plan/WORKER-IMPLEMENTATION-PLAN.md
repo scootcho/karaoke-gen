@@ -1,594 +1,498 @@
-# Worker Implementation Plan - Making the Backend Actually Work
+# Worker Implementation Plan
 
-**Date**: December 2, 2025  
-**Status**: Planning phase  
-**Goal**: Implement actual karaoke generation functionality in Cloud Run backend
-
----
-
-## Problem Statement
-
-The current workers are stubbed out because they were trying to use `karaoke_gen` library classes (`AudioProcessor`, `LyricsProcessor`) which are **CLI-oriented** with incompatible signatures designed for local disk operations and synchronous workflows.
-
-However, the **actual processing logic** in `karaoke_gen` calls **remote APIs** that we can use directly from Cloud Run:
-- ✅ **Audio separation**: Already calls Modal API remotely
-- ✅ **Lyrics transcription**: Already calls AudioShake API remotely
-- ✅ **Lyrics correction**: Uses `lyrics_transcriber` library (which we have in `lyrics_transcriber_local/`)
-
-**We don't need to refactor `karaoke_gen` - we need to call the same APIs it calls, adapted for our async Cloud Run workflow.**
+**Last Updated:** 2025-12-08  
+**Status:** Implementing review architecture fix
 
 ---
 
-## Architecture Overview
+## Overview
 
-### Current CLI Flow (Synchronous)
-```
-CLI → AudioProcessor (local disk) → Modal API → Download stems → Local processing
-CLI → LyricsProcessor (local disk) → AudioShake API → Review server (port 8000) → WAIT FOR HUMAN
-```
+This document describes the worker architecture for the karaoke-gen cloud backend. The key insight is that we use the `LyricsTranscriber` library for its processing capabilities but **NOT** its blocking `ReviewServer`.
 
-### Target Cloud Flow (Asynchronous)
+---
+
+## Worker Architecture
+
 ```
-API → Audio Worker → Modal API → Upload to GCS → Update Firestore
-API → Lyrics Worker → AudioShake API → Upload to GCS → Transition to AWAITING_REVIEW
-User → Review UI (React) → Submit corrections → API → Video Worker
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              WORKER PIPELINE                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────┐    ┌─────────────────┐                               │
+│   │  AUDIO WORKER   │    │  LYRICS WORKER  │   (Run in PARALLEL)           │
+│   │                 │    │                 │                               │
+│   │ • Modal API     │    │ • AudioShake    │                               │
+│   │ • Stem separate │    │ • Auto-correct  │                               │
+│   │ • 2 stages      │    │ • Save JSON     │                               │
+│   │                 │    │ • NO VIDEO      │                               │
+│   └────────┬────────┘    └────────┬────────┘                               │
+│            │                      │                                         │
+│            └──────────┬───────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │   SCREENS WORKER    │                                         │
+│            │                     │                                         │
+│            │ • Title screen      │                                         │
+│            │ • End screen        │                                         │
+│            │ • Waits for both    │                                         │
+│            │   audio + lyrics    │                                         │
+│            └──────────┬──────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │   AWAITING_REVIEW   │  ⚠️ HUMAN INTERACTION                   │
+│            │                     │                                         │
+│            │ • React UI loads    │                                         │
+│            │ • User corrects     │                                         │
+│            │ • Submits changes   │                                         │
+│            └──────────┬──────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │ RENDER VIDEO WORKER │  ← NEW (post-review)                    │
+│            │                     │                                         │
+│            │ • OutputGenerator   │                                         │
+│            │ • with_vocals.mkv   │                                         │
+│            │ • LRC/ASS files     │                                         │
+│            └──────────┬──────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │  AWAITING_SELECT    │  ⚠️ HUMAN INTERACTION                   │
+│            │                     │                                         │
+│            │ • User picks        │                                         │
+│            │   instrumental      │                                         │
+│            └──────────┬──────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │   VIDEO WORKER      │                                         │
+│            │                     │                                         │
+│            │ • Remux audio       │                                         │
+│            │ • Concat screens    │                                         │
+│            │ • Encode formats    │                                         │
+│            └──────────┬──────────┘                                         │
+│                       │                                                     │
+│                       ▼                                                     │
+│            ┌─────────────────────┐                                         │
+│            │      COMPLETE       │                                         │
+│            └─────────────────────┘                                         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Phase 1: Audio Worker (Real Implementation)
+## Worker Details
 
-### What It Actually Needs to Do
+### 1. Audio Worker (`backend/workers/audio_worker.py`)
 
-Based on `karaoke_gen/audio_processor.py`, the audio separation:
-1. **Calls Modal API** for stem separation (already implemented in `karaoke_gen`)
-2. **Downloads stems** from Modal's response
-3. **Normalizes audio** levels
-4. **Generates combined instrumentals** (clean + with backing vocals)
+**Purpose:** Separate audio into stems using Modal API
 
-### Implementation Strategy
+**Status:** ✅ Implemented
 
-**Option A: Use `karaoke_gen.audio_processor.AudioProcessor` Properly**
+**Process:**
+1. Download audio from GCS (`input_media_gcs_path`)
+2. Stage 1: Separate clean instrumental + 6-stem
+3. Stage 2: Extract backing vocals from vocals stem
+4. Combine instrumental + backing vocals
+5. Upload all stems to GCS
+6. Update `state_data.audio_progress`
 
-Looking at the actual code, `AudioProcessor` **does work with remote APIs** - we just need to provide the right parameters:
+**Output Files:**
+- `jobs/{job_id}/stems/instrumental_clean.flac`
+- `jobs/{job_id}/stems/instrumental_with_backing.flac`
+- `jobs/{job_id}/stems/vocals.flac`
+- `jobs/{job_id}/stems/backing_vocals.flac`
+- `jobs/{job_id}/stems/bass.flac`
+- `jobs/{job_id}/stems/drums.flac`
+
+**Does NOT transition state** - uses `state_data` for progress tracking
+
+---
+
+### 2. Lyrics Worker (`backend/workers/lyrics_worker.py`)
+
+**Purpose:** Transcribe and auto-correct lyrics
+
+**Status:** ✅ Implemented (with correct settings)
+
+**Process:**
+1. Download audio from GCS
+2. Fetch reference lyrics from Genius/Spotify
+3. Transcribe via AudioShake API
+4. Run automatic correction via LyricsTranscriber
+5. Save `corrections.json` to GCS
+6. Update `state_data.lyrics_progress`
+
+**IMPORTANT Settings:**
+```python
+config = LyricsTranscriberConfig(
+    render_video=False,           # ← VIDEO GENERATED LATER (after review)
+    skip_transcription_review=True,  # ← No interactive review server
+)
+```
+
+**Output Files:**
+- `jobs/{job_id}/lyrics/corrections.json` - CorrectionResult data
+- `jobs/{job_id}/lyrics/original.txt` - Original transcription
+- `jobs/{job_id}/lyrics/corrected.txt` - Auto-corrected text
+
+**Does NOT transition state** - uses `state_data` for progress tracking
+
+---
+
+### 3. Screens Worker (`backend/workers/screens_worker.py`)
+
+**Purpose:** Generate title and end screen videos
+
+**Status:** ✅ Implemented
+
+**Trigger:** Runs after BOTH audio and lyrics workers complete
+
+**Process:**
+1. Check `state_data` for audio + lyrics completion
+2. Generate title screen video (5 seconds)
+3. Generate end screen video (5 seconds)
+4. Upload to GCS
+5. Transition to `AWAITING_REVIEW`
+
+**Output Files:**
+- `jobs/{job_id}/screens/title.mov`
+- `jobs/{job_id}/screens/end.mov`
+
+---
+
+### 4. Render Video Worker (`backend/workers/render_video_worker.py`)
+
+**Purpose:** Generate karaoke video with corrected lyrics
+
+**Status:** 🔄 NEW - To be implemented
+
+**Trigger:** Called after human completes review (`POST /api/jobs/{id}/complete-review`)
+
+**Key Insight:** Uses `OutputGenerator` from LyricsTranscriber library:
 
 ```python
-# From karaoke_gen/audio_processor.py __init__
-def __init__(
-    self,
-    logger,
-    log_level,
-    log_formatter,
-    model_file_dir,  # Can be None for remote API
-    lossless_output_format,
-    clean_instrumental_model,
-    backing_vocals_models,
-    other_stems_models,
-    # ... more params
-):
-```
+from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.correction.corrector import CorrectionResult
 
-**Key insight**: We need to provide ALL the parameters from the CLI's config, but we can use:
-- `model_file_dir=None` (not needed for remote API)
-- Set `AUDIO_SEPARATOR_API_URL` environment variable
-- Provide all the model names from config
+# Load corrected data (from human review)
+correction_result = CorrectionResult.from_dict(corrections_data)
 
-**Option B: Call Modal API Directly**
-
-Extract the Modal API calling logic from `AudioProcessor` and call it directly:
-
-```python
-from audio_separator.remote import AudioSeparatorAPIClient
-
-async def separate_audio_via_modal(audio_path: str, models: list):
-    client = AudioSeparatorAPIClient(
-        api_url=os.environ["AUDIO_SEPARATOR_API_URL"]
-    )
-    
-    # Stage 1: Clean instrumental
-    job_id = await client.separate(
-        audio_file=audio_path,
-        model_name="model_bs_roformer_ep_317_sdr_12.9755.ckpt"
-    )
-    
-    # Poll for completion
-    while True:
-        status = await client.get_status(job_id)
-        if status["state"] == "complete":
-            break
-        await asyncio.sleep(15)
-    
-    # Download stems
-    stems = await client.download_stems(job_id)
-    return stems
-```
-
-### Recommended Approach: **Option B (Direct Modal API)**
-
-**Why:**
-- ✅ Full control over async flow
-- ✅ No dependency on CLI-specific config
-- ✅ Can adapt to Cloud Run environment
-- ✅ Cleaner error handling
-- ✅ Can store progress in Firestore
-
-**Implementation Steps:**
-
-1. **Install/import audio-separator library** with remote support
-2. **Extract Modal API client code** from `karaoke_gen/audio_processor.py`
-3. **Implement separation with GCS integration:**
-   ```python
-   async def process_audio_separation(job_id: str):
-       # Download audio from GCS
-       audio_path = await download_from_gcs(job.input_media_gcs_path)
-       
-       # Separate via Modal (Stage 1: Clean instrumental)
-       stems_stage1 = await separate_via_modal(
-           audio_path=audio_path,
-           models=["model_bs_roformer_ep_317_sdr_12.9755.ckpt", "htdemucs_6s.yaml"]
-       )
-       
-       # Upload stems to GCS
-       await upload_stems_to_gcs(job_id, stems_stage1)
-       
-       # Separate via Modal (Stage 2: Backing vocals)
-       vocals_path = stems_stage1["vocals"]
-       stems_stage2 = await separate_via_modal(
-           audio_path=vocals_path,
-           models=["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
-       )
-       
-       # Upload stage 2 stems
-       await upload_stems_to_gcs(job_id, stems_stage2)
-       
-       # Generate combined instrumentals (instrumental + backing vocals)
-       instrumental_with_bv = await combine_stems(
-           instrumental=stems_stage1["instrumental"],
-           backing_vocals=stems_stage2["backing_vocals"]
-       )
-       
-       # Upload final instrumentals
-       await upload_instrumental_to_gcs(job_id, {
-           "clean": stems_stage1["instrumental"],
-           "with_backing": instrumental_with_bv
-       })
-       
-       # Mark complete
-       job_manager.mark_audio_complete(job_id)
-   ```
-
-4. **Handle progress updates:**
-   ```python
-   # Update Firestore during processing
-   job_manager.transition_to_state(
-       job_id=job_id,
-       new_status=JobStatus.SEPARATING_STAGE1,
-       progress=25,
-       message="Separating audio (Stage 1/2)"
-   )
-   ```
-
----
-
-## Phase 2: Lyrics Worker (Real Implementation)
-
-### What It Actually Needs to Do
-
-Based on `karaoke_gen/lyrics_processor.py`:
-
-1. **Fetch reference lyrics** from Genius/Spotify/Musixmatch
-2. **Transcribe audio** via AudioShake API
-3. **Run automatic correction** using `lyrics_transcriber` library
-4. **Generate corrections JSON** for human review
-5. **Upload for review** → Transition to `AWAITING_REVIEW`
-
-### Implementation Strategy
-
-**The lyrics_transcriber library is already available** in `lyrics_transcriber_local/` submodule!
-
-```python
-from lyrics_transcriber.transcriber import LyricsTranscriber
-
-async def process_lyrics_transcription(job_id: str):
-    # 1. Download audio from GCS
-    audio_path = await download_from_gcs(job.input_media_gcs_path)
-    
-    # 2. Fetch reference lyrics
-    reference_lyrics = await fetch_lyrics_from_apis(
-        artist=job.artist,
-        title=job.title
-    )
-    
-    # 3. Transcribe via AudioShake
-    transcription = await transcribe_via_audioshake(audio_path)
-    
-    # 4. Run automatic correction
-    transcriber = LyricsTranscriber()
-    correction_result = await transcriber.correct_lyrics(
-        transcription=transcription,
-        reference_lyrics=reference_lyrics
-    )
-    
-    # 5. Generate preview video (for review UI)
-    preview_video = await generate_preview_video(
-        audio_path=audio_path,
-        corrections=correction_result
-    )
-    
-    # 6. Upload corrections and preview to GCS
-    corrections_url = await upload_to_gcs(
-        f"jobs/{job_id}/corrections.json",
-        correction_result.to_json()
-    )
-    preview_url = await upload_to_gcs(
-        f"jobs/{job_id}/preview.mp4",
-        preview_video
-    )
-    
-    # 7. Transition to AWAITING_REVIEW
-    job_manager.transition_to_state(
-        job_id=job_id,
-        new_status=JobStatus.AWAITING_REVIEW,
-        progress=50,
-        message="Ready for lyrics review"
-    )
-    
-    # 8. TODO: Send email notification with review URL
-    # await send_email_notification(job)
-```
-
-### Key Dependencies
-
-1. **AudioShake API client** - Extract from `karaoke_gen` or implement directly
-2. **Lyrics APIs** - Genius, Spotify (via RapidAPI), Musixmatch
-3. **lyrics_transcriber library** - Already in submodule
-4. **FFmpeg** - For preview video generation
-
----
-
-## Phase 3: Human Interaction - Lyrics Review
-
-### Current State
-- ❌ No review UI deployed
-- ❌ No corrections submission endpoint
-
-### What Needs to Happen
-
-1. **React Review UI** (separate frontend):
-   ```
-   Frontend repo: TBD
-   URL: https://gen.nomadkaraoke.com/review/{job_id}
-   ```
-
-2. **API Endpoint for Corrections Submission**:
-   ```python
-   @app.post("/api/jobs/{job_id}/corrections")
-   async def submit_corrections(
-       job_id: str,
-       corrections: CorrectionResult
-   ):
-       # Validate corrections
-       # Update job in Firestore
-       # Trigger screens worker
-       return {"status": "accepted"}
-   ```
-
-3. **Email Notification** when review is ready:
-   ```python
-   await send_email(
-       to=job.user_email,
-       subject=f"Review ready: {job.artist} - {job.title}",
-       body=f"Review at: https://gen.nomadkaraoke.com/review/{job_id}"
-   )
-   ```
-
----
-
-## Phase 4: Screens Worker
-
-### What It Does
-
-Generate title and end screens using the style parameters from the job.
-
-Based on `karaoke_gen/video_generator.py`:
-
-```python
-from karaoke_gen.video_generator import VideoGenerator
-
-async def generate_screens(job_id: str):
-    job = job_manager.get_job(job_id)
-    
-    # Initialize video generator
-    video_gen = VideoGenerator(
-        style_params=job.style_params,  # From job metadata
-        output_dir=temp_dir
-    )
-    
-    # Generate title screen
-    title_video = await video_gen.create_title_video(
-        artist=job.artist,
-        title=job.title
-    )
-    
-    # Generate end screen
-    end_video = await video_gen.create_end_video()
-    
-    # Upload to GCS
-    await upload_to_gcs(f"jobs/{job_id}/title.mov", title_video)
-    await upload_to_gcs(f"jobs/{job_id}/end.mov", end_video)
-    
-    # Mark complete, trigger video worker
-    job_manager.mark_screens_complete(job_id)
-    await trigger_video_worker(job_id)
-```
-
----
-
-## Phase 5: Video Worker (Finalization)
-
-### What It Does
-
-This is the most complex worker - it:
-1. Generates the main karaoke video with scrolling lyrics
-2. Presents instrumental selection to user
-3. Combines everything into final videos
-4. Exports multiple formats
-
-### Challenge: Long-Running Task
-
-Video encoding takes 15-20 minutes, which is:
-- ✅ Within Cloud Run timeout (60 min max)
-- ❌ Too long for synchronous request
-- ✅ Perfect for background task
-
-### Implementation Approach
-
-**Step 1: Generate Main Karaoke Video**
-```python
-from lyrics_transcriber.video.generator import generate_karaoke_video
-
-async def generate_main_video(job_id: str):
-    # Get corrected lyrics
-    corrections = await download_from_gcs(f"jobs/{job_id}/corrections.json")
-    
-    # Get audio with vocals
-    audio_path = await download_from_gcs(job.input_media_gcs_path)
-    
-    # Generate 4K karaoke video
-    video_path = await generate_karaoke_video(
-        audio_path=audio_path,
-        corrections=corrections,
-        style_params=job.style_params,
-        resolution="4k"
-    )
-    
-    # Upload
-    await upload_to_gcs(f"jobs/{job_id}/with_vocals.mkv", video_path)
-```
-
-**Step 2: Transition to Instrumental Selection**
-```python
-# Provide both instrumental options
-job_manager.transition_to_state(
-    job_id=job_id,
-    new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
-    message="Choose your instrumental"
+# Use OutputGenerator (NOT ReviewServer)
+output_generator = OutputGenerator(config, logger)
+outputs = output_generator.generate_outputs(
+    transcription_corrected=correction_result,
+    lyrics_results={},
+    output_prefix=f"{artist} - {title}",
+    audio_filepath=audio_path
 )
 
-# User sees UI with audio preview players
-# User selects "clean" or "with_backing"
-# Frontend calls: POST /api/jobs/{job_id}/select-instrumental
+# outputs.video = path to with_vocals.mkv
 ```
 
-**Step 3: Final Video Assembly**
-```python
-async def finalize_video(job_id: str):
-    # Get selected instrumental
-    instrumental_path = job.state_data.get("selected_instrumental")
-    
-    # Download components
-    title_video = await download_from_gcs(f"jobs/{job_id}/title.mov")
-    main_video = await download_from_gcs(f"jobs/{job_id}/with_vocals.mkv")
-    end_video = await download_from_gcs(f"jobs/{job_id}/end.mov")
-    instrumental_audio = await download_from_gcs(instrumental_path)
-    
-    # Remux main video with instrumental audio
-    karaoke_video = await remux_audio(main_video, instrumental_audio)
-    
-    # Concatenate: title + karaoke + end
-    combined = await concat_videos([title_video, karaoke_video, end_video])
-    
-    # Encode to multiple formats
-    outputs = await encode_formats(combined, {
-        "lossless_4k_mp4": {"video": "h264", "audio": "pcm"},
-        "lossless_4k_mkv": {"video": "h264", "audio": "flac"},
-        "lossy_4k_mp4": {"video": "h264", "audio": "aac"},
-        "lossy_720p_mp4": {"video": "h264", "audio": "aac", "scale": "1280:720"}
-    })
-    
-    # Upload all formats
-    for format_name, file_path in outputs.items():
-        await upload_to_gcs(f"jobs/{job_id}/final/{format_name}.mp4", file_path)
-    
-    # Mark job complete
-    job_manager.mark_job_complete(job_id)
-```
+**Process:**
+1. Download corrected `corrections.json` (or `corrections_updated.json` if edited)
+2. Download audio file
+3. Load as `CorrectionResult`
+4. Configure `OutputGenerator` with video rendering enabled
+5. Generate karaoke video with synchronized lyrics
+6. Upload to GCS
+7. Transition to `AWAITING_INSTRUMENTAL_SELECTION`
+
+**Output Files:**
+- `jobs/{job_id}/videos/with_vocals.mkv` - Karaoke video with lyrics
+- `jobs/{job_id}/lyrics/karaoke.lrc` - LRC file
+- `jobs/{job_id}/lyrics/karaoke.ass` - ASS subtitle file
 
 ---
 
-## Phase 6: Optional - CDG/TXT Generation
+### 5. Video Worker (`backend/workers/video_worker.py`)
 
-Generate CDG and TXT formats for compatibility with physical karaoke systems.
+**Purpose:** Final video assembly and encoding
 
-```python
-from lyrics_transcriber.output.cdg import CDGGenerator
+**Status:** ✅ Implemented (needs render_video_worker first)
 
-async def generate_cdg_txt(job_id: str):
-    # Get LRC file
-    lrc_path = await download_from_gcs(f"jobs/{job_id}/karaoke.lrc")
-    
-    # Convert to CDG
-    cdg_gen = CDGGenerator()
-    cdg_file = await cdg_gen.generate(lrc_path)
-    
-    # Convert to TXT
-    txt_file = await convert_lrc_to_txt(lrc_path)
-    
-    # Get instrumental MP3 (convert from FLAC)
-    instrumental_flac = await download_from_gcs(job.instrumentals["clean"])
-    instrumental_mp3 = await convert_to_mp3(instrumental_flac)
-    
-    # Create ZIPs
-    cdg_zip = await create_zip({
-        f"{job.artist} - {job.title} (Karaoke).cdg": cdg_file,
-        f"{job.artist} - {job.title} (Karaoke).mp3": instrumental_mp3
-    })
-    
-    txt_zip = await create_zip({
-        f"{job.artist} - {job.title} (Karaoke).txt": txt_file,
-        f"{job.artist} - {job.title} (Karaoke).mp3": instrumental_mp3
-    })
-    
-    # Upload
-    await upload_to_gcs(f"jobs/{job_id}/final/cdg.zip", cdg_zip)
-    await upload_to_gcs(f"jobs/{job_id}/final/txt.zip", txt_zip)
-```
+**Trigger:** Called after instrumental selection (`POST /api/jobs/{id}/select-instrumental`)
+
+**Process:**
+1. Download with_vocals.mkv
+2. Download selected instrumental (clean or with_backing)
+3. Remux: Replace audio track with instrumental
+4. Download title and end screens
+5. Concatenate: title + karaoke + end
+6. Encode to multiple formats
+7. Upload final videos to GCS
+8. Transition to `COMPLETE`
+
+**Output Files:**
+- `jobs/{job_id}/finals/lossless_4k.mp4`
+- `jobs/{job_id}/finals/lossless_4k.mkv`
+- `jobs/{job_id}/finals/lossy_4k.mp4`
+- `jobs/{job_id}/finals/lossy_720p.mp4`
 
 ---
 
-## Implementation Priority
+## State Machine
 
-### Sprint 1: Core Audio/Lyrics Processing (Week 1)
-1. ✅ Audio worker - Modal API integration
-2. ✅ Lyrics worker - AudioShake + lyrics_transcriber
-3. ✅ GCS file operations
-4. ✅ Job state transitions
-
-### Sprint 2: Human Interaction (Week 2)
-1. ✅ Corrections submission endpoint
-2. ✅ Instrumental selection endpoint
-3. ✅ React review UI (separate repo/Cloudflare Pages)
-4. ✅ Email notifications (SendGrid)
-
-### Sprint 3: Video Generation (Week 3)
-1. ✅ Screens worker
-2. ✅ Main karaoke video generation
-3. ✅ Video finalization worker
-4. ✅ Multiple format encoding
-
-### Sprint 4: Polish & Optional Features (Week 4)
-1. ✅ CDG/TXT generation
-2. ✅ YouTube upload (optional)
-3. ✅ Better error handling
-4. ✅ Retry logic
-5. ✅ Cost tracking
-
----
-
-## Key Technical Decisions
-
-### 1. Where to Run Video Encoding?
-
-**Option A: Cloud Run Background Task**
-- ✅ Simple (same codebase)
-- ✅ Within timeout limits (60 min)
-- ❌ Competes with API requests for resources
-
-**Option B: Cloud Build Job**
-- ✅ Dedicated compute
-- ✅ Higher resource limits
-- ❌ More complex orchestration
-
-**Recommendation**: Start with **Option A** (Cloud Run background task), migrate to Option B if needed.
-
-### 2. How to Handle FFmpeg?
-
-**Option A: Include in Docker image**
-- ✅ Simple
-- ✅ Consistent version
-- ❌ Larger image size
-
-**Option B: Cloud Build with FFmpeg pre-installed**
-- ✅ Optimized for video work
-- ❌ More complex
-
-**Recommendation**: **Option A** - Include FFmpeg in our Docker image.
-
-### 3. How to Access lyrics_transcriber?
-
-The `lyrics_transcriber_local/` submodule is already available!
+### Job States
 
 ```python
-# Add to Python path in workers
-import sys
-sys.path.insert(0, "/app/lyrics_transcriber_local")
+class JobStatus(str, Enum):
+    # Initial
+    PENDING = "pending"
+    DOWNLOADING = "downloading"
+    
+    # Parallel processing (tracked via state_data)
+    SEPARATING_STAGE1 = "separating_stage1"
+    SEPARATING_STAGE2 = "separating_stage2"
+    TRANSCRIBING = "transcribing"
+    
+    # Post-parallel
+    GENERATING_SCREENS = "generating_screens"
+    
+    # Human review
+    AWAITING_REVIEW = "awaiting_review"       # ⚠️ HUMAN
+    IN_REVIEW = "in_review"
+    REVIEW_COMPLETE = "review_complete"
+    
+    # Video rendering (NEW)
+    RENDERING_VIDEO = "rendering_video"        # ← NEW STATE
+    
+    # Instrumental selection
+    AWAITING_INSTRUMENTAL_SELECTION = "awaiting_instrumental_selection"  # ⚠️ HUMAN
+    INSTRUMENTAL_SELECTED = "instrumental_selected"
+    
+    # Final video
+    GENERATING_VIDEO = "generating_video"
+    
+    # Terminal
+    COMPLETE = "complete"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+```
 
-from lyrics_transcriber.transcriber import LyricsTranscriber
+### State Transitions
+
+```python
+STATE_TRANSITIONS = {
+    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.FAILED, JobStatus.CANCELLED],
+    JobStatus.DOWNLOADING: [
+        JobStatus.SEPARATING_STAGE1, 
+        JobStatus.TRANSCRIBING, 
+        JobStatus.GENERATING_SCREENS,  # When audio/lyrics use state_data
+        JobStatus.FAILED
+    ],
+    
+    # Audio separation (can skip if using state_data)
+    JobStatus.SEPARATING_STAGE1: [JobStatus.SEPARATING_STAGE2, JobStatus.FAILED],
+    JobStatus.SEPARATING_STAGE2: [JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
+    
+    # Transcription (can skip if using state_data)
+    JobStatus.TRANSCRIBING: [JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
+    
+    # Screens triggers review
+    JobStatus.GENERATING_SCREENS: [
+        JobStatus.AWAITING_REVIEW,
+        JobStatus.AWAITING_INSTRUMENTAL_SELECTION,  # Skip review if disabled
+        JobStatus.FAILED
+    ],
+    
+    # Human review flow
+    JobStatus.AWAITING_REVIEW: [JobStatus.IN_REVIEW, JobStatus.FAILED, JobStatus.CANCELLED],
+    JobStatus.IN_REVIEW: [JobStatus.REVIEW_COMPLETE, JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
+    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.FAILED],
+    
+    # Video rendering (NEW)
+    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
+    
+    # Instrumental selection
+    JobStatus.AWAITING_INSTRUMENTAL_SELECTION: [JobStatus.INSTRUMENTAL_SELECTED, JobStatus.FAILED, JobStatus.CANCELLED],
+    JobStatus.INSTRUMENTAL_SELECTED: [JobStatus.GENERATING_VIDEO, JobStatus.FAILED],
+    
+    # Final video
+    JobStatus.GENERATING_VIDEO: [JobStatus.COMPLETE, JobStatus.FAILED],
+    
+    # Terminal states
+    JobStatus.COMPLETE: [],
+    JobStatus.FAILED: [],
+    JobStatus.CANCELLED: [],
+}
 ```
 
 ---
 
-## Environment Variables Needed
+## API Endpoints for Human Interaction
 
-Add to Cloud Run service:
+### Review Endpoints
+
+```
+GET  /api/jobs/{job_id}/review
+     Returns: corrections JSON URL, audio URL, metadata
+     Used by: React review UI to load data
+
+POST /api/jobs/{job_id}/review
+     Body: { corrections: {...} }
+     Saves updated corrections to GCS
+     Used by: React UI to save progress
+
+POST /api/jobs/{job_id}/complete-review
+     Transitions to REVIEW_COMPLETE
+     Triggers render_video_worker
+     Used by: React UI "Finish" button
+```
+
+### Instrumental Selection Endpoints
+
+```
+GET  /api/jobs/{job_id}/instrumental-options
+     Returns: URLs for clean and with_backing instrumentals
+     Used by: Frontend to show audio players
+
+POST /api/jobs/{job_id}/select-instrumental
+     Body: { "selection": "clean" | "with_backing" }
+     Transitions to INSTRUMENTAL_SELECTED
+     Triggers video_worker
+```
+
+---
+
+## Using LyricsTranscriber as Library
+
+### What We Use
+
+| Component | Usage |
+|-----------|-------|
+| `LyricsTranscriber` | Transcription + auto-correction |
+| `CorrectionResult` | Data structure for corrections |
+| `OutputGenerator` | Video rendering with lyrics |
+| `OutputConfig` | Configuration for rendering |
+| `CorrectionOperations` | Update corrections from review |
+
+### What We Don't Use
+
+| Component | Reason |
+|-----------|--------|
+| `ReviewServer` | Blocks waiting for human input |
+| `server.start()` | Opens browser, blocks thread |
+| Interactive prompts | CLI-only features |
+
+### Example: Using OutputGenerator
+
+```python
+from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.correction.corrector import CorrectionResult
+from lyrics_transcriber.core.config import OutputConfig
+
+# 1. Load corrected data from GCS (after human review)
+corrections_data = download_json_from_gcs(f"jobs/{job_id}/corrections_updated.json")
+correction_result = CorrectionResult.from_dict(corrections_data)
+
+# 2. Configure output generation
+config = OutputConfig(
+    output_dir="/tmp/output",
+    cache_dir="/tmp/cache",
+    output_styles_json="/path/to/styles.json",
+    render_video=True,      # Enable video generation
+    generate_cdg=False,     # CDG optional
+    video_resolution="4k",
+    subtitle_offset_ms=0
+)
+
+# 3. Create generator and generate outputs
+output_generator = OutputGenerator(config, logger)
+outputs = output_generator.generate_outputs(
+    transcription_corrected=correction_result,
+    lyrics_results={},
+    output_prefix=f"{artist} - {title}",
+    audio_filepath=audio_path,
+    artist=artist,
+    title=title
+)
+
+# 4. Upload results
+upload_to_gcs(outputs.video, f"jobs/{job_id}/videos/with_vocals.mkv")
+upload_to_gcs(outputs.lrc, f"jobs/{job_id}/lyrics/karaoke.lrc")
+upload_to_gcs(outputs.ass, f"jobs/{job_id}/lyrics/karaoke.ass")
+```
+
+---
+
+## Environment Variables
 
 ```bash
-# Audio separation
-AUDIO_SEPARATOR_API_URL=https://your-modal-endpoint.modal.run
+# Audio separation (Modal API)
+AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run
 
 # Lyrics APIs
-AUDIOSHAKE_API_TOKEN=your-audioshake-token
-GENIUS_API_TOKEN=your-genius-token
-RAPIDAPI_KEY=your-rapidapi-key
-SPOTIFY_COOKIE_SP_DC=your-spotify-cookie
+AUDIOSHAKE_API_TOKEN=<secret>
+GENIUS_API_TOKEN=<secret>
 
-# Notifications (optional)
-SENDGRID_API_KEY=your-sendgrid-key
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+# GCS configuration  
+GOOGLE_CLOUD_PROJECT=nomadkaraoke
+GCS_BUCKET_NAME=karaoke-gen-storage
 
-# YouTube (optional, later)
-YOUTUBE_CLIENT_SECRETS={"installed":{"client_id":"...","...}}
+# Optional
+RAPIDAPI_KEY=<secret>  # For additional lyrics sources
 ```
+
+---
+
+## Implementation Checklist
+
+### Audio Worker ✅
+- [x] Modal API integration
+- [x] 2-stage separation
+- [x] Stem upload to GCS
+- [x] state_data progress tracking
+
+### Lyrics Worker ✅
+- [x] AudioShake API integration
+- [x] Reference lyrics fetching
+- [x] Auto-correction
+- [x] corrections.json generation
+- [x] `render_video=False` setting
+- [x] state_data progress tracking
+
+### Screens Worker ✅
+- [x] Title screen generation
+- [x] End screen generation
+- [x] Waits for audio+lyrics completion
+- [x] Transition to AWAITING_REVIEW
+
+### Render Video Worker 🔄
+- [ ] Download corrected data
+- [ ] Load CorrectionResult
+- [ ] Configure OutputGenerator
+- [ ] Generate with_vocals.mkv
+- [ ] Upload to GCS
+- [ ] Transition to AWAITING_INSTRUMENTAL
+
+### Video Worker ✅
+- [x] Download components
+- [x] Remux with instrumental
+- [x] Concatenate screens
+- [x] Encode multiple formats
+- [x] Upload finals
+- [x] Transition to COMPLETE
+
+### Review API 🔄
+- [ ] GET /review endpoint
+- [ ] POST /review endpoint
+- [ ] POST /complete-review endpoint
+- [ ] Wire up to main router
 
 ---
 
 ## Success Criteria
 
-### Phase 1 Complete When:
-- ✅ Can upload audio file
-- ✅ Audio worker separates stems via Modal
-- ✅ Lyrics worker transcribes via AudioShake
-- ✅ All stems/lyrics uploaded to GCS
-- ✅ Job transitions to `AWAITING_REVIEW`
-
-### Phase 2 Complete When:
-- ✅ Review UI loads corrections
-- ✅ User can submit corrections
-- ✅ Job transitions to video generation
-
-### Phase 3 Complete When:
-- ✅ Full video pipeline works
-- ✅ User can select instrumental
-- ✅ Final videos generated in all formats
-- ✅ Job marked `COMPLETE`
-
-### MVP Complete When:
-- ✅ End-to-end workflow works
-- ✅ User can download all final files
-- ✅ Quality matches CLI output
-
----
-
-## Next Steps
-
-1. **Revert stub workers** to start fresh
-2. **Implement audio worker** with actual Modal API calls
-3. **Implement lyrics worker** with AudioShake + lyrics_transcriber
-4. **Test with real audio file** end-to-end
-5. **Build corrections submission endpoint**
-6. **Start React review UI** (separate task/repo)
-
----
-
-**This is a REAL implementation plan, not stubs!** 🚀
-
+1. ✅ Audio separation produces all stems
+2. ✅ Lyrics transcription produces corrections.json
+3. ✅ Screens generate title/end videos
+4. ⏳ Human can review and correct lyrics via API
+5. ⏳ After review, video renders with corrected lyrics
+6. ⏳ Human can select instrumental
+7. ⏳ Final videos encode in all formats
+8. ⏳ Complete job has all downloadable files

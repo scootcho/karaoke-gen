@@ -201,11 +201,12 @@ async def submit_corrections(
     background_tasks: BackgroundTasks
 ) -> dict:
     """
-    Submit corrected lyrics after human review.
+    Save corrected lyrics during human review.
     
-    This is the FIRST critical human-in-the-loop interaction point.
-    After submission, the job proceeds to screen generation and
-    then instrumental selection.
+    This endpoint saves review progress but does NOT complete the review.
+    Call POST /{job_id}/complete-review to finish and trigger video rendering.
+    
+    Can be called multiple times to save progress.
     """
     job = job_manager.get_job(job_id)
     if not job:
@@ -223,30 +224,82 @@ async def submit_corrections(
         if submission.user_notes:
             job_manager.update_state_data(job_id, 'review_notes', submission.user_notes)
         
+        # Transition to IN_REVIEW if not already
+        if job.status == JobStatus.AWAITING_REVIEW:
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.IN_REVIEW,
+                message="User is reviewing lyrics"
+            )
+        
+        # Save updated corrections to GCS for the render worker
+        from backend.services.storage_service import StorageService
+        storage = StorageService()
+        
+        corrections_gcs_path = f"jobs/{job_id}/lyrics/corrections_updated.json"
+        storage.upload_json(corrections_gcs_path, submission.corrections)
+        job_manager.update_file_url(job_id, 'lyrics', 'corrections_updated', corrections_gcs_path)
+        
+        logger.info(f"Job {job_id}: Corrections saved (review in progress)")
+        
+        return {
+            "status": "success",
+            "job_status": "in_review",
+            "message": "Corrections saved. Call /complete-review when done."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving corrections for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{job_id}/complete-review")
+async def complete_review(
+    job_id: str,
+    background_tasks: BackgroundTasks
+) -> dict:
+    """
+    Complete the human review and trigger video rendering.
+    
+    This is the FIRST critical human-in-the-loop completion point.
+    After this:
+    1. Job transitions to REVIEW_COMPLETE
+    2. Render video worker is triggered
+    3. Worker uses OutputGenerator to create with_vocals.mkv
+    4. Job transitions to AWAITING_INSTRUMENTAL_SELECTION
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not in review state (current status: {job.status})"
+        )
+    
+    try:
         # Transition to REVIEW_COMPLETE
         job_manager.transition_to_state(
             job_id=job_id,
             new_status=JobStatus.REVIEW_COMPLETE,
-            progress=60,
-            message="Lyrics review complete, generating screens"
+            progress=70,
+            message="Review complete, rendering video with corrected lyrics"
         )
         
-        # This triggers automatic check if can proceed to screens
-        job_manager.mark_lyrics_complete(job_id)
+        # Trigger render video worker
+        background_tasks.add_task(worker_service.trigger_render_video_worker, job_id)
         
-        # If both audio and lyrics complete, screens worker is triggered automatically
-        # via the mark_lyrics_complete logic
-        
-        logger.info(f"Job {job_id}: Corrections submitted, proceeding to screens")
+        logger.info(f"Job {job_id}: Review complete, triggering render video worker")
         
         return {
             "status": "success",
             "job_status": "review_complete",
-            "message": "Corrections accepted"
+            "message": "Review complete. Video rendering started."
         }
         
     except Exception as e:
-        logger.error(f"Error submitting corrections for job {job_id}: {e}", exc_info=True)
+        logger.error(f"Error completing review for job {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -49,6 +49,9 @@ class JobStatus(str, Enum):
     IN_REVIEW = "in_review"                      # User is actively reviewing lyrics
     REVIEW_COMPLETE = "review_complete"          # User submitted corrected lyrics
     
+    # Stage 5.5: Render video with corrected lyrics (post-review)
+    RENDERING_VIDEO = "rendering_video"          # Using OutputGenerator to create with_vocals.mkv
+    
     # Stage 6: Instrumental selection (BLOCKING)
     AWAITING_INSTRUMENTAL_SELECTION = "awaiting_instrumental_selection"  # ⚠️ WAITING FOR USER
     INSTRUMENTAL_SELECTED = "instrumental_selected"  # User made selection
@@ -78,7 +81,8 @@ class JobStatus(str, Enum):
 # Valid state transitions
 STATE_TRANSITIONS = {
     JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.FAILED, JobStatus.CANCELLED],
-    JobStatus.DOWNLOADING: [JobStatus.SEPARATING_STAGE1, JobStatus.TRANSCRIBING, JobStatus.FAILED],
+    # DOWNLOADING allows parallel processing (audio + lyrics) and then screens when both complete
+    JobStatus.DOWNLOADING: [JobStatus.SEPARATING_STAGE1, JobStatus.TRANSCRIBING, JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
     
     # Audio separation flow
     JobStatus.SEPARATING_STAGE1: [JobStatus.SEPARATING_STAGE2, JobStatus.FAILED],
@@ -91,13 +95,17 @@ STATE_TRANSITIONS = {
     JobStatus.LYRICS_COMPLETE: [JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
     
     # Post-parallel processing
-    JobStatus.GENERATING_SCREENS: [JobStatus.APPLYING_PADDING, JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
+    JobStatus.GENERATING_SCREENS: [JobStatus.APPLYING_PADDING, JobStatus.AWAITING_REVIEW, JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
     JobStatus.APPLYING_PADDING: [JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
     
     # Human review flow
-    JobStatus.AWAITING_REVIEW: [JobStatus.IN_REVIEW, JobStatus.FAILED, JobStatus.CANCELLED],
+    # AWAITING_REVIEW can go directly to REVIEW_COMPLETE (quick review) or to IN_REVIEW (editing)
+    JobStatus.AWAITING_REVIEW: [JobStatus.IN_REVIEW, JobStatus.REVIEW_COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED],
     JobStatus.IN_REVIEW: [JobStatus.REVIEW_COMPLETE, JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
-    JobStatus.REVIEW_COMPLETE: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
+    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.FAILED],
+    
+    # Video rendering (post-review)
+    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
     
     # Instrumental selection flow
     JobStatus.AWAITING_INSTRUMENTAL_SELECTION: [JobStatus.INSTRUMENTAL_SELECTED, JobStatus.FAILED, JobStatus.CANCELLED],

@@ -114,13 +114,13 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # Update job status: Starting transcription
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.TRANSCRIBING,
-            progress=10,
-            message="Starting lyrics transcription via AudioShake"
-        )
+        # Update progress using state_data (don't change status during parallel processing)
+        # The status is managed at a higher level - workers just track their progress
+        job_manager.update_state_data(job_id, 'lyrics_progress', {
+            'stage': 'transcribing',
+            'progress': 10,
+            'message': 'Starting lyrics transcription via AudioShake'
+        })
         
         # Create LyricsProcessor instance (reuses karaoke_gen code)
         lyrics_processor = create_lyrics_processor(temp_dir)
@@ -147,13 +147,12 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         
         logger.info(f"Job {job_id}: All lyrics data uploaded successfully")
         
-        # Update progress
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.LYRICS_COMPLETE,
-            progress=45,
-            message="Lyrics transcription complete"
-        )
+        # Update progress using state_data (don't change status during parallel processing)
+        job_manager.update_state_data(job_id, 'lyrics_progress', {
+            'stage': 'lyrics_complete',
+            'progress': 45,
+            'message': 'Lyrics transcription complete'
+        })
         
         # Mark lyrics processing complete
         # This will check if audio is also complete and transition to next stage if so
@@ -290,12 +289,20 @@ async def upload_lyrics_results(
         logger.info(f"Job {job_id}: Uploaded LRC file")
     
     # Upload corrections JSON (for review interface)
-    corrections_file = os.path.join(lyrics_dir, "corrections.json")
+    # LyricsProcessor saves it as "{artist} - {title} (Lyrics Corrections).json"
+    corrections_filename = f"{job.artist} - {job.title} (Lyrics Corrections).json"
+    corrections_file = os.path.join(lyrics_dir, corrections_filename)
+    
+    # Also check for generic corrections.json (fallback)
+    if not os.path.exists(corrections_file):
+        corrections_file = os.path.join(lyrics_dir, "corrections.json")
+    
     if os.path.exists(corrections_file):
+        # Always upload as corrections.json for consistent access
         gcs_path = f"jobs/{job_id}/lyrics/corrections.json"
         url = storage.upload_file(corrections_file, gcs_path)
         job_manager.update_file_url(job_id, 'lyrics', 'corrections', url)
-        logger.info(f"Job {job_id}: Uploaded corrections JSON")
+        logger.info(f"Job {job_id}: Uploaded corrections JSON from {corrections_file}")
         
         # Load corrections to get metadata
         try:
@@ -304,12 +311,14 @@ async def upload_lyrics_results(
             
             # Store metadata in state_data
             job_manager.update_state_data(job_id, 'lyrics_metadata', {
-                'line_count': len(corrections_data.get('lines', [])),
+                'segment_count': len(corrections_data.get('corrected_segments', [])),
                 'has_corrections': True,
                 'ready_for_review': True
             })
         except Exception as e:
             logger.warning(f"Job {job_id}: Could not parse corrections JSON: {e}")
+    else:
+        logger.warning(f"Job {job_id}: No corrections JSON found at {corrections_file}")
     
     # Upload reference lyrics if available
     reference_files = [

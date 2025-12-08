@@ -123,6 +123,10 @@ class WorkerService:
     async def trigger_video_worker(self, job_id: str) -> bool:
         """Trigger video generation worker."""
         return await self.trigger_worker("video", job_id)
+    
+    async def trigger_render_video_worker(self, job_id: str) -> bool:
+        """Trigger render video worker (post-review)."""
+        return await self.trigger_worker("render-video", job_id)
 
 
 # Global worker service instance

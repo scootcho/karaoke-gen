@@ -3,7 +3,8 @@ Google Cloud Storage operations for file management.
 """
 import logging
 import os
-from typing import Optional, BinaryIO
+import json
+from typing import Optional, BinaryIO, Any, Dict
 from pathlib import Path
 from google.cloud import storage
 from datetime import timedelta
@@ -98,5 +99,32 @@ class StorageService:
             return blob.exists()
         except Exception as e:
             logger.error(f"Error checking file existence {blob_path}: {e}")
+            raise
+    
+    def upload_json(self, destination_path: str, data: Dict[str, Any]) -> str:
+        """Upload a JSON object to GCS."""
+        try:
+            blob = self.bucket.blob(destination_path)
+            blob.content_type = "application/json"
+            blob.upload_from_string(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                content_type="application/json"
+            )
+            logger.info(f"Uploaded JSON to gs://{settings.gcs_bucket_name}/{destination_path}")
+            return destination_path
+        except Exception as e:
+            logger.error(f"Error uploading JSON to {destination_path}: {e}")
+            raise
+    
+    def download_json(self, source_path: str) -> Dict[str, Any]:
+        """Download and parse a JSON file from GCS."""
+        try:
+            blob = self.bucket.blob(source_path)
+            content = blob.download_as_text()
+            data = json.loads(content)
+            logger.info(f"Downloaded JSON from gs://{settings.gcs_bucket_name}/{source_path}")
+            return data
+        except Exception as e:
+            logger.error(f"Error downloading JSON from {source_path}: {e}")
             raise
 

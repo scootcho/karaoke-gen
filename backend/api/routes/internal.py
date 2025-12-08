@@ -13,6 +13,7 @@ from backend.workers.audio_worker import process_audio_separation
 from backend.workers.lyrics_worker import process_lyrics_transcription
 from backend.workers.screens_worker import generate_screens
 from backend.workers.video_worker import generate_video
+from backend.workers.render_video_worker import process_render_video
 
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,34 @@ async def trigger_video_worker(
         status="started",
         job_id=job_id,
         message="Video generation worker started"
+    )
+
+
+@router.post("/workers/render-video", response_model=WorkerResponse)
+async def trigger_render_video_worker(
+    request: WorkerRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger render video worker (post-review).
+    
+    This is called after human review is complete.
+    Uses OutputGenerator from LyricsTranscriber to generate the karaoke video
+    with the corrected lyrics.
+    
+    Output: with_vocals.mkv in GCS
+    Next state: AWAITING_INSTRUMENTAL_SELECTION
+    """
+    job_id = request.job_id
+    logger.info(f"Triggering render-video worker for job {job_id}")
+    
+    # Add task to background tasks
+    background_tasks.add_task(process_render_video, job_id)
+    
+    return WorkerResponse(
+        status="started",
+        job_id=job_id,
+        message="Render video worker started (post-review)"
     )
 
 

@@ -221,6 +221,38 @@ class JobManager:
         self.update_job(job_id, {'state_data': state_data})
         logger.debug(f"Job {job_id} state_data updated: {key} = {value}")
     
+    def fail_job(self, job_id: str, error_message: str, error_details: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Mark a job as failed with error information.
+        
+        Args:
+            job_id: Job ID
+            error_message: Human-readable error message
+            error_details: Optional structured error details
+            
+        Returns:
+            True if successful
+        """
+        try:
+            # Update error fields
+            self.update_job(job_id, {
+                'error_message': error_message,
+                'error_details': error_details or {}
+            })
+            
+            # Use update_job_status which handles timeline
+            self.update_job_status(
+                job_id=job_id,
+                status=JobStatus.FAILED,
+                message=error_message
+            )
+            
+            logger.error(f"Job {job_id} failed: {error_message}")
+            return True
+        except Exception as e:
+            logger.error(f"Error marking job {job_id} as failed: {e}")
+            return False
+    
     def update_file_url(self, job_id: str, category: str, file_type: str, url: str) -> None:
         """
         Update a file URL in the job's file_urls structure.

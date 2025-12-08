@@ -130,14 +130,8 @@ def create_audio_processor(temp_dir: str) -> AudioProcessor:
     backing_vocals_models = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
     other_stems_models = ["htdemucs_6s.yaml"]  # For 6-stem separation (bass, drums, etc.)
     
-    # FFmpeg command for combining audio files
-    ffmpeg_base_command = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-nostats",
-        "-y"
-    ]
+    # FFmpeg command for combining audio files (must be a string, not a list)
+    ffmpeg_base_command = "ffmpeg -hide_banner -loglevel error -nostats -y"
     
     return AudioProcessor(
         logger=audio_logger,
@@ -198,13 +192,13 @@ async def process_audio_separation(job_id: str) -> bool:
         if not audio_path:
             raise Exception("Failed to download audio file")
         
-        # Update job status: Starting separation
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.SEPARATING_STAGE1,
-            progress=10,
-            message="Starting audio separation (Stage 1: Clean instrumental)"
-        )
+        # Update progress using state_data (don't change status during parallel processing)
+        # The status is managed at a higher level - workers just track their progress
+        job_manager.update_state_data(job_id, 'audio_progress', {
+            'stage': 'separating_stage1',
+            'progress': 10,
+            'message': 'Starting audio separation (Stage 1: Clean instrumental)'
+        })
         
         # Create AudioProcessor instance (reuses karaoke_gen code)
         audio_processor = create_audio_processor(temp_dir)
@@ -223,13 +217,12 @@ async def process_audio_separation(job_id: str) -> bool:
         
         logger.info(f"Job {job_id}: Audio separation complete, organizing results")
         
-        # Update progress
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.AUDIO_COMPLETE,
-            progress=45,
-            message="Audio separation complete, uploading stems"
-        )
+        # Update progress using state_data (don't change status during parallel processing)
+        job_manager.update_state_data(job_id, 'audio_progress', {
+            'stage': 'audio_complete',
+            'progress': 45,
+            'message': 'Audio separation complete, uploading stems'
+        })
         
         # Upload all stems to GCS
         await upload_separation_results(job_id, separation_result, storage, job_manager)

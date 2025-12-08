@@ -2,190 +2,192 @@
 
 This directory contains all documentation for the karaoke-gen project, organized by purpose.
 
-## 📋 Current Status (Updated: 2025-12-01)
+## 📋 Current Status (Updated: 2025-12-08)
 
-**Project:** Migrating from Modal-based monolithic web app to scalable cloud architecture  
-**Backend:** ✅ Phase 1.3 Complete (Workers + Video Generation)  
-**Frontend:** ⏸️ Not started (waiting for backend stability)  
+**Project:** Cloud-hosted karaoke generation with async human review  
+**Backend:** 🔄 Phase 1.3 (85%) - Implementing review architecture  
+**Frontend:** ⏸️ Not started (waiting for backend review flow)  
 **Deployment:** ✅ Cloud Run with custom domain (api.nomadkaraoke.com)  
-**Testing:** ✅ Complete (62 unit tests + 11 emulator integration tests, all passing)
+**Testing:** 🔄 Local emulator testing in progress
+
+### Key Discovery
+
+We identified that the `LyricsTranscriber` library's `ReviewServer` **blocks** waiting for human input, which doesn't work in our async cloud architecture. The solution is to:
+
+1. Use LyricsTranscriber for transcription + auto-correction
+2. Save corrections to GCS for async human review
+3. Use `OutputGenerator` to render video **after** review completes
+
+See `00-current-plan/CURRENT-STATUS.md` for full details.
 
 ---
 
 ## 📂 Documentation Structure
 
 ### `00-current-plan/` - **START HERE**
-The active migration plan and requirements. Read these first.
+Active migration plan and current status.
 
 | File | Purpose |
 |------|---------|
-| **`MASTER-PLAN.md`** | **Main migration plan** - phases, architecture, timeline |
-| `CLOUD-MIGRATION-REQUIREMENTS.md` | Architectural implications from CLI workflow analysis |
+| **`CURRENT-STATUS.md`** | Where we are now, what's working, what's next |
+| **`WHATS-NEXT.md`** | Detailed plan for review architecture implementation |
+| **`WORKER-IMPLEMENTATION-PLAN.md`** | Worker responsibilities and implementation details |
+| `MASTER-PLAN.md` | Overall migration strategy |
+| `CLOUD-MIGRATION-REQUIREMENTS.md` | Architectural analysis from CLI workflow |
 
 ### `01-reference/` - Reference Documentation
-Core system documentation that doesn't change often.
+Core system documentation.
 
 | File | Purpose |
 |------|---------|
-| `KARAOKE-GEN-CLI-WORKFLOW.md` | Complete technical breakdown of CLI workflow (8 stages) |
-| `ARCHITECTURE.md` | Original CLI architecture documentation |
-| `API-MANUAL-TESTING.md` | How to manually test backend API with curl |
-| `AUTHENTICATION.md` | Token-based authentication system (implemented) |
-| `CLOUD-RUN-ARCHITECTURE.md` | How Cloud Run works, containers, scaling, concurrency |
+| **`ARCHITECTURE.md`** | Cloud + CLI architecture with diagrams |
+| `KARAOKE-GEN-CLI-WORKFLOW.md` | CLI workflow breakdown (8 stages) |
+| `API-MANUAL-TESTING.md` | How to test backend API with curl |
+| `AUTHENTICATION.md` | Token-based auth system |
+| `CLOUD-RUN-ARCHITECTURE.md` | Cloud Run concepts |
 
 ### `02-implementation-history/` - Session Logs
-Historical records of implementation sessions. Useful for understanding decisions made.
-
-| File | Date | Purpose |
-|------|------|---------|
-| `PHASE-1-2-PROGRESS.md` | 2025-12-01 | Async job processing, workers, state machine |
-| `PHASE-1-3-PROGRESS.md` | 2025-12-01 | Video generation worker implementation |
-| `AUTHENTICATION-IMPLEMENTATION.md` | 2025-12-01 | Token-based auth system implementation |
-| `FIRST-TEST-FIXES.md` | 2025-12-01 | Environment variables & race condition fixes |
-| `FILE-UPLOAD-IMPLEMENTATION.md` | 2025-12-01 | File upload endpoint implementation |
-| `DOCKER-BUILD-OPTIMIZATION.md` | 2025-12-01 | Build caching improvements (20min → 2min) |
+Historical implementation records.
 
 ### `03-deployment/` - Deployment Guides
 How to deploy and operate the system.
 
 | File | Purpose |
 |------|---------|
-| **`EMULATOR-TESTING.md`** | **Local integration testing** with Firestore/GCS emulators |
-| **`SETUP-VENV.md`** | **Quick venv setup** (Python 3.12, dependencies) |
-| **`LOCAL-VALIDATION.md`** | **Validate before deploying** (catches import errors) |
-| **`OBSERVABILITY-GUIDE.md`** | **Debug production issues** (logs, metrics, debug script) |
-| `CUSTOM-DOMAIN-SETUP.md` | Setting up api.nomadkaraoke.com |
-| `WHY-BUILD-DIDNT-DEPLOY.md` | Cloud Build deployment troubleshooting |
-| `VENV-SETUP-COMPLETE.md` | Complete venv setup walkthrough |
-| `OBSERVABILITY-IMPROVEMENTS.md` | Observability improvements made |
+| **`EMULATOR-TESTING.md`** | Local testing with Firestore/GCS emulators |
+| **`SETUP-VENV.md`** | Python venv setup |
+| **`LOCAL-VALIDATION.md`** | Validate before deploying |
+| **`OBSERVABILITY-GUIDE.md`** | Debug production issues |
 
-### `archived/` - Old/Deprecated Files
-Historical documents no longer relevant to current architecture.
+### `04-testing/` - Testing Guides
 
-<details>
-<summary>Click to see archived files</summary>
-
-- `MODAL-MIGRATION.md` - Original Modal-based architecture (deprecated)
-- `NEW-ARCHITECTURE.md` - Early architecture draft (superseded by MASTER-PLAN)
-- `MIGRATION-CUTOVER.md` - Old cutover plan (no longer relevant)
-- `MIGRATION-SUMMARY.md` - Old migration summary
-- `PERFORMANCE-OPTIMIZATION.md` - Old optimization guide
-- `TESTING-GUIDE.md` - Old testing guide (superseded by TESTING-BACKEND)
-- `AUTHENTICATION_SETUP.md` - Old auth setup (deferred to later phase)
-- `FINALIZATION-SETUP.md` - Old finalization docs
-- `stripe-wip.md` - Stripe integration WIP (deferred to later phase)
-- `COUNTDOWN_PADDING_*.md` - Implementation details (now in karaoke-gen package)
-
-</details>
-
-### `NEXT-STEPS.md` - Current TODO
-What to do next after current phase completes. Gets updated frequently.
+| File | Purpose |
+|------|---------|
+| **`TESTING-GUIDE.md`** | Complete testing guide |
 
 ---
 
 ## 🚀 Quick Start
 
-### I want to understand the project:
-1. Read `00-current-plan/MASTER-PLAN.md` - overall strategy
-2. Read `00-current-plan/CLOUD-MIGRATION-REQUIREMENTS.md` - why it's complex
-3. Read `01-reference/KARAOKE-GEN-CLI-WORKFLOW.md` - how the CLI works
+### I want to understand the current state:
+1. Read `00-current-plan/CURRENT-STATUS.md` - where we are now
+2. Read `00-current-plan/WHATS-NEXT.md` - what needs to be done
+3. Read `01-reference/ARCHITECTURE.md` - system architecture
 
 ### I want to work on the backend:
-1. Read `03-deployment/EMULATOR-TESTING.md` - run local integration tests
-2. Read `01-reference/API-MANUAL-TESTING.md` - test the API manually
-3. Read `03-deployment/LOCAL-VALIDATION.md` - validate before deploying
-4. Read `03-deployment/INFRASTRUCTURE-AS-CODE.md` - manage infrastructure
+1. Read `03-deployment/EMULATOR-TESTING.md` - local testing setup
+2. Read `00-current-plan/WORKER-IMPLEMENTATION-PLAN.md` - worker details
+3. Run `./scripts/run-backend-local.sh --with-emulators`
 
-### I want to deploy:
-1. Read `03-deployment/INFRASTRUCTURE-AS-CODE.md` - provision infrastructure
-2. Read `03-deployment/CLOUD-RUN-DEPLOYMENT.md` - deploy backend
-3. Read `03-deployment/CLOUDFLARE-PAGES-DEPLOYMENT.md` - deploy frontend (future)
+### I want to test:
+```bash
+# Start backend with emulators
+./scripts/run-backend-local.sh --with-emulators
 
-### I want to see what was done previously:
-- Check `02-implementation-history/` for session summaries
+# Upload test file
+curl -X POST http://localhost:8000/api/jobs/upload \
+  -F "file=@tests/data/waterloo10sec.flac" \
+  -F "artist=ABBA" \
+  -F "title=Waterloo"
+
+# Check status
+curl http://localhost:8000/api/jobs/{job_id}
+```
 
 ---
 
-## 🎯 Current Phase: Backend Workers & Testing
+## 🎯 Current Phase: Review Architecture
 
-**Goal:** Complete async job processing and fix production issues
-
-**Status:** ✅ Phase 1.3 Nearly Complete
-- ✅ Backend API deployed to Cloud Run
-- ✅ All infrastructure in Pulumi  
-- ✅ Custom domain with SSL (api.nomadkaraoke.com)
-- ✅ 4 workers implemented (audio, lyrics, screens, video)
-- ✅ 21-state job state machine
-- ✅ Human-in-the-loop API endpoints
-- ✅ Local validation & debug tooling
-- ✅ Token-based authentication system
-- 🔄 **Current:** Fixing Firestore consistency issues
+**Goal:** Implement async human review workflow
 
 **What Works:**
-- Health endpoint
-- Job creation
-- File uploads to GCS
-- Firestore job storage
-- Environment variables
-- Cloud Build deployment
+- ✅ File upload → GCS
+- ✅ Audio separation via Modal API
+- ✅ Lyrics transcription via AudioShake
+- ✅ Auto-correction via LyricsTranscriber
+- ✅ Title/end screen generation
+- ✅ Instrumental selection endpoint
 
-**What's Being Fixed:**
-- Firestore eventual consistency causing race condition
-- Workers seeing stale job data
+**What's Being Implemented:**
+- 🔄 Review API endpoints (`GET/POST /api/jobs/{id}/review`)
+- 🔄 Render Video Worker (uses `OutputGenerator` after review)
+- 🔄 Updated state machine with `RENDERING_VIDEO` state
 
-**Next:** Phase 1.4 - End-to-end testing with real job processing
+**The Key Insight:**
+```
+WRONG: Lyrics Worker → Generate Video → Review → ???
+RIGHT: Lyrics Worker → Save JSON → Human Review → Render Video → Final Assembly
+```
 
-See `NEXT-STEPS.md` for detailed next actions.
-
----
-
-## 📝 Key Insights
-
-### Why This Is Complex
-
-The karaoke-gen CLI is **not a simple batch job**. It's a multi-stage process with:
-- **2 human interaction points** (lyrics review, instrumental selection)
-- **30-45 minute total processing time**
-- **Multiple external APIs** (Modal, AudioShake, Genius, YouTube)
-- **~2GB working files** per song
-- **Parallel processing** (audio + lyrics simultaneously)
-
-**The cloud version must support async processing with human-in-the-loop.**
-
-See `00-current-plan/CLOUD-MIGRATION-REQUIREMENTS.md` for full analysis.
-
-### Critical Design Decisions
-
-1. **Why not simplify the workflow?**  
-   → Human review is essential for quality. Cannot be automated without sacrificing output quality.
-
-2. **Why so many output formats?**  
-   → Different use cases: archival (lossless), streaming (lossy 4K), mobile (720p), karaoke machines (CDG).
-
-3. **Why async job queue?**  
-   → Processing takes 30-45 min with gaps for human decisions. Cannot block HTTP requests.
-
-4. **Why Firestore + GCS?**  
-   → Need state persistence (Firestore) and large file storage (GCS). Cloud Run is stateless.
+Video generation happens AFTER human review, not during the lyrics worker.
 
 ---
 
-## 🔄 How This Repo Is Updated
+## 📝 Key Technical Decisions
 
-- **Active development docs** stay in `00-current-plan/`
-- **Completed session summaries** go to `02-implementation-history/`
-- **Reference docs** stay stable in `01-reference/`
-- **Deployment guides** get updated as infrastructure changes
-- **Superseded docs** move to `archived/`
+### Why Not Use LyricsTranscriber's ReviewServer?
+
+The `ReviewServer` class (in `lyrics_transcriber/review/server.py`):
+- Starts a local web server on port 8000
+- Opens a browser window
+- **BLOCKS** the thread until human submits corrections
+- Designed for local CLI operation
+
+This doesn't work in Cloud Run where:
+- We can't open browsers
+- Workers must be non-blocking
+- Human review happens asynchronously via React frontend
+
+**Solution:** Use the data structures and `OutputGenerator` directly, skip the server.
+
+### Why Separate Video Rendering?
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Lyrics Worker  │ ──▶ │ Human Reviews   │ ──▶ │ Render Worker   │
+│                 │     │ (React UI)      │     │                 │
+│ • Transcribe    │     │ • Corrects      │     │ • OutputGenerator│
+│ • Auto-correct  │     │ • Saves JSON    │     │ • with_vocals.mkv│
+│ • Save JSON     │     │                 │     │                 │
+│ • NO VIDEO      │     │                 │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+The video must include the human-corrected lyrics, so it can only be generated AFTER review.
 
 ---
 
-## 🆘 Getting Help
+## 🔄 Job State Flow
 
-If you're confused:
-1. Start with `00-current-plan/MASTER-PLAN.md`
-2. Check if there's a recent session summary in `02-implementation-history/`
-3. Look for specific deployment guides in `03-deployment/`
+```
+PENDING → DOWNLOADING → [parallel audio+lyrics] → GENERATING_SCREENS
+    ↓
+AWAITING_REVIEW → IN_REVIEW → REVIEW_COMPLETE
+    ↓
+RENDERING_VIDEO (NEW)
+    ↓
+AWAITING_INSTRUMENTAL_SELECTION → INSTRUMENTAL_SELECTED
+    ↓
+GENERATING_VIDEO → COMPLETE
+```
 
-If something seems outdated, it might be in `archived/` - check there before assuming it's lost.
+Two human interaction points:
+1. **AWAITING_REVIEW** - User corrects lyrics
+2. **AWAITING_INSTRUMENTAL_SELECTION** - User chooses audio track
 
+---
+
+## 📞 Getting Help
+
+1. Check `00-current-plan/CURRENT-STATUS.md` first
+2. Look for specific guides in `03-deployment/`
+3. Review session history in `02-implementation-history/`
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Emulator not starting | Check ports 8080, 4443 are free |
+| "Missing lyrics video" | Review hasn't happened yet - expected behavior |
+| Workers not progressing | Check `state_data` in Firestore |
+| FFmpeg errors | Ensure FFmpeg is in PATH |

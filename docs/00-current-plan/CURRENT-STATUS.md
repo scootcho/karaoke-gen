@@ -1,7 +1,7 @@
 # Current Project Status
 
-**Last Updated:** 2025-12-01 07:45 UTC  
-**Phase:** 1.3 - Workers & Video Generation (99% complete)
+**Last Updated:** 2025-12-08  
+**Phase:** 1.3 - Workers & Human Review Integration (85% complete)
 
 ---
 
@@ -9,18 +9,41 @@
 
 ```
 Phase 1.1: Backend Foundation       ✅ 100% Complete
-Phase 1.2: Async Job Processing     ✅ 100% Complete
-Phase 1.3: Video Generation         🔄  99% Complete (fixing Firestore issue)
-Phase 1.4: End-to-End Testing       ⏳  0% Not started
-Phase 2.0: Frontend (React)         ⏳  0% Not started
+Phase 1.2: Async Job Processing     ✅ 100% Complete  
+Phase 1.3: Workers Implementation   🔄  85% Complete (review architecture fix needed)
+Phase 1.4: End-to-End Testing       🔄  50% Started (local emulator testing)
+Phase 2.0: Frontend (React)         ⏳   0% Not started
 ```
+
+---
+
+## 🔑 Key Architectural Discovery
+
+### LyricsTranscriber Review Process
+
+During local testing, we discovered a critical architectural mismatch:
+
+**The Problem:**
+- The `LyricsTranscriber` library has a built-in `ReviewServer` (see `lyrics_transcriber/review/server.py`)
+- This server is designed for **local CLI operation** - it **blocks** waiting for human review
+- The server starts on port 8000, opens a browser, and waits for `/api/complete` to be called
+- This blocking model is **incompatible** with our async Cloud Run architecture
+
+**The Solution:**
+- **Do NOT use** the `ReviewServer` class from LyricsTranscriber
+- **DO use** the data structures: `CorrectionResult`, `CorrectionOperations`, `OutputGenerator`
+- Build **separate backend API endpoints** for async review workflow
+- Generate video **after** review using `OutputGenerator`
+
+See `WHATS-NEXT.md` for the full architectural solution.
 
 ---
 
 ## ✅ What's Working
 
 ### Infrastructure
-- ✅ Google Cloud Run deployment
+- ✅ Google Cloud Run deployment (Cloud)
+- ✅ Local development with Firestore/GCS emulators
 - ✅ Pulumi infrastructure as code
 - ✅ Cloud Build automatic deployment
 - ✅ Custom domain (api.nomadkaraoke.com)
@@ -36,116 +59,150 @@ Phase 2.0: Frontend (React)         ⏳  0% Not started
 - ✅ Job status endpoint
 - ✅ File upload endpoint
 - ✅ Internal worker trigger endpoints
-- ✅ Human interaction endpoints (lyrics review, instrumental selection)
+- ✅ Instrumental selection endpoint
 - ✅ Token-based authentication system
 
-### Workers
-- ✅ Audio worker (separation)
-- ✅ Lyrics worker (transcription)
-- ✅ Screens worker (CDG/TXT generation)
-- ✅ Video worker (encoding)
+### Workers (Implemented but need review flow fix)
+- ✅ Audio worker (stem separation via Modal API)
+- ✅ Lyrics worker (transcription via AudioShake API)
+- ✅ Screens worker (title/end screen generation)
+- 🔄 Video worker (needs review flow integration)
 
 ### State Management
 - ✅ 21-state job state machine
 - ✅ Job timeline tracking
-- ✅ Progress tracking
+- ✅ Progress tracking via `state_data`
 - ✅ Error handling with detailed messages
 
-### Developer Experience
-- ✅ Local validation (catches errors before deploy)
-- ✅ Debug script (`./scripts/debug-job.sh`)
-- ✅ Docker build caching (2min builds)
-- ✅ Comprehensive documentation
-- ✅ Python 3.12 venv setup
+### Local Testing
+- ✅ Firestore emulator integration
+- ✅ GCS emulator integration
+- ✅ `./scripts/run-backend-local.sh --with-emulators`
+- ✅ Can upload files and trigger workers
 
 ---
 
-## 🔄 Current Issue
+## 🔄 Current Issue: Review Architecture
 
-### Firestore Consistency Race Condition
+### What Needs to Change
 
-**Problem:**
-1. Job created in Firestore
-2. File uploaded to GCS
-3. Job updated with `input_media_gcs_path`
-4. Workers triggered immediately
-5. Workers fetch job from Firestore
-6. Firestore update hasn't propagated yet
-7. Workers see old version without `input_media_gcs_path`
-8. Job fails: `'Job' object has no attribute 'input_media_gcs_path'`
+```
+CURRENT (BROKEN):                    TARGET (CORRECT):
+─────────────────────                ─────────────────────
+Lyrics Worker                        Lyrics Worker
+├── Transcribe                       ├── Transcribe
+├── Auto-correct                     ├── Auto-correct  
+├── Generate video ❌                ├── Save corrections.json ✓
+└── Upload                           └── → AWAITING_REVIEW
+                                            │
+                                     Human Review (React UI)
+                                     ├── Load corrections
+                                     ├── Edit/correct
+                                     └── Save → REVIEW_COMPLETE
+                                            │
+                                     Render Video Worker (NEW)
+                                     ├── Use OutputGenerator
+                                     ├── Generate with_vocals.mkv
+                                     └── → AWAITING_INSTRUMENTAL
+                                            │
+                                     Video Worker (Final)
+                                     ├── Select instrumental
+                                     ├── Remux + concatenate
+                                     └── → COMPLETE
+```
 
-**Fix In Progress:**
-- Added verification step after update
-- Refetch job to confirm update
-- 500ms retry if not visible
-- Only trigger workers after verification
+### Missing Pieces
 
-**Status:** Deploying fix now (revision 00008 expected)
+1. **Review API Endpoints** - Need to add:
+   - `GET /api/jobs/{job_id}/review` - Get correction data + audio URL
+   - `POST /api/jobs/{job_id}/review` - Save updated corrections
+   - `POST /api/jobs/{job_id}/complete-review` - Trigger video render
+
+2. **Render Video Worker** - New worker that:
+   - Downloads corrected lyrics from GCS
+   - Uses `OutputGenerator` to create karaoke video
+   - Uploads `with_vocals.mkv` to GCS
+   - Transitions to `AWAITING_INSTRUMENTAL_SELECTION`
+
+3. **State Machine Update** - Need transitions:
+   - `AWAITING_REVIEW` → `REVIEW_COMPLETE` (after human submits)
+   - `REVIEW_COMPLETE` → `RENDERING_VIDEO` (new state)
+   - `RENDERING_VIDEO` → `AWAITING_INSTRUMENTAL_SELECTION`
 
 ---
 
-## 📊 Component Status
+## 📊 Test Results (Local Emulators)
 
-### Cloud Run Service
-```
-Service:    karaoke-backend
-Region:     us-central1
-Revision:   00007-rnj (current)
-            00008-xxx (deploying with fix)
-Status:     Healthy
-URL:        https://karaoke-backend-ipzqd2k4yq-uc.a.run.app
-Custom URL: https://api.nomadkaraoke.com
-```
+### Latest Test Run
 
-### Authentication
 ```
-Method:     Google Cloud Identity (gcloud auth)
-Required:   Bearer token on all endpoints
-Token:      $(gcloud auth print-identity-token)
-Future:     Custom token system (ADMIN/UNLIMITED/LIMITED)
+✅ File upload: Success
+✅ Audio worker: Separates stems via Modal API
+✅ Lyrics worker: Transcribes via AudioShake, saves corrections.json
+✅ Screens worker: Generates title/end screens
+❌ Video worker: Fails - "Missing lyrics video"
+   └── Root cause: No video generated because review hasn't happened
 ```
 
-### Database (Firestore)
-```
-Collection: jobs
-Documents:  Growing (test jobs)
-Issue:      Eventual consistency causing race condition
-Fix:        Verification + retry logic
-```
+### Understanding
 
-### Storage (GCS)
-```
-Bucket:     karaoke-gen-storage-nomadkaraoke
-Structure:  uploads/{job_id}/
-            outputs/{job_id}/
-            temp/{job_id}/
-```
+The video worker expects a `with_vocals.mkv` file, but:
+1. The lyrics worker doesn't generate video (correctly - review hasn't happened)
+2. There's no worker to generate video AFTER review
+3. We need to add the "Render Video Worker" to bridge this gap
 
 ---
 
-## 🛠️ Recent Fixes
+## 🏗️ Architecture: Cloud vs LyricsTranscriber
 
-### Today's Fixes (2025-12-01)
+### LyricsTranscriber (CLI Mode)
 
-1. **✅ Cloud Build Deployment Permissions**
-   - Granted `roles/run.admin` to Cloud Build service account
-   - Added `roles/iam.serviceAccountUser`
+```python
+# This BLOCKS waiting for human input
+from lyrics_transcriber.review.server import ReviewServer
 
-2. **✅ Docker Image Push Timing**
-   - Added explicit push steps before deployment
-   - Fixed "image not found" errors
+server = ReviewServer(correction_result, config, audio_path, logger)
+corrected_result = server.start()  # ❌ BLOCKS HERE until browser submits
+# Then continues to video generation
+```
 
-3. **✅ Environment Variables**
-   - Added to `cloudbuild.yaml` deploy step
-   - `GOOGLE_CLOUD_PROJECT`, `GCS_BUCKET_NAME`, etc.
+### Cloud Backend (Async Mode)
 
-4. **✅ Race Condition in File Upload**
-   - Changed from `background_tasks` to `await`
-   - Ensures sequential execution
+```python
+# Our approach - NO BLOCKING
+async def lyrics_worker(job_id):
+    # 1. Transcribe
+    result = transcriber.transcribe(audio_path)
+    
+    # 2. Auto-correct
+    corrections = corrector.correct(result)
+    
+    # 3. Save for human review (NO VIDEO YET)
+    upload_to_gcs(f"jobs/{job_id}/corrections.json", corrections.to_dict())
+    upload_to_gcs(f"jobs/{job_id}/audio.flac", audio_path)
+    
+    # 4. Transition and STOP
+    job_manager.transition_to_state(job_id, JobStatus.AWAITING_REVIEW)
+    # Worker exits - human will review via React UI
 
-5. **🔄 Firestore Consistency (In Progress)**
-   - Added verification after update
-   - Retry logic if update not visible
+async def render_video_worker(job_id):  # NEW - called after review
+    # 1. Download corrected data
+    corrections = download_from_gcs(f"jobs/{job_id}/corrections_updated.json")
+    correction_result = CorrectionResult.from_dict(corrections)
+    
+    # 2. Use OutputGenerator to render video
+    output_generator = OutputGenerator(config, logger)
+    outputs = output_generator.generate_outputs(
+        transcription_corrected=correction_result,
+        lyrics_results={},
+        output_prefix=f"{artist} - {title}",
+        audio_filepath=audio_path
+    )
+    
+    # 3. Upload and continue
+    upload_to_gcs(f"jobs/{job_id}/videos/with_vocals.mkv", outputs.video)
+    job_manager.transition_to_state(job_id, JobStatus.AWAITING_INSTRUMENTAL_SELECTION)
+```
 
 ---
 
@@ -154,7 +211,6 @@ Structure:  uploads/{job_id}/
 ### Build Times
 - **Before optimization:** 15-20 minutes
 - **After Docker caching:** 2-3 minutes
-- **Improvement:** ~10x faster
 
 ### API Response Times
 - **Health endpoint:** <50ms
@@ -163,167 +219,90 @@ Structure:  uploads/{job_id}/
 - **File upload:** ~300ms + file size
 
 ### Processing Times (Expected)
-- **Audio separation:** 5-8 minutes
-- **Lyrics transcription:** 2-3 minutes
+- **Audio separation:** 5-8 minutes (Modal API)
+- **Lyrics transcription:** 2-3 minutes (AudioShake API)
 - **Screens generation:** 30 seconds
-- **Video encoding:** 15-20 minutes
-- **Total:** 30-45 minutes (excluding human interaction)
+- **Human review:** 5-15 minutes (user-dependent)
+- **Video rendering:** 10-15 minutes
+- **Final encoding:** 5-10 minutes
+- **Total:** 30-50 minutes (including human interaction)
 
 ---
 
 ## 🚀 Next Steps
 
-### Immediate (Next Hour)
-1. ✅ Current build completes
-2. ✅ Test file upload with fixed code
-3. ✅ Verify workers can read `input_media_gcs_path`
-4. ✅ Confirm job progresses past initial stage
+### Immediate (Current Session)
+1. ✅ Document the review architecture issue
+2. ⏭️ Add review API endpoints
+3. ⏭️ Create render video worker
+4. ⏭️ Update state machine
+5. ⏭️ Test end-to-end with local emulators
 
-### Short Term (Next Day)
-1. ⏳ End-to-end test with 30-second audio file
-2. ⏳ Test human interaction endpoints
-3. ⏳ Verify video generation completes
-4. ⏳ Download and verify output files
+### Short Term (Next Session)
+1. ⏳ Test full workflow with real song
+2. ⏳ Build React review UI (can use LyricsTranscriber components)
+3. ⏳ Deploy to Cloud Run for production test
 
 ### Medium Term (Next Week)
-1. ⏳ Test with full-length song (3-4 minutes)
-2. ⏳ Load testing (multiple concurrent jobs)
-3. ⏳ Error recovery testing
-4. ⏳ Add structured logging
-5. ⏳ Add custom metrics
-
-### Long Term (Next Month)
-1. ⏳ React frontend
-2. ⏳ Separate worker architecture (Pub/Sub)
-3. ⏳ GPU workers for video encoding
-4. ⏳ Monitoring dashboard
-5. ⏳ Automated alerts
+1. ⏳ React frontend for full workflow
+2. ⏳ Email notifications for review ready
+3. ⏳ Error recovery and retry logic
 
 ---
 
-## 📝 Documentation Status
+## 📝 Key Documentation Files
 
-### Excellent Coverage
-- ✅ API manual testing guide
-- ✅ Cloud Run architecture explanation
-- ✅ Observability & debugging guide
-- ✅ Local validation setup
-- ✅ Custom domain setup
-- ✅ Troubleshooting guides
-
-### Needs Update
-- ⚠️ Integration test suite (outdated)
-- ⚠️ Master plan (reflects earlier phases)
-- ⚠️ Architecture diagram (needs cloud version)
-
-### Missing
-- ❌ Frontend documentation (not started)
-- ❌ Load testing guide
-- ❌ Disaster recovery plan
+| File | Purpose |
+|------|---------|
+| `WHATS-NEXT.md` | Detailed plan for review architecture fix |
+| `WORKER-IMPLEMENTATION-PLAN.md` | Updated worker responsibilities |
+| `ARCHITECTURE.md` | Cloud architecture with review flow |
+| `../04-testing/TESTING-GUIDE.md` | Local testing with emulators |
 
 ---
 
-## 🎓 Key Learnings
+## 🔗 Quick Reference
 
-### Technical
-1. **Firestore eventual consistency is real**
-   - Can't assume immediate visibility of updates
-   - Need verification + retry logic
-
-2. **Cloud Build deployment needs explicit steps**
-   - Image push must happen before deployment
-   - Environment variables must be in deploy step
-
-3. **Docker layer caching is crucial**
-   - Reorder layers: dependencies first, code last
-   - 10x build speed improvement
-
-4. **Local validation is essential**
-   - Catches import errors before cloud deployment
-   - Saves 20+ minutes per bug fix
-
-### Process
-1. **Debug tooling is worth the investment**
-   - `debug-job.sh` script saves ~5 minutes per debug session
-   - Good observability = faster development
-
-2. **Documentation as you go**
-   - Much easier than retroactive documentation
-   - Helps track decisions and issues
-
-3. **Test early and often**
-   - First prod test found 3 issues immediately
-   - Better to find issues in small batches
-
----
-
-## 🔗 Quick Links
-
-### Essential Commands
+### Run Local Tests
 ```bash
-# Deploy
-gcloud builds submit --config cloudbuild.yaml
+# Start backend with emulators
+./scripts/run-backend-local.sh --with-emulators
 
-# Test health
-curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  https://api.nomadkaraoke.com/api/health
-
-# Upload file
-curl -X POST https://api.nomadkaraoke.com/api/jobs/upload \
-  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
-  -F "file=@input/waterloo30sec.flac" \
+# Upload test file
+curl -X POST http://localhost:8000/api/jobs/upload \
+  -F "file=@tests/data/waterloo10sec.flac" \
   -F "artist=ABBA" \
   -F "title=Waterloo"
 
-# Debug job
-./scripts/debug-job.sh <job_id>
+# Check job status
+curl http://localhost:8000/api/jobs/{job_id}
 
-# View logs
-gcloud logging tail "resource.type=cloud_run_revision"
+# Select instrumental (when AWAITING_INSTRUMENTAL_SELECTION)
+curl -X POST http://localhost:8000/api/jobs/{job_id}/select-instrumental \
+  -H "Content-Type: application/json" \
+  -d '{"selection": "clean"}'
 ```
 
-### Key Docs
-- **Next steps:** `docs/00-current-plan/WHATS-NEXT.md`
-- **Architecture:** `docs/01-reference/CLOUD-RUN-ARCHITECTURE.md`
-- **Debugging:** `docs/03-deployment/OBSERVABILITY-GUIDE.md`
-- **Local setup:** `docs/03-deployment/SETUP-VENV.md`
-
-### Cloud Console
-- **Cloud Run:** https://console.cloud.google.com/run/detail/us-central1/karaoke-backend
-- **Cloud Build:** https://console.cloud.google.com/cloud-build/builds
-- **Firestore:** https://console.cloud.google.com/firestore/databases/-default-/data/panel
-- **Cloud Storage:** https://console.cloud.google.com/storage/browser/karaoke-gen-storage-nomadkaraoke
-
----
-
-## 📞 Support
-
-### If Things Break
-1. Check `docs/03-deployment/OBSERVABILITY-GUIDE.md`
-2. Run `./scripts/debug-job.sh <job_id>`
-3. Check Cloud Run logs
-4. Review recent changes in `docs/02-implementation-history/`
-
-### Common Issues
-- **403 Forbidden:** Need auth token (`gcloud auth print-identity-token`)
-- **Build fails:** Check `cloudbuild.yaml` and permissions
-- **Job fails immediately:** Check logs with debug script
-- **Job stuck:** Check Cloud Run metrics for resource issues
+### Key Endpoints
+- `GET /api/health` - Health check
+- `POST /api/jobs/upload` - Upload file and create job
+- `GET /api/jobs/{job_id}` - Get job status
+- `GET /api/jobs/{job_id}/review` - Get review data (TODO)
+- `POST /api/jobs/{job_id}/review` - Submit corrections (TODO)
+- `POST /api/jobs/{job_id}/complete-review` - Finish review (TODO)
+- `POST /api/jobs/{job_id}/select-instrumental` - Choose instrumental
 
 ---
 
 ## Summary
 
-**We're 99% done with Phase 1.3!** Just fixing one Firestore consistency issue, then ready for full end-to-end testing.
+**We discovered a key architectural issue:** The LyricsTranscriber library's review server blocks waiting for human input, which doesn't work in our async cloud architecture.
 
-**Major achievements today:**
-- ✅ Custom domain with SSL working
-- ✅ All workers implemented
-- ✅ Debug tooling built
-- ✅ Local validation working
-- ✅ Documentation up to date
+**The fix:** Separate video generation into a post-review step:
+1. Lyrics worker → transcribe + auto-correct → save corrections → AWAITING_REVIEW
+2. Human reviews via React UI → submits corrections → REVIEW_COMPLETE
+3. **New** render video worker → generates with_vocals.mkv → AWAITING_INSTRUMENTAL
+4. Human selects instrumental → INSTRUMENTAL_SELECTED
+5. Video worker → final assembly → COMPLETE
 
-**One issue left:** Firestore consistency in file upload (fix deploying now)
-
-**Next milestone:** Successfully process a karaoke job end-to-end! 🎤
-
+This is a clean separation that uses LyricsTranscriber as a library without its blocking review server.

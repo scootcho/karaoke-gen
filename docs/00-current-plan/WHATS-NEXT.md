@@ -1,322 +1,539 @@
-# What's Next: Fixing Production Issues
+# What's Next: Review Architecture Implementation
 
-**Current Status:** Phase 1.3 deployed to production, encountering Firestore consistency issues
-
-**Latest Deployment:** ✅ Revision 00007 (2025-12-01 07:30 UTC)
-- Custom domain: `https://api.nomadkaraoke.com` ✅
-- SSL certificate: ✅ Working
-- Health endpoint: ✅ Working  
-- File upload: 🔄 Fixing Firestore race condition
-
-**Your Next Actions:** Wait for current build to complete, then test again
+**Last Updated:** 2025-12-08  
+**Status:** Ready to implement review API and render video worker
 
 ---
 
-## Current Build Status
+## Problem Summary
 
-**Build in progress:** Fixing Firestore consistency issue
+The LyricsTranscriber library has a blocking `ReviewServer` that's designed for CLI use:
+- Starts a local server on port 8000
+- Opens browser for human review
+- **BLOCKS** until `/api/complete` is called
+- Only then generates video with corrected lyrics
 
-**What changed:**
-- Added verification step after Firestore update
-- Workers now wait for job update to be visible
-- 500ms retry if update not immediately available
+This doesn't work for our async cloud backend. We need to:
+1. Save correction data for async human review
+2. Generate video AFTER review completes (not during lyrics worker)
 
-**Build command running:**
-```bash
-gcloud builds submit --config cloudbuild.yaml --timeout=20m
+---
+
+## Target Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              Cloud Backend Flow                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+                     ┌─────────────────────────────────┐
+                     │         File Upload             │
+                     │  POST /api/jobs/upload          │
+                     └───────────────┬─────────────────┘
+                                     │
+                                     ▼
+                     ┌─────────────────────────────────┐
+                     │         DOWNLOADING             │
+                     └───────────────┬─────────────────┘
+                                     │
+                    ┌────────────────┴────────────────┐
+                    │                                 │
+                    ▼                                 ▼
+        ┌───────────────────┐           ┌───────────────────┐
+        │   AUDIO WORKER    │           │   LYRICS WORKER   │
+        │                   │           │                   │
+        │ • Call Modal API  │           │ • AudioShake API  │
+        │ • Separate stems  │           │ • Genius lyrics   │
+        │ • Upload to GCS   │           │ • Auto-correct    │
+        │                   │           │ • Save JSON ✓     │
+        │ tracks:           │           │ • NO VIDEO ✓      │
+        │ state_data.audio  │           │ tracks:           │
+        └─────────┬─────────┘           │ state_data.lyrics │
+                  │                     └─────────┬─────────┘
+                  │                               │
+                  └───────────┬───────────────────┘
+                              │
+                              ▼
+                  ┌───────────────────────────────┐
+                  │      SCREENS WORKER           │
+                  │  (waits for audio+lyrics)     │
+                  │                               │
+                  │ • Generate title screen       │
+                  │ • Generate end screen         │
+                  │ • Upload to GCS               │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │       AWAITING_REVIEW         │
+                  │   ⚠️ HUMAN INTERACTION        │
+                  └───────────────┬───────────────┘
+                                  │
+                  ┌───────────────▼───────────────┐
+                  │     React Review Frontend     │
+                  │                               │
+                  │ GET /api/jobs/{id}/review     │
+                  │  → corrections.json + audio   │
+                  │                               │
+                  │ • User corrects lyrics        │
+                  │ • Adjusts timing              │
+                  │ • Previews changes            │
+                  │                               │
+                  │ POST /api/jobs/{id}/review    │
+                  │  → saves updated corrections  │
+                  │                               │
+                  │ POST /api/jobs/{id}/complete  │
+                  │  → triggers video render      │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │     RENDER VIDEO WORKER       │
+                  │         (NEW)                 │
+                  │                               │
+                  │ • Download corrected JSON     │
+                  │ • Use OutputGenerator         │
+                  │ • Render with_vocals.mkv      │
+                  │ • Upload to GCS               │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │  AWAITING_INSTRUMENTAL_SELECT │
+                  │   ⚠️ HUMAN INTERACTION        │
+                  │                               │
+                  │ POST /api/jobs/{id}/select    │
+                  │  { "selection": "clean" }     │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │       VIDEO WORKER            │
+                  │                               │
+                  │ • Download all components     │
+                  │ • Remux with instrumental     │
+                  │ • Concatenate screens         │
+                  │ • Encode final formats        │
+                  │ • Upload to GCS               │
+                  └───────────────┬───────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │          COMPLETE             │
+                  │                               │
+                  │  User downloads final videos  │
+                  └───────────────────────────────┘
 ```
 
-**Expected completion:** ~2-3 minutes from now
-
 ---
 
-## Step 1: Wait for Build to Complete
+## Implementation Plan
 
-Monitor build status:
-```bash
-# Check latest build
-gcloud builds list --limit=1
+### Step 1: Add Review API Endpoints
 
-# Or watch the log file
-tail -f /tmp/karaoke-final-deploy.log
+**File:** `backend/api/routes/review.py` (new)
+
+```python
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any
+
+router = APIRouter(tags=["review"])
+
+@router.get("/{job_id}/review")
+async def get_review_data(job_id: str) -> Dict[str, Any]:
+    """
+    Get data needed for lyrics review interface.
+    
+    Returns:
+    - corrections: The CorrectionResult data
+    - audio_url: Signed URL for audio playback
+    - metadata: Artist, title, etc.
+    """
+    job = job_manager.get_job(job_id)
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(400, f"Job not ready for review: {job.status}")
+    
+    # Get signed URLs for frontend
+    corrections_url = storage.get_signed_url(f"jobs/{job_id}/lyrics/corrections.json")
+    audio_url = storage.get_signed_url(job.input_media_gcs_path)
+    
+    return {
+        "job_id": job_id,
+        "status": job.status,
+        "artist": job.artist,
+        "title": job.title,
+        "corrections_url": corrections_url,
+        "audio_url": audio_url
+    }
+
+@router.post("/{job_id}/review")
+async def save_review_corrections(
+    job_id: str, 
+    corrections: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Save updated corrections during review.
+    
+    Can be called multiple times - saves progress.
+    Frontend should call this as user makes changes.
+    """
+    job = job_manager.get_job(job_id)
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(400, f"Job not in review state: {job.status}")
+    
+    # Transition to IN_REVIEW if first save
+    if job.status == JobStatus.AWAITING_REVIEW:
+        job_manager.transition_to_state(job_id, JobStatus.IN_REVIEW)
+    
+    # Save updated corrections to GCS
+    storage.upload_json(
+        f"jobs/{job_id}/lyrics/corrections_updated.json",
+        corrections
+    )
+    
+    return {"status": "saved"}
+
+@router.post("/{job_id}/complete-review")
+async def complete_review(job_id: str) -> Dict[str, str]:
+    """
+    Mark review as complete and trigger video rendering.
+    
+    Frontend calls this when user clicks "Finish Review".
+    """
+    job = job_manager.get_job(job_id)
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(400, f"Job not in review state: {job.status}")
+    
+    # Transition to REVIEW_COMPLETE
+    job_manager.transition_to_state(
+        job_id, 
+        JobStatus.REVIEW_COMPLETE,
+        message="Review complete, rendering video"
+    )
+    
+    # Trigger render video worker
+    await trigger_render_video_worker(job_id)
+    
+    return {"status": "complete", "next_status": "rendering_video"}
+```
+
+### Step 2: Create Render Video Worker
+
+**File:** `backend/workers/render_video_worker.py` (new)
+
+```python
+"""
+Render Video Worker
+
+Generates the karaoke video with synchronized lyrics AFTER human review.
+
+This worker:
+1. Downloads the corrected lyrics data from GCS
+2. Downloads the audio file
+3. Uses LyricsTranscriber's OutputGenerator to render video
+4. Uploads the with_vocals.mkv to GCS
+5. Transitions to AWAITING_INSTRUMENTAL_SELECTION
+
+Key insight: We use OutputGenerator from lyrics_transcriber library
+WITHOUT using its blocking ReviewServer.
+"""
+
+import os
+import logging
+import tempfile
+from typing import Optional
+
+from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.correction.corrector import CorrectionResult
+from lyrics_transcriber.core.config import OutputConfig
+
+from backend.services.job_manager import job_manager
+from backend.services.storage_service import storage
+from backend.models.job import JobStatus
+
+logger = logging.getLogger(__name__)
+
+
+async def process_render_video(job_id: str) -> bool:
+    """
+    Render karaoke video with corrected lyrics.
+    
+    Called after human review is complete.
+    """
+    logger.info(f"Job {job_id}: Starting video render")
+    
+    try:
+        job = job_manager.get_job(job_id)
+        
+        # Transition to RENDERING_VIDEO
+        job_manager.transition_to_state(
+            job_id,
+            JobStatus.RENDERING_VIDEO,
+            progress=75,
+            message="Rendering karaoke video with lyrics"
+        )
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 1. Download corrected corrections data
+            corrections_path = os.path.join(temp_dir, "corrections.json")
+            corrections_gcs = f"jobs/{job_id}/lyrics/corrections_updated.json"
+            
+            # Fall back to original if no updates
+            if not storage.file_exists(corrections_gcs):
+                corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
+            
+            storage.download_file(corrections_gcs, corrections_path)
+            
+            # 2. Load as CorrectionResult
+            import json
+            with open(corrections_path, 'r') as f:
+                corrections_data = json.load(f)
+            
+            correction_result = CorrectionResult.from_dict(corrections_data)
+            
+            # 3. Download audio file
+            audio_path = os.path.join(temp_dir, "audio.flac")
+            storage.download_file(job.input_media_gcs_path, audio_path)
+            
+            # 4. Get styles (from job or default)
+            styles_path = _get_styles_path(job, temp_dir)
+            
+            # 5. Configure OutputGenerator
+            output_dir = os.path.join(temp_dir, "output")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            config = OutputConfig(
+                output_dir=output_dir,
+                cache_dir=os.path.join(temp_dir, "cache"),
+                output_styles_json=styles_path,
+                render_video=True,
+                generate_cdg=False,  # CDG optional
+                video_resolution="4k",
+                subtitle_offset_ms=0
+            )
+            
+            output_generator = OutputGenerator(config, logger)
+            
+            # 6. Generate video
+            logger.info(f"Job {job_id}: Generating karaoke video")
+            outputs = output_generator.generate_outputs(
+                transcription_corrected=correction_result,
+                lyrics_results={},  # Already in correction_result
+                output_prefix=f"{job.artist} - {job.title}",
+                audio_filepath=audio_path,
+                artist=job.artist,
+                title=job.title
+            )
+            
+            # 7. Upload video to GCS
+            if outputs.video and os.path.exists(outputs.video):
+                video_gcs_path = f"jobs/{job_id}/videos/with_vocals.mkv"
+                video_url = storage.upload_file(outputs.video, video_gcs_path)
+                job_manager.update_file_url(job_id, 'videos', 'with_vocals', video_url)
+                logger.info(f"Job {job_id}: Uploaded with_vocals.mkv")
+            else:
+                raise Exception("Video generation failed - no output file")
+            
+            # 8. Upload other outputs (LRC, ASS, etc.)
+            if outputs.lrc and os.path.exists(outputs.lrc):
+                lrc_url = storage.upload_file(
+                    outputs.lrc, 
+                    f"jobs/{job_id}/lyrics/karaoke.lrc"
+                )
+                job_manager.update_file_url(job_id, 'lyrics', 'lrc', lrc_url)
+            
+            if outputs.ass and os.path.exists(outputs.ass):
+                ass_url = storage.upload_file(
+                    outputs.ass,
+                    f"jobs/{job_id}/lyrics/karaoke.ass"
+                )
+                job_manager.update_file_url(job_id, 'lyrics', 'ass', ass_url)
+            
+            # 9. Transition to awaiting instrumental selection
+            job_manager.transition_to_state(
+                job_id,
+                JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+                progress=80,
+                message="Video rendered - select your instrumental"
+            )
+            
+            logger.info(f"Job {job_id}: Video render complete")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Job {job_id}: Video render failed: {e}", exc_info=True)
+        job_manager.fail_job(job_id, f"Video render failed: {str(e)}")
+        return False
+
+
+def _get_styles_path(job, temp_dir: str) -> str:
+    """Get or create styles JSON for video generation."""
+    # Check if job has custom styles
+    if job.state_data and job.state_data.get('styles_gcs_path'):
+        styles_path = os.path.join(temp_dir, "styles.json")
+        storage.download_file(job.state_data['styles_gcs_path'], styles_path)
+        return styles_path
+    
+    # Use default styles
+    default_styles = {
+        "karaoke": {
+            "font_size": 100,
+            "max_line_length": 40,
+            "top_padding": 200,
+            "highlight_color": "#FFFF00",
+            "text_color": "#FFFFFF"
+        }
+    }
+    
+    styles_path = os.path.join(temp_dir, "styles.json")
+    import json
+    with open(styles_path, 'w') as f:
+        json.dump(default_styles, f)
+    
+    return styles_path
+```
+
+### Step 3: Update State Machine
+
+**File:** `backend/models/job.py`
+
+Add new states and transitions:
+
+```python
+class JobStatus(str, Enum):
+    # ... existing states ...
+    
+    # Add after REVIEW_COMPLETE
+    RENDERING_VIDEO = "rendering_video"  # OutputGenerator creating with_vocals.mkv
+
+
+STATE_TRANSITIONS = {
+    # ... existing transitions ...
+    
+    # Update review flow
+    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.FAILED],
+    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
+    
+    # ... rest of transitions ...
+}
+```
+
+### Step 4: Update Lyrics Worker
+
+**File:** `backend/workers/lyrics_worker.py`
+
+Ensure it does NOT generate video:
+
+```python
+config = LyricsTranscriberConfig(
+    # ... other config ...
+    render_video=False,  # IMPORTANT: Video generated after review
+    skip_transcription_review=True,  # No interactive review
+)
+
+# Transition to AWAITING_REVIEW (not generating video)
+# Video will be generated by render_video_worker after human review
+```
+
+### Step 5: Wire Up Routes
+
+**File:** `backend/main.py`
+
+```python
+from backend.api.routes import review
+
+app.include_router(review.router, prefix="/api/jobs")
 ```
 
 ---
 
-## Step 2: Test the Fixed Deployment
+## Testing Plan
 
-Once build completes, test with real audio file:
+### Local Testing with Emulators
 
 ```bash
-# Use custom domain (SSL working!)
-export BACKEND_URL="https://api.nomadkaraoke.com"
-export AUTH_TOKEN=$(gcloud auth print-identity-token)
+# 1. Start backend with emulators
+./scripts/run-backend-local.sh --with-emulators
 
-# Upload waterloo30sec.flac (30 seconds = quick test)
-curl -X POST "$BACKEND_URL/api/jobs/upload" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  -F "file=@/Users/andrew/Projects/karaoke-gen/input/waterloo30sec.flac" \
+# 2. Upload test file
+curl -X POST http://localhost:8000/api/jobs/upload \
+  -F "file=@tests/data/waterloo10sec.flac" \
   -F "artist=ABBA" \
   -F "title=Waterloo"
 
-# Note the job_id from response
-export JOB_ID="<job_id_from_response>"
-```
+# Note the job_id
 
-#### Option B: YouTube URL
+# 3. Wait for AWAITING_REVIEW status
+curl http://localhost:8000/api/jobs/{job_id}
 
-```bash
-# Submit a job with a YouTube URL
-curl -X POST "$BACKEND_URL/api/jobs" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://www.youtube.com/watch?v=Sj_9CiNkkn4",
-    "artist": "ABBA",
-    "title": "Waterloo"
-  }'
+# 4. Get review data
+curl http://localhost:8000/api/jobs/{job_id}/review
 
-# Note the job_id from response
-JOB_ID="<job_id_from_response>"
-```
+# 5. Complete review (skip corrections for testing)
+curl -X POST http://localhost:8000/api/jobs/{job_id}/complete-review
 
-**Note:** YouTube URL download is not yet implemented in the workers. Use Option A (file upload) for now!
+# 6. Watch for AWAITING_INSTRUMENTAL_SELECTION
+curl http://localhost:8000/api/jobs/{job_id}
 
----
-
-## Step 3: Monitor Progress
-
-### Option A: Use Debug Script (Recommended)
-
-```bash
-./scripts/debug-job.sh $JOB_ID
-```
-
-This shows:
-- Job status & progress
-- Complete timeline
-- GCS files
-- Cloud Run logs
-- Error details (if any)
-
-### Option B: Manual Monitoring
-
-```bash
-# Quick status
-curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | \
-  jq '{status, progress, error_message}'
-
-# Or watch continuously
-watch -n 5 "curl -s -H 'Authorization: Bearer $AUTH_TOKEN' $BACKEND_URL/api/jobs/$JOB_ID | jq '{status, progress, error_message}'"
-```
-
-**Expected Timeline:**
-- Download: 1-2 min
-- Audio separation: 5-8 min (2 stages)
-- Lyrics transcription: 2-3 min (parallel with audio)
-- Screens generation: 30 sec
-- **AWAITING_REVIEW** ⚠️ (you need to review lyrics)
-- **AWAITING_INSTRUMENTAL_SELECTION** ⚠️ (you need to select)
-- Video encoding: 15-20 min
-- **COMPLETE** ✅
-
-**Total:** ~30-45 minutes (including your interaction time)
-
-### Step 4: Interact at Human Checkpoints
-
-#### A. Review Lyrics (when status = AWAITING_REVIEW)
-
-```bash
-# Get review data
-curl -s "$BACKEND_URL/api/jobs/$JOB_ID/review-data" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq .
-
-# Start review
-curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/start-review" \
-  -H "Authorization: Bearer $AUTH_TOKEN"
-
-# Submit corrections (or just accept as-is with empty object)
-curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/corrections" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "corrected_lyrics_json": {}
-  }'
-```
-
-#### B. Select Instrumental (when status = AWAITING_INSTRUMENTAL_SELECTION)
-
-```bash
-# Get instrumental options
-curl -s "$BACKEND_URL/api/jobs/$JOB_ID/instrumental-options" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq .
-
-# Select instrumental (clean or with_backing)
-curl -X POST "$BACKEND_URL/api/jobs/$JOB_ID/select-instrumental" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
+# 7. Select instrumental
+curl -X POST http://localhost:8000/api/jobs/{job_id}/select-instrumental \
   -H "Content-Type: application/json" \
   -d '{"selection": "clean"}'
+
+# 8. Wait for COMPLETE
+curl http://localhost:8000/api/jobs/{job_id}
 ```
-
-### Step 5: Download Final Videos (when status = COMPLETE)
-
-```bash
-# Get all download URLs
-curl -s "$BACKEND_URL/api/jobs/$JOB_ID" \
-  -H "Authorization: Bearer $AUTH_TOKEN" | jq '.file_urls.finals'
-
-# Download a format (URLs are signed, valid for 2 hours)
-curl -o lossless_4k.mp4 "<signed_url_from_above>"
-```
-
-**Expected Output:**
-- 4 video files (lossless 4K MP4/MKV, lossy 4K, 720p)
-- Optional: CDG and TXT packages if enabled
 
 ---
 
-## Option B: Local Development Testing (If You Want to Debug First)
+## Frontend Integration (Future)
 
-If you want to test locally before deploying:
+The React review UI will:
 
-### Step 1: Set Up Local Environment
-
-```bash
-cd /Users/andrew/Projects/karaoke-gen/backend
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -e ..  # Install karaoke_gen package
-
-# Set environment variables
-export GOOGLE_CLOUD_PROJECT="nomadkaraoke"
-export GCS_UPLOAD_BUCKET="karaoke-uploads"
-export ENVIRONMENT="development"
-
-# Add API keys (these should be in Secret Manager already)
-export AUDIOSHAKE_API_TOKEN="<your-token>"
-export GENIUS_API_TOKEN="<your-token>"
-export AUDIO_SEPARATOR_API_URL="https://nomadkaraoke--audio-separator-api.modal.run"
-```
-
-### Step 2: Run Backend Locally
-
-```bash
-# From backend directory
-uvicorn backend.main:app --reload --port 8080
-```
-
-### Step 3: Test with Local Requests
-
-Use the same curl commands from Option A, but with:
-```bash
-BACKEND_URL="http://localhost:8080"
-```
-
-**Note:** This requires:
-- Google Cloud credentials configured locally
-- Access to Firestore and GCS
-- API keys for external services
-
----
-
-## What Will Happen During Testing?
-
-### Success Indicators ✅
-
-1. **Job Creation:** Status transitions to `DOWNLOADING`
-2. **Parallel Processing:** Both audio and lyrics workers start
-3. **Audio Complete:** Status reaches `AUDIO_COMPLETE` with all stems in GCS
-4. **Lyrics Complete:** Status reaches `LYRICS_COMPLETE` with corrections JSON
-5. **Screens Generated:** Title and end screens created
-6. **Human Checkpoints Work:** You can review/correct lyrics and select instrumental
-7. **Video Generation:** All 4 formats encode successfully
-8. **Completion:** Status = `COMPLETE` with all files downloadable
-
-### Potential Issues 🐛
-
-**If something fails, check:**
-
-1. **Worker Logs:**
-   ```bash
-   # Cloud Run logs
-   gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=karaoke-backend" --limit 50 --format json
+1. **Load review data:**
+   ```typescript
+   const reviewData = await fetch(`/api/jobs/${jobId}/review`);
+   const { corrections_url, audio_url } = await reviewData.json();
    ```
 
-2. **Firestore Job State:**
-   - Check job document in Firestore console
-   - Look at `status`, `error_message`, `error_details`
+2. **Display LyricsTranscriber components:**
+   - Can reuse components from `lyrics_transcriber_local/lyrics_transcriber/frontend/`
+   - Or build new components that consume the same data format
 
-3. **GCS Files:**
-   - Check if files are being uploaded
-   - Verify file permissions
+3. **Save progress:**
+   ```typescript
+   // Auto-save as user edits
+   await fetch(`/api/jobs/${jobId}/review`, {
+     method: 'POST',
+     body: JSON.stringify(updatedCorrections)
+   });
+   ```
 
-**Common Issues:**
-- **Secret Manager:** API keys not configured → Set secrets in GCP console
-- **Permissions:** Service account lacks roles → Check IAM
-- **Audio Separator:** Modal API down → Check Modal status
-- **FFmpeg:** Not found → Already in Docker, should work
-- **Memory:** Out of memory → Increase Cloud Run memory
-
----
-
-## My Recommendation
-
-**Do Option A (Deploy & Test End-to-End)** because:
-
-1. ✅ **Realistic environment** - Tests actual production setup
-2. ✅ **GPU access** - Modal API for audio separation
-3. ✅ **GCS storage** - Real cloud storage
-4. ✅ **Firestore** - Real database
-5. ✅ **Easier debugging** - Cloud Run logs are comprehensive
-
-**Time Investment:** ~1 hour total
-- 5 min: Deploy
-- 5 min: Submit job and set up monitoring
-- 30-45 min: Wait and interact at checkpoints
-- 10 min: Verify outputs
+4. **Complete review:**
+   ```typescript
+   await fetch(`/api/jobs/${jobId}/complete-review`, {
+     method: 'POST'
+   });
+   // Redirect to status page to watch video render
+   ```
 
 ---
 
-## What I'll Do
+## Summary
 
-I can help with:
+**Key insight:** Use LyricsTranscriber as a library, not as a server.
 
-1. **Monitoring:** I can parse logs if issues occur
-2. **Debugging:** If something fails, I'll investigate
-3. **Bug Fixes:** If issues found, I'll fix them immediately
-4. **Documentation:** Update docs based on testing results
+- ✅ Use `CorrectionResult` for data structures
+- ✅ Use `OutputGenerator` for video rendering
+- ✅ Use `CorrectionOperations` for updates
+- ❌ Don't use `ReviewServer` (it blocks)
 
----
+**New components needed:**
+1. Review API endpoints (`/api/jobs/{id}/review`)
+2. Render Video Worker (uses `OutputGenerator`)
+3. New `RENDERING_VIDEO` state
 
-## After Testing
-
-Once testing succeeds, we'll:
-
-1. ✅ Mark Phase 1.3 as 100% complete
-2. 📝 Document any issues found and fixed
-3. 🎯 **Decision Point:** Do we continue to Phase 2 (React Frontend) or add optional features first?
-
-Optional features to consider:
-- Cloud Build for faster encoding (20 min → 5-10 min)
-- Countdown padding application
-- Distribution worker (YouTube upload, notifications)
-
-But honestly, **React Frontend (Phase 2)** is probably more valuable at this point since the backend is nearly feature-complete!
-
----
-
-## Ready to Proceed?
-
-**Just tell me:**
-- "Deploy and test" → I'll guide you through deployment commands
-- "Test locally first" → I'll help set up local environment
-- "Wait, I have questions" → Ask away!
-
-**My Recommendation:** Deploy and test end-to-end. It's the fastest path to validation! 🚀
-
+**Result:** Clean async workflow with human-in-the-loop review that works in cloud architecture.

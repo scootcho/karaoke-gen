@@ -86,6 +86,16 @@ async def upload_and_create_job(
         
         logger.info(f"File uploaded successfully for job {job.job_id}, GCS path: {gcs_path}")
         
+        # Transition job to DOWNLOADING state before triggering workers
+        # This is required by the state machine: PENDING -> DOWNLOADING -> SEPARATING_STAGE1/TRANSCRIBING
+        from backend.models.job import JobStatus
+        job_manager.transition_to_state(
+            job_id=job.job_id,
+            new_status=JobStatus.DOWNLOADING,
+            progress=5,
+            message="File uploaded, preparing to process"
+        )
+        
         # Trigger the workflow in the background (non-blocking)
         # This returns immediately while workers process asynchronously
         async def trigger_workers():
