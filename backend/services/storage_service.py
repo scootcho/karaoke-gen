@@ -59,14 +59,43 @@ class StorageService:
             raise
     
     def generate_signed_url(self, blob_path: str, expiration_minutes: int = 60) -> str:
-        """Generate a signed URL for downloading a file."""
+        """Generate a signed URL for downloading a file.
+        
+        In Cloud Run, this uses the IAM signBlob API since we don't have
+        a private key available. Requires the service account to have
+        roles/iam.serviceAccountTokenCreator on itself.
+        """
+        import google.auth
+        from google.auth.transport import requests
+        
         try:
             blob = self.bucket.blob(blob_path)
-            url = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(minutes=expiration_minutes),
-                method="GET"
-            )
+            
+            # Get default credentials and refresh to ensure we have a valid token
+            credentials, project = google.auth.default()
+            
+            # Check if we're using compute credentials (Cloud Run/GCE)
+            # These need to use IAM signBlob via service_account_email + access_token
+            if hasattr(credentials, 'service_account_email'):
+                # Refresh credentials to get a valid access token
+                auth_request = requests.Request()
+                credentials.refresh(auth_request)
+                
+                url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(minutes=expiration_minutes),
+                    method="GET",
+                    service_account_email=credentials.service_account_email,
+                    access_token=credentials.token
+                )
+            else:
+                # Local development with service account key or user credentials
+                url = blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(minutes=expiration_minutes),
+                    method="GET"
+                )
+            
             logger.info(f"Generated signed URL for {blob_path}")
             return url
         except Exception as e:

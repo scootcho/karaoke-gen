@@ -1,43 +1,22 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+# Fast application image - uses pre-built base with all dependencies
+#
+# The base image (karaoke-backend-base) contains:
+# - Python 3.11, ffmpeg, sox, system deps
+# - All pip dependencies from requirements.txt
+# - The karaoke_gen package
+#
+# This Dockerfile only copies the backend code, making builds very fast (~30s).
+# 
+# If the base image doesn't exist yet, build it first:
+#   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
 
-# Install system dependencies required by karaoke-gen
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsndfile1 \
-    libsox-dev \
-    sox \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Use pre-built base image with all dependencies
+FROM us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest
 
-# Set working directory
+# Set working directory (should already exist from base)
 WORKDIR /app
 
-# ============================================
-# OPTIMIZATION: Install dependencies BEFORE copying code
-# This allows Docker to cache the dependency layer
-# ============================================
-
-# Copy ONLY dependency files first
-COPY pyproject.toml /app/
-COPY README.md /app/
-COPY LICENSE /app/
-COPY backend/requirements.txt /app/backend/requirements.txt
-
-# Install Python dependencies (this layer will be cached unless requirements change)
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r backend/requirements.txt
-
-# Now copy the karaoke_gen package and install it
-# This includes karaoke_gen dependencies
-COPY karaoke_gen /app/karaoke_gen
-RUN pip install --no-cache-dir -e .
-
-# ============================================
-# Copy application code LAST (changes frequently)
-# ============================================
-
-# Copy backend code (this invalidates cache only for code changes)
+# Copy backend code (this is the only thing that changes frequently)
 COPY backend /app/backend
 
 # Set environment variables

@@ -131,7 +131,7 @@ jobs:
           echo "✅ Basic syntax validation passed"
   
   deploy:
-    name: Deploy to Cloud Run
+    name: Deploy via Cloud Build
     runs-on: ubuntu-latest
     needs: [unit-tests, emulator-tests, lint]
     # Only deploy on push to the branch (not on PRs)
@@ -159,49 +159,36 @@ jobs:
         with:
           version: 'latest'
       
-      - name: Configure Docker for Artifact Registry
+      - name: Trigger Cloud Build
         run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev
-      
-      - name: Build and push Docker images
-        run: |
-          # Build backend image (context must be repo root for pyproject.toml and karaoke_gen/)
-          docker build -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest \
-            -t us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:${{ github.sha }} \
-            -f backend/Dockerfile .
+          echo "🚀 Triggering Cloud Build for deployment..."
+          echo "Commit: ${{ github.sha }}"
           
-          # Push both tags
-          docker push us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest
-          docker push us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:${{ github.sha }}
+          # Submit build and wait for completion
+          BUILD_ID=$(gcloud builds submit \
+            --config=cloudbuild.yaml \
+            --project=nomadkaraoke \
+            --substitutions=_COMMIT_SHA=${{ github.sha }} \
+            --format='value(id)' \
+            --async \
+            .)
           
-          echo "✅ Images pushed to Artifact Registry"
-      
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy karaoke-backend \
-            --image us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest \
-            --platform managed \
-            --region us-central1 \
-            --allow-unauthenticated \
-            --set-env-vars "GOOGLE_CLOUD_PROJECT=nomadkaraoke" \
-            --set-env-vars "GCS_BUCKET_NAME=karaoke-gen-storage-nomadkaraoke" \
-            --set-env-vars "FIRESTORE_COLLECTION=jobs" \
-            --set-env-vars "ENVIRONMENT=production" \
-            --set-env-vars "ADMIN_TOKENS=${{ secrets.ADMIN_TOKENS }}" \
-            --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest" \
-            --set-secrets "GENIUS_API_TOKEN=genius-api-key:latest" \
-            --set-secrets "SPOTIFY_COOKIE=spotify-cookie:latest" \
-            --set-secrets "RAPIDAPI_KEY=rapidapi-key:latest" \
-            --memory 16Gi \
-            --cpu 8 \
-            --cpu-boost \
-            --execution-environment gen2 \
-            --timeout 1800 \
-            --concurrency 4 \
-            --max-instances 10 \
-            --min-instances 0
+          echo "Build ID: $BUILD_ID"
+          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
           
-          echo "✅ Deployed to Cloud Run"
+          # Wait for build to complete
+          echo "Waiting for build to complete..."
+          gcloud builds log $BUILD_ID --project=nomadkaraoke --stream
+          
+          # Check build status
+          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
+          
+          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
+            echo "❌ Build failed with status: $BUILD_STATUS"
+            exit 1
+          fi
+          
+          echo "✅ Build completed successfully"
       
       - name: Verify deployment
         run: |
@@ -226,4 +213,3 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
-

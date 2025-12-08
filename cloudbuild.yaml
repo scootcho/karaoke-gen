@@ -1,13 +1,24 @@
+# Cloud Build configuration for karaoke-backend
+#
+# This builds and deploys the application using the pre-built base image.
+# Build time: ~1-2 minutes (vs ~8 minutes without base image)
+#
+# Prerequisites:
+# - Base image must exist: gcloud builds submit --config=cloudbuild-base.yaml
+#
+# Trigger manually:
+#   gcloud builds submit --config=cloudbuild.yaml --project=nomadkaraoke
+
 steps:
-  # Pull the previous image for caching
+  # Pull the previous app image for layer caching
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         docker pull us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest || exit 0
-  
-  # Build with cache
+
+  # Build app image (fast - just copies backend code onto base image)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -20,19 +31,19 @@ steps:
       - '-f'
       - 'backend/Dockerfile'
       - '.'
-  
-  # Push images to Artifact Registry (must happen before deploy)
+
+  # Push images to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID'
-  
+
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'
 
-  # Deploy to Cloud Run (after images are pushed)
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -45,24 +56,33 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+      - '--allow-unauthenticated'
       - '--memory'
-      - '4Gi'
+      - '16Gi'
       - '--cpu'
-      - '2'
+      - '8'
+      - '--cpu-boost'
+      - '--execution-environment'
+      - 'gen2'
       - '--timeout'
-      - '900'
+      - '1800'
+      - '--concurrency'
+      - '4'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
       - '--set-env-vars'
       - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run'
       - '--set-secrets'
-      - 'AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest'
+      - 'AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest'
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID'
 
 options:
-  machineType: 'E2_HIGHCPU_8'
+  machineType: 'N1_HIGHCPU_32'
   diskSizeGb: 100
 
 timeout: 1200s
-

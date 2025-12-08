@@ -218,29 +218,33 @@ handle_review() {
     
     open_review_ui "$job_id" "$auth_token"
     
-    echo -e "${YELLOW}Press Enter when you have completed the review...${NC}"
-    read -r
-    
-    # After review, trigger complete-review endpoint
-    echo -e "Completing review..."
-    local response
-    response=$(curl -s -X POST \
-        -H "Authorization: Bearer $auth_token" \
-        -H "Content-Type: application/json" \
-        "$SERVICE_URL/api/jobs/$job_id/complete-review")
-    
-    local status
-    status=$(echo "$response" | jq -r '.status // "error"')
-    
-    if [ "$status" == "success" ]; then
-        echo -e "${GREEN}✓ Review completed${NC}"
-    else
-        echo -e "${RED}Warning: Could not complete review:${NC}"
-        echo "$response" | jq .
-        echo ""
-        echo "The job may have already been completed or there was an error."
-    fi
+    echo -e "${YELLOW}Waiting for review to be completed in the browser...${NC}"
+    echo -e "${CYAN}(Polling for status change every ${POLL_INTERVAL}s)${NC}"
     echo ""
+    
+    # Poll until job status changes from awaiting_review/in_review
+    while true; do
+        local job_response
+        job_response=$(get_job "$job_id" "$auth_token")
+        
+        local current_status
+        current_status=$(echo "$job_response" | jq -r '.status // "unknown"')
+        
+        case "$current_status" in
+            awaiting_review|in_review)
+                # Still in review, keep waiting
+                printf "\r\033[K  Status: %s - still waiting for review completion..." "$current_status"
+                sleep "$POLL_INTERVAL"
+                ;;
+            *)
+                # Status changed, review is complete
+                printf "\r\033[K"
+                echo -e "${GREEN}✓ Review completed (status: $current_status)${NC}"
+                echo ""
+                return 0
+                ;;
+        esac
+    done
 }
 
 # Handle instrumental selection
