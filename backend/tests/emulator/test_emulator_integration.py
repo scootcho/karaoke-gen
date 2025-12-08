@@ -314,8 +314,8 @@ class TestReviewEndpoints:
             f"/api/review/{job_id}/preview-video",
             json={"corrections": [], "corrected_segments": []}
         )
-        # Should return 404 (job not found in AWAITING_REVIEW state)
-        assert response.status_code == 404
+        # Should return 400 (job not in AWAITING_REVIEW state)
+        assert response.status_code == 400
     
     def test_review_annotations_stub(self, client, auth_headers):
         """Test annotations endpoint (stub)."""

@@ -38,7 +38,8 @@ class TestSettingsConfiguration:
         """Test environment setting."""
         from backend.config import Settings
         settings = Settings()
-        assert settings.environment in ['development', 'production', 'testing']
+        # Accept 'test' as well since pytest may set ENVIRONMENT=test
+        assert settings.environment in ['development', 'production', 'testing', 'test']
     
     def test_google_cloud_project(self):
         """Test Google Cloud project setting."""

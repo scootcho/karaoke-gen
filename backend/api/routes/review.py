@@ -312,6 +312,13 @@ async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
+    # Job must be in review state to generate preview
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not in review state (current status: {job.status})"
+        )
+    
     logger.info(f"Job {job_id}: Generating preview video")
     
     try:
