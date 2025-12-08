@@ -192,7 +192,6 @@ The tool currently assumes:
 - Local file system access for model storage and temporary files
 - Terminal-based user interaction for choices and confirmations
 - Browser access on same machine for web UI components
-- Local application launching (e.g., Audacity integration)
 - Direct file system paths for organization and sharing
 
 ### **Interactive Elements**

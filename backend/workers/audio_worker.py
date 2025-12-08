@@ -4,7 +4,7 @@ Audio separation worker.
 Handles the audio processing track of parallel processing:
 1. Stage 1: Clean instrumental separation (Modal API, 3-5 min)
 2. Stage 2: Backing vocals separation (Modal API, 2-3 min)
-3. Post-processing: Combine instrumentals, normalize, generate Audacity LOF
+3. Post-processing: Combine instrumentals, normalize
 
 Re-uses karaoke_gen.audio_processor.AudioProcessor for remote GPU separation.
 """

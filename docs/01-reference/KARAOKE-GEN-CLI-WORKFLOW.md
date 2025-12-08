@@ -147,14 +147,11 @@ This stage runs **TWO OPERATIONS IN PARALLEL** using `asyncio.gather()`:
 3. **Post-Processing:**
    - Generates combined instrumentals (instrumental + backing vocals)
    - Normalizes all audio files to consistent volume
-   - Creates Audacity LOF file for multi-track editing
-   - Launches Audacity (on macOS) for optional manual review
 
    **Additional Outputs:**
    ```
    {Artist} - {Title}/
    ├── {Artist} - {Title} (Instrumental +BV mel_band_roformer...).flac
-   └── stems/{Artist} - {Title} (Audacity).lof
    ```
 
 **Why Two Stages?**
@@ -624,7 +621,6 @@ Sharing:
 
 - **FFmpeg** - Video/audio encoding (must be in PATH)
 - **rclone** - Cloud file sync (optional)
-- **Audacity** - Audio review (optional, macOS only)
 
 ---
 

@@ -57,8 +57,9 @@ class WorkerService:
             if service_url:
                 return service_url
         
-        # Development mode: use localhost
-        return "http://localhost:8080"
+        # Development mode: use localhost with PORT env var
+        port = os.getenv("PORT", "8000")
+        return f"http://localhost:{port}"
     
     async def trigger_worker(
         self,

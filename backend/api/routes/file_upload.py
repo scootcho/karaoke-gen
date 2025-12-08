@@ -86,10 +86,13 @@ async def upload_and_create_job(
         
         logger.info(f"File uploaded successfully for job {job.job_id}, GCS path: {gcs_path}")
         
-        # Trigger the workflow (audio and lyrics workers in parallel)
-        # Note: Workers are triggered AFTER the job is updated with the GCS path
-        await worker_service.trigger_audio_worker(job.job_id)
-        await worker_service.trigger_lyrics_worker(job.job_id)
+        # Trigger the workflow in the background (non-blocking)
+        # This returns immediately while workers process asynchronously
+        async def trigger_workers():
+            await worker_service.trigger_audio_worker(job.job_id)
+            await worker_service.trigger_lyrics_worker(job.job_id)
+        
+        background_tasks.add_task(trigger_workers)
         
         return {
             "status": "success",

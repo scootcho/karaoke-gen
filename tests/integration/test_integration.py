@@ -454,7 +454,7 @@ async def test_full_cli_integration(tmp_path, mocker):
              print(f"SIDE_EFFECT: Mocking rclone sync/copy (list cmd): {cmd_str}")
              return subprocess.CompletedProcess(args=cmd_arg, returncode=0, stdout="", stderr="")
 
-        # --- Default mock behavior for other commands (like 'open -a Audacity') ---
+        # --- Default mock behavior for other commands ---
         print(f"SIDE_EFFECT: Default mock return for unhandled command: {cmd_str}")
         # Check if this is a subprocess.run call by checking the _os_system_call flag
         is_subprocess_run = not kwargs.get('_os_system_call', False)
