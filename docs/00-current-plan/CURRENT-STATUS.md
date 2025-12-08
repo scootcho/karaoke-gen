@@ -1,7 +1,7 @@
 # Current Project Status
 
 **Last Updated:** 2025-12-08  
-**Phase:** 1.3 - Workers & Human Review Integration (85% complete)
+**Phase:** 1.3 - Workers & Human Review Integration ✅ COMPLETE
 
 ---
 
@@ -10,39 +10,45 @@
 ```
 Phase 1.1: Backend Foundation       ✅ 100% Complete
 Phase 1.2: Async Job Processing     ✅ 100% Complete  
-Phase 1.3: Workers Implementation   🔄  85% Complete (review architecture fix needed)
-Phase 1.4: End-to-End Testing       🔄  50% Started (local emulator testing)
+Phase 1.3: Workers Implementation   ✅ 100% Complete (review integration working!)
+Phase 1.4: End-to-End Testing       ✅ 100% Complete (tested with local emulators)
 Phase 2.0: Frontend (React)         ⏳   0% Not started
 ```
 
 ---
 
-## 🔑 Key Architectural Discovery
+## 🎉 Major Milestone: End-to-End Flow Working!
 
-### LyricsTranscriber Review Process
+On 2025-12-08, we successfully tested the complete karaoke generation workflow:
 
-During local testing, we discovered a critical architectural mismatch:
+1. ✅ File upload → Job creation
+2. ✅ Parallel audio separation + lyrics transcription
+3. ✅ Screen generation (title/end)
+4. ✅ **Human review via LyricsTranscriber React UI**
+5. ✅ **Preview video generation** during review
+6. ✅ Post-review video render with corrected lyrics
+7. ✅ Instrumental selection (clean vs with_backing)
+8. ✅ Final video encoding (4 formats)
+9. ✅ Job completion with all outputs uploaded to GCS
 
-**The Problem:**
-- The `LyricsTranscriber` library has a built-in `ReviewServer` (see `lyrics_transcriber/review/server.py`)
-- This server is designed for **local CLI operation** - it **blocks** waiting for human review
-- The server starts on port 8000, opens a browser, and waits for `/api/complete` to be called
-- This blocking model is **incompatible** with our async Cloud Run architecture
+### Test Job Results
 
-**The Solution:**
-- **Do NOT use** the `ReviewServer` class from LyricsTranscriber
-- **DO use** the data structures: `CorrectionResult`, `CorrectionOperations`, `OutputGenerator`
-- Build **separate backend API endpoints** for async review workflow
-- Generate video **after** review using `OutputGenerator`
-
-See `WHATS-NEXT.md` for the full architectural solution.
+```
+Job ID: 166cc144
+Status: complete
+Final outputs:
+  - lossless_mp4.mp4 (4K, PCM audio)
+  - lossless_mkv.mkv (4K, FLAC audio - YouTube quality)
+  - lossy_mp4.mp4 (4K, AAC audio)
+  - lossy_720p_mp4.mp4 (720p preview)
+```
 
 ---
 
 ## ✅ What's Working
 
 ### Infrastructure
-- ✅ Google Cloud Run deployment (Cloud)
+- ✅ Google Cloud Run deployment
 - ✅ Local development with Firestore/GCS emulators
 - ✅ Pulumi infrastructure as code
 - ✅ Cloud Build automatic deployment
@@ -61,203 +67,165 @@ See `WHATS-NEXT.md` for the full architectural solution.
 - ✅ Internal worker trigger endpoints
 - ✅ Instrumental selection endpoint
 - ✅ Token-based authentication system
+- ✅ **Review API endpoints** (compatible with LyricsTranscriber UI)
 
-### Workers (Implemented but need review flow fix)
-- ✅ Audio worker (stem separation via Modal API)
-- ✅ Lyrics worker (transcription via AudioShake API)
-- ✅ Screens worker (title/end screen generation)
-- 🔄 Video worker (needs review flow integration)
+### Workers (All Complete!)
+- ✅ **Audio worker** - Stem separation via Modal API
+- ✅ **Lyrics worker** - Transcription via AudioShake API, saves corrections.json
+- ✅ **Screens worker** - Title/end screen generation (ProRes MOV)
+- ✅ **Render Video worker** - Post-review karaoke video generation (NEW)
+- ✅ **Video worker** - Final assembly, encoding (4 formats)
+
+### Review Integration
+- ✅ `/api/review/{job_id}/ping` - Health check
+- ✅ `/api/review/{job_id}/correction-data` - Get correction data
+- ✅ `/api/review/{job_id}/audio/` - Stream audio for review
+- ✅ `/api/review/{job_id}/preview-video` - Generate preview video
+- ✅ `/api/review/{job_id}/complete` - Submit corrections & trigger render
 
 ### State Management
-- ✅ 21-state job state machine
+- ✅ 22-state job state machine (added RENDERING_VIDEO)
 - ✅ Job timeline tracking
 - ✅ Progress tracking via `state_data`
-- ✅ Error handling with detailed messages
-
-### Local Testing
-- ✅ Firestore emulator integration
-- ✅ GCS emulator integration
-- ✅ `./scripts/run-backend-local.sh --with-emulators`
-- ✅ Can upload files and trigger workers
+- ✅ Error handling with `fail_job()` method
 
 ---
 
-## 🔄 Current Issue: Review Architecture
-
-### What Needs to Change
+## 📊 Complete Workflow Diagram
 
 ```
-CURRENT (BROKEN):                    TARGET (CORRECT):
-─────────────────────                ─────────────────────
-Lyrics Worker                        Lyrics Worker
-├── Transcribe                       ├── Transcribe
-├── Auto-correct                     ├── Auto-correct  
-├── Generate video ❌                ├── Save corrections.json ✓
-└── Upload                           └── → AWAITING_REVIEW
-                                            │
-                                     Human Review (React UI)
-                                     ├── Load corrections
-                                     ├── Edit/correct
-                                     └── Save → REVIEW_COMPLETE
-                                            │
-                                     Render Video Worker (NEW)
-                                     ├── Use OutputGenerator
-                                     ├── Generate with_vocals.mkv
-                                     └── → AWAITING_INSTRUMENTAL
-                                            │
-                                     Video Worker (Final)
-                                     ├── Select instrumental
-                                     ├── Remux + concatenate
-                                     └── → COMPLETE
+Upload Audio                    parallel processing
+     │                         ┌─────────────────────┐
+     ▼                         │                     │
+[DOWNLOADING]                  ▼                     ▼
+     │                 [SEPARATING_STAGE1]   [TRANSCRIBING]
+     │                         │                     │
+     │                 [SEPARATING_STAGE2]   ┌───────┘
+     │                         │             │
+     │                 [UPLOADING_STEMS]     │
+     │                         └─────┬───────┘
+     │                               ▼
+     │                    [GENERATING_SCREENS]
+     │                               │
+     └───────────────────────────────┼───────────────────┐
+                                     ▼                   │
+                            [AWAITING_REVIEW] ◄──────────┘
+                                     │
+                   User opens LyricsTranscriber UI (localhost:5173)
+                   - Views/edits lyrics
+                   - Generates preview videos
+                   - Submits corrections
+                                     │
+                                     ▼
+                            [IN_REVIEW] ────► [REVIEW_COMPLETE]
+                                                     │
+                                                     ▼
+                                            [RENDERING_VIDEO]
+                                              (render_video_worker)
+                                              - Merges corrections
+                                              - Generates with_vocals.mkv
+                                                     │
+                                                     ▼
+                                   [AWAITING_INSTRUMENTAL_SELECTION]
+                                                     │
+                               User selects: clean or with_backing
+                                                     │
+                                                     ▼
+                                      [INSTRUMENTAL_SELECTED]
+                                                     │
+                                                     ▼
+                                          [GENERATING_VIDEO]
+                                            (video_worker)
+                                                     │
+                                                     ▼
+                                              [ENCODING]
+                                     (4 formats: lossless/lossy mp4/mkv)
+                                                     │
+                                                     ▼
+                                             [PACKAGING]
+                                                     │
+                                                     ▼
+                                              [COMPLETE] ✅
 ```
-
-### Missing Pieces
-
-1. **Review API Endpoints** - Need to add:
-   - `GET /api/jobs/{job_id}/review` - Get correction data + audio URL
-   - `POST /api/jobs/{job_id}/review` - Save updated corrections
-   - `POST /api/jobs/{job_id}/complete-review` - Trigger video render
-
-2. **Render Video Worker** - New worker that:
-   - Downloads corrected lyrics from GCS
-   - Uses `OutputGenerator` to create karaoke video
-   - Uploads `with_vocals.mkv` to GCS
-   - Transitions to `AWAITING_INSTRUMENTAL_SELECTION`
-
-3. **State Machine Update** - Need transitions:
-   - `AWAITING_REVIEW` → `REVIEW_COMPLETE` (after human submits)
-   - `REVIEW_COMPLETE` → `RENDERING_VIDEO` (new state)
-   - `RENDERING_VIDEO` → `AWAITING_INSTRUMENTAL_SELECTION`
 
 ---
 
-## 📊 Test Results (Local Emulators)
+## 🧪 Testing Coverage
 
-### Latest Test Run
+### Unit Tests (Added)
+- `test_routes_review.py` - Review router tests
+  - Route structure verification
+  - Minimal styles config requirements
+  - State transition validation
 
-```
-✅ File upload: Success
-✅ Audio worker: Separates stems via Modal API
-✅ Lyrics worker: Transcribes via AudioShake, saves corrections.json
-✅ Screens worker: Generates title/end screens
-❌ Video worker: Fails - "Missing lyrics video"
-   └── Root cause: No video generated because review hasn't happened
-```
+### Integration Tests (Added)
+- `test_emulator_integration.py` - Review flow tests
+  - Review ping endpoint
+  - Correction data access control
+  - Preview video endpoint
+  - Annotations endpoint
 
-### Understanding
-
-The video worker expects a `with_vocals.mkv` file, but:
-1. The lyrics worker doesn't generate video (correctly - review hasn't happened)
-2. There's no worker to generate video AFTER review
-3. We need to add the "Render Video Worker" to bridge this gap
+### End-to-End (Manual)
+- ✅ Full workflow tested with `waterloo10sec.flac`
+- ✅ LyricsTranscriber UI integration verified
+- ✅ All video outputs generated and uploaded
 
 ---
 
-## 🏗️ Architecture: Cloud vs LyricsTranscriber
+## 📝 Lessons Learned
 
-### LyricsTranscriber (CLI Mode)
+### Styles Configuration Requirements
+
+The ASS subtitle generator requires ALL style fields to be present and properly typed:
 
 ```python
-# This BLOCKS waiting for human input
-from lyrics_transcriber.review.server import ReviewServer
+# Required fields - all must be present
+required_karaoke_fields = [
+    "font", "font_path", "ass_name",  # ass_name was missing initially
+    "primary_color", "secondary_color", "outline_color", "back_color",
+    "bold", "italic", "underline", "strike_out",
+    "scale_x", "scale_y", "spacing", "angle",
+    "border_style", "outline", "shadow",
+    "margin_l", "margin_r", "margin_v", "encoding"
+]
 
-server = ReviewServer(correction_result, config, audio_path, logger)
-corrected_result = server.start()  # ❌ BLOCKS HERE until browser submits
-# Then continues to video generation
+# Critical: font_path must be string, not None
+"font_path": ""  # ✅ Correct
+"font_path": None  # ❌ Causes ASS writer to fail
 ```
 
-### Cloud Backend (Async Mode)
+### Frontend Data Format
+
+The LyricsTranscriber React UI sends only partial correction data:
 
 ```python
-# Our approach - NO BLOCKING
-async def lyrics_worker(job_id):
-    # 1. Transcribe
-    result = transcriber.transcribe(audio_path)
-    
-    # 2. Auto-correct
-    corrections = corrector.correct(result)
-    
-    # 3. Save for human review (NO VIDEO YET)
-    upload_to_gcs(f"jobs/{job_id}/corrections.json", corrections.to_dict())
-    upload_to_gcs(f"jobs/{job_id}/audio.flac", audio_path)
-    
-    # 4. Transition and STOP
-    job_manager.transition_to_state(job_id, JobStatus.AWAITING_REVIEW)
-    # Worker exits - human will review via React UI
+# Frontend sends:
+{
+    "corrections": [...],
+    "corrected_segments": [...]
+}
 
-async def render_video_worker(job_id):  # NEW - called after review
-    # 1. Download corrected data
-    corrections = download_from_gcs(f"jobs/{job_id}/corrections_updated.json")
-    correction_result = CorrectionResult.from_dict(corrections)
-    
-    # 2. Use OutputGenerator to render video
-    output_generator = OutputGenerator(config, logger)
-    outputs = output_generator.generate_outputs(
-        transcription_corrected=correction_result,
-        lyrics_results={},
-        output_prefix=f"{artist} - {title}",
-        audio_filepath=audio_path
-    )
-    
-    # 3. Upload and continue
-    upload_to_gcs(f"jobs/{job_id}/videos/with_vocals.mkv", outputs.video)
-    job_manager.transition_to_state(job_id, JobStatus.AWAITING_INSTRUMENTAL_SELECTION)
+# Backend must merge with original corrections.json to get full CorrectionResult
 ```
-
----
-
-## 📈 Performance Metrics
-
-### Build Times
-- **Before optimization:** 15-20 minutes
-- **After Docker caching:** 2-3 minutes
-
-### API Response Times
-- **Health endpoint:** <50ms
-- **Job creation:** <200ms
-- **Job status:** <100ms
-- **File upload:** ~300ms + file size
-
-### Processing Times (Expected)
-- **Audio separation:** 5-8 minutes (Modal API)
-- **Lyrics transcription:** 2-3 minutes (AudioShake API)
-- **Screens generation:** 30 seconds
-- **Human review:** 5-15 minutes (user-dependent)
-- **Video rendering:** 10-15 minutes
-- **Final encoding:** 5-10 minutes
-- **Total:** 30-50 minutes (including human interaction)
 
 ---
 
 ## 🚀 Next Steps
 
-### Immediate (Current Session)
-1. ✅ Document the review architecture issue
-2. ⏭️ Add review API endpoints
-3. ⏭️ Create render video worker
-4. ⏭️ Update state machine
-5. ⏭️ Test end-to-end with local emulators
+### Immediate
+- ⏳ Fix CDG generation (requires CDG styles config)
+- ⏳ Deploy to production Cloud Run
+- ⏳ Test with longer audio files
 
-### Short Term (Next Session)
-1. ⏳ Test full workflow with real song
-2. ⏳ Build React review UI (can use LyricsTranscriber components)
-3. ⏳ Deploy to Cloud Run for production test
+### Short Term
+- ⏳ Build React frontend for job management
+- ⏳ Email notifications when review is ready
+- ⏳ Error recovery and retry logic
 
-### Medium Term (Next Week)
-1. ⏳ React frontend for full workflow
-2. ⏳ Email notifications for review ready
-3. ⏳ Error recovery and retry logic
-
----
-
-## 📝 Key Documentation Files
-
-| File | Purpose |
-|------|---------|
-| `WHATS-NEXT.md` | Detailed plan for review architecture fix |
-| `WORKER-IMPLEMENTATION-PLAN.md` | Updated worker responsibilities |
-| `ARCHITECTURE.md` | Cloud architecture with review flow |
-| `../04-testing/TESTING-GUIDE.md` | Local testing with emulators |
+### Medium Term
+- ⏳ YouTube upload integration
+- ⏳ Batch processing support
+- ⏳ Performance optimization
 
 ---
 
@@ -277,32 +245,36 @@ curl -X POST http://localhost:8000/api/jobs/upload \
 # Check job status
 curl http://localhost:8000/api/jobs/{job_id}
 
+# Open review UI when AWAITING_REVIEW
+http://localhost:5173/?baseApiUrl=http://localhost:8000/api/review/{job_id}
+
 # Select instrumental (when AWAITING_INSTRUMENTAL_SELECTION)
 curl -X POST http://localhost:8000/api/jobs/{job_id}/select-instrumental \
   -H "Content-Type: application/json" \
   -d '{"selection": "clean"}'
 ```
 
-### Key Endpoints
-- `GET /api/health` - Health check
-- `POST /api/jobs/upload` - Upload file and create job
-- `GET /api/jobs/{job_id}` - Get job status
-- `GET /api/jobs/{job_id}/review` - Get review data (TODO)
-- `POST /api/jobs/{job_id}/review` - Submit corrections (TODO)
-- `POST /api/jobs/{job_id}/complete-review` - Finish review (TODO)
-- `POST /api/jobs/{job_id}/select-instrumental` - Choose instrumental
+### Key Files
+| File | Purpose |
+|------|---------|
+| `backend/api/routes/review.py` | Review API (LyricsTranscriber-compatible) |
+| `backend/workers/render_video_worker.py` | Post-review video generation |
+| `backend/models/job.py` | Job states & transitions |
+| `tests/test_routes_review.py` | Review unit tests |
 
 ---
 
 ## Summary
 
-**We discovered a key architectural issue:** The LyricsTranscriber library's review server blocks waiting for human input, which doesn't work in our async cloud architecture.
+**Phase 1.3 is COMPLETE!** The full karaoke generation workflow now works end-to-end:
 
-**The fix:** Separate video generation into a post-review step:
-1. Lyrics worker → transcribe + auto-correct → save corrections → AWAITING_REVIEW
-2. Human reviews via React UI → submits corrections → REVIEW_COMPLETE
-3. **New** render video worker → generates with_vocals.mkv → AWAITING_INSTRUMENTAL
-4. Human selects instrumental → INSTRUMENTAL_SELECTED
-5. Video worker → final assembly → COMPLETE
+1. Upload audio file
+2. Parallel processing (audio separation + lyrics transcription)
+3. Human review via LyricsTranscriber React UI
+4. Preview video generation during review
+5. Final video rendering with corrected lyrics
+6. Instrumental selection
+7. Multi-format encoding
+8. Job completion
 
-This is a clean separation that uses LyricsTranscriber as a library without its blocking review server.
+The key architectural solution was to use LyricsTranscriber as a **library** (not server) and build our own async review API endpoints that are compatible with its React frontend.

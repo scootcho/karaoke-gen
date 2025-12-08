@@ -259,4 +259,105 @@ class TestInternalEndpoints:
         assert response.json()["status"] == "started"
 
 
+class TestReviewEndpoints:
+    """Test lyrics review API endpoints."""
+    
+    def test_review_ping(self, client, auth_headers):
+        """Test review ping endpoint."""
+        # Create a job first
+        create_resp = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={"url": "https://youtube.com/watch?v=review-test"}
+        )
+        job_id = create_resp.json()["job_id"]
+        
+        # Ping should work for any job
+        response = client.get(f"/api/review/{job_id}/ping")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+    
+    def test_review_correction_data_wrong_status(self, client, auth_headers):
+        """Test that correction-data returns error for non-review jobs."""
+        # Create a job (starts in pending status)
+        create_resp = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={"url": "https://youtube.com/watch?v=review-status-test"}
+        )
+        job_id = create_resp.json()["job_id"]
+        
+        time.sleep(0.2)
+        
+        # Should fail - job not in AWAITING_REVIEW status
+        response = client.get(f"/api/review/{job_id}/correction-data")
+        assert response.status_code == 400
+        assert "not ready for review" in response.json()["detail"].lower()
+    
+    def test_review_audio_no_job(self, client):
+        """Test audio endpoint returns 404 for nonexistent job."""
+        response = client.get("/api/review/nonexistent-job/audio/")
+        assert response.status_code == 404
+    
+    def test_review_preview_video_stub(self, client, auth_headers):
+        """Test preview video endpoint exists."""
+        # Create a job
+        create_resp = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={"url": "https://youtube.com/watch?v=preview-test"}
+        )
+        job_id = create_resp.json()["job_id"]
+        
+        # Preview video should return error since job not ready
+        response = client.post(
+            f"/api/review/{job_id}/preview-video",
+            json={"corrections": [], "corrected_segments": []}
+        )
+        # Should return 404 (job not found in AWAITING_REVIEW state)
+        assert response.status_code == 404
+    
+    def test_review_annotations_stub(self, client, auth_headers):
+        """Test annotations endpoint (stub)."""
+        create_resp = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={"url": "https://youtube.com/watch?v=annotation-test"}
+        )
+        job_id = create_resp.json()["job_id"]
+        
+        # Annotations endpoint should accept data (even if it just logs it)
+        response = client.post(
+            f"/api/review/{job_id}/v1/annotations",
+            json={"type": "test", "data": "test annotation"}
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
+
+
+class TestRenderVideoWorker:
+    """Test render video worker endpoint."""
+    
+    def test_render_video_worker_endpoint_exists(self, client, auth_headers):
+        """Test that render-video worker endpoint exists."""
+        # Create a job
+        create_resp = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={"url": "https://youtube.com/watch?v=render-test"}
+        )
+        job_id = create_resp.json()["job_id"]
+        
+        time.sleep(0.2)
+        
+        # Test render-video worker endpoint exists
+        response = client.post(
+            "/api/internal/workers/render-video",
+            headers=auth_headers,
+            json={"job_id": job_id}
+        )
+        # Should return 200 (endpoint exists and starts)
+        assert response.status_code == 200
+
+
 print("✅ Emulator integration tests ready to run")
