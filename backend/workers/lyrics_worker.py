@@ -382,11 +382,12 @@ async def upload_lyrics_results(
         raise Exception(error_msg)
     
     # Upload reference lyrics if available
+    # Note: Source names use .title() so "lrclib" -> "Lrclib", "genius" -> "Genius"
     reference_files = [
         (f"{job.artist} - {job.title} (Lyrics Genius).txt", "Genius"),
         (f"{job.artist} - {job.title} (Lyrics Spotify).txt", "Spotify"),
         (f"{job.artist} - {job.title} (Lyrics Musixmatch).txt", "Musixmatch"),
-        (f"{job.artist} - {job.title} (Lyrics LRCLib).txt", "LRCLib"),
+        (f"{job.artist} - {job.title} (Lyrics Lrclib).txt", "LRCLib"),  # Note: source is 'lrclib', .title() = 'Lrclib'
     ]
     
     found_reference = False
