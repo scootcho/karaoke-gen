@@ -133,6 +133,10 @@ class StyleConfig:
         # Download style assets
         style_assets = getattr(self.job, 'style_assets', {}) or {}
         
+        logger.info(f"Job has {len(style_assets)} style assets defined")
+        for key, path in style_assets.items():
+            logger.info(f"  Style asset '{key}': {path}")
+        
         for asset_key, gcs_path in style_assets.items():
             if gcs_path:
                 try:
@@ -140,8 +144,12 @@ class StyleConfig:
                     if local_path:
                         self._local_assets[asset_key] = local_path
                         logger.info(f"Downloaded style asset '{asset_key}' to {local_path}")
+                    else:
+                        logger.warning(f"Failed to download style asset '{asset_key}' - got None")
                 except Exception as e:
                     logger.warning(f"Failed to download style asset '{asset_key}': {e}")
+        
+        logger.info(f"Successfully downloaded {len(self._local_assets)} style assets")
         
         # Load and parse style_params.json
         if 'style_params' in self._local_assets:
@@ -149,12 +157,15 @@ class StyleConfig:
                 with open(self._local_assets['style_params'], 'r') as f:
                     self._style_params = json.load(f)
                 logger.info(f"Loaded style params from {self._local_assets['style_params']}")
+                logger.info(f"Style params sections: {list(self._style_params.keys()) if self._style_params else 'None'}")
                 
                 # Update file paths in style params to use local downloaded files
                 self._update_style_paths()
             except Exception as e:
                 logger.warning(f"Failed to parse style_params.json: {e}")
                 self._style_params = None
+        else:
+            logger.warning("No style_params asset found in downloaded assets")
         
         self._loaded = True
     

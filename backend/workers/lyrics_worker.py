@@ -2,7 +2,7 @@
 Lyrics transcription and correction worker.
 
 Handles the lyrics processing track of parallel processing:
-1. Fetch reference lyrics from multiple sources (Genius, Spotify, Musixmatch)
+1. Fetch reference lyrics from multiple sources (Genius, Spotify, Musixmatch, LRCLib)
 2. Transcribe audio with AudioShake API (1-2 min)
 3. Run automatic correction using LyricsTranscriber
 4. Generate corrections JSON for human review
@@ -25,6 +25,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
+from backend.workers.worker_logging import create_job_logger
 
 # Import from karaoke_gen package
 from karaoke_gen.lyrics_processor import LyricsProcessor
@@ -78,7 +79,7 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     1. Download audio from GCS
     2. Create LyricsProcessor instance
     3. Run transcription (calls AudioShake API internally)
-    4. Fetch reference lyrics from Genius/Spotify/Musixmatch
+    4. Fetch reference lyrics from Genius/Spotify/Musixmatch/LRCLib
     5. Run automatic correction using lyrics_transcriber library
     6. Generate corrections JSON for review interface
     7. Upload results to GCS
@@ -94,6 +95,9 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
+    # Create job logger for remote debugging
+    job_log = create_job_logger(job_id, "lyrics")
+    
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
@@ -103,16 +107,35 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
     
     try:
+        job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")
         logger.info(f"Starting lyrics transcription for job {job_id}")
+        
+        # Log environment configuration
+        job_log.info("Checking API configuration...")
+        if os.environ.get("GENIUS_API_TOKEN"):
+            job_log.info("  Genius API: configured")
+        else:
+            job_log.warning("  Genius API: NOT configured")
+        if os.environ.get("SPOTIFY_COOKIE_SP_DC"):
+            job_log.info("  Spotify: configured")
+        else:
+            job_log.warning("  Spotify: NOT configured")
+        if os.environ.get("RAPIDAPI_KEY"):
+            job_log.info("  Musixmatch (RapidAPI): configured")
+        else:
+            job_log.warning("  Musixmatch (RapidAPI): NOT configured")
         
         # Ensure required environment variables are set
         if not os.environ.get("AUDIOSHAKE_API_TOKEN"):
+            job_log.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
             logger.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
         
         # Download audio file from GCS (waits for audio worker if URL job)
+        job_log.info("Downloading audio file from GCS...")
         audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager)
         if not audio_path:
             raise Exception("Failed to download audio file")
+        job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
         
         # Update progress using state_data (don't change status during parallel processing)
         # The status is managed at a higher level - workers just track their progress
@@ -123,15 +146,19 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         })
         
         # Create LyricsProcessor instance (reuses karaoke_gen code)
+        job_log.info("Creating LyricsProcessor instance...")
         lyrics_processor = create_lyrics_processor(temp_dir)
         
         # Run transcription + correction
         # This will:
-        # 1. Fetch reference lyrics from Genius/Spotify/Musixmatch
+        # 1. Fetch reference lyrics from Genius/Spotify/Musixmatch/LRCLib
         # 2. Transcribe audio via AudioShake API
         # 3. Run automatic correction with lyrics_transcriber
         # 4. Generate corrections JSON (no interactive review)
         # 5. Skip video generation (render_video=False)
+        job_log.info("Starting LyricsTranscriber processing...")
+        job_log.info(f"  Artist: {job.artist}")
+        job_log.info(f"  Title: {job.title}")
         logger.info(f"Job {job_id}: Calling lyrics_processor.transcribe_lyrics()")
         result = lyrics_processor.transcribe_lyrics(
             input_audio_wav=audio_path,
@@ -140,11 +167,14 @@ async def process_lyrics_transcription(job_id: str) -> bool:
             track_output_dir=temp_dir
         )
         
+        job_log.info("Transcription processing complete")
         logger.info(f"Job {job_id}: Transcription complete, uploading results")
         
         # Upload lyrics results to GCS
-        await upload_lyrics_results(job_id, temp_dir, result, storage, job_manager)
+        job_log.info("Uploading lyrics results to GCS...")
+        await upload_lyrics_results(job_id, temp_dir, result, storage, job_manager, job_log)
         
+        job_log.info("All lyrics data uploaded successfully")
         logger.info(f"Job {job_id}: All lyrics data uploaded successfully")
         
         # Update progress using state_data (don't change status during parallel processing)
@@ -156,11 +186,13 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         
         # Mark lyrics processing complete
         # This will check if audio is also complete and transition to next stage if so
+        job_log.info("Lyrics worker complete, checking if audio is also done...")
         job_manager.mark_lyrics_complete(job_id)
         
         return True
         
     except Exception as e:
+        job_log.error(f"Lyrics transcription failed: {str(e)}", exc_info=True)
         logger.error(f"Job {job_id}: Lyrics transcription failed: {e}", exc_info=True)
         job_manager.mark_job_failed(
             job_id=job_id,
@@ -253,7 +285,8 @@ async def upload_lyrics_results(
     temp_dir: str,
     transcription_result: Dict[str, Any],
     storage: StorageService,
-    job_manager: JobManager
+    job_manager: JobManager,
+    job_log = None
 ) -> None:
     """
     Upload all lyrics transcription results to GCS.
@@ -264,7 +297,7 @@ async def upload_lyrics_results(
     
     Additional files in lyrics directory:
     - Corrections JSON (for review interface)
-    - Reference lyrics (from Genius/Spotify/Musixmatch)
+    - Reference lyrics (from Genius/Spotify/Musixmatch/LRCLib)
     - Uncorrected transcription
     
     Args:
@@ -273,6 +306,7 @@ async def upload_lyrics_results(
         transcription_result: Result dict from LyricsProcessor
         storage: StorageService instance
         job_manager: JobManager instance
+        job_log: Optional JobLogger for remote debugging
     """
     logger.info(f"Job {job_id}: Uploading lyrics results to GCS")
     
@@ -326,18 +360,28 @@ async def upload_lyrics_results(
     
     # Upload reference lyrics if available
     reference_files = [
-        f"{job.artist} - {job.title} (Lyrics Genius).txt",
-        f"{job.artist} - {job.title} (Lyrics Spotify).txt",
-        f"{job.artist} - {job.title} (Lyrics Musixmatch).txt"
+        (f"{job.artist} - {job.title} (Lyrics Genius).txt", "Genius"),
+        (f"{job.artist} - {job.title} (Lyrics Spotify).txt", "Spotify"),
+        (f"{job.artist} - {job.title} (Lyrics Musixmatch).txt", "Musixmatch"),
+        (f"{job.artist} - {job.title} (Lyrics LRCLib).txt", "LRCLib"),
     ]
     
-    for ref_filename in reference_files:
+    found_reference = False
+    for ref_filename, source_name in reference_files:
         ref_path = os.path.join(lyrics_dir, ref_filename)
         if os.path.exists(ref_path):
             gcs_path = f"jobs/{job_id}/lyrics/{ref_filename}"
             url = storage.upload_file(ref_path, gcs_path)
+            if job_log:
+                job_log.info(f"Found reference lyrics from {source_name}")
             logger.info(f"Job {job_id}: Uploaded reference lyrics: {ref_filename}")
+            found_reference = True
             break  # Only upload first available reference
+    
+    if not found_reference:
+        if job_log:
+            job_log.warning("No reference lyrics found from any source (Genius, Spotify, Musixmatch, LRCLib)")
+        logger.warning(f"Job {job_id}: No reference lyrics found from any source")
     
     # Upload uncorrected transcription if available
     uncorrected_file = os.path.join(lyrics_dir, f"{job.artist} - {job.title} (Lyrics Uncorrected).txt")

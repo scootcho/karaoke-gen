@@ -35,6 +35,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config, StyleConfig
+from backend.workers.worker_logging import create_job_logger
 
 # Import from karaoke_gen package
 from karaoke_gen.video_generator import VideoGenerator
@@ -60,6 +61,9 @@ async def generate_screens(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
+    # Create job logger for remote debugging
+    job_log = create_job_logger(job_id, "screens")
+    
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
@@ -74,6 +78,7 @@ async def generate_screens(job_id: str) -> bool:
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_screens_{job_id}_")
     
     try:
+        job_log.info(f"Starting screen generation for {job.artist} - {job.title}")
         logger.info(f"Starting screen generation for job {job_id}")
         
         # Transition to GENERATING_SCREENS state
@@ -84,39 +89,55 @@ async def generate_screens(job_id: str) -> bool:
             message="Generating title and end screens"
         )
         
+        # Log style assets info
+        style_assets = getattr(job, 'style_assets', {}) or {}
+        job_log.info(f"Style assets from job: {list(style_assets.keys()) if style_assets else 'None'}")
+        if style_assets:
+            for key, path in style_assets.items():
+                job_log.info(f"  {key}: {path}")
+        
         # Load style configuration (downloads assets from GCS if available)
+        job_log.info("Loading style configuration from GCS...")
         style_config = await load_style_config(job, storage, temp_dir)
         if style_config.has_custom_styles():
+            job_log.info("Using CUSTOM style configuration")
             logger.info(f"Job {job_id}: Using custom style configuration")
         else:
+            job_log.warning("Using DEFAULT style configuration (no custom styles found)")
             logger.info(f"Job {job_id}: Using default style configuration")
         
         # Initialize video generator
         video_generator = _create_video_generator(temp_dir)
         
         # Generate title screen with style config
+        job_log.info("Generating title screen...")
         title_screen_path = await _generate_title_screen(
             job_id=job_id,
             job=job,
             video_generator=video_generator,
             style_config=style_config,
-            temp_dir=temp_dir
+            temp_dir=temp_dir,
+            job_log=job_log
         )
         
         if not title_screen_path:
             raise Exception("Title screen generation failed")
+        job_log.info(f"Title screen generated: {title_screen_path}")
         
         # Generate end screen with style config
+        job_log.info("Generating end screen...")
         end_screen_path = await _generate_end_screen(
             job_id=job_id,
             job=job,
             video_generator=video_generator,
             style_config=style_config,
-            temp_dir=temp_dir
+            temp_dir=temp_dir,
+            job_log=job_log
         )
         
         if not end_screen_path:
             raise Exception("End screen generation failed")
+        job_log.info(f"End screen generated: {end_screen_path}")
         
         # Upload screens to GCS
         await _upload_screens(
@@ -221,7 +242,8 @@ async def _generate_title_screen(
     job,
     video_generator: VideoGenerator,
     style_config: StyleConfig,
-    temp_dir: str
+    temp_dir: str,
+    job_log = None
 ) -> Optional[str]:
     """
     Generate title screen video with custom style configuration.
@@ -234,6 +256,7 @@ async def _generate_title_screen(
         video_generator: Video generator instance
         style_config: Style configuration with formats and assets
         temp_dir: Temporary directory
+        job_log: Optional JobLogger for remote debugging
         
     Returns:
         Path to generated title screen, or None if failed
@@ -249,6 +272,23 @@ async def _generate_title_screen(
         # Get title format settings from style config
         title_format = style_config.get_intro_format()
         intro_duration = style_config.intro_video_duration
+        
+        # Log detailed style info for debugging
+        if job_log:
+            job_log.info("Title screen format configuration:")
+            job_log.info(f"  background_image: {title_format.get('background_image')}")
+            job_log.info(f"  background_color: {title_format.get('background_color')}")
+            job_log.info(f"  font: {title_format.get('font')}")
+            job_log.info(f"  title_color: {title_format.get('title_color')}")
+            job_log.info(f"  artist_color: {title_format.get('artist_color')}")
+            job_log.info(f"  duration: {intro_duration}s")
+            
+            # Check if background image exists
+            bg_image = title_format.get('background_image')
+            if bg_image and os.path.exists(bg_image):
+                job_log.info(f"  background_image file EXISTS: {os.path.getsize(bg_image)} bytes")
+            elif bg_image:
+                job_log.warning(f"  background_image file NOT FOUND: {bg_image}")
         
         logger.info(f"Job {job_id}: Title format - bg_image: {title_format.get('background_image')}, font: {title_format.get('font')}")
         
@@ -280,7 +320,8 @@ async def _generate_end_screen(
     job,
     video_generator: VideoGenerator,
     style_config: StyleConfig,
-    temp_dir: str
+    temp_dir: str,
+    job_log = None
 ) -> Optional[str]:
     """
     Generate end screen video with custom style configuration.
@@ -293,6 +334,7 @@ async def _generate_end_screen(
         video_generator: Video generator instance
         style_config: Style configuration with formats and assets
         temp_dir: Temporary directory
+        job_log: Optional JobLogger for remote debugging
         
     Returns:
         Path to generated end screen, or None if failed
@@ -308,6 +350,14 @@ async def _generate_end_screen(
         # Get end format settings from style config
         end_format = style_config.get_end_format()
         end_duration = style_config.end_video_duration
+        
+        # Log detailed style info for debugging
+        if job_log:
+            job_log.info("End screen format configuration:")
+            job_log.info(f"  background_image: {end_format.get('background_image')}")
+            job_log.info(f"  background_color: {end_format.get('background_color')}")
+            job_log.info(f"  font: {end_format.get('font')}")
+            job_log.info(f"  duration: {end_duration}s")
         
         logger.info(f"Job {job_id}: End format - bg_image: {end_format.get('background_image')}, font: {end_format.get('font')}")
         

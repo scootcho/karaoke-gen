@@ -423,4 +423,84 @@ class JobManager:
         new_count = job.retry_count + 1
         self.update_job(job_id, {'retry_count': new_count})
         return new_count
+    
+    def append_worker_log(
+        self,
+        job_id: str,
+        worker: str,
+        level: str,
+        message: str,
+        max_logs: int = 500
+    ) -> None:
+        """
+        Append a log entry to the job's worker_logs.
+        
+        Worker logs are stored in Firestore for remote debugging.
+        To avoid document size limits, we keep only the last N logs.
+        
+        Args:
+            job_id: Job ID
+            worker: Worker name (audio, lyrics, screens, video, render)
+            level: Log level (DEBUG, INFO, WARNING, ERROR)
+            message: Log message
+            max_logs: Maximum number of logs to keep (default 500)
+        """
+        job = self.get_job(job_id)
+        if not job:
+            return
+        
+        from backend.models.job import LogEntry
+        
+        log_entry = LogEntry(
+            timestamp=datetime.utcnow().isoformat() + 'Z',
+            level=level,
+            worker=worker,
+            message=message[:1000]  # Truncate long messages
+        )
+        
+        # Get existing logs and append
+        worker_logs = list(job.worker_logs) if job.worker_logs else []
+        worker_logs.append(log_entry)
+        
+        # Keep only last N logs
+        if len(worker_logs) > max_logs:
+            worker_logs = worker_logs[-max_logs:]
+        
+        # Convert to dicts for Firestore
+        logs_data = [log.dict() for log in worker_logs]
+        
+        self.update_job(job_id, {'worker_logs': logs_data})
+    
+    def get_worker_logs(
+        self,
+        job_id: str,
+        since_index: int = 0,
+        worker: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get worker logs for a job, optionally filtered by worker and index.
+        
+        Args:
+            job_id: Job ID
+            since_index: Return only logs after this index (for pagination)
+            worker: Filter by worker name (optional)
+            
+        Returns:
+            List of log entries as dicts
+        """
+        job = self.get_job(job_id)
+        if not job or not job.worker_logs:
+            return []
+        
+        logs = [log.dict() if hasattr(log, 'dict') else log for log in job.worker_logs]
+        
+        # Filter by index
+        if since_index > 0:
+            logs = logs[since_index:]
+        
+        # Filter by worker
+        if worker:
+            logs = [log for log in logs if log.get('worker') == worker]
+        
+        return logs
 

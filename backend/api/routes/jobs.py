@@ -427,3 +427,41 @@ async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
         "message": "Job cancelled successfully"
     }
 
+
+@router.get("/{job_id}/logs")
+async def get_worker_logs(
+    job_id: str,
+    since_index: int = 0,
+    worker: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get worker logs for debugging.
+    
+    This endpoint returns worker logs stored in Firestore.
+    Use `since_index` for efficient polling (returns only new logs).
+    
+    Args:
+        job_id: Job ID
+        since_index: Return only logs after this index (for pagination/polling)
+        worker: Filter by worker name (audio, lyrics, screens, video, render)
+    
+    Returns:
+        {
+            "logs": [{"timestamp": "...", "level": "INFO", "worker": "audio", "message": "..."}],
+            "next_index": 42,  # Use this for next poll
+            "total_logs": 42
+        }
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    logs = job_manager.get_worker_logs(job_id, since_index=since_index, worker=worker)
+    total = len(job.worker_logs) if job.worker_logs else 0
+    
+    return {
+        "logs": logs,
+        "next_index": total,
+        "total_logs": total
+    }
+

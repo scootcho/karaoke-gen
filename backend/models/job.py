@@ -142,6 +142,14 @@ class TimelineEvent(BaseModel):
     message: Optional[str] = None
 
 
+class LogEntry(BaseModel):
+    """Worker log entry for debugging and monitoring."""
+    timestamp: str
+    level: str  # DEBUG, INFO, WARNING, ERROR
+    worker: str  # audio, lyrics, screens, video, render
+    message: str
+
+
 class Job(BaseModel):
     """
     Complete job data model.
@@ -208,6 +216,9 @@ class Job(BaseModel):
     
     # Timeline tracking
     timeline: List[TimelineEvent] = Field(default_factory=list)
+    
+    # Worker logs for debugging (limited to last N entries to avoid document size issues)
+    worker_logs: List[LogEntry] = Field(default_factory=list)
     
     # File URLs (GCS storage)
     file_urls: Dict[str, Any] = Field(default_factory=dict)

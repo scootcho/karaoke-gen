@@ -328,6 +328,30 @@ class RemoteKaraokeClient:
             return result.returncode == 0
         except FileNotFoundError:
             return False
+    
+    def get_worker_logs(self, job_id: str, since_index: int = 0) -> Dict[str, Any]:
+        """
+        Get worker logs for debugging.
+        
+        Args:
+            job_id: Job ID
+            since_index: Return only logs after this index (for pagination/polling)
+            
+        Returns:
+            {
+                "logs": [{"timestamp": "...", "level": "INFO", "worker": "audio", "message": "..."}],
+                "next_index": 42,
+                "total_logs": 42
+            }
+        """
+        response = self._request(
+            'GET',
+            f'/api/jobs/{job_id}/logs',
+            params={'since_index': since_index}
+        )
+        if response.status_code != 200:
+            return {"logs": [], "next_index": since_index, "total_logs": 0}
+        return response.json()
 
 
 class JobMonitor:
@@ -340,6 +364,8 @@ class JobMonitor:
         self._review_opened = False
         self._instrumental_prompted = False
         self._last_timeline_index = 0
+        self._last_log_index = 0
+        self._show_worker_logs = True  # Enable worker log display
     
     def open_browser(self, url: str) -> None:
         """Open URL in the default browser."""
@@ -611,6 +637,51 @@ class JobMonitor:
         
         self._last_timeline_index = len(timeline)
     
+    def log_worker_logs(self, job_id: str) -> None:
+        """Fetch and display any new worker logs."""
+        if not self._show_worker_logs:
+            return
+        
+        try:
+            result = self.client.get_worker_logs(job_id, since_index=self._last_log_index)
+            logs = result.get('logs', [])
+            
+            for log_entry in logs:
+                timestamp = log_entry.get('timestamp', '')
+                level = log_entry.get('level', 'INFO')
+                worker = log_entry.get('worker', 'worker')
+                message = log_entry.get('message', '')
+                
+                # Format timestamp (just time portion)
+                if timestamp and 'T' in timestamp:
+                    timestamp = timestamp.split('T')[1][:8]
+                
+                # Color-code by level (using ASCII codes for terminal)
+                if level == 'ERROR':
+                    level_prefix = f"\033[91m{level}\033[0m"  # Red
+                elif level == 'WARNING':
+                    level_prefix = f"\033[93m{level}\033[0m"  # Yellow
+                else:
+                    level_prefix = level
+                
+                # Format: [HH:MM:SS] [worker:level] message
+                log_line = f"  [{timestamp}] [{worker}:{level_prefix}] {message}"
+                
+                # Use appropriate log level
+                if level == 'ERROR':
+                    self.logger.error(log_line)
+                elif level == 'WARNING':
+                    self.logger.warning(log_line)
+                else:
+                    self.logger.info(log_line)
+            
+            # Update index for next poll
+            self._last_log_index = result.get('next_index', self._last_log_index)
+            
+        except Exception as e:
+            # Don't fail if log fetching fails
+            pass
+    
     def monitor(self, job_id: str) -> int:
         """Monitor job progress until completion."""
         last_status = ""
@@ -627,8 +698,11 @@ class JobMonitor:
                 artist = job_data.get('artist', '')
                 title = job_data.get('title', '')
                 
-                # Log timeline updates (shows worker progress)
+                # Log timeline updates (shows status changes and progress)
                 self.log_timeline_updates(job_data)
+                
+                # Log worker logs (shows detailed worker output for debugging)
+                self.log_worker_logs(job_id)
                 
                 # Log status changes
                 if status != last_status:
