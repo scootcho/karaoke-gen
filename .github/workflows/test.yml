@@ -175,19 +175,24 @@ jobs:
           echo "Build ID: $BUILD_ID"
           echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
           
-          # Wait for build to complete
+          # Poll for build completion (log streaming requires additional permissions)
           echo "Waiting for build to complete..."
-          gcloud builds log $BUILD_ID --project=nomadkaraoke --stream
-          
-          # Check build status
-          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
-          
-          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
-            echo "❌ Build failed with status: $BUILD_STATUS"
-            exit 1
-          fi
-          
-          echo "✅ Build completed successfully"
+          while true; do
+            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
+            echo "Build status: $BUILD_STATUS"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Build completed successfully"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Build failed with status: $BUILD_STATUS"
+              # Try to get build logs (may fail due to permissions)
+              gcloud builds log $BUILD_ID --project=nomadkaraoke || true
+              exit 1
+            fi
+            
+            sleep 30
+          done
       
       - name: Verify deployment
         run: |
