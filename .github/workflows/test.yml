@@ -188,9 +188,12 @@ jobs:
             --set-env-vars "FIRESTORE_COLLECTION=jobs" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "ADMIN_TOKENS=${{ secrets.ADMIN_TOKENS }}" \
-            --memory 2Gi \
-            --cpu 2 \
-            --timeout 900 \
+            --memory 16Gi \
+            --cpu 8 \
+            --cpu-boost \
+            --execution-environment gen2 \
+            --timeout 1800 \
+            --concurrency 4 \
             --max-instances 10 \
             --min-instances 0
           
