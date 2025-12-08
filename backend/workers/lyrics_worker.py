@@ -318,7 +318,11 @@ async def upload_lyrics_results(
         except Exception as e:
             logger.warning(f"Job {job_id}: Could not parse corrections JSON: {e}")
     else:
-        logger.warning(f"Job {job_id}: No corrections JSON found at {corrections_file}")
+        # CRITICAL: corrections.json is required for the review UI
+        # If it's missing, the job cannot proceed to review
+        error_msg = f"No corrections JSON found at {corrections_file}. Transcription may have produced no lyrics."
+        logger.error(f"Job {job_id}: {error_msg}")
+        raise Exception(error_msg)
     
     # Upload reference lyrics if available
     reference_files = [
