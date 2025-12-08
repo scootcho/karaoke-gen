@@ -19,12 +19,19 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
+from backend.workers.worker_logging import create_job_logger, setup_job_logging
 
 # Import from karaoke_gen package
 from karaoke_gen.audio_processor import AudioProcessor
 
 
 logger = logging.getLogger(__name__)
+
+
+# Loggers to capture for audio worker
+AUDIO_WORKER_LOGGERS = [
+    "karaoke_gen.audio_processor",
+]
 
 
 async def download_from_url(url: str, temp_dir: str, artist: str, title: str) -> Optional[str]:
@@ -171,6 +178,12 @@ async def process_audio_separation(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
+    # Create job logger for remote debugging
+    job_log = create_job_logger(job_id, "audio")
+    
+    # Set up log capture for AudioProcessor
+    log_handler = setup_job_logging(job_id, "audio", *AUDIO_WORKER_LOGGERS)
+    
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
@@ -180,17 +193,22 @@ async def process_audio_separation(job_id: str) -> bool:
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_{job_id}_")
     
     try:
+        job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
         logger.info(f"Starting audio separation for job {job_id}")
         
         # Ensure AUDIO_SEPARATOR_API_URL is set
-        if not os.environ.get("AUDIO_SEPARATOR_API_URL"):
+        api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
+        if not api_url:
             raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
                           "Cannot perform audio separation without remote API access.")
+        job_log.info(f"Audio separator API: {api_url}")
         
         # Download audio file from GCS
+        job_log.info("Downloading audio file from GCS...")
         audio_path = await download_audio(job_id, temp_dir, storage, job)
         if not audio_path:
             raise Exception("Failed to download audio file")
+        job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
         
         # Update progress using state_data (don't change status during parallel processing)
         # The status is managed at a higher level - workers just track their progress
@@ -201,6 +219,7 @@ async def process_audio_separation(job_id: str) -> bool:
         })
         
         # Create AudioProcessor instance (reuses karaoke_gen code)
+        job_log.info("Creating AudioProcessor instance...")
         audio_processor = create_audio_processor(temp_dir)
         
         # Format artist-title for file naming (matches CLI behavior)
@@ -208,6 +227,9 @@ async def process_audio_separation(job_id: str) -> bool:
         
         # Run audio separation (calls Modal API internally)
         # This returns a dict with paths to all separated stems
+        job_log.info("Starting audio separation (this may take 5-10 minutes)...")
+        job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
+        job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
         logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
         separation_result = audio_processor.process_audio_separation(
             audio_file=audio_path,
@@ -215,6 +237,8 @@ async def process_audio_separation(job_id: str) -> bool:
             track_output_dir=temp_dir
         )
         
+        job_log.info("Audio separation complete!")
+        job_log.info(f"  Generated {len(separation_result)} stem files")
         logger.info(f"Job {job_id}: Audio separation complete, organizing results")
         
         # Update progress using state_data (don't change status during parallel processing)
@@ -245,6 +269,13 @@ async def process_audio_separation(job_id: str) -> bool:
         return False
         
     finally:
+        # Remove log handler to avoid duplicate logging on future runs
+        for logger_name in AUDIO_WORKER_LOGGERS:
+            try:
+                logging.getLogger(logger_name).removeHandler(log_handler)
+            except Exception:
+                pass
+        
         # Cleanup temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)

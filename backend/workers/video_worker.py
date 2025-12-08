@@ -29,12 +29,19 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config
+from backend.workers.worker_logging import create_job_logger, setup_job_logging
 
 # Import from karaoke_gen package - reuse existing implementation
 from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
 
 
 logger = logging.getLogger(__name__)
+
+
+# Loggers to capture for video worker
+VIDEO_WORKER_LOGGERS = [
+    "karaoke_gen.karaoke_finalise",
+]
 
 
 async def generate_video(job_id: str) -> bool:
@@ -54,6 +61,12 @@ async def generate_video(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
+    # Create job logger for remote debugging
+    job_log = create_job_logger(job_id, "video")
+    
+    # Set up log capture for KaraokeFinalise
+    log_handler = setup_job_logging(job_id, "video", *VIDEO_WORKER_LOGGERS)
+    
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
@@ -69,6 +82,7 @@ async def generate_video(job_id: str) -> bool:
     original_cwd = os.getcwd()
     
     try:
+        job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
         logger.info(f"Starting video generation for job {job_id}")
         
         # Transition to GENERATING_VIDEO state
@@ -81,11 +95,18 @@ async def generate_video(job_id: str) -> bool:
         
         # Download and set up files in the format KaraokeFinalise expects
         base_name = f"{job.artist} - {job.title}"
+        job_log.info("Downloading files from GCS...")
         await _setup_working_directory(job_id, job, storage, temp_dir, base_name)
+        job_log.info("Files downloaded successfully")
         
         # Load style config for CDG styles
+        job_log.info("Loading CDG style configuration...")
         style_config = await load_style_config(job, storage, temp_dir)
         cdg_styles = style_config.get_cdg_styles()
+        if cdg_styles:
+            job_log.info("CDG styles loaded from custom configuration")
+        else:
+            job_log.info("Using default CDG styles")
         
         # Change to working directory (KaraokeFinalise works in cwd)
         os.chdir(temp_dir)
@@ -102,6 +123,14 @@ async def generate_video(job_id: str) -> bool:
             progress=75,
             message="Encoding videos (15-20 min)"
         )
+        
+        # Log finalization parameters
+        job_log.info("Creating KaraokeFinalise with parameters:")
+        job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
+        job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
+        job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
+        job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
+        job_log.info(f"  instrumental: {instrumental_selection}")
         
         # Create KaraokeFinalise with ALL the parameters from the job
         # This reuses all existing functionality!
@@ -137,9 +166,13 @@ async def generate_video(job_id: str) -> bool:
         # - Generates CDG/TXT packages if enabled
         # - Posts Discord notification if configured
         # - Handles brand code generation
+        job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
         logger.info(f"Job {job_id}: Starting KaraokeFinalise.process()")
         result = finalise.process()
         
+        job_log.info("KaraokeFinalise.process() complete!")
+        if result.get('brand_code'):
+            job_log.info(f"Brand code: {result.get('brand_code')}")
         logger.info(f"Job {job_id}: KaraokeFinalise.process() complete")
         logger.info(f"Job {job_id}: Brand code: {result.get('brand_code')}")
         
@@ -185,6 +218,14 @@ async def generate_video(job_id: str) -> bool:
     finally:
         # Restore original working directory
         os.chdir(original_cwd)
+        
+        # Remove log handler to avoid duplicate logging on future runs
+        for logger_name in VIDEO_WORKER_LOGGERS:
+            try:
+                logging.getLogger(logger_name).removeHandler(log_handler)
+            except Exception:
+                pass
+        
         # Cleanup temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)

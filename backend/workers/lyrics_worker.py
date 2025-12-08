@@ -25,13 +25,24 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.workers.worker_logging import create_job_logger
+from backend.workers.worker_logging import create_job_logger, setup_job_logging
 
 # Import from karaoke_gen package
 from karaoke_gen.lyrics_processor import LyricsProcessor
 
 
 logger = logging.getLogger(__name__)
+
+
+# Loggers to capture for lyrics worker (includes LyricsTranscriber internals)
+LYRICS_WORKER_LOGGERS = [
+    "karaoke_gen.lyrics_processor",
+    "lyrics_transcriber",
+    "lyrics_transcriber.core.controller",
+    "lyrics_transcriber.lyrics",
+    "lyrics_transcriber.correction",
+    "lyrics_transcriber.transcribers",
+]
 
 
 def create_lyrics_processor(temp_dir: str, style_params_json: Optional[str] = None) -> LyricsProcessor:
@@ -98,6 +109,10 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     # Create job logger for remote debugging
     job_log = create_job_logger(job_id, "lyrics")
     
+    # Set up log capture for LyricsTranscriber and its dependencies
+    # This ensures logs from the lyrics_transcriber library are also captured
+    log_handler = setup_job_logging(job_id, "lyrics", *LYRICS_WORKER_LOGGERS)
+    
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
@@ -108,6 +123,7 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     
     try:
         job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")
+        job_log.info(f"Log capture enabled for: {', '.join(LYRICS_WORKER_LOGGERS)}")
         logger.info(f"Starting lyrics transcription for job {job_id}")
         
         # Log environment configuration
@@ -202,6 +218,13 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         return False
         
     finally:
+        # Remove log handler to avoid duplicate logging on future runs
+        for logger_name in LYRICS_WORKER_LOGGERS:
+            try:
+                logging.getLogger(logger_name).removeHandler(log_handler)
+            except Exception:
+                pass
+        
         # Cleanup temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)

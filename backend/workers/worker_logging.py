@@ -3,9 +3,79 @@ Worker logging utilities.
 
 Provides logging that sends to both standard output AND Firestore
 for remote debugging via the CLI.
+
+Two approaches are provided:
+1. JobLogger - A custom logger class for explicit logging in workers
+2. JobLogHandler - A logging.Handler that captures logs from any logger (including dependencies)
 """
 import logging
-from typing import Optional
+from typing import Optional, Set
+
+
+class JobLogHandler(logging.Handler):
+    """
+    A logging handler that captures log records and stores them in Firestore.
+    
+    This handler can be added to any logger (including dependency loggers like
+    LyricsTranscriber) to capture their output for remote debugging.
+    
+    Usage:
+        # Capture logs from LyricsTranscriber and its sub-components
+        handler = JobLogHandler(job_id, "lyrics", job_manager)
+        
+        # Add to the logger that will be passed to LyricsTranscriber
+        lyrics_logger = logging.getLogger("karaoke_gen.lyrics_processor")
+        lyrics_logger.addHandler(handler)
+        
+        # Also capture logs from lyrics_transcriber package itself
+        lt_logger = logging.getLogger("lyrics_transcriber")
+        lt_logger.addHandler(handler)
+    """
+    
+    def __init__(self, job_id: str, worker_name: str, job_manager, level: int = logging.INFO):
+        """
+        Initialize the job log handler.
+        
+        Args:
+            job_id: Job ID to log to
+            worker_name: Worker name for log entries
+            job_manager: JobManager instance for Firestore access
+            level: Minimum log level to capture (default INFO)
+        """
+        super().__init__(level)
+        self.job_id = job_id
+        self.worker_name = worker_name
+        self.job_manager = job_manager
+        
+        # Track which messages we've already logged to avoid duplicates
+        self._logged_messages: Set[str] = set()
+    
+    def emit(self, record: logging.LogRecord) -> None:
+        """Process a log record."""
+        try:
+            # Format the log message
+            message = self.format(record)
+            
+            # Create a dedup key (to avoid duplicate messages from multiple handlers)
+            dedup_key = f"{record.created}:{record.levelname}:{message[:100]}"
+            if dedup_key in self._logged_messages:
+                return
+            self._logged_messages.add(dedup_key)
+            
+            # Keep the set from growing unbounded
+            if len(self._logged_messages) > 1000:
+                self._logged_messages = set(list(self._logged_messages)[-500:])
+            
+            # Store in Firestore
+            self.job_manager.append_worker_log(
+                job_id=self.job_id,
+                worker=self.worker_name,
+                level=record.levelname,
+                message=message
+            )
+        except Exception:
+            # Don't let logging errors break the worker
+            self.handleError(record)
 
 
 class JobLogger:
@@ -103,3 +173,53 @@ def create_job_logger(job_id: str, worker_name: str) -> JobLogger:
     from backend.services.job_manager import JobManager
     job_manager = JobManager()
     return JobLogger(job_id, worker_name, job_manager)
+
+
+def setup_job_logging(job_id: str, worker_name: str, *logger_names: str) -> JobLogHandler:
+    """
+    Set up job logging for a worker and its dependencies.
+    
+    This adds a JobLogHandler to capture logs from specified loggers
+    (including dependency loggers like lyrics_transcriber).
+    
+    Args:
+        job_id: Job ID
+        worker_name: Worker name
+        *logger_names: Names of loggers to capture (e.g., "lyrics_transcriber", "karaoke_gen")
+        
+    Returns:
+        The JobLogHandler (can be removed later if needed)
+        
+    Example:
+        # In lyrics_worker.py:
+        handler = setup_job_logging(
+            job_id, 
+            "lyrics",
+            "karaoke_gen.lyrics_processor",
+            "lyrics_transcriber",  # Capture LyricsTranscriber logs
+        )
+        
+        # ... do work ...
+        
+        # Optional: remove handler when done
+        for name in logger_names:
+            logging.getLogger(name).removeHandler(handler)
+    """
+    from backend.services.job_manager import JobManager
+    
+    job_manager = JobManager()
+    handler = JobLogHandler(job_id, worker_name, job_manager, level=logging.INFO)
+    
+    # Simple formatter that just shows the message
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    
+    # Add handler to all specified loggers
+    for logger_name in logger_names:
+        logger = logging.getLogger(logger_name)
+        logger.addHandler(handler)
+        # Ensure logger level allows INFO messages through
+        if logger.level > logging.INFO or logger.level == logging.NOTSET:
+            logger.setLevel(logging.INFO)
+    
+    return handler

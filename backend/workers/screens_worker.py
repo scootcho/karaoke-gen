@@ -35,13 +35,20 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config, StyleConfig
-from backend.workers.worker_logging import create_job_logger
+from backend.workers.worker_logging import create_job_logger, setup_job_logging
 
 # Import from karaoke_gen package
 from karaoke_gen.video_generator import VideoGenerator
 
 
 logger = logging.getLogger(__name__)
+
+
+# Loggers to capture for screens worker
+SCREENS_WORKER_LOGGERS = [
+    "karaoke_gen.video_generator",
+    "backend.workers.style_helper",
+]
 
 
 async def generate_screens(job_id: str) -> bool:
@@ -63,6 +70,9 @@ async def generate_screens(job_id: str) -> bool:
     
     # Create job logger for remote debugging
     job_log = create_job_logger(job_id, "screens")
+    
+    # Set up log capture for VideoGenerator and style_helper
+    log_handler = setup_job_logging(job_id, "screens", *SCREENS_WORKER_LOGGERS)
     
     job = job_manager.get_job(job_id)
     if not job:
@@ -177,6 +187,13 @@ async def generate_screens(job_id: str) -> bool:
         return False
         
     finally:
+        # Remove log handler to avoid duplicate logging on future runs
+        for logger_name in SCREENS_WORKER_LOGGERS:
+            try:
+                logging.getLogger(logger_name).removeHandler(log_handler)
+            except Exception:
+                pass
+        
         # Cleanup temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
