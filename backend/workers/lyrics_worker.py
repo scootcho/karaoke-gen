@@ -277,6 +277,9 @@ async def upload_lyrics_results(
     """
     logger.info(f"Job {job_id}: Uploading lyrics results to GCS")
     
+    # Get job object for artist/title
+    job = job_manager.get_job(job_id)
+    
     lyrics_dir = os.path.join(temp_dir, "lyrics")
     
     # Upload LRC file (timed lyrics)
@@ -330,9 +333,6 @@ async def upload_lyrics_results(
         url = storage.upload_file(uncorrected_file, gcs_path)
         job_manager.update_file_url(job_id, 'lyrics', 'uncorrected', url)
         logger.info(f"Job {job_id}: Uploaded uncorrected transcription")
-    
-    # Get job object for artist/title
-    job = job_manager.get_job(job_id)
     
     logger.info(f"Job {job_id}: All lyrics results uploaded successfully")
 
