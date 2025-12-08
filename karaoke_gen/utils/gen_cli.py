@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+# Suppress SyntaxWarnings from third-party dependencies (pydub, syrics)
+# that have invalid escape sequences in regex patterns (not yet fixed for Python 3.12+)
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="pydub")
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="syrics")
+
 import argparse
 import logging
 from importlib import metadata

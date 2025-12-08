@@ -9,6 +9,12 @@ Usage:
     karaoke-gen-remote <filepath> <artist> <title>
     karaoke-gen-remote --resume <job_id>
 """
+# Suppress SyntaxWarnings from third-party dependencies (pydub, syrics)
+# that have invalid escape sequences in regex patterns (not yet fixed for Python 3.12+)
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="pydub")
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="syrics")
+
 import json
 import logging
 import os
