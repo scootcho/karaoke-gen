@@ -16,9 +16,9 @@ steps:
     args:
       - '-c'
       - |
-        VERSION=$(grep -m1 'version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-        echo "Extracted version: $VERSION"
-        echo "$VERSION" > /workspace/VERSION
+        VERSION=$$(grep -m1 'version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "Extracted version: $$VERSION"
+        echo "$$VERSION" > /workspace/VERSION
 
   # Pull the previous app image for layer caching
   - name: 'gcr.io/cloud-builders/docker'
@@ -59,8 +59,8 @@ steps:
     args:
       - '-c'
       - |
-        VERSION=$(cat /workspace/VERSION)
-        echo "Deploying version: $VERSION"
+        VERSION=$$(cat /workspace/VERSION)
+        echo "Deploying version: $$VERSION"
         gcloud run deploy karaoke-backend \
           --image us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:$BUILD_ID \
           --region us-central1 \
@@ -74,7 +74,7 @@ steps:
           --concurrency 4 \
           --max-instances 10 \
           --min-instances 0 \
-          --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run,KARAOKE_GEN_VERSION=$VERSION" \
+          --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run,KARAOKE_GEN_VERSION=$$VERSION" \
           --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest"
 
 images:
