@@ -325,35 +325,143 @@ handle_instrumental_selection() {
     echo ""
 }
 
+# Download a file from GCS using signed URL
+download_file() {
+    local blob_path="$1"
+    local output_path="$2"
+    local auth_token="$3"
+    
+    # Get signed URL from the API
+    local signed_url_response
+    signed_url_response=$(curl -s -X POST \
+        -H "Authorization: Bearer $auth_token" \
+        -H "Content-Type: application/json" \
+        -d "{\"blob_path\": \"$blob_path\"}" \
+        "$SERVICE_URL/api/storage/signed-url" 2>/dev/null)
+    
+    local signed_url
+    signed_url=$(echo "$signed_url_response" | jq -r '.url // empty')
+    
+    if [ -z "$signed_url" ] || [ "$signed_url" == "null" ]; then
+        # Fallback: construct GCS URL directly (works for public buckets or with gsutil)
+        signed_url="gs://karaoke-gen-storage-nomadkaraoke/$blob_path"
+        gsutil cp "$signed_url" "$output_path" 2>/dev/null && return 0
+        return 1
+    fi
+    
+    # Download using curl
+    curl -s -L -o "$output_path" "$signed_url"
+}
+
+# Download all output files for a completed job
+download_outputs() {
+    local job_id="$1"
+    local job_response="$2"
+    local auth_token="$3"
+    
+    local artist
+    local title
+    artist=$(echo "$job_response" | jq -r '.artist // "Unknown"' | tr ' ' '_')
+    title=$(echo "$job_response" | jq -r '.title // "Unknown"' | tr ' ' '_')
+    
+    # Create output directory
+    local output_dir="output/${artist}-${title}-${job_id}"
+    mkdir -p "$output_dir"
+    
+    echo -e "${BOLD}Downloading output files to: ${CYAN}$output_dir${NC}"
+    echo ""
+    
+    # Download final videos (most important)
+    local finals
+    finals=$(echo "$job_response" | jq -r '.file_urls.finals // {}')
+    
+    if [ "$finals" != "{}" ] && [ "$finals" != "null" ]; then
+        echo -e "  ${BOLD}Final Videos:${NC}"
+        for key in $(echo "$finals" | jq -r 'keys[]'); do
+            local blob_path
+            local filename
+            blob_path=$(echo "$finals" | jq -r --arg k "$key" '.[$k]')
+            filename=$(basename "$blob_path")
+            
+            echo -n "    Downloading $filename... "
+            if gsutil cp "gs://karaoke-gen-storage-nomadkaraoke/$blob_path" "$output_dir/$filename" 2>/dev/null; then
+                echo -e "${GREEN}✓${NC}"
+            else
+                echo -e "${RED}✗${NC}"
+            fi
+        done
+        echo ""
+    fi
+    
+    # Download lyrics files
+    local lyrics
+    lyrics=$(echo "$job_response" | jq -r '.file_urls.lyrics // {}')
+    
+    if [ "$lyrics" != "{}" ] && [ "$lyrics" != "null" ]; then
+        mkdir -p "$output_dir/lyrics"
+        echo -e "  ${BOLD}Lyrics:${NC}"
+        for key in ass lrc corrected_txt; do
+            local blob_path
+            blob_path=$(echo "$lyrics" | jq -r --arg k "$key" '.[$k] // empty')
+            if [ -n "$blob_path" ] && [ "$blob_path" != "null" ]; then
+                local filename
+                filename=$(basename "$blob_path")
+                echo -n "    Downloading $filename... "
+                if gsutil cp "gs://karaoke-gen-storage-nomadkaraoke/$blob_path" "$output_dir/lyrics/$filename" 2>/dev/null; then
+                    echo -e "${GREEN}✓${NC}"
+                else
+                    echo -e "${RED}✗${NC}"
+                fi
+            fi
+        done
+        echo ""
+    fi
+    
+    # Download stems (optional - can be large)
+    local stems
+    stems=$(echo "$job_response" | jq -r '.file_urls.stems // {}')
+    
+    if [ "$stems" != "{}" ] && [ "$stems" != "null" ]; then
+        mkdir -p "$output_dir/stems"
+        echo -e "  ${BOLD}Audio Stems:${NC}"
+        for key in $(echo "$stems" | jq -r 'keys[]'); do
+            local blob_path
+            local filename
+            blob_path=$(echo "$stems" | jq -r --arg k "$key" '.[$k]')
+            filename=$(basename "$blob_path")
+            
+            echo -n "    Downloading $filename... "
+            if gsutil cp "gs://karaoke-gen-storage-nomadkaraoke/$blob_path" "$output_dir/stems/$filename" 2>/dev/null; then
+                echo -e "${GREEN}✓${NC}"
+            else
+                echo -e "${RED}✗${NC}"
+            fi
+        done
+        echo ""
+    fi
+    
+    echo -e "${GREEN}✓ All files downloaded to: ${BOLD}$output_dir${NC}"
+    echo ""
+    
+    # List the downloaded files
+    echo -e "${BOLD}Downloaded files:${NC}"
+    find "$output_dir" -type f -exec ls -lh {} \; | awk '{print "  " $9 " (" $5 ")"}'
+    echo ""
+}
+
 # Display job completion info
 show_completion_info() {
     local job_response="$1"
+    local job_id="$2"
+    local auth_token="$3"
     
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}${GREEN}  JOB COMPLETE!${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     
-    # Show output files
-    local output_files
-    output_files=$(echo "$job_response" | jq -r '.output_files // {}')
-    
-    if [ "$output_files" != "{}" ] && [ "$output_files" != "null" ]; then
-        echo -e "${BOLD}Output Files:${NC}"
-        echo "$output_files" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
-        echo ""
-    fi
-    
-    # Show download URLs
-    local download_urls
-    download_urls=$(echo "$job_response" | jq -r '.download_urls // {}')
-    
-    if [ "$download_urls" != "{}" ] && [ "$download_urls" != "null" ]; then
-        echo -e "${BOLD}Download URLs:${NC}"
-        echo "$download_urls" | jq -r 'to_entries[] | "  \(.key): \(.value)"' 2>/dev/null || \
-            echo "$download_urls" | jq .
-        echo ""
-    fi
+    # Download output files automatically
+    download_outputs "$job_id" "$job_response" "$auth_token"
 }
 
 # Display error info
@@ -439,7 +547,7 @@ monitor_job() {
                 ;;
             complete)
                 echo ""
-                show_completion_info "$job_response"
+                show_completion_info "$job_response" "$job_id" "$auth_token"
                 return 0
                 ;;
             failed|error)
