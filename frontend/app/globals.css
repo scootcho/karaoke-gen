@@ -4,40 +4,40 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Karaoke theme with vibrant pink/magenta primary and gold accents on dark background */
-  --background: oklch(0.15 0.01 270); /* Dark charcoal with slight blue tint */
-  --foreground: oklch(0.95 0.01 270); /* Light gray/white */
-  --card: oklch(0.18 0.015 270); /* Slightly lighter than background */
-  --card-foreground: oklch(0.95 0.01 270);
-  --popover: oklch(0.18 0.015 270);
-  --popover-foreground: oklch(0.95 0.01 270);
-  --primary: oklch(0.58 0.24 345); /* Vibrant pink/magenta #E91E8C */
-  --primary-foreground: oklch(0.98 0.01 0); /* White for contrast */
-  --secondary: oklch(0.75 0.15 85); /* Gold/yellow #FFD54F */
-  --secondary-foreground: oklch(0.15 0.01 270); /* Dark text on gold */
-  --muted: oklch(0.25 0.015 270);
-  --muted-foreground: oklch(0.65 0.01 270);
-  --accent: oklch(0.58 0.24 345); /* Same as primary for consistency */
+  /* Nomad Karaoke brand colors - matching nomadkaraoke.com */
+  --background: oklch(0.22 0.04 260); /* Dark slate blue #2b3544 */
+  --foreground: oklch(0.95 0.01 0); /* White text */
+  --card: oklch(0.26 0.04 260); /* Slightly lighter slate for cards */
+  --card-foreground: oklch(0.95 0.01 0);
+  --popover: oklch(0.26 0.04 260);
+  --popover-foreground: oklch(0.95 0.01 0);
+  --primary: oklch(0.68 0.22 340); /* Pink #ff7acc */
+  --primary-foreground: oklch(0.98 0.01 0);
+  --secondary: oklch(0.78 0.15 85); /* Gold/yellow #ffc857 */
+  --secondary-foreground: oklch(0.15 0.01 270);
+  --muted: oklch(0.3 0.04 260);
+  --muted-foreground: oklch(0.65 0.01 260);
+  --accent: oklch(0.68 0.22 340);
   --accent-foreground: oklch(0.98 0.01 0);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0.01 0);
-  --border: oklch(0.28 0.015 270);
-  --input: oklch(0.28 0.015 270);
-  --ring: oklch(0.58 0.24 345);
-  --chart-1: oklch(0.58 0.24 345);
-  --chart-2: oklch(0.75 0.15 85);
+  --border: oklch(0.32 0.04 260);
+  --input: oklch(0.32 0.04 260);
+  --ring: oklch(0.68 0.22 340);
+  --chart-1: oklch(0.68 0.22 340);
+  --chart-2: oklch(0.78 0.15 85);
   --chart-3: oklch(0.55 0.2 280);
   --chart-4: oklch(0.6 0.18 180);
   --chart-5: oklch(0.65 0.2 60);
   --radius: 0.5rem;
-  --sidebar: oklch(0.18 0.015 270);
-  --sidebar-foreground: oklch(0.95 0.01 270);
-  --sidebar-primary: oklch(0.58 0.24 345);
+  --sidebar: oklch(0.26 0.04 260);
+  --sidebar-foreground: oklch(0.95 0.01 0);
+  --sidebar-primary: oklch(0.68 0.22 340);
   --sidebar-primary-foreground: oklch(0.98 0.01 0);
-  --sidebar-accent: oklch(0.25 0.015 270);
-  --sidebar-accent-foreground: oklch(0.95 0.01 270);
-  --sidebar-border: oklch(0.28 0.015 270);
-  --sidebar-ring: oklch(0.58 0.24 345);
+  --sidebar-accent: oklch(0.3 0.04 260);
+  --sidebar-accent-foreground: oklch(0.95 0.01 0);
+  --sidebar-border: oklch(0.32 0.04 260);
+  --sidebar-ring: oklch(0.68 0.22 340);
 }
 
 @theme inline {
