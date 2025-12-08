@@ -79,7 +79,7 @@ async def test_karaoke_gen_integration():
              patch.object(kp.file_handler, 'setup_output_paths', return_value=(os.path.join(temp_dir, "Test Artist - Test Title"), "Test Artist - Test Title")) as mock_setup_paths, \
              patch.object(kp.file_handler, 'copy_input_media', return_value="copied.mp4") as mock_copy, \
              patch.object(kp.file_handler, 'convert_to_wav', side_effect=create_dummy_wav) as mock_convert, \
-             patch.object(kp.file_handler, 'download_video') as mock_download, \
+             patch.object(kp.file_handler, 'download_audio_from_fetcher_result') as mock_download, \
              patch.object(kp.file_handler, 'extract_still_image_from_video') as mock_extract_image, \
              patch.object(kp.file_handler, '_file_exists', return_value=False) as mock_file_exists, \
              patch.object(kp.lyrics_processor, 'transcribe_lyrics', AsyncMock(return_value={'corrected_lyrics_text': 'lyrics text', 'corrected_lyrics_text_filepath': 'lyrics.txt'})) as mock_transcribe, \
