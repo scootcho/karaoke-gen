@@ -168,7 +168,6 @@ jobs:
           BUILD_ID=$(gcloud builds submit \
             --config=cloudbuild.yaml \
             --project=nomadkaraoke \
-            --substitutions=_COMMIT_SHA=${{ github.sha }} \
             --format='value(id)' \
             --async \
             .)
