@@ -123,7 +123,7 @@ submit_job() {
     local title="$3"
     local auth_token="$4"
     
-    echo -e "${BOLD}Uploading file...${NC}"
+    echo -e "${BOLD}Uploading file...${NC}" >&2
     
     local response
     response=$(curl -s -X POST \
@@ -137,16 +137,17 @@ submit_job() {
     status=$(echo "$response" | jq -r '.status // "error"')
     
     if [ "$status" != "success" ]; then
-        echo -e "${RED}Error submitting job:${NC}"
-        echo "$response" | jq .
+        echo -e "${RED}Error submitting job:${NC}" >&2
+        echo "$response" | jq . >&2
         exit 1
     fi
     
     local job_id
     job_id=$(echo "$response" | jq -r '.job_id')
-    echo -e "${GREEN}✓ Job submitted: ${BOLD}$job_id${NC}"
-    echo ""
+    echo -e "${GREEN}✓ Job submitted: ${BOLD}$job_id${NC}" >&2
+    echo "" >&2
     
+    # Only the job_id goes to stdout for capture
     echo "$job_id"
 }
 
