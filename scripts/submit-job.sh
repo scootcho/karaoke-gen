@@ -29,19 +29,24 @@ POLL_INTERVAL=${POLL_INTERVAL:-5}
 # Print usage
 usage() {
     echo "Usage: $0 <filepath> <artist> <title>"
+    echo "       $0 --resume <job_id>"
     echo ""
     echo "Arguments:"
     echo "  filepath    Path to audio file (mp3, wav, flac, m4a, ogg, aac)"
     echo "  artist      Artist name"
     echo "  title       Song title"
     echo ""
+    echo "Options:"
+    echo "  --resume <job_id>   Resume monitoring an existing job"
+    echo ""
     echo "Environment variables:"
     echo "  SERVICE_URL     Backend URL (default: production Cloud Run)"
     echo "  REVIEW_UI_URL   Lyrics review UI URL (default: http://localhost:5173)"
     echo "  POLL_INTERVAL   Seconds between status polls (default: 5)"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  $0 ./song.mp3 \"ABBA\" \"Waterloo\""
+    echo "  $0 --resume abc12345"
     exit 1
 }
 
@@ -430,9 +435,65 @@ monitor_job() {
     done
 }
 
+# Resume an existing job
+resume_job() {
+    local job_id="$1"
+    
+    check_prerequisites
+    
+    echo -e "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}  Karaoke Generator - Resume Job${NC}"
+    echo -e "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "  Job ID: ${CYAN}$job_id${NC}"
+    echo ""
+    
+    # Get auth token
+    echo -e "Authenticating..."
+    local auth_token
+    auth_token=$(get_auth_token)
+    echo -e "${GREEN}✓ Authenticated${NC}"
+    echo ""
+    
+    # Verify job exists
+    local job_response
+    job_response=$(get_job "$job_id" "$auth_token")
+    
+    local status
+    status=$(echo "$job_response" | jq -r '.status // "not_found"')
+    
+    if [ "$status" == "not_found" ] || [ "$status" == "null" ]; then
+        echo -e "${RED}Error: Job not found: $job_id${NC}"
+        exit 1
+    fi
+    
+    local artist
+    local title
+    artist=$(echo "$job_response" | jq -r '.artist // "Unknown"')
+    title=$(echo "$job_response" | jq -r '.title // "Unknown"')
+    
+    echo -e "  Artist: ${CYAN}$artist${NC}"
+    echo -e "  Title:  ${CYAN}$title${NC}"
+    echo -e "  Status: $(print_status "$status")"
+    echo ""
+    
+    # Monitor job
+    monitor_job "$job_id" "$auth_token"
+}
+
 # Main
 main() {
-    # Check arguments
+    # Check for resume mode
+    if [ "$1" == "--resume" ] || [ "$1" == "-r" ]; then
+        if [ -z "$2" ]; then
+            echo -e "${RED}Error: --resume requires a job ID${NC}"
+            usage
+        fi
+        resume_job "$2"
+        exit $?
+    fi
+    
+    # Check arguments for normal submission
     if [ $# -lt 3 ]; then
         usage
     fi
