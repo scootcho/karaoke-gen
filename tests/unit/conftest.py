@@ -23,11 +23,16 @@ def temp_dir():
         yield temp_dir
 
 @pytest.fixture
-def basic_karaoke_gen(mock_logger, mock_ffmpeg):
+def basic_karaoke_gen(mock_logger, mock_ffmpeg, temp_dir):
     """Return a basic KaraokePrep instance for testing."""
     with MagicMock() as mock_os_system:
-        # Create a KaraokePrep instance with a mock logger
-        karaoke_gen = KaraokePrep(logger=mock_logger)
+        # Create a KaraokePrep instance with required artist/title and a mock logger
+        karaoke_gen = KaraokePrep(
+            logger=mock_logger,
+            artist="Test Artist",
+            title="Test Title",
+            output_dir=temp_dir,
+        )
         
         # Replace the ffmpeg_base_command with a mock
         karaoke_gen.ffmpeg_base_command = "mock_ffmpeg"

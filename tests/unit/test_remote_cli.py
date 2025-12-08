@@ -815,11 +815,11 @@ class TestMain:
     @patch('karaoke_gen.utils.remote_cli.is_file')
     @patch('os.path.isfile')
     @patch('os.path.isdir')
-    def test_main_youtube_search_not_supported(
+    def test_main_audio_search_not_supported(
         self, mock_isdir, mock_isfile, mock_is_file, mock_is_url, 
         mock_check, mock_auth, mock_create_parser
     ):
-        """Test main rejects YouTube search."""
+        """Test main rejects audio search (artist+title without file)."""
         mock_parser = MagicMock()
         mock_args = MagicMock()
         mock_args.service_url = "https://api.example.com"
@@ -831,7 +831,7 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
-        mock_args.args = ["Artist", "Title"]  # YouTube search format
+        mock_args.args = ["Artist", "Title"]  # Audio search format (not yet supported in remote)
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"

@@ -831,6 +831,8 @@ def main():
         ignored_features.append("--existing_instrumental")
     if args.background_video:
         ignored_features.append("--background_video")
+    if getattr(args, 'auto_download', False):
+        ignored_features.append("--auto-download (audio search not yet supported)")
     # These are now supported but server-side handling may be partial
     if args.organised_dir:
         ignored_features.append("--organised_dir (local-only)")
@@ -877,7 +879,11 @@ def main():
     elif len(args.args) > 1:
         artist = args.args[0]
         title = args.args[1]
-        logger.error("YouTube search is not yet supported in remote mode. Please provide a file path.")
+        logger.error("Audio search (artist+title) is not yet supported in remote mode.")
+        logger.error("Please provide a local audio file path instead.")
+        logger.error("")
+        logger.error("For local flacfetch search, use karaoke-gen instead:")
+        logger.error(f"  karaoke-gen \"{artist}\" \"{title}\"")
         return 1
     else:
         parser.print_help()

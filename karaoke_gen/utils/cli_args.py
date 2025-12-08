@@ -38,7 +38,7 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     parser.add_argument(
         "args",
         nargs="*",
-        help="[Media or playlist URL] [Artist] [Title] of song to process. If URL is provided, Artist and Title are optional but increase chance of fetching the correct lyrics. If Artist and Title are provided with no URL, the top YouTube search result will be fetched.",
+        help="[File path] [Artist] [Title] of song to process. If a local audio file is provided, Artist and Title are optional but increase chance of fetching the correct lyrics. If only Artist and Title are provided (no file), audio will be searched and downloaded using flacfetch.",
     )
 
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {get_version()}")
@@ -137,6 +137,14 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         type=lambda x: (str(x).lower() == "true"),
         default=True,
         help="Optional: output JPG format for title and end images (default: %(default)s). Example: --output_jpg=False",
+    )
+
+    # Audio Fetching Configuration (flacfetch)
+    fetch_group = parser.add_argument_group("Audio Fetching Configuration")
+    fetch_group.add_argument(
+        "--auto-download",
+        action="store_true",
+        help="Optional: Automatically select best audio source when searching by artist/title. When disabled (default), presents options for manual selection. Example: --auto-download",
     )
 
     # Audio Processing Configuration

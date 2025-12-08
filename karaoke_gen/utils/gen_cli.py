@@ -105,6 +105,7 @@ async def async_main():
             style_overrides=style_overrides,
             background_video=args.background_video,
             background_video_darkness=args.background_video_darkness,
+            auto_download=getattr(args, 'auto_download', False),
         )
         # No await needed for constructor
         kprep = kprep_coroutine
@@ -376,7 +377,10 @@ async def async_main():
     elif len(args.args) > 1:
         artist = args.args[0]
         title = args.args[1]
-        logger.warning(f"No input media provided, the top YouTube search result for {artist} - {title} will be used.")
+        if getattr(args, 'auto_download', False):
+            logger.info(f"No input media provided, flacfetch will automatically search and download: {artist} - {title}")
+        else:
+            logger.info(f"No input media provided, flacfetch will search for: {artist} - {title} (interactive selection)")
 
     else:
         parser.print_help()
@@ -425,6 +429,7 @@ async def async_main():
         style_overrides=style_overrides,
         background_video=args.background_video,
         background_video_darkness=args.background_video_darkness,
+        auto_download=getattr(args, 'auto_download', False),
     )
     # No await needed for constructor
     kprep = kprep_coroutine
