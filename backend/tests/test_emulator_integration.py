@@ -12,22 +12,45 @@ paths. They mock background workers to avoid race conditions and network issues.
 import pytest
 import os
 import time
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from datetime import datetime, UTC
 import requests
 
-# Set emulator environment variables before any imports
-os.environ["FIRESTORE_EMULATOR_HOST"] = "localhost:8080"
-os.environ["STORAGE_EMULATOR_HOST"] = "http://localhost:4443"
+
+def emulators_running() -> bool:
+    """Check if GCP emulators are running."""
+    try:
+        requests.get("http://127.0.0.1:8080", timeout=1)
+        requests.get("http://127.0.0.1:4443", timeout=1)
+        return True
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        return False
+
+
+# Skip all tests in this module if emulators aren't running
+pytestmark = pytest.mark.skipif(
+    not emulators_running(),
+    reason="GCP emulators not running. Start with: scripts/start-emulators.sh"
+)
+
+# Set emulator environment variables before any imports (use 127.0.0.1 for IPv4)
+os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8080"
+os.environ["STORAGE_EMULATOR_HOST"] = "http://127.0.0.1:4443"
 os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
 os.environ["GCS_BUCKET_NAME"] = "test-bucket"
 os.environ["FIRESTORE_COLLECTION"] = "test-jobs"  # Use separate collection for tests
 os.environ["ENVIRONMENT"] = "test"
 os.environ["ADMIN_TOKENS"] = "test-admin-token"
 
-from backend.main import app
-from backend.models.job import JobStatus
+# Only import if emulators are running
+if emulators_running():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.models.job import JobStatus
+else:
+    TestClient = None
+    app = None
+    JobStatus = None
 
 
 @pytest.fixture(scope="module", autouse=True)

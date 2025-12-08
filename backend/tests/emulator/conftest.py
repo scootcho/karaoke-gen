@@ -2,12 +2,31 @@
 Fixtures for emulator integration tests.
 
 These tests use REAL Firestore and GCS emulators, so we DON'T mock google.cloud modules.
+Run with: scripts/run-emulator-tests.sh
 """
 import pytest
 import os
 import requests
 from unittest.mock import AsyncMock, patch
-from fastapi.testclient import TestClient
+
+
+def emulators_running() -> bool:
+    """Check if GCP emulators are running."""
+    try:
+        # Check Firestore emulator
+        requests.get("http://127.0.0.1:8080", timeout=1)
+        # Check GCS emulator
+        requests.get("http://127.0.0.1:4443", timeout=1)
+        return True
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        return False
+
+
+# Skip all tests in this module if emulators aren't running
+pytestmark = pytest.mark.skipif(
+    not emulators_running(),
+    reason="GCP emulators not running. Start with: scripts/start-emulators.sh"
+)
 
 # Set emulator environment variables (use 127.0.0.1 to force IPv4)
 os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8080"
@@ -18,8 +37,13 @@ os.environ["FIRESTORE_COLLECTION"] = "test-jobs"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["ADMIN_TOKENS"] = "test-admin-token"
 
-# Import app AFTER setting env vars
-from backend.main import app
+# Only import app if emulators are running
+if emulators_running():
+    from fastapi.testclient import TestClient
+    from backend.main import app
+else:
+    TestClient = None
+    app = None
 
 
 @pytest.fixture(scope="session", autouse=True)

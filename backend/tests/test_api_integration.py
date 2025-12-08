@@ -2,6 +2,9 @@
 Integration tests for the karaoke generation backend API.
 
 These tests verify the backend works end-to-end with real Cloud Run deployment.
+These tests require a deployed backend and are marked to skip unless explicitly enabled.
+
+Run with: pytest backend/tests/test_api_integration.py -m integration
 """
 import pytest
 import requests
@@ -10,7 +13,14 @@ import time
 import json
 from pathlib import Path
 from typing import Optional
+import os
 
+
+# Skip all tests unless explicitly running integration tests
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_INTEGRATION_TESTS") != "true",
+    reason="Integration tests require deployed backend. Set RUN_INTEGRATION_TESTS=true to run."
+)
 
 # Configuration
 SERVICE_URL = "https://karaoke-backend-718638054799.us-central1.run.app"

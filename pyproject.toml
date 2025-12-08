@@ -41,6 +41,17 @@ ffmpeg-python = "^0.2.0"
 modal = "^1.0.5"
 python-multipart = "^0.0.20"
 matplotlib = ">=3"
+# Backend API dependencies
+fastapi = ">=0.104.0"
+uvicorn = { version = ">=0.24.0", extras = ["standard"] }
+pydantic = ">=2.5.0"
+pydantic-settings = ">=2.1.0"
+httpx = ">=0.25.0"
+google-cloud-firestore = ">=2.14.0"
+google-cloud-storage = ">=2.14.0"
+google-cloud-secret-manager = ">=2.18.0"
+python-dotenv = ">=1.0.0"
+pydub = ">=0.25.1"
 
 [tool.poetry.group.dev.dependencies]
 black = ">=23"
@@ -63,18 +74,22 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration"]
+testpaths = ["tests/unit", "tests/integration", "backend/tests"]
 python_files = ["test_*.py"]
 addopts = [
     "--cov=karaoke_gen",
+    "--cov=backend",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
     "--asyncio-mode=auto",
+    "-v",
+    "--tb=short",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "asyncio: mark test as async",
+    "emulator: marks tests requiring GCP emulators",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
