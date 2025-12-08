@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.66.2"
+version = "0.70.0"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -64,6 +64,7 @@ pytest-asyncio = "*"
 
 [tool.poetry.scripts]
 karaoke-gen = 'karaoke_gen.utils.gen_cli:main'
+karaoke-gen-remote = 'karaoke_gen.utils.remote_cli:main'
 karaoke-bulk = 'karaoke_gen.utils.bulk_cli:main'
 
 [tool.black]

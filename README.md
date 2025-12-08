@@ -80,6 +80,8 @@ The tool will automatically detect the `AUDIO_SEPARATOR_API_URL` environment var
 
 ## Quick Start
 
+### Local Processing
+
 ```bash
 # Generate a karaoke video from a YouTube URL
 karaoke-gen "https://www.youtube.com/watch?v=dQw4w9WgXcQ" "Rick Astley" "Never Gonna Give You Up"
@@ -87,6 +89,38 @@ karaoke-gen "https://www.youtube.com/watch?v=dQw4w9WgXcQ" "Rick Astley" "Never G
 # Or let it search YouTube for you
 karaoke-gen "Rick Astley" "Never Gonna Give You Up"
 ```
+
+### Cloud Processing (Remote Backend)
+
+Use `karaoke-gen-remote` to offload all processing to a cloud-hosted backend. This is perfect for users who want to generate karaoke videos without needing local GPU resources.
+
+```bash
+# Set your cloud backend URL
+export KARAOKE_GEN_URL="https://your-backend.run.app"
+
+# Submit a job to the cloud backend
+karaoke-gen-remote ./song.mp3 "ABBA" "Waterloo"
+
+# Resume monitoring an existing job
+karaoke-gen-remote --resume abc12345
+```
+
+The remote CLI:
+1. Uploads your audio file to the cloud backend
+2. Monitors job progress with live updates
+3. Opens the lyrics review UI when human review is needed
+4. Prompts for instrumental selection interactively
+5. Downloads all output files when complete
+
+**Environment Variables:**
+- `KARAOKE_GEN_URL` - Backend service URL (required)
+- `REVIEW_UI_URL` - Lyrics review UI URL (default: http://localhost:5173)
+- `POLL_INTERVAL` - Seconds between status polls (default: 5)
+- `KARAOKE_GEN_BUCKET` - GCS bucket name for downloads
+
+**Requirements:**
+- `gcloud` CLI for authentication (`gcloud auth login`)
+- `gsutil` for downloading output files
 
 ## Workflow Options
 
