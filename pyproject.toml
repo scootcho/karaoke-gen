@@ -77,10 +77,6 @@ build-backend = "poetry.core.masonry.api"
 testpaths = ["tests/unit", "tests/integration", "backend/tests"]
 python_files = ["test_*.py"]
 addopts = [
-    "--cov=karaoke_gen",
-    "--cov=backend",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov",
     "--asyncio-mode=auto",
     "-v",
     "--tb=short",
