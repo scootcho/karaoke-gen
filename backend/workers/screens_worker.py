@@ -409,32 +409,52 @@ async def _upload_screens(
     end_screen_path: str
 ) -> None:
     """
-    Upload title and end screens to GCS.
+    Upload title and end screens to GCS (video + images).
     
     Single Responsibility: Only handles uploads.
+    
+    VideoGenerator creates .mov, .jpg, and .png files when configured with
+    output_png=True and output_jpg=True. We upload all three formats
+    for feature parity with the local CLI.
     
     Args:
         job_id: Job ID
         job_manager: Job manager instance
         storage: Storage service instance
-        title_screen_path: Path to title screen
-        end_screen_path: Path to end screen
+        title_screen_path: Path to title screen video (.mov)
+        end_screen_path: Path to end screen video (.mov)
     """
-    # Upload title screen
+    # Upload title screen video
     title_gcs_path = f"jobs/{job_id}/screens/title.mov"
     title_url = storage.upload_file(title_screen_path, title_gcs_path)
     job_manager.update_file_url(job_id, 'screens', 'title', title_url)
-    logger.info(f"Job {job_id}: Uploaded title screen")
+    logger.info(f"Job {job_id}: Uploaded title screen video")
     
-    # Upload end screen
+    # Upload title screen images (.jpg and .png - created by VideoGenerator)
+    title_base = title_screen_path.replace('.mov', '')
+    for ext, key in [('.jpg', 'title_jpg'), ('.png', 'title_png')]:
+        image_path = f"{title_base}{ext}"
+        if os.path.exists(image_path):
+            gcs_path = f"jobs/{job_id}/screens/title{ext}"
+            url = storage.upload_file(image_path, gcs_path)
+            job_manager.update_file_url(job_id, 'screens', key, url)
+            logger.info(f"Job {job_id}: Uploaded title screen image ({ext})")
+    
+    # Upload end screen video
     end_gcs_path = f"jobs/{job_id}/screens/end.mov"
     end_url = storage.upload_file(end_screen_path, end_gcs_path)
     job_manager.update_file_url(job_id, 'screens', 'end', end_url)
-    logger.info(f"Job {job_id}: Uploaded end screen")
+    logger.info(f"Job {job_id}: Uploaded end screen video")
     
-    # Also generate JPG thumbnails for both
-    # TODO: Extract frames from MOV files for thumbnails
-    # This is useful for preview in UI
+    # Upload end screen images (.jpg and .png - created by VideoGenerator)
+    end_base = end_screen_path.replace('.mov', '')
+    for ext, key in [('.jpg', 'end_jpg'), ('.png', 'end_png')]:
+        image_path = f"{end_base}{ext}"
+        if os.path.exists(image_path):
+            gcs_path = f"jobs/{job_id}/screens/end{ext}"
+            url = storage.upload_file(image_path, gcs_path)
+            job_manager.update_file_url(job_id, 'screens', key, url)
+            logger.info(f"Job {job_id}: Uploaded end screen image ({ext})")
 
 
 async def _apply_countdown_padding_if_needed(

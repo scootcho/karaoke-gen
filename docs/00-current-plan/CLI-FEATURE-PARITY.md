@@ -145,7 +145,7 @@ This **reuses 100% of existing code** - no duplicate implementations.
 
 ### File Download
 
-On job completion, the CLI downloads all outputs with proper naming:
+On job completion, the CLI downloads all outputs with proper naming to match local CLI output:
 
 ```
 {Brand Code} - {Artist} - {Title}/
@@ -155,11 +155,32 @@ On job completion, the CLI downloads all outputs with proper naming:
 ├── Artist - Title (Final Karaoke Lossy 720p).mp4
 ├── Artist - Title (Final Karaoke CDG).zip
 ├── Artist - Title (Final Karaoke TXT).zip
+├── Artist - Title (Karaoke).cdg              # Extracted from CDG.zip
+├── Artist - Title (Karaoke).mp3              # Extracted from CDG.zip
 ├── Artist - Title (Karaoke).lrc
 ├── Artist - Title (Karaoke).ass
+├── Artist - Title (Karaoke).txt
+├── Artist - Title (Title).mov
+├── Artist - Title (Title).jpg
+├── Artist - Title (Title).png
+├── Artist - Title (End).mov
+├── Artist - Title (End).jpg
+├── Artist - Title (End).png
+├── Artist - Title (With Vocals).mkv
+├── Artist - Title (Instrumental model_bs_roformer...).flac
+├── Artist - Title (Instrumental +BV mel_band_roformer...).flac
 └── stems/
-    ├── instrumental_clean.flac
-    └── instrumental_with_backing.flac
+    ├── Artist - Title (Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt).flac
+    ├── Artist - Title (Instrumental +BV mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac
+    ├── Artist - Title (Vocals model_bs_roformer_ep_317_sdr_12.9755.ckpt).flac
+    ├── Artist - Title (Lead Vocals mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac
+    ├── Artist - Title (Backing Vocals mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac
+    ├── Artist - Title (Bass htdemucs_6s.yaml).flac
+    ├── Artist - Title (Drums htdemucs_6s.yaml).flac
+    ├── Artist - Title (Guitar htdemucs_6s.yaml).flac
+    ├── Artist - Title (Piano htdemucs_6s.yaml).flac
+    ├── Artist - Title (Other htdemucs_6s.yaml).flac
+    └── Artist - Title (Vocals htdemucs_6s.yaml).flac
 ```
 
 ---
@@ -175,9 +196,9 @@ On job completion, the CLI downloads all outputs with proper naming:
 | `backend/api/routes/review.py` | Uses `load_styles_from_gcs()` for preview video custom styles |
 | `backend/workers/style_helper.py` | `StyleConfig` class wraps unified style_loader |
 | `backend/workers/render_video_worker.py` | Uses `load_styles_from_gcs()` for post-review video |
-| `backend/workers/screens_worker.py` | Uses `StyleConfig` for title/end screens |
+| `backend/workers/screens_worker.py` | Uses `StyleConfig` for title/end screens; uploads .jpg/.png images |
 | `backend/workers/video_worker.py` | Reuses `KaraokeFinalise.process()` with all params |
-| `karaoke_gen/utils/remote_cli.py` | Parses style JSON, uploads all files, improved downloads |
+| `karaoke_gen/utils/remote_cli.py` | Parses style JSON, uploads all files, enhanced downloads for full feature parity |
 | `karaoke_gen/utils/cli_args.py` | Shared argument parser for both CLIs |
 
 ---
@@ -195,6 +216,20 @@ On job completion, the CLI downloads all outputs with proper naming:
 ---
 
 ## Recent Fixes
+
+### 2024-12-09: Output File Parity Enhancement
+- **Gap**: Remote CLI output directory was missing many files that local CLI produces
+- **Fix**: Enhanced `download_outputs()` in `remote_cli.py` to download all files:
+  - Title/End screen images (.jpg, .png) now uploaded by screens_worker.py
+  - Title/End screen videos (.mov) now downloaded
+  - With Vocals intermediate video (.mkv) now downloaded
+  - Stems now use descriptive model-based naming (e.g., "Vocals model_bs_roformer...")
+  - CDG ZIP now extracts individual .cdg and .mp3 files to root
+  - Instrumental files copied to root directory (matching local CLI behavior)
+- **Files Modified**: 
+  - `backend/workers/screens_worker.py` - Upload .jpg/.png images
+  - `karaoke_gen/utils/remote_cli.py` - Enhanced download logic
+- **Result**: Remote CLI output structure now matches local CLI output
 
 ### 2024-12-09: Preview Video Custom Styles
 - **Bug**: Preview videos in remote mode showed black background instead of custom background images

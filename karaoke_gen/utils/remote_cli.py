@@ -468,7 +468,17 @@ class JobMonitor:
             self.logger.error(f"Error submitting selection: {e}")
     
     def download_outputs(self, job_id: str, job_data: Dict[str, Any]) -> None:
-        """Download all output files for a completed job."""
+        """
+        Download all output files for a completed job.
+        
+        Downloads all files to match local CLI output structure:
+        - Final videos (4 formats)
+        - CDG/TXT ZIP packages (and extracts individual files)
+        - Lyrics files (.ass, .lrc, .txt)
+        - Audio stems with descriptive names
+        - Title/End screen files (.mov, .jpg, .png)
+        - With Vocals intermediate video
+        """
         artist = job_data.get('artist', 'Unknown')
         title = job_data.get('title', 'Unknown')
         brand_code = job_data.get('state_data', {}).get('brand_code')
@@ -488,6 +498,7 @@ class JobMonitor:
         self.logger.info(f"Downloading output files to: {output_dir}")
         
         file_urls = job_data.get('file_urls', {})
+        base_name = f"{artist} - {title}"
         
         # Download final videos
         finals = file_urls.get('finals', {})
@@ -498,13 +509,13 @@ class JobMonitor:
                     # Use descriptive filename
                     ext = Path(blob_path).suffix
                     if 'lossless_4k_mp4' in key:
-                        filename = f"{artist} - {title} (Final Karaoke Lossless 4k).mp4"
+                        filename = f"{base_name} (Final Karaoke Lossless 4k).mp4"
                     elif 'lossless_4k_mkv' in key:
-                        filename = f"{artist} - {title} (Final Karaoke Lossless 4k).mkv"
+                        filename = f"{base_name} (Final Karaoke Lossless 4k).mkv"
                     elif 'lossy_4k' in key:
-                        filename = f"{artist} - {title} (Final Karaoke Lossy 4k).mp4"
+                        filename = f"{base_name} (Final Karaoke Lossy 4k).mp4"
                     elif 'lossy_720p' in key:
-                        filename = f"{artist} - {title} (Final Karaoke Lossy 720p).mp4"
+                        filename = f"{base_name} (Final Karaoke Lossy 720p).mp4"
                     else:
                         filename = Path(blob_path).name
                     
@@ -522,9 +533,9 @@ class JobMonitor:
             for key, blob_path in packages.items():
                 if blob_path:
                     if 'cdg' in key.lower():
-                        filename = f"{artist} - {title} (Final Karaoke CDG).zip"
+                        filename = f"{base_name} (Final Karaoke CDG).zip"
                     elif 'txt' in key.lower():
-                        filename = f"{artist} - {title} (Final Karaoke TXT).zip"
+                        filename = f"{base_name} (Final Karaoke TXT).zip"
                     else:
                         filename = Path(blob_path).name
                     
@@ -532,6 +543,10 @@ class JobMonitor:
                     self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
                         self.logger.info(f"    OK: {local_path}")
+                        
+                        # Extract CDG files to match local CLI (individual .cdg and .mp3 at root)
+                        if 'cdg' in key.lower():
+                            self._extract_cdg_files(local_path, output_dir, base_name)
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
         
@@ -543,7 +558,7 @@ class JobMonitor:
                 blob_path = lyrics.get(key)
                 if blob_path:
                     ext = Path(blob_path).suffix
-                    filename = f"{artist} - {title} (Karaoke){ext}"
+                    filename = f"{base_name} (Karaoke){ext}"
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
@@ -551,21 +566,89 @@ class JobMonitor:
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
         
-        # Download stems (optional - in subfolder)
+        # Download title/end screen files (video + images)
+        screens = file_urls.get('screens', {})
+        if screens:
+            self.logger.info("Downloading title/end screens...")
+            screen_mappings = {
+                'title': f"{base_name} (Title).mov",
+                'title_jpg': f"{base_name} (Title).jpg",
+                'title_png': f"{base_name} (Title).png",
+                'end': f"{base_name} (End).mov",
+                'end_jpg': f"{base_name} (End).jpg",
+                'end_png': f"{base_name} (End).png",
+            }
+            for key, filename in screen_mappings.items():
+                blob_path = screens.get(key)
+                if blob_path:
+                    local_path = output_dir / filename
+                    self.logger.info(f"  Downloading {filename}...")
+                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                        self.logger.info(f"    OK: {local_path}")
+                    else:
+                        self.logger.warning(f"    FAILED: {filename}")
+        
+        # Download with_vocals intermediate video
+        videos = file_urls.get('videos', {})
+        if videos:
+            self.logger.info("Downloading intermediate videos...")
+            if videos.get('with_vocals'):
+                filename = f"{base_name} (With Vocals).mkv"
+                local_path = output_dir / filename
+                self.logger.info(f"  Downloading {filename}...")
+                if self.client.download_file_via_gsutil(videos['with_vocals'], str(local_path)):
+                    self.logger.info(f"    OK: {local_path}")
+                else:
+                    self.logger.warning(f"    FAILED: {filename}")
+        
+        # Download stems with descriptive names
         stems = file_urls.get('stems', {})
         if stems:
             stems_dir = output_dir / 'stems'
             stems_dir.mkdir(exist_ok=True)
             self.logger.info("Downloading audio stems...")
+            
+            # Map backend stem names to local CLI naming convention
+            stem_name_mappings = {
+                'instrumental_clean': f"{base_name} (Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt).flac",
+                'instrumental_with_backing': f"{base_name} (Instrumental +BV mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac",
+                'vocals_clean': f"{base_name} (Vocals model_bs_roformer_ep_317_sdr_12.9755.ckpt).flac",
+                'lead_vocals': f"{base_name} (Lead Vocals mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac",
+                'backing_vocals': f"{base_name} (Backing Vocals mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt).flac",
+                'bass': f"{base_name} (Bass htdemucs_6s.yaml).flac",
+                'drums': f"{base_name} (Drums htdemucs_6s.yaml).flac",
+                'guitar': f"{base_name} (Guitar htdemucs_6s.yaml).flac",
+                'piano': f"{base_name} (Piano htdemucs_6s.yaml).flac",
+                'other': f"{base_name} (Other htdemucs_6s.yaml).flac",
+                'vocals': f"{base_name} (Vocals htdemucs_6s.yaml).flac",
+            }
+            
             for key, blob_path in stems.items():
                 if blob_path:
-                    filename = Path(blob_path).name
+                    # Use descriptive filename if available, otherwise use GCS filename
+                    filename = stem_name_mappings.get(key, Path(blob_path).name)
                     local_path = stems_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
                     if self.client.download_file_via_gsutil(blob_path, str(local_path)):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
+            
+            # Also copy instrumental files to root directory (matching local CLI)
+            for src_key, dest_suffix in [
+                ('instrumental_clean', 'Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt'),
+                ('instrumental_with_backing', 'Instrumental +BV mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt'),
+            ]:
+                if stems.get(src_key):
+                    stem_file = stems_dir / stem_name_mappings.get(src_key, '')
+                    if stem_file.exists():
+                        dest_file = output_dir / f"{base_name} ({dest_suffix}).flac"
+                        try:
+                            import shutil
+                            shutil.copy2(stem_file, dest_file)
+                            self.logger.info(f"  Copied to root: {dest_file.name}")
+                        except Exception as e:
+                            self.logger.warning(f"  Failed to copy {dest_file.name}: {e}")
         
         self.logger.info("")
         self.logger.info(f"All files downloaded to: {output_dir}")
@@ -603,6 +686,40 @@ class JobMonitor:
         else:
             total_str = f"{total_size / 1024:.1f} KB"
         self.logger.info(f"Total: {total_str}")
+    
+    def _extract_cdg_files(self, zip_path: Path, output_dir: Path, base_name: str) -> None:
+        """
+        Extract individual .cdg and .mp3 files from CDG ZIP to match local CLI output.
+        
+        Local CLI produces both:
+        - Artist - Title (Final Karaoke CDG).zip (containing .cdg + .mp3)
+        - Artist - Title (Karaoke).cdg (individual file at root)
+        - Artist - Title (Karaoke).mp3 (individual file at root)
+        
+        Args:
+            zip_path: Path to the CDG ZIP file
+            output_dir: Output directory for extracted files
+            base_name: Base name for output files (Artist - Title)
+        """
+        import zipfile
+        
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                for member in zf.namelist():
+                    ext = Path(member).suffix.lower()
+                    if ext in ['.cdg', '.mp3']:
+                        # Extract with correct naming
+                        filename = f"{base_name} (Karaoke){ext}"
+                        extract_path = output_dir / filename
+                        
+                        # Read from zip and write to destination
+                        with zf.open(member) as src:
+                            with open(extract_path, 'wb') as dst:
+                                dst.write(src.read())
+                        
+                        self.logger.info(f"    Extracted: {filename}")
+        except Exception as e:
+            self.logger.warning(f"  Failed to extract CDG files: {e}")
     
     def log_timeline_updates(self, job_data: Dict[str, Any]) -> None:
         """Log any new timeline events."""
