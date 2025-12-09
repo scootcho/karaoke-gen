@@ -163,6 +163,16 @@ github_actions_logging = gcp.projects.IAMMember(
     member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant Cloud Build logs viewer - needed for `gcloud builds log` to read build output
+# Cloud Build stores logs in a GCS bucket ({PROJECT_NUMBER}.cloudbuild-logs.googleusercontent.com)
+# The builds.editor role doesn't include storage read access to this bucket
+github_actions_cloudbuild_logs = gcp.storage.BucketIAMMember(
+    "github-actions-cloudbuild-logs",
+    bucket=f"{project.number}.cloudbuild-logs.googleusercontent.com",
+    role="roles/storage.objectViewer",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Grant Service Usage Consumer - required for serviceusage.services.use permission
 github_actions_service_usage = gcp.projects.IAMMember(
     "github-actions-service-usage",

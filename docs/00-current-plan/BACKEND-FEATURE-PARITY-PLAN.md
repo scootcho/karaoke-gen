@@ -40,7 +40,7 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle:** Regardless of which interface initiates a job, the outputs should:
+**Key Principle:** Regardless of which interface initiates a job, if given the same input with all variables/secrets etc. provided, the outputs should:
 1. Be uploaded to the **same YouTube channel** (Nomad Karaoke)
 2. Be organized in the **same Dropbox folder structure** (via rclone)
 3. Generate the **same email draft** in the owner's Gmail
