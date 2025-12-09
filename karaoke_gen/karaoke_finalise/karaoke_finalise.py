@@ -1436,89 +1436,87 @@ class KaraokeFinalise:
             return "aac"
 
     def detect_nvenc_support(self):
-        """Detect if NVENC hardware encoding is available with comprehensive checks."""
+        """Detect if NVENC hardware encoding is available."""
         try:
-            self.logger.info("🔍 Detecting NVENC hardware acceleration support...")
+            self.logger.info("🔍 Detecting NVENC hardware acceleration...")
             
             if self.dry_run:
-                self.logger.info("DRY RUN: Assuming NVENC is available")
+                self.logger.info("  DRY RUN: Assuming NVENC is available")
                 return True
             
             import subprocess
             import os
             import shutil
             
-            # Step 1: Check for nvidia-smi (indicates NVIDIA driver presence)
+            # Check for nvidia-smi (indicates NVIDIA driver presence)
             try:
                 nvidia_smi_result = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"], 
                                                   capture_output=True, text=True, timeout=10)
                 if nvidia_smi_result.returncode == 0:
                     gpu_info = nvidia_smi_result.stdout.strip()
-                    self.logger.info(f"✓ NVIDIA GPU detected: {gpu_info}")
+                    self.logger.info(f"  ✓ NVIDIA GPU detected: {gpu_info}")
                 else:
-                    self.logger.warning("⚠️ nvidia-smi not available or no NVIDIA GPU detected")
+                    self.logger.debug(f"nvidia-smi failed: {nvidia_smi_result.stderr}")
+                    self.logger.info("  ✗ NVENC not available (no NVIDIA GPU)")
                     return False
-            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                self.logger.warning("⚠️ nvidia-smi not available or failed")
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError) as e:
+                self.logger.debug(f"nvidia-smi not available: {e}")
+                self.logger.info("  ✗ NVENC not available (no NVIDIA GPU)")
                 return False
             
-            # Step 2: Check for NVENC encoders in FFmpeg
+            # Check for NVENC encoders in FFmpeg
             try:
                 encoders_cmd = f"{self.ffmpeg_base_command} -hide_banner -encoders 2>/dev/null | grep nvenc"
                 encoders_result = subprocess.run(encoders_cmd, shell=True, capture_output=True, text=True, timeout=10)
                 if encoders_result.returncode == 0 and "nvenc" in encoders_result.stdout:
                     nvenc_encoders = [line.strip() for line in encoders_result.stdout.split('\n') if 'nvenc' in line]
-                    self.logger.info("✓ Found NVENC encoders in FFmpeg:")
-                    for encoder in nvenc_encoders:
-                        if encoder:
-                            self.logger.info(f"  {encoder}")
+                    self.logger.debug(f"Found NVENC encoders: {nvenc_encoders}")
                 else:
-                    self.logger.warning("⚠️ No NVENC encoders found in FFmpeg")
+                    self.logger.debug("No NVENC encoders found in FFmpeg")
+                    self.logger.info("  ✗ NVENC not available (no FFmpeg support)")
                     return False
             except Exception as e:
-                self.logger.warning(f"⚠️ Failed to check FFmpeg NVENC encoders: {e}")
+                self.logger.debug(f"Failed to check FFmpeg NVENC encoders: {e}")
+                self.logger.info("  ✗ NVENC not available")
                 return False
             
-            # Step 3: Check for libcuda.so.1 (critical for NVENC)
+            # Check for libcuda.so.1 (critical for NVENC)
             try:
                 libcuda_check = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=10)
                 if libcuda_check.returncode == 0 and "libcuda.so.1" in libcuda_check.stdout:
-                    self.logger.info("✅ libcuda.so.1 found in system libraries")
+                    self.logger.debug("libcuda.so.1 found in system libraries")
                 else:
-                    self.logger.warning("❌ libcuda.so.1 NOT found in system libraries")
-                    self.logger.warning("💡 This usually indicates the CUDA runtime image is needed instead of devel")
+                    self.logger.debug("libcuda.so.1 NOT found - may need nvidia/cuda:*-devel image")
+                    self.logger.info("  ✗ NVENC not available (missing CUDA libraries)")
                     return False
             except Exception as e:
-                self.logger.warning(f"⚠️ Failed to check for libcuda.so.1: {e}")
+                self.logger.debug(f"Failed to check for libcuda.so.1: {e}")
+                self.logger.info("  ✗ NVENC not available")
                 return False
             
-            # Step 4: Test h264_nvenc encoder with simple test
-            self.logger.info("🧪 Testing h264_nvenc encoder...")
-            test_cmd = f"{self.ffmpeg_base_command} -hide_banner -loglevel warning -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -c:v h264_nvenc -f null -"
-            self.logger.debug(f"Running test command: {test_cmd}")
+            # Test h264_nvenc encoder
+            test_cmd = f"{self.ffmpeg_base_command} -hide_banner -loglevel error -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -c:v h264_nvenc -f null -"
+            self.logger.debug(f"Testing NVENC: {test_cmd}")
             
             try:
                 result = subprocess.run(test_cmd, shell=True, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode == 0:
-                    self.logger.info("✅ NVENC hardware encoding available for video generation")
-                    self.logger.info(f"Test command succeeded. Output: {result.stderr if result.stderr else '...'}")
+                    self.logger.info("  ✓ NVENC encoding available")
                     return True
                 else:
-                    self.logger.warning(f"❌ NVENC test failed with exit code {result.returncode}")
-                    if result.stderr:
-                        self.logger.warning(f"Error output: {result.stderr}")
-                        if "Cannot load libcuda.so.1" in result.stderr:
-                            self.logger.warning("💡 Root cause: libcuda.so.1 cannot be loaded by NVENC")
-                            self.logger.warning("💡 Solution: Use nvidia/cuda:*-devel-* image instead of runtime")
+                    self.logger.debug(f"NVENC test failed (exit code {result.returncode}): {result.stderr}")
+                    self.logger.info("  ✗ NVENC not available")
                     return False
                     
             except subprocess.TimeoutExpired:
-                self.logger.warning("❌ NVENC test timed out")
+                self.logger.debug("NVENC test timed out")
+                self.logger.info("  ✗ NVENC not available (timeout)")
                 return False
                 
         except Exception as e:
-            self.logger.warning(f"❌ Failed to detect NVENC support: {e}, falling back to software encoding")
+            self.logger.debug(f"Failed to detect NVENC support: {e}")
+            self.logger.info("  ✗ NVENC not available (error)")
             return False
 
     def configure_hardware_acceleration(self):
@@ -1529,12 +1527,12 @@ class KaraokeFinalise:
             # Remove -hwaccel_output_format cuda as it causes pixel format conversion issues
             self.hwaccel_decode_flags = "-hwaccel cuda"
             self.scale_filter = "scale"  # Use CPU scaling for complex filter chains
-            self.logger.info("Configured for NVIDIA hardware acceleration (simplified for filter compatibility)")
+            self.logger.info("🚀 Using NVENC hardware acceleration for video encoding")
         else:
             self.video_encoder = "libx264"
             self.hwaccel_decode_flags = ""
             self.scale_filter = "scale"
-            self.logger.info("Configured for software encoding")
+            self.logger.info("🔧 Using software encoding (libx264) for video")
 
     def get_nvenc_quality_settings(self, quality_mode="high"):
         """Get NVENC settings based on quality requirements."""
