@@ -117,10 +117,11 @@ class TestStyleHelper:
         pytest.importorskip("google.cloud.storage", reason="GCP libraries not available")
         from backend.workers.style_helper import StyleConfig, DEFAULT_INTRO_FORMAT
         
-        # Mock job with no style assets
+        # Mock job with no style assets and no style_params_gcs_path
         job = Mock()
         job.job_id = "test-123"
         job.style_assets = {}
+        job.style_params_gcs_path = None  # Explicitly set to None
         
         storage = Mock()
         

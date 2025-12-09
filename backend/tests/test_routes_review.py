@@ -186,30 +186,22 @@ class TestCorrectionDataMerging:
 
 
 class TestPreviewStyleLoading:
-    """Tests for custom style loading in preview video generation.
+    """Tests for the unified style loader used in preview video generation.
     
     When a job has custom styles (uploaded via --style_params_json), these
     must be loaded and applied to preview videos, not just the final render.
     
     This was a bug: preview videos were using minimal styles (black background)
     even when the job had custom backgrounds and fonts configured.
+    
+    The style loading logic is now consolidated in karaoke_gen.style_loader
+    to avoid duplication between workers and API routes.
     """
     
-    def test_get_or_create_styles_with_custom_styles(self, tmp_path):
+    def test_load_styles_from_gcs_with_custom_styles(self, tmp_path):
         """Test that custom styles are downloaded and applied for preview."""
         import os
-        from unittest.mock import Mock, MagicMock
-        from backend.api.routes.review import _get_or_create_styles
-        
-        # Create mock job with custom styles
-        mock_job = Mock()
-        mock_job.job_id = "test123"
-        mock_job.style_params_gcs_path = "uploads/test123/style/style_params.json"
-        mock_job.style_assets = {
-            "style_params": "uploads/test123/style/style_params.json",
-            "karaoke_background": "uploads/test123/style/karaoke_background.png",
-            "font": "uploads/test123/style/font.ttf",
-        }
+        from karaoke_gen.style_loader import load_styles_from_gcs
         
         # Create source style params file
         source_style_params = tmp_path / "source_styles.json"
@@ -230,8 +222,7 @@ class TestPreviewStyleLoading:
         source_font = tmp_path / "font.ttf"
         source_font.write_bytes(b"TTF font data")
         
-        # Create mock storage that "downloads" files by copying from source
-        mock_storage = Mock()
+        # Create mock download function that simulates GCS download
         def mock_download(gcs_path, local_path):
             if "style_params.json" in gcs_path:
                 with open(local_path, 'w') as f:
@@ -242,17 +233,23 @@ class TestPreviewStyleLoading:
             elif "font.ttf" in gcs_path:
                 with open(local_path, 'wb') as f:
                     f.write(source_font.read_bytes())
-        mock_storage.download_file = mock_download
         
-        # Call the function
-        styles_path = _get_or_create_styles(mock_job, str(tmp_path / "workdir"), mock_storage)
+        # Call the unified style loader function
+        style_assets = {
+            "style_params": "uploads/test123/style/style_params.json",
+            "karaoke_background": "uploads/test123/style/karaoke_background.png",
+            "font": "uploads/test123/style/font.ttf",
+        }
+        
+        styles_path, result_styles = load_styles_from_gcs(
+            style_params_gcs_path="uploads/test123/style/style_params.json",
+            style_assets=style_assets,
+            temp_dir=str(tmp_path / "workdir"),
+            download_func=mock_download,
+        )
         
         # Verify styles file was created
         assert os.path.exists(styles_path)
-        
-        # Load and verify the styles have updated paths
-        with open(styles_path, 'r') as f:
-            result_styles = json.load(f)
         
         # The paths should now point to the local downloaded files, not the original paths
         assert "karaoke" in result_styles
@@ -261,54 +258,49 @@ class TestPreviewStyleLoading:
         assert result_styles["karaoke"]["font_path"] != "/original/path/font.ttf"
         assert "font.ttf" in result_styles["karaoke"]["font_path"]
     
-    def test_get_or_create_styles_falls_back_to_minimal(self, tmp_path):
+    def test_load_styles_from_gcs_falls_back_to_minimal(self, tmp_path):
         """Test that minimal styles are used when job has no custom styles."""
         import os
-        from unittest.mock import Mock
-        from backend.api.routes.review import _get_or_create_styles
+        from karaoke_gen.style_loader import load_styles_from_gcs
         
-        # Create mock job WITHOUT custom styles
-        mock_job = Mock()
-        mock_job.job_id = "test456"
-        mock_job.style_params_gcs_path = None  # No custom styles
-        mock_job.style_assets = {}
-        
-        mock_storage = Mock()
-        
-        # Call the function
-        styles_path = _get_or_create_styles(mock_job, str(tmp_path), mock_storage)
+        # Call with no custom styles
+        styles_path, result_styles = load_styles_from_gcs(
+            style_params_gcs_path=None,  # No custom styles
+            style_assets={},
+            temp_dir=str(tmp_path),
+            download_func=lambda gcs_path, local_path: None,  # Won't be called
+        )
         
         # Verify styles file was created
         assert os.path.exists(styles_path)
-        
-        # Load and verify minimal styles
-        with open(styles_path, 'r') as f:
-            result_styles = json.load(f)
         
         # Should have karaoke section with minimal/default values
         assert "karaoke" in result_styles
         assert result_styles["karaoke"]["background_color"] == "#000000"
         assert result_styles["karaoke"]["font"] == "Arial"
-        # Should NOT have background_image (minimal styles don't include it)
-        assert "background_image" not in result_styles["karaoke"] or result_styles["karaoke"].get("background_image") is None
+        # Minimal styles have background_image as None (default)
+        assert result_styles["karaoke"].get("background_image") is None
     
     def test_asset_mapping_is_complete(self):
-        """Verify all required asset mappings are defined for preview styles."""
-        from backend.api.routes.review import _get_or_create_styles
-        import inspect
-        
-        # Get the source code of the function to check the asset_mapping
-        source = inspect.getsource(_get_or_create_styles)
+        """Verify all required asset mappings are defined in the unified style loader."""
+        from karaoke_gen.style_loader import ASSET_KEY_MAPPINGS
         
         # These mappings must be present for styles to work correctly
-        required_mappings = [
-            "'karaoke_background'",
-            "'intro_background'",
-            "'end_background'",
-            "'font'",
-            "('karaoke', 'background_image')",
-            "('karaoke', 'font_path')",
+        required_keys = [
+            "karaoke_background",
+            "intro_background",
+            "end_background",
+            "font",
         ]
         
-        for mapping in required_mappings:
-            assert mapping in source, f"Asset mapping {mapping} not found in _get_or_create_styles"
+        for key in required_keys:
+            assert key in ASSET_KEY_MAPPINGS, f"Asset mapping '{key}' not found in ASSET_KEY_MAPPINGS"
+        
+        # Verify karaoke_background maps to the correct path
+        karaoke_mapping = ASSET_KEY_MAPPINGS["karaoke_background"]
+        assert karaoke_mapping == ("karaoke", "background_image")
+        
+        # Verify font maps to multiple sections
+        font_mappings = ASSET_KEY_MAPPINGS["font"]
+        assert isinstance(font_mappings, list)
+        assert ("karaoke", "font_path") in font_mappings
