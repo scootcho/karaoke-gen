@@ -1,6 +1,7 @@
 """
 File upload route for local file submission with style configuration support.
 """
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
@@ -25,6 +26,19 @@ worker_service = get_worker_service()
 ALLOWED_AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac'}
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 ALLOWED_FONT_EXTENSIONS = {'.ttf', '.otf', '.woff', '.woff2'}
+
+
+async def _trigger_workers_parallel(job_id: str) -> None:
+    """
+    Trigger both audio and lyrics workers in parallel.
+    
+    FastAPI's BackgroundTasks runs async tasks sequentially, so we use
+    asyncio.gather to ensure both workers start at the same time.
+    """
+    await asyncio.gather(
+        worker_service.trigger_audio_worker(job_id),
+        worker_service.trigger_lyrics_worker(job_id)
+    )
 
 
 @router.post("/jobs/upload")
@@ -227,9 +241,9 @@ async def upload_and_create_job(
             message="Files uploaded, preparing to process"
         )
         
-        # Trigger workers
-        background_tasks.add_task(worker_service.trigger_audio_worker, job_id)
-        background_tasks.add_task(worker_service.trigger_lyrics_worker, job_id)
+        # Trigger workers in parallel using asyncio.gather
+        # (FastAPI's BackgroundTasks runs async tasks sequentially)
+        background_tasks.add_task(_trigger_workers_parallel, job_id)
         
         return {
             "status": "success",

@@ -7,6 +7,7 @@ Handles job lifecycle endpoints including:
 - Human-in-the-loop interactions (lyrics review, instrumental selection)
 - Job deletion and cancellation
 """
+import asyncio
 import logging
 import httpx
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -32,6 +33,19 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 job_manager = JobManager()
 worker_service = get_worker_service()
 settings = get_settings()
+
+
+async def _trigger_workers_parallel(job_id: str) -> None:
+    """
+    Trigger both audio and lyrics workers in parallel.
+    
+    FastAPI's BackgroundTasks runs async tasks sequentially, so we use
+    asyncio.gather to ensure both workers start at the same time.
+    """
+    await asyncio.gather(
+        worker_service.trigger_audio_worker(job_id),
+        worker_service.trigger_lyrics_worker(job_id)
+    )
 
 
 @router.post("", response_model=JobResponse)
@@ -63,10 +77,9 @@ async def create_job(
         )
         job = job_manager.create_job(job_create)
         
-        # Trigger both workers in parallel using worker service
-        # They run independently and coordinate via job state
-        background_tasks.add_task(worker_service.trigger_audio_worker, job.job_id)
-        background_tasks.add_task(worker_service.trigger_lyrics_worker, job.job_id)
+        # Trigger both workers in parallel using asyncio.gather
+        # (FastAPI's BackgroundTasks runs async tasks sequentially)
+        background_tasks.add_task(_trigger_workers_parallel, job.job_id)
         
         logger.info(f"Job {job.job_id} created, workers triggered")
         
