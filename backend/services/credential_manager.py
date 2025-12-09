@@ -67,6 +67,10 @@ class CredentialManager:
     GDRIVE_SECRET = "gdrive-oauth-credentials"
     DROPBOX_SECRET = "dropbox-oauth-credentials"
     
+    # OAuth client credentials (for device auth flow)
+    YOUTUBE_CLIENT_SECRET = "youtube-client-credentials"
+    GDRIVE_CLIENT_SECRET = "gdrive-client-credentials"
+    
     # Google OAuth endpoints
     GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
     GOOGLE_DEVICE_AUTH_URI = "https://oauth2.googleapis.com/device/code"
@@ -81,6 +85,40 @@ class CredentialManager:
     def __init__(self):
         self.settings = get_settings()
         self._pending_device_auths: Dict[str, DeviceAuthInfo] = {}
+    
+    def _get_client_credentials(self, secret_name: str) -> Optional[Dict[str, str]]:
+        """
+        Load OAuth client credentials from Secret Manager.
+        
+        The secret should contain:
+        {
+            "client_id": "...",
+            "client_secret": "..."
+        }
+        """
+        try:
+            creds_json = self.settings.get_secret(secret_name)
+            if not creds_json:
+                return None
+            
+            creds = json.loads(creds_json)
+            if creds.get("client_id") and creds.get("client_secret"):
+                return creds
+            
+            logger.warning(f"{secret_name} missing client_id or client_secret")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to load {secret_name}: {e}")
+            return None
+    
+    def get_youtube_client_credentials(self) -> Optional[Dict[str, str]]:
+        """Get YouTube OAuth client credentials from Secret Manager."""
+        return self._get_client_credentials(self.YOUTUBE_CLIENT_SECRET)
+    
+    def get_gdrive_client_credentials(self) -> Optional[Dict[str, str]]:
+        """Get Google Drive OAuth client credentials from Secret Manager."""
+        return self._get_client_credentials(self.GDRIVE_CLIENT_SECRET)
     
     # =========================================================================
     # Credential Validation
@@ -403,17 +441,32 @@ class CredentialManager:
     # Device Authorization Flow
     # =========================================================================
     
-    def start_youtube_device_auth(self, client_id: str, client_secret: str) -> DeviceAuthInfo:
+    def start_youtube_device_auth(
+        self, 
+        client_id: Optional[str] = None, 
+        client_secret: Optional[str] = None
+    ) -> DeviceAuthInfo:
         """
         Start YouTube device authorization flow.
         
         Args:
-            client_id: Google OAuth client ID
-            client_secret: Google OAuth client secret (stored for token exchange)
+            client_id: Google OAuth client ID (optional, reads from Secret Manager if not provided)
+            client_secret: Google OAuth client secret (optional, reads from Secret Manager if not provided)
             
         Returns:
             DeviceAuthInfo with user code and verification URL
         """
+        # Load from Secret Manager if not provided
+        if not client_id or not client_secret:
+            stored_creds = self.get_youtube_client_credentials()
+            if not stored_creds:
+                raise Exception(
+                    "YouTube client credentials not found. Either pass client_id/client_secret "
+                    "or create the 'youtube-client-credentials' secret in Secret Manager."
+                )
+            client_id = stored_creds["client_id"]
+            client_secret = stored_creds["client_secret"]
+        
         return self._start_google_device_auth(
             client_id=client_id,
             client_secret=client_secret,
@@ -421,17 +474,32 @@ class CredentialManager:
             service_name="youtube"
         )
     
-    def start_gdrive_device_auth(self, client_id: str, client_secret: str) -> DeviceAuthInfo:
+    def start_gdrive_device_auth(
+        self, 
+        client_id: Optional[str] = None, 
+        client_secret: Optional[str] = None
+    ) -> DeviceAuthInfo:
         """
         Start Google Drive device authorization flow.
         
         Args:
-            client_id: Google OAuth client ID
-            client_secret: Google OAuth client secret
+            client_id: Google OAuth client ID (optional, reads from Secret Manager if not provided)
+            client_secret: Google OAuth client secret (optional, reads from Secret Manager if not provided)
             
         Returns:
             DeviceAuthInfo with user code and verification URL
         """
+        # Load from Secret Manager if not provided
+        if not client_id or not client_secret:
+            stored_creds = self.get_gdrive_client_credentials()
+            if not stored_creds:
+                raise Exception(
+                    "Google Drive client credentials not found. Either pass client_id/client_secret "
+                    "or create the 'gdrive-client-credentials' secret in Secret Manager."
+                )
+            client_id = stored_creds["client_id"]
+            client_secret = stored_creds["client_secret"]
+        
         return self._start_google_device_auth(
             client_id=client_id,
             client_secret=client_secret,

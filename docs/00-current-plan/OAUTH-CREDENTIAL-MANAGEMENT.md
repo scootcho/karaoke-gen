@@ -51,11 +51,13 @@ The following secrets store OAuth credentials:
 | Secret Name | Service | Contents |
 |-------------|---------|----------|
 | `youtube-oauth-credentials` | YouTube | OAuth tokens with `youtube` scope |
+| `youtube-client-credentials` | YouTube | OAuth client ID and secret for device auth |
 | `gdrive-oauth-credentials` | Google Drive | OAuth tokens with `drive.file` scope |
+| `gdrive-client-credentials` | Google Drive | OAuth client ID and secret for device auth |
 | `dropbox-oauth-credentials` | Dropbox | OAuth tokens with app key/secret |
 | `discord-alert-webhook` | Discord | Webhook URL for credential alerts |
 
-### YouTube/Google Drive Credential Format
+### YouTube/Google Drive OAuth Token Format
 
 ```json
 {
@@ -65,6 +67,17 @@ The following secrets store OAuth credentials:
   "client_secret": "GOCSPX-xxxxx",
   "token_uri": "https://oauth2.googleapis.com/token",
   "scopes": ["https://www.googleapis.com/auth/youtube"]
+}
+```
+
+### YouTube/Google Drive Client Credentials Format
+
+These are used for the device authorization flow:
+
+```json
+{
+  "client_id": "123456789-xxxxx.apps.googleusercontent.com",
+  "client_secret": "GOCSPX-xxxxx"
 }
 ```
 
@@ -145,6 +158,10 @@ The device flow allows re-authorization without browser access on the server.
 **Step 1: Start the flow**
 
 ```bash
+# Client credentials are loaded from Secret Manager automatically
+POST /api/auth/youtube/device
+
+# Or explicitly provide credentials (optional)
 POST /api/auth/youtube/device
 {
   "client_id": "123456789-xxxxx.apps.googleusercontent.com",

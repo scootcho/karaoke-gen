@@ -50,8 +50,8 @@ class AllCredentialsStatusResponse(BaseModel):
 
 class DeviceAuthStartRequest(BaseModel):
     """Request to start device authorization flow."""
-    client_id: str
-    client_secret: str
+    client_id: Optional[str] = None  # Optional - reads from Secret Manager if not provided
+    client_secret: Optional[str] = None  # Optional - reads from Secret Manager if not provided
 
 
 class DeviceAuthStartResponse(BaseModel):
@@ -197,13 +197,16 @@ async def validate_credentials(request: CredentialValidationRequest):
 # ===========================================================================
 
 @router.post("/youtube/device", response_model=DeviceAuthStartResponse)
-async def start_youtube_device_auth(request: DeviceAuthStartRequest):
+async def start_youtube_device_auth(request: Optional[DeviceAuthStartRequest] = None):
     """
     Start YouTube device authorization flow.
     
     This initiates a device auth flow that allows authorization
     from any device. The user must visit the verification URL
     and enter the user code.
+    
+    Client credentials are loaded from Secret Manager ('youtube-client-credentials')
+    unless explicitly provided in the request body.
     
     After starting, poll /auth/youtube/device/{device_code} to
     check for completion.
@@ -212,8 +215,8 @@ async def start_youtube_device_auth(request: DeviceAuthStartRequest):
     
     try:
         device_info = manager.start_youtube_device_auth(
-            client_id=request.client_id,
-            client_secret=request.client_secret
+            client_id=request.client_id if request else None,
+            client_secret=request.client_secret if request else None
         )
         
         return DeviceAuthStartResponse(
@@ -256,19 +259,21 @@ async def poll_youtube_device_auth(device_code: str):
 
 
 @router.post("/gdrive/device", response_model=DeviceAuthStartResponse)
-async def start_gdrive_device_auth(request: DeviceAuthStartRequest):
+async def start_gdrive_device_auth(request: Optional[DeviceAuthStartRequest] = None):
     """
     Start Google Drive device authorization flow.
     
-    Same flow as YouTube device auth. After starting, poll
-    /auth/gdrive/device/{device_code} to check for completion.
+    Client credentials are loaded from Secret Manager ('gdrive-client-credentials')
+    unless explicitly provided in the request body.
+    
+    After starting, poll /auth/gdrive/device/{device_code} to check for completion.
     """
     manager = get_credential_manager()
     
     try:
         device_info = manager.start_gdrive_device_auth(
-            client_id=request.client_id,
-            client_secret=request.client_secret
+            client_id=request.client_id if request else None,
+            client_secret=request.client_secret if request else None
         )
         
         return DeviceAuthStartResponse(
