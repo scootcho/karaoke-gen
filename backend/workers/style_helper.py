@@ -142,10 +142,13 @@ class StyleConfig:
         return DEFAULT_KARAOKE_STYLE.copy()
     
     def get_cdg_styles(self) -> Optional[Dict[str, Any]]:
-        """Get CDG generation styles if available."""
+        """Get CDG generation styles if available, falling back to defaults."""
         if self._style_params:
-            return get_cdg_format(self._style_params)
-        return None
+            cdg_styles = get_cdg_format(self._style_params)
+            if cdg_styles:
+                return cdg_styles
+        # Return default CDG styles if no custom styles
+        return DEFAULT_CDG_STYLE.copy()
     
     def get_style_params_path(self) -> Optional[str]:
         """

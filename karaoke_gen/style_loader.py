@@ -434,12 +434,13 @@ def get_default_style_params() -> Dict[str, Any]:
 def get_minimal_karaoke_styles() -> Dict[str, Any]:
     """
     Get minimal styles for karaoke video generation.
-    
+
     This is used when no custom styles are provided, providing
-    just enough configuration for the ASS subtitle generator.
+    just enough configuration for the ASS subtitle generator and CDG generator.
     """
     return {
         "karaoke": DEFAULT_KARAOKE_STYLE.copy(),
+        "cdg": DEFAULT_CDG_STYLE.copy(),
     }
 
 
