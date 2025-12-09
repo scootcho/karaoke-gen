@@ -297,6 +297,104 @@ def _create_minimal_styles_json(temp_dir: str) -> str:
     return styles_path
 
 
+def _get_or_create_styles(job, temp_dir: str, storage: StorageService) -> str:
+    """
+    Get styles JSON for preview video generation.
+    
+    Downloads custom styles from job.style_params_gcs_path and job.style_assets,
+    updates paths in the JSON to point to downloaded local files, otherwise uses defaults.
+    
+    This mirrors the logic in render_video_worker._get_or_create_styles() but for
+    preview generation in the review API.
+    
+    Args:
+        job: Job object with style configuration
+        temp_dir: Temporary directory for writing styles file
+        storage: Storage service for downloading files
+        
+    Returns:
+        Path to styles JSON file
+    """
+    style_dir = os.path.join(temp_dir, "style")
+    os.makedirs(style_dir, exist_ok=True)
+    styles_path = os.path.join(style_dir, "styles.json")
+    
+    # Check if job has custom style_params.json
+    if job.style_params_gcs_path:
+        try:
+            logger.info(f"Job {job.job_id}: Downloading custom styles from {job.style_params_gcs_path}")
+            storage.download_file(job.style_params_gcs_path, styles_path)
+            
+            # Load the styles to update asset paths
+            with open(styles_path, 'r') as f:
+                style_data = json.load(f)
+            
+            logger.info(f"Job {job.job_id}: Loaded style sections: {list(style_data.keys())}")
+            
+            # Download and update paths for style assets
+            local_assets = {}
+            if job.style_assets:
+                logger.info(f"Job {job.job_id}: Downloading {len(job.style_assets)} style assets for preview...")
+                for asset_key, gcs_path in job.style_assets.items():
+                    if asset_key == 'style_params':
+                        continue  # Already downloaded
+                    try:
+                        # Determine local filename from asset key
+                        ext = os.path.splitext(gcs_path)[1] or '.png'
+                        local_path = os.path.join(style_dir, f"{asset_key}{ext}")
+                        storage.download_file(gcs_path, local_path)
+                        local_assets[asset_key] = local_path
+                        logger.info(f"Job {job.job_id}: Downloaded {asset_key}: {local_path}")
+                    except Exception as e:
+                        logger.warning(f"Job {job.job_id}: Failed to download {asset_key}: {e}")
+            
+            # Update paths in style_data to point to local files
+            updates_made = False
+            
+            # Map asset keys to style JSON paths
+            asset_mapping = {
+                'intro_background': ('intro', 'background_image'),
+                'karaoke_background': ('karaoke', 'background_image'),
+                'end_background': ('end', 'background_image'),
+                'font': [('intro', 'font'), ('karaoke', 'font_path'), ('end', 'font')],
+            }
+            
+            for asset_key, local_path in local_assets.items():
+                if asset_key in asset_mapping:
+                    mappings = asset_mapping[asset_key]
+                    # Handle single or multiple mappings
+                    if isinstance(mappings[0], str):
+                        mappings = [mappings]
+                    
+                    for section, field in mappings:
+                        if section in style_data and isinstance(style_data[section], dict):
+                            old_value = style_data[section].get(field, 'NOT SET')
+                            style_data[section][field] = local_path
+                            logger.info(f"Job {job.job_id}: Updated {section}.{field}: {old_value} -> {local_path}")
+                            updates_made = True
+            
+            # Save updated styles
+            if updates_made:
+                with open(styles_path, 'w') as f:
+                    json.dump(style_data, f, indent=2)
+                logger.info(f"Job {job.job_id}: Saved updated styles with local asset paths for preview")
+            
+            # Log final karaoke style for debugging
+            if 'karaoke' in style_data:
+                k = style_data['karaoke']
+                logger.info(f"Job {job.job_id}: Preview karaoke style: background_image={k.get('background_image', 'NOT SET')}, font_path={k.get('font_path', 'NOT SET')}")
+            
+            return styles_path
+            
+        except Exception as e:
+            logger.warning(f"Job {job.job_id}: Failed to download custom styles for preview: {e}, using defaults")
+    else:
+        logger.info(f"Job {job.job_id}: No custom style_params_gcs_path found, using minimal styles for preview")
+    
+    # Use minimal styles as fallback
+    return _create_minimal_styles_json(temp_dir)
+
+
 @router.post("/{job_id}/preview-video")
 async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
     """
@@ -339,8 +437,10 @@ async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
             # 3. Load original as CorrectionResult
             correction_result = CorrectionResult.from_dict(original_data)
             
-            # 4. Create minimal styles file for preview
-            styles_path = _create_minimal_styles_json(temp_dir)
+            # 4. Get or create styles file for preview
+            # This downloads custom styles from GCS if the job has them,
+            # or falls back to minimal styles for basic preview
+            styles_path = _get_or_create_styles(job, temp_dir, storage)
             
             # 5. Set up output config for preview
             output_dir = os.path.join(temp_dir, "output")

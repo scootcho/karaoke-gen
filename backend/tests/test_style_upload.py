@@ -139,7 +139,12 @@ class TestStyleHelper:
         from backend.workers.style_helper import StyleConfig
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create a mock style_params.json
+            # Create a SEPARATE source directory for the source style file
+            # (StyleConfig will use temp_dir/style/ for downloads, so we use source/)
+            source_dir = os.path.join(temp_dir, "source")
+            os.makedirs(source_dir, exist_ok=True)
+            
+            # Create a mock style_params.json in the source directory
             style_params = {
                 "intro": {
                     "background_color": "#FF0000",
@@ -149,10 +154,13 @@ class TestStyleHelper:
                     "background_color": "#0000FF",
                 }
             }
-            style_json_path = os.path.join(temp_dir, "style", "style_params.json")
-            os.makedirs(os.path.dirname(style_json_path), exist_ok=True)
+            style_json_path = os.path.join(source_dir, "style_params.json")
             with open(style_json_path, 'w') as f:
                 json.dump(style_params, f)
+            
+            # Create a work directory for StyleConfig (separate from source)
+            work_dir = os.path.join(temp_dir, "work")
+            os.makedirs(work_dir, exist_ok=True)
             
             # Mock job with style assets
             job = Mock()
@@ -168,7 +176,7 @@ class TestStyleHelper:
                 shutil.copy(style_json_path, local_path)
             storage.download_file = mock_download
             
-            config = StyleConfig(job, storage, temp_dir)
+            config = StyleConfig(job, storage, work_dir)
             await config.load()
             
             assert config.has_custom_styles()

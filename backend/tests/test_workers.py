@@ -226,6 +226,7 @@ class TestLyricsWorker:
     async def test_upload_lyrics_results_uploads_lrc_file(self, mock_job_manager, mock_storage, mock_job):
         """Test that LRC file is uploaded correctly."""
         from backend.workers.lyrics_worker import upload_lyrics_results
+        import json
         
         with tempfile.TemporaryDirectory() as temp_dir:
             lyrics_dir = os.path.join(temp_dir, "lyrics")
@@ -234,6 +235,11 @@ class TestLyricsWorker:
             lrc_path = os.path.join(lyrics_dir, "test.lrc")
             with open(lrc_path, 'w') as f:
                 f.write("[00:00.00]Test\n")
+            
+            # Create required corrections.json file
+            corrections_path = os.path.join(lyrics_dir, "corrections.json")
+            with open(corrections_path, 'w') as f:
+                json.dump({"corrected_segments": []}, f)
             
             transcription_result = {"lrc_filepath": lrc_path}
             
@@ -250,15 +256,21 @@ class TestLyricsWorker:
     async def test_upload_lyrics_results_handles_missing_files(self, mock_job_manager, mock_storage, mock_job):
         """Test graceful handling when optional files are missing."""
         from backend.workers.lyrics_worker import upload_lyrics_results
+        import json
         
         with tempfile.TemporaryDirectory() as temp_dir:
             lyrics_dir = os.path.join(temp_dir, "lyrics")
             os.makedirs(lyrics_dir)
             
-            # Only create LRC file, no other files
+            # Only create LRC file and required corrections.json, no other files
             lrc_path = os.path.join(lyrics_dir, "test.lrc")
             with open(lrc_path, 'w') as f:
                 f.write("[00:00.00]Test\n")
+            
+            # Create required corrections.json file
+            corrections_path = os.path.join(lyrics_dir, "corrections.json")
+            with open(corrections_path, 'w') as f:
+                json.dump({"corrected_segments": []}, f)
             
             transcription_result = {"lrc_filepath": lrc_path}
             
@@ -276,6 +288,7 @@ class TestLyricsWorker:
         when accessing job.artist and job.title for reference file lookups.
         """
         from backend.workers.lyrics_worker import upload_lyrics_results
+        import json
         
         with tempfile.TemporaryDirectory() as temp_dir:
             lyrics_dir = os.path.join(temp_dir, "lyrics")
@@ -285,6 +298,11 @@ class TestLyricsWorker:
             lrc_path = os.path.join(lyrics_dir, "test.lrc")
             with open(lrc_path, 'w') as f:
                 f.write("[00:00.00]Test\n")
+            
+            # Create required corrections.json file
+            corrections_path = os.path.join(lyrics_dir, "corrections.json")
+            with open(corrections_path, 'w') as f:
+                json.dump({"corrected_segments": []}, f)
             
             # Create a reference lyrics file using the job's artist/title
             ref_path = os.path.join(lyrics_dir, f"{mock_job.artist} - {mock_job.title} (Lyrics Genius).txt")

@@ -1,0 +1,12 @@
+---
+description: Version bumping rule for commits
+alwaysApply: true
+---
+
+# Version Management
+
+When committing and pushing changes, always bump the patch version in `pyproject.toml`.
+
+The version is located at `tool.poetry.version` in `pyproject.toml`. For example, if the current version is `0.70.3`, bump it to `0.70.4`.
+
+This ensures every commit pushed to the repository has a unique version number for tracking and deployment purposes.
