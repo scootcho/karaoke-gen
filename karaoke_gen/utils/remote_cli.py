@@ -71,6 +71,7 @@ class Config:
     poll_interval: int
     output_dir: str
     auth_token: Optional[str] = None
+    non_interactive: bool = False  # Auto-accept defaults for testing
 
 
 class RemoteKaraokeClient:
@@ -358,6 +359,32 @@ class RemoteKaraokeClient:
         if response.status_code != 200:
             return {"logs": [], "next_index": since_index, "total_logs": 0}
         return response.json()
+    
+    def get_review_data(self, job_id: str) -> Dict[str, Any]:
+        """Get the current review/correction data for a job."""
+        response = self._request('GET', f'/api/review/{job_id}/data')
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error getting review data: {error_detail}")
+        return response.json()
+    
+    def complete_review(self, job_id: str, updated_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit the review completion with corrected data."""
+        response = self._request(
+            'POST',
+            f'/api/review/{job_id}/complete',
+            json=updated_data
+        )
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error completing review: {error_detail}")
+        return response.json()
 
 
 class JobMonitor:
@@ -411,6 +438,26 @@ class JobMonitor:
         self.logger.info("=" * 60)
         self.logger.info("LYRICS REVIEW NEEDED")
         self.logger.info("=" * 60)
+        
+        # In non-interactive mode, auto-accept the current corrections
+        if self.config.non_interactive:
+            self.logger.info("Non-interactive mode: Auto-accepting current corrections")
+            try:
+                # Get current review data
+                review_data = self.client.get_review_data(job_id)
+                self.logger.info("Retrieved current correction data")
+                
+                # Submit as-is to complete the review
+                result = self.client.complete_review(job_id, review_data)
+                if result.get('status') == 'success':
+                    self.logger.info("Review auto-completed successfully")
+                    return
+                else:
+                    self.logger.error(f"Failed to auto-complete review: {result}")
+            except Exception as e:
+                self.logger.error(f"Error auto-completing review: {e}")
+                self.logger.info("Falling back to manual review...")
+        
         self.logger.info("The transcription is ready for review.")
         self.logger.info("Please review and correct the lyrics in the browser.")
         
@@ -438,29 +485,35 @@ class JobMonitor:
         self.logger.info("=" * 60)
         self.logger.info("INSTRUMENTAL SELECTION NEEDED")
         self.logger.info("=" * 60)
-        self.logger.info("")
-        self.logger.info("Choose which instrumental track to use for the final video:")
-        self.logger.info("")
-        self.logger.info("  1) Clean Instrumental (no backing vocals)")
-        self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
-        self.logger.info("")
-        self.logger.info("  2) Instrumental with Backing Vocals")
-        self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
-        self.logger.info("")
         
-        selection = ""
-        while not selection:
-            try:
-                choice = input("Enter your choice (1 or 2): ").strip()
-                if choice == '1':
-                    selection = 'clean'
-                elif choice == '2':
-                    selection = 'with_backing'
-                else:
-                    self.logger.error("Invalid choice. Please enter 1 or 2.")
-            except KeyboardInterrupt:
-                print()
-                raise
+        # In non-interactive mode, auto-select clean instrumental
+        if self.config.non_interactive:
+            self.logger.info("Non-interactive mode: Auto-selecting clean instrumental")
+            selection = 'clean'
+        else:
+            self.logger.info("")
+            self.logger.info("Choose which instrumental track to use for the final video:")
+            self.logger.info("")
+            self.logger.info("  1) Clean Instrumental (no backing vocals)")
+            self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
+            self.logger.info("")
+            self.logger.info("  2) Instrumental with Backing Vocals")
+            self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
+            self.logger.info("")
+            
+            selection = ""
+            while not selection:
+                try:
+                    choice = input("Enter your choice (1 or 2): ").strip()
+                    if choice == '1':
+                        selection = 'clean'
+                    elif choice == '2':
+                        selection = 'with_backing'
+                    else:
+                        self.logger.error("Invalid choice. Please enter 1 or 2.")
+                except KeyboardInterrupt:
+                    print()
+                    raise
         
         self.logger.info(f"Submitting selection: {selection}")
         
@@ -973,7 +1026,8 @@ def main():
         review_ui_url=args.review_ui_url.rstrip('/'),
         poll_interval=args.poll_interval,
         output_dir=args.output_dir,
-        auth_token=auth_token
+        auth_token=auth_token,
+        non_interactive=getattr(args, 'yes', False),  # -y / --yes flag
     )
     
     # Create client
@@ -1122,6 +1176,8 @@ def main():
         logger.info(f"Discord: enabled")
     logger.info(f"Service URL: {config.service_url}")
     logger.info(f"Review UI: {config.review_ui_url}")
+    if config.non_interactive:
+        logger.info(f"Non-interactive mode: enabled (will auto-accept defaults)")
     logger.info("")
     
     # Read youtube description from file if provided
