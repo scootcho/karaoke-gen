@@ -14,6 +14,10 @@ audio-separator[remote]>=0.18.0  # Remote Modal API client
 pydub>=0.25.1  # Audio manipulation (used by karaoke_gen)
 yt-dlp>=2024.0.0  # YouTube downloads (future use)
 
+# Cloud storage native APIs
+dropbox>=11.0.0  # Dropbox Python SDK for native API access
+# google-api-python-client already installed via karaoke_gen for YouTube
+
 # karaoke-gen dependencies (will be installed from parent dir in Dockerfile)
 # Using explicit dependencies instead of -e ../
 

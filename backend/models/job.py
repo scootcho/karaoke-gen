@@ -198,7 +198,13 @@ class Job(BaseModel):
     brand_prefix: Optional[str] = None           # Brand code prefix (e.g., "NOMAD")
     discord_webhook_url: Optional[str] = None    # Discord notification webhook
     youtube_description_template: Optional[str] = None  # YouTube description template text
-    organised_dir_rclone_root: Optional[str] = None  # rclone remote path for Dropbox upload (e.g., "dropbox-nomad:Karaoke")
+    
+    # Distribution configuration (native API - for remote CLI)
+    dropbox_path: Optional[str] = None           # Dropbox folder path for organized output (e.g., "/Karaoke/Tracks-Organized")
+    gdrive_folder_id: Optional[str] = None       # Google Drive folder ID for public share uploads
+    
+    # Legacy distribution configuration (rclone - for local CLI backward compat)
+    organised_dir_rclone_root: Optional[str] = None  # Deprecated: use dropbox_path instead
     
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
@@ -339,7 +345,13 @@ class JobCreate(BaseModel):
     brand_prefix: Optional[str] = None
     discord_webhook_url: Optional[str] = None
     youtube_description_template: Optional[str] = None
-    organised_dir_rclone_root: Optional[str] = None  # rclone remote path for Dropbox upload
+    
+    # Distribution configuration (native API - for remote CLI)
+    dropbox_path: Optional[str] = None           # Dropbox folder path for organized output
+    gdrive_folder_id: Optional[str] = None       # Google Drive folder ID for public share uploads
+    
+    # Legacy (rclone - deprecated, use dropbox_path instead)
+    organised_dir_rclone_root: Optional[str] = None
     
     @validator('url', 'artist', 'title')
     def validate_inputs(cls, v):

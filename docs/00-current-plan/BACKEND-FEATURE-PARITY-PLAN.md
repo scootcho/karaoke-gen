@@ -454,6 +454,226 @@ nomadauto_remote() {
 
 ---
 
+## Future Architecture: Shared Pipeline
+
+Once feature parity is achieved, the codebase should be refactored toward a **shared pipeline architecture** where both local and remote execution use the same abstractions.
+
+### Current State (Divergent Paths)
+
+```
+LOCAL CLI                               CLOUD BACKEND
+─────────                               ─────────────
+KaraokeGen.process()                    API Routes
+    │                                       │
+    ├─► AudioProcessor                      ├─► audio_worker.py
+    │   └── Modal API or local              │   └── Modal API
+    │                                       │
+    ├─► LyricsProcessor                     ├─► lyrics_worker.py
+    │   └── Orchestrates everything         │   └── Transcription only
+    │       including video generation      │
+    │                                       ├─► screens_worker.py
+    │                                       │
+    │                                       ├─► render_video_worker.py
+    │                                       │   └── OutputGenerator directly
+    │                                       │
+    └─► KaraokeFinalise                     └─► video_worker.py
+        └── Encoding, distribution              └── KaraokeFinalise
+```
+
+**Problems:**
+- Video generation called differently (via LyricsProcessor vs OutputGenerator directly)
+- LyricsProcessor does too many things (fetching, transcription, video, file management)
+- Testing requires mocking different things for local vs remote
+- Bug fixes may need to be applied in multiple places
+
+### Target State (Shared Pipeline)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SHARED PIPELINE ARCHITECTURE                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   AudioInput → Separation → Transcription → Review → Render → Finalize     │
+│       │            │             │            │         │          │        │
+│       ▼            ▼             ▼            ▼         ▼          ▼        │
+│   ┌────────┐  ┌────────┐   ┌────────┐   ┌────────┐ ┌────────┐ ┌────────┐  │
+│   │ Stage  │  │ Stage  │   │ Stage  │   │ Stage  │ │ Stage  │ │ Stage  │  │
+│   │  API   │  │  API   │   │  API   │   │  API   │ │  API   │ │  API   │  │
+│   └────┬───┘  └────┬───┘   └────┬───┘   └────┬───┘ └────┬───┘ └────┬───┘  │
+│        │           │            │            │          │          │       │
+│   ┌────┴───────────┴────────────┴────────────┴──────────┴──────────┴────┐  │
+│   │                         EXECUTION LAYER                              │  │
+│   │                                                                      │  │
+│   │   Local Mode:        │    Remote Mode:                              │  │
+│   │   - Direct calls     │    - HTTP to backend                         │  │
+│   │   - Local GPU/CPU    │    - Workers + Modal                         │  │
+│   │   - Blocking         │    - Async + polling                         │  │
+│   └──────────────────────┴───────────────────────────────────────────────┘  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- Single source of truth for each pipeline stage
+- Each stage independently testable
+- Same business logic regardless of execution mode
+- Easier to add new stages or modify existing ones
+- DRY - fix bugs once, works everywhere
+
+### Implementation Approach
+
+1. **Complete feature parity first** (this plan's focus)
+   - Get all features working in remote mode
+   - Identify all the places where logic is duplicated
+
+2. **Extract stage interfaces**
+   ```python
+   class PipelineStage(Protocol):
+       async def execute(self, context: PipelineContext) -> StageResult:
+           ...
+   ```
+
+3. **Create execution adapters**
+   ```python
+   class LocalExecutor:
+       """Runs stages directly in-process"""
+       
+   class RemoteExecutor:
+       """Runs stages via backend API/workers"""
+   ```
+
+4. **Refactor incrementally**
+   - Start with one stage (e.g., Separation)
+   - Prove the pattern works
+   - Migrate other stages
+
+### Reference
+
+See [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) for details on the style loader consolidation, which was the first step toward this unified architecture.
+
+---
+
+## Important Files Reference
+
+### Core Backend Files
+
+| File | Purpose |
+|------|---------|
+| `backend/main.py` | FastAPI app entry point |
+| `backend/config.py` | Environment configuration |
+| `backend/models/job.py` | Job data model (Firestore) |
+| `backend/models/requests.py` | API request schemas |
+| `backend/services/job_manager.py` | Job state management |
+| `backend/services/storage_service.py` | GCS operations |
+| `backend/services/worker_service.py` | Worker triggering |
+
+### Worker Files
+
+| File | Purpose |
+|------|---------|
+| `backend/workers/audio_worker.py` | Modal API audio separation |
+| `backend/workers/lyrics_worker.py` | AudioShake transcription |
+| `backend/workers/screens_worker.py` | Title/end screen generation |
+| `backend/workers/render_video_worker.py` | Post-review video with lyrics |
+| `backend/workers/video_worker.py` | Final encoding via KaraokeFinalise |
+| `backend/workers/style_helper.py` | Style config loading from GCS |
+
+### API Routes
+
+| File | Purpose |
+|------|---------|
+| `backend/api/routes/file_upload.py` | Job submission endpoint |
+| `backend/api/routes/jobs.py` | Job status/management |
+| `backend/api/routes/review.py` | Lyrics review endpoints |
+| `backend/api/routes/internal.py` | Worker callback endpoints |
+
+### Shared Code (Used by Both Local and Backend)
+
+| File | Purpose |
+|------|---------|
+| `karaoke_gen/style_loader.py` | **Unified style loading** - single source of truth |
+| `karaoke_gen/karaoke_finalise/karaoke_finalise.py` | Video encoding, CDG, YouTube, Discord, email |
+| `karaoke_gen/video_generator.py` | Title/end screen generation |
+| `karaoke_gen/utils/cli_args.py` | Shared CLI argument definitions |
+
+### Remote CLI
+
+| File | Purpose |
+|------|---------|
+| `karaoke_gen/utils/remote_cli.py` | Remote CLI implementation |
+
+---
+
+## Testing
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/ backend/tests/ -v
+
+# Backend tests only
+pytest backend/tests/ -v
+
+# Specific test files
+pytest backend/tests/test_workers.py -v
+pytest backend/tests/test_style_upload.py -v
+```
+
+### Key Test Files
+
+| File | Tests |
+|------|-------|
+| `backend/tests/test_workers.py` | Worker functionality |
+| `backend/tests/test_style_upload.py` | Style parsing and loading |
+| `backend/tests/test_routes_review.py` | Review API and preview styles |
+| `backend/tests/test_upload_api.py` | File upload validation |
+| `tests/unit/test_karaoke_finalise/` | KaraokeFinalise tests |
+
+---
+
+## Deployment
+
+### Environment Variables (Cloud Run)
+
+```
+GOOGLE_CLOUD_PROJECT=karaoke-gen
+GCS_BUCKET_NAME=karaoke-gen-uploads
+MODAL_API_URL=https://modal-api-url
+AUDIOSHAKE_API_TOKEN=xxx
+GENIUS_API_TOKEN=xxx
+ADMIN_TOKEN=xxx
+```
+
+### Secret Manager Secrets
+
+| Secret Name | Status | Description |
+|-------------|--------|-------------|
+| `youtube-oauth-credentials` | ✅ Supported | JSON with OAuth tokens for YouTube upload |
+| `rclone-config` | ✅ Supported | rclone.conf content for Dropbox/cloud storage |
+| `gmail-oauth-credentials` | ⏳ Not needed | Email drafts disabled in server-side mode |
+
+**YouTube credentials JSON format:**
+```json
+{
+  "token": "ya29...",
+  "refresh_token": "1//...",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "xxx.apps.googleusercontent.com",
+  "client_secret": "xxx",
+  "scopes": ["https://www.googleapis.com/auth/youtube"]
+}
+```
+
+---
+
+## Architecture Documents
+
+- [ARCHITECTURE.md](../01-reference/ARCHITECTURE.md) - System architecture overview
+- [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) - Style loading consolidation
+
+---
+
 ## Testing Checklist
 
 Before declaring feature parity complete:

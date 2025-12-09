@@ -175,6 +175,9 @@ class RemoteKaraokeClient:
         youtube_description: Optional[str] = None,
         organised_dir_rclone_root: Optional[str] = None,
         enable_youtube_upload: bool = False,
+        # Native API distribution (uses server-side credentials)
+        dropbox_path: Optional[str] = None,
+        gdrive_folder_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -189,6 +192,10 @@ class RemoteKaraokeClient:
             brand_prefix: Brand code prefix (e.g., "NOMAD")
             discord_webhook_url: Discord webhook for notifications
             youtube_description: YouTube video description
+            organised_dir_rclone_root: Legacy rclone path (deprecated)
+            enable_youtube_upload: Enable YouTube upload
+            dropbox_path: Dropbox folder path for organized output (native API)
+            gdrive_folder_id: Google Drive folder ID for public share (native API)
         """
         file_path = Path(filepath)
         
@@ -256,10 +263,18 @@ class RemoteKaraokeClient:
                 data['discord_webhook_url'] = discord_webhook_url
             if youtube_description:
                 data['youtube_description'] = youtube_description
-            if organised_dir_rclone_root:
-                data['organised_dir_rclone_root'] = organised_dir_rclone_root
             if enable_youtube_upload:
                 data['enable_youtube_upload'] = str(enable_youtube_upload).lower()
+            
+            # Native API distribution (preferred for remote CLI)
+            if dropbox_path:
+                data['dropbox_path'] = dropbox_path
+            if gdrive_folder_id:
+                data['gdrive_folder_id'] = gdrive_folder_id
+            
+            # Legacy rclone distribution (deprecated)
+            if organised_dir_rclone_root:
+                data['organised_dir_rclone_root'] = organised_dir_rclone_root
             
             self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
             
@@ -1228,8 +1243,14 @@ def main():
         logger.info(f"Brand: {args.brand_prefix}")
     if getattr(args, 'enable_youtube_upload', False):
         logger.info(f"YouTube Upload: enabled (server-side)")
+    # Native API distribution (preferred for remote CLI)
+    if getattr(args, 'dropbox_path', None):
+        logger.info(f"Dropbox (native): {args.dropbox_path}")
+    if getattr(args, 'gdrive_folder_id', None):
+        logger.info(f"Google Drive (native): {args.gdrive_folder_id}")
+    # Legacy rclone distribution
     if args.organised_dir_rclone_root:
-        logger.info(f"Dropbox: {args.organised_dir_rclone_root}")
+        logger.info(f"Dropbox (rclone): {args.organised_dir_rclone_root}")
     if args.discord_webhook_url:
         logger.info(f"Discord: enabled")
     logger.info(f"Service URL: {config.service_url}")
@@ -1262,6 +1283,9 @@ def main():
             youtube_description=youtube_description,
             organised_dir_rclone_root=args.organised_dir_rclone_root,
             enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
+            # Native API distribution (preferred for remote CLI)
+            dropbox_path=getattr(args, 'dropbox_path', None),
+            gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])

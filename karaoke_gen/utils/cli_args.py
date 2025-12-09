@@ -279,8 +279,19 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     )
     finalise_group.add_argument(
         "--rclone_destination",
-        help="Optional: Rclone destination for public_share_dir sync. Example: --rclone_destination='googledrive:KaraokeFolder'",
+        help="Optional: Rclone destination for public_share_dir sync (local mode). Example: --rclone_destination='googledrive:KaraokeFolder'",
     )
+    
+    # Native API distribution (for remote CLI - uses server-side credentials)
+    finalise_group.add_argument(
+        "--dropbox_path",
+        help="Optional: Dropbox folder path for organized output (remote mode). Example: --dropbox_path='/Karaoke/Tracks-Organized'",
+    )
+    finalise_group.add_argument(
+        "--gdrive_folder_id",
+        help="Optional: Google Drive folder ID for public share uploads (remote mode). Example: --gdrive_folder_id='1abc123xyz'",
+    )
+    
     finalise_group.add_argument(
         "--discord_webhook_url",
         help="Optional: Discord webhook URL for notifications. Example: --discord_webhook_url='https://discord.com/api/webhooks/...'",

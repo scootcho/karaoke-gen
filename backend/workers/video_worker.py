@@ -207,6 +207,16 @@ async def generate_video(job_id: str) -> bool:
         logger.info(f"Job {job_id}: KaraokeFinalise.process() complete")
         logger.info(f"Job {job_id}: Brand code: {result.get('brand_code')}")
         
+        # Native API distribution uploads (used by remote CLI instead of rclone)
+        await _handle_native_distribution(
+            job_id=job_id,
+            job=job,
+            job_log=job_log,
+            job_manager=job_manager,
+            temp_dir=temp_dir,
+            result=result,
+        )
+        
         # Upload generated files to GCS
         job_manager.transition_to_state(
             job_id=job_id,
@@ -265,6 +275,133 @@ async def generate_video(job_id: str) -> bool:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             logger.debug(f"Cleaned up temp directory: {temp_dir}")
+
+
+async def _handle_native_distribution(
+    job_id: str,
+    job,
+    job_log,
+    job_manager: JobManager,
+    temp_dir: str,
+    result: Dict[str, Any],
+) -> None:
+    """
+    Handle distribution uploads using native APIs (Dropbox SDK, Google Drive API).
+    
+    This is used by the remote CLI instead of rclone-based uploads.
+    The native APIs provide:
+    - Better error handling and retry logic
+    - No need for rclone binary in container
+    - Credentials managed via Secret Manager
+    
+    Args:
+        job_id: Job ID
+        job: Job object with dropbox_path and gdrive_folder_id fields
+        job_log: Job-specific logger
+        job_manager: Job manager for updating job state
+        temp_dir: Temporary directory with output files
+        result: Result dict from KaraokeFinalise.process()
+    """
+    brand_code = result.get('brand_code')
+    base_name = f"{job.artist} - {job.title}"
+    
+    # Upload to Dropbox using native SDK
+    dropbox_path = getattr(job, 'dropbox_path', None)
+    brand_prefix = getattr(job, 'brand_prefix', None)
+    
+    if dropbox_path and brand_prefix:
+        try:
+            from backend.services.dropbox_service import get_dropbox_service
+            
+            dropbox = get_dropbox_service()
+            
+            if not dropbox.is_configured:
+                job_log.warning("Dropbox credentials not configured - skipping upload")
+            else:
+                job_log.info(f"Starting native Dropbox upload to {dropbox_path}")
+                
+                # Calculate brand code from existing folders (if not already generated)
+                if not brand_code:
+                    brand_code = dropbox.get_next_brand_code(dropbox_path, brand_prefix)
+                    result['brand_code'] = brand_code
+                    job_log.info(f"Generated brand code: {brand_code}")
+                
+                # Create folder name and upload files
+                folder_name = f"{brand_code} - {base_name}"
+                remote_folder = f"{dropbox_path}/{folder_name}"
+                
+                job_log.info(f"Uploading to Dropbox folder: {remote_folder}")
+                dropbox.upload_folder(temp_dir, remote_folder)
+                
+                # Create sharing link
+                try:
+                    sharing_link = dropbox.create_shared_link(remote_folder)
+                    result['dropbox_link'] = sharing_link
+                    job_log.info(f"Dropbox sharing link: {sharing_link}")
+                except Exception as e:
+                    job_log.warning(f"Failed to create Dropbox sharing link: {e}")
+                
+                job_log.info("Native Dropbox upload complete")
+                
+        except ImportError as e:
+            job_log.warning(f"Dropbox SDK not installed: {e}")
+        except Exception as e:
+            job_log.error(f"Native Dropbox upload failed: {e}", exc_info=True)
+            # Don't fail the job - distribution is optional
+    
+    # Upload to Google Drive using native API
+    gdrive_folder_id = getattr(job, 'gdrive_folder_id', None)
+    
+    if gdrive_folder_id:
+        try:
+            from backend.services.gdrive_service import get_gdrive_service
+            
+            gdrive = get_gdrive_service()
+            
+            if not gdrive.is_configured:
+                job_log.warning("Google Drive credentials not configured - skipping upload")
+            else:
+                job_log.info(f"Starting native Google Drive upload to folder {gdrive_folder_id}")
+                
+                # Use brand code from Dropbox or generate placeholder
+                upload_brand_code = brand_code or f"{brand_prefix or 'TRACK'}-0000"
+                
+                # Map result keys to expected keys for upload_to_public_share
+                output_files = {
+                    'final_karaoke_lossy_mp4': result.get('final_video_lossy'),
+                    'final_karaoke_lossy_720p_mp4': result.get('final_video_720p'),
+                    'final_karaoke_cdg_zip': result.get('final_karaoke_cdg_zip'),
+                }
+                
+                uploaded = gdrive.upload_to_public_share(
+                    root_folder_id=gdrive_folder_id,
+                    brand_code=upload_brand_code,
+                    base_name=base_name,
+                    output_files=output_files,
+                )
+                
+                result['gdrive_files'] = uploaded
+                job_log.info(f"Google Drive upload complete: {len(uploaded)} files uploaded")
+                
+        except ImportError as e:
+            job_log.warning(f"Google API packages not installed: {e}")
+        except Exception as e:
+            job_log.error(f"Native Google Drive upload failed: {e}", exc_info=True)
+            # Don't fail the job - distribution is optional
+    
+    # Update job state_data with brand code and links
+    if brand_code or result.get('dropbox_link') or result.get('gdrive_files'):
+        try:
+            job_manager.update_job(job_id, {
+                'state_data': {
+                    **job.state_data,
+                    'brand_code': brand_code,
+                    'dropbox_link': result.get('dropbox_link'),
+                    'gdrive_files': result.get('gdrive_files'),
+                }
+            })
+        except Exception as e:
+            job_log.warning(f"Failed to update job state_data: {e}")
 
 
 def _validate_prerequisites(job) -> bool:

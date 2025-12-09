@@ -67,8 +67,11 @@ async def upload_and_create_job(
     discord_webhook_url: Optional[str] = Form(None, description="Discord webhook URL for notifications"),
     webhook_url: Optional[str] = Form(None, description="Generic webhook URL"),
     user_email: Optional[str] = Form(None, description="User email for notifications"),
-    # Distribution options
-    organised_dir_rclone_root: Optional[str] = Form(None, description="rclone remote path for Dropbox upload (e.g., dropbox-nomad:Karaoke)"),
+    # Distribution options (native API - preferred for remote CLI)
+    dropbox_path: Optional[str] = Form(None, description="Dropbox folder path for organized output (e.g., /Karaoke/Tracks-Organized)"),
+    gdrive_folder_id: Optional[str] = Form(None, description="Google Drive folder ID for public share uploads"),
+    # Legacy distribution options (rclone - deprecated)
+    organised_dir_rclone_root: Optional[str] = Form(None, description="[Deprecated] rclone remote path for Dropbox upload"),
 ):
     """
     Upload an audio file and create a karaoke generation job with full style configuration.
@@ -138,6 +141,10 @@ async def upload_and_create_job(
             discord_webhook_url=discord_webhook_url,
             webhook_url=webhook_url,
             user_email=user_email,
+            # Native API distribution (preferred for remote CLI)
+            dropbox_path=dropbox_path,
+            gdrive_folder_id=gdrive_folder_id,
+            # Legacy rclone distribution (deprecated)
             organised_dir_rclone_root=organised_dir_rclone_root,
         )
         job = job_manager.create_job(job_create)
@@ -217,6 +224,14 @@ async def upload_and_create_job(
             update_data['discord_webhook_url'] = discord_webhook_url
         if youtube_description:
             update_data['youtube_description_template'] = youtube_description
+        
+        # Native API distribution (preferred for remote CLI)
+        if dropbox_path:
+            update_data['dropbox_path'] = dropbox_path
+        if gdrive_folder_id:
+            update_data['gdrive_folder_id'] = gdrive_folder_id
+        
+        # Legacy rclone distribution (deprecated)
         if organised_dir_rclone_root:
             update_data['organised_dir_rclone_root'] = organised_dir_rclone_root
         
