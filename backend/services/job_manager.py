@@ -433,43 +433,30 @@ class JobManager:
         max_logs: int = 500
     ) -> None:
         """
-        Append a log entry to the job's worker_logs.
+        Append a log entry to the job's worker_logs atomically.
         
-        Worker logs are stored in Firestore for remote debugging.
-        To avoid document size limits, we keep only the last N logs.
+        Uses Firestore ArrayUnion for atomic append to avoid race conditions
+        when multiple workers (audio + lyrics) are logging concurrently.
+        
+        Note: max_logs is not enforced per-append (would require transactions).
+        Logs may grow beyond max_logs; trim periodically if needed.
         
         Args:
             job_id: Job ID
             worker: Worker name (audio, lyrics, screens, video, render)
             level: Log level (DEBUG, INFO, WARNING, ERROR)
             message: Log message
-            max_logs: Maximum number of logs to keep (default 500)
+            max_logs: Not used (kept for API compatibility)
         """
-        job = self.get_job(job_id)
-        if not job:
-            return
+        log_entry = {
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'level': level,
+            'worker': worker,
+            'message': message[:1000]  # Truncate long messages
+        }
         
-        from backend.models.job import LogEntry
-        
-        log_entry = LogEntry(
-            timestamp=datetime.utcnow().isoformat() + 'Z',
-            level=level,
-            worker=worker,
-            message=message[:1000]  # Truncate long messages
-        )
-        
-        # Get existing logs and append
-        worker_logs = list(job.worker_logs) if job.worker_logs else []
-        worker_logs.append(log_entry)
-        
-        # Keep only last N logs
-        if len(worker_logs) > max_logs:
-            worker_logs = worker_logs[-max_logs:]
-        
-        # Convert to dicts for Firestore
-        logs_data = [log.dict() for log in worker_logs]
-        
-        self.update_job(job_id, {'worker_logs': logs_data})
+        # Use atomic ArrayUnion to avoid race conditions
+        self.firestore.append_worker_log(job_id, log_entry)
     
     def get_worker_logs(
         self,

@@ -139,6 +139,28 @@ class FirestoreService:
             logger.error(f"Error deleting job {job_id}: {e}")
             raise
     
+    def append_worker_log(self, job_id: str, log_entry: Dict[str, Any]) -> None:
+        """
+        Atomically append a log entry to worker_logs using ArrayUnion.
+        
+        This avoids the race condition of read-modify-write when multiple
+        workers are logging concurrently.
+        
+        Args:
+            job_id: Job ID
+            log_entry: Log entry dict with timestamp, level, worker, message
+        """
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            doc_ref.update({
+                'worker_logs': firestore.ArrayUnion([log_entry]),
+                'updated_at': datetime.utcnow()
+            })
+            # Don't log every append - too spammy
+        except Exception as e:
+            # Log but don't raise - logging shouldn't break workers
+            logger.debug(f"Error appending worker log for job {job_id}: {e}")
+    
     # ============================================
     # Token Management Methods
     # ============================================
