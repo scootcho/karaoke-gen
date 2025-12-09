@@ -26,6 +26,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.style_helper import load_style_config
 
 # Import from karaoke_gen package
 from karaoke_gen.lyrics_processor import LyricsProcessor
@@ -161,9 +162,20 @@ async def process_lyrics_transcription(job_id: str) -> bool:
             'message': 'Starting lyrics transcription via AudioShake'
         })
         
+        # Load style configuration (downloads assets from GCS if available)
+        # This is needed for max_line_length and other style settings in LyricsTranscriber
+        job_log.info("Loading style configuration for lyrics processing...")
+        style_config = await load_style_config(job, storage, temp_dir)
+        style_params_json_path = style_config.get_style_params_path() if style_config.has_custom_styles() else None
+        
+        if style_params_json_path:
+            job_log.info(f"Using custom style params: {style_params_json_path}")
+        else:
+            job_log.info("No custom style params found, using defaults")
+        
         # Create LyricsProcessor instance (reuses karaoke_gen code)
         job_log.info("Creating LyricsProcessor instance...")
-        lyrics_processor = create_lyrics_processor(temp_dir)
+        lyrics_processor = create_lyrics_processor(temp_dir, style_params_json=style_params_json_path)
         
         # Run transcription + correction
         # This will:
