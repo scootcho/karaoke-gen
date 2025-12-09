@@ -32,8 +32,9 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 │   │ Web UI          │ ──► │                              │                 │
 │   │ (future)        │     │  DISTRIBUTION:               │   • YouTube     │
 │   └─────────────────┘     │  • YouTube upload            │   • Dropbox     │
-│                           │  • Dropbox (via rclone)      │   • Discord     │
-│                           │  • Email draft               │   • Email       │
+│                           │  • Dropbox (via API/rclone)  │   • Google Drive│
+│                           │  • Google Drive (public)     │   • Gmail Draft │
+│                           │  • Gmail draft               │   • Discord     │
 │                           │  • Discord notification      │                 │
 │                           └──────────────────────────────┘                 │
 │                                                                             │
@@ -42,15 +43,204 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 **Key Principle:** Regardless of which interface initiates a job, if given the same input with all variables/secrets etc. provided, the outputs should:
 1. Be uploaded to the **same YouTube channel** (Nomad Karaoke)
-2. Be organized in the **same Dropbox folder structure** (via rclone)
-3. Generate the **same email draft** in the owner's Gmail
-4. Send the **same Discord notification**
+2. Be organized in the **same Dropbox folder** with brand-coded naming (e.g., NOMAD-1163)
+3. Have final files copied to the **same Google Drive public share folders**
+4. Generate the **same email draft** in the owner's Gmail
+5. Send the **same Discord notification**
 
 ---
 
-## Current State
+## Distribution Features - Full Specification
 
-### ✅ Fully Implemented
+This section provides a detailed specification of how the distribution features work locally and how they must work in remote/cloud mode to achieve full feature parity.
+
+### Feature 1: YouTube Upload
+
+**Purpose:** Upload the final karaoke video to a YouTube channel.
+
+**Local CLI Parameters:**
+- `--enable_youtube_upload` - Enable the feature
+- `--youtube_client_secrets_file` - Path to OAuth client secrets JSON
+- `--youtube_description_file` - Path to description template file
+
+**How It Works Locally:**
+1. User provides OAuth client secrets file (from Google Cloud Console)
+2. First run triggers browser OAuth flow, stores credentials in pickle file
+3. Subsequent runs reuse stored credentials (refreshing if needed)
+4. Final video uploaded with title from track metadata
+5. Description populated from template file
+
+**Remote/Cloud Implementation:**
+- Store OAuth tokens in Secret Manager (`youtube-oauth-credentials`)
+- Store client secrets in Secret Manager
+- Description file content uploaded with job (or stored in Secret Manager as default)
+- Backend uses stored credentials directly (no browser OAuth flow needed)
+
+**CLI Mapping:**
+| Local CLI | Remote CLI | Notes |
+|-----------|------------|-------|
+| `--enable_youtube_upload` | `--enable_youtube_upload` | Same flag |
+| `--youtube_client_secrets_file` | N/A | Uses server-side credentials |
+| `--youtube_description_file` | `--youtube_description_file` | Uploaded with job |
+
+---
+
+### Feature 2: Organized Directory (Dropbox) with Brand Code
+
+**Purpose:** Rename the output folder with a sequential brand code and move to Dropbox, then get a sharing link.
+
+**Local CLI Parameters:**
+- `--brand_prefix` - Brand identifier (e.g., "NOMAD")
+- `--organised_dir` - Local filesystem path to organized folder (Dropbox-synced)
+- `--organised_dir_rclone_root` - rclone path mapping for the same folder
+
+**How It Works Locally:**
+1. Scan `organised_dir` for existing folders matching `{brand_prefix}-NNNN - *`
+2. Calculate next sequence number (e.g., NOMAD-1163)
+3. Rename output folder to `{brand_prefix}-{seq} - {Artist} - {Title}`
+4. Move folder to `organised_dir`
+5. Use rclone with `organised_dir_rclone_root` to get Dropbox sharing link
+
+**Example existing structure:**
+```
+/Users/andrew/AB Dropbox/.../Tracks-Organized/
+├── NOMAD-1162 - Arcy Drive - Roll My Stone/
+├── NOMAD-1161 - Iggy Pop - Five Foot One/
+├── NOMAD-1160 - Doug Stone - I'd Be Better Off (In a Pine Box)/
+└── ...
+```
+
+**Remote/Cloud Implementation:**
+
+The backend cannot rely on local filesystem paths. Instead, it must:
+
+1. **Query Dropbox directly** to list existing folders and calculate sequence number
+   - Use Dropbox API or rclone to list `organised_dir_rclone_root`
+   - Parse folder names to find highest existing sequence number
+   
+2. **Upload folder contents directly to Dropbox** with the brand-coded name
+   - Upload via Dropbox API or rclone
+   - Create folder: `{organised_dir_rclone_root}/{brand_prefix}-{seq} - {Artist} - {Title}/`
+   
+3. **Get sharing link** for the uploaded folder
+   - Use Dropbox API or rclone `link` command
+
+**CLI Mapping:**
+| Local CLI | Remote CLI | Notes |
+|-----------|------------|-------|
+| `--brand_prefix` | `--brand_prefix` | Same |
+| `--organised_dir` | N/A | Not needed - uploads directly via API |
+| `--organised_dir_rclone_root` | `--organised_dir_rclone_root` | Required for remote |
+
+**Required Secrets:**
+- `rclone-config` - Contains Dropbox config section (e.g., `[andrewdropboxfull]`)
+
+---
+
+### Feature 3: Public Share Directory (Google Drive)
+
+**Purpose:** Copy final output files (MP4, MP4-720p, CDG) to a publicly shared Google Drive folder.
+
+**Local CLI Parameters:**
+- `--public_share_dir` - Local filesystem path to public share folder
+- `--rclone_destination` - rclone destination for syncing to Google Drive
+
+**How It Works Locally:**
+1. Copy final files to subdirectories:
+   - `{public_share_dir}/MP4/{brand_code} - {Artist} - {Title}.mp4` (4K)
+   - `{public_share_dir}/MP4-720p/{brand_code} - {Artist} - {Title}.mp4`
+   - `{public_share_dir}/CDG/{brand_code} - {Artist} - {Title}.zip`
+2. Sync to Google Drive using rclone
+
+**Example existing structure:**
+```
+/Users/andrew/.../Tracks-PublicShare/
+├── CDG/
+│   ├── NOMAD-1162 - Arcy Drive - Roll My Stone.zip
+│   └── ...
+├── MP4/
+│   ├── NOMAD-1162 - Arcy Drive - Roll My Stone.mp4
+│   └── ...
+└── MP4-720p/
+    ├── NOMAD-1162 - Arcy Drive - Roll My Stone.mp4
+    └── ...
+```
+
+**Remote/Cloud Implementation:**
+
+The backend must upload directly to Google Drive:
+
+1. **Upload files directly to Google Drive** via API or rclone
+   - `{rclone_destination}/MP4/{filename}.mp4`
+   - `{rclone_destination}/MP4-720p/{filename}.mp4`
+   - `{rclone_destination}/CDG/{filename}.zip`
+
+**CLI Mapping:**
+| Local CLI | Remote CLI | Notes |
+|-----------|------------|-------|
+| `--public_share_dir` | N/A | Not needed - uploads directly via API |
+| `--rclone_destination` | `--rclone_destination` | Required for remote (or `--public_share_rclone_root`) |
+
+**Required Secrets:**
+- `rclone-config` - Contains Google Drive config section (e.g., `[googledrive]`)
+
+---
+
+### Feature 4: Email Draft (Gmail)
+
+**Purpose:** Create a draft email in Gmail with the YouTube URL and Dropbox sharing link.
+
+**Local CLI Parameters:**
+- `--email_template_file` - Path to email template with placeholders
+
+**Template Placeholders:**
+- `{youtube_url}` - URL of uploaded YouTube video
+- `{dropbox_link}` - Sharing link for Dropbox folder
+- `{artist}` - Artist name
+- `{title}` - Track title
+- `{brand_code}` - Full brand code (e.g., NOMAD-1163)
+
+**How It Works Locally:**
+1. Read email template file
+2. Replace placeholders with actual values
+3. Create draft in Gmail via API (uses same OAuth credentials as YouTube)
+
+**Remote/Cloud Implementation:**
+1. Store Gmail OAuth credentials in Secret Manager
+2. Upload template file content with job (or use default template from config)
+3. After processing, create draft with populated template
+
+**CLI Mapping:**
+| Local CLI | Remote CLI | Notes |
+|-----------|------------|-------|
+| `--email_template_file` | `--email_template_file` | Uploaded with job |
+
+**Required Secrets:**
+- `gmail-oauth-credentials` - OAuth tokens for Gmail API
+
+---
+
+### Feature 5: Discord Notification
+
+**Purpose:** Send a notification to Discord with track details.
+
+**Local CLI Parameters:**
+- `--discord_webhook_url` - Discord webhook URL
+
+**Remote/Cloud Implementation:**
+- Same as local - webhook URL passed through to backend
+- KaraokeFinalise handles the notification
+
+**CLI Mapping:**
+| Local CLI | Remote CLI | Notes |
+|-----------|------------|-------|
+| `--discord_webhook_url` | `--discord_webhook_url` | Same |
+
+---
+
+## Implementation Status
+
+### ✅ Core Processing (Complete)
 
 | Feature | Status | Implementation |
 |---------|--------|----------------|
@@ -65,414 +255,43 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | Instrumental selection | ✅ | API endpoint + CLI prompt |
 | Video encoding (4 formats) | ✅ | `backend/workers/video_worker.py` |
 | CDG/TXT packages | ✅ | KaraokeFinalise via video_worker |
-| Discord notifications | ✅ | KaraokeFinalise via video_worker |
-| Brand code generation | ✅ | Server-side mode using rclone |
-| Output file download | ✅ | `karaoke_gen/utils/remote_cli.py` |
+| Non-interactive mode | ✅ | `-y` flag for automated testing |
+| Output file download | ✅ | Streaming download endpoint |
 
-### ⚠️ Partially Implemented
+### ⚠️ Distribution Features (Partial)
 
-| Feature | Current State | Needed Work |
-|---------|---------------|-------------|
-| Public share copy | Has server-side rclone support | Add to job model and API |
+| Feature | Status | What Works | What's Needed |
+|---------|--------|------------|---------------|
+| YouTube upload | ⚠️ Partial | Server-side OAuth credentials loaded | Test with real credentials |
+| Dropbox upload | ⚠️ Partial | rclone config loaded from Secret Manager | Test, verify sequence calculation works |
+| Brand code calculation | ⚠️ Partial | Works via rclone ls | Test with real Dropbox |
+| Public share (Google Drive) | ❌ Not done | - | Add rclone_destination param, implement upload |
+| Gmail draft | ❌ Not done | - | Add gmail-oauth-credentials, implement |
+| Discord notification | ⚠️ Untested | Webhook URL accepted | Test with real webhook |
+| YouTube description file | ⚠️ Partial | Param exists | Upload file content with job |
 
 ### ❌ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **Email draft** | MEDIUM | Gmail API integration (disabled in server-side mode) |
+| Public share upload to Google Drive | HIGH | Need `--rclone_destination` support |
+| Gmail draft creation | HIGH | Need Gmail OAuth in Secret Manager |
 | YouTube URL input | LOW | Requires yt-dlp in container |
 | Batch processing | LOW | Queue management needed |
 
-### ✅ Recently Implemented (2024-12-09)
-
-| Feature | Implementation |
-|---------|----------------|
-| **Dropbox upload (rclone)** | `organised_dir_rclone_root` field added to Job model, wired through API and remote CLI. Rclone config loaded from Secret Manager (`rclone-config` secret). |
-| **YouTube upload** | Server-side OAuth credentials loaded from Secret Manager (`youtube-oauth-credentials` secret). `enable_youtube_upload` flag added to CLI and API. |
-| **rclone config service** | New `backend/services/rclone_service.py` loads rclone.conf from Secret Manager |
-| **YouTube credential service** | New `backend/services/youtube_service.py` loads OAuth credentials from Secret Manager |
-
 ---
 
-## Implementation Plan
-
-### Phase 1: Distribution Features (HIGH PRIORITY)
-
-These features are essential for the business workflow - every karaoke video needs to end up on YouTube and Dropbox.
-
-#### 1.1 YouTube Upload
-
-**Goal:** Upload final videos to the Nomad Karaoke YouTube channel from the backend.
-
-**Current Local CLI Flow:**
-```python
-# karaoke_gen/karaoke_finalise/karaoke_finalise.py
-finalise = KaraokeFinalise(
-    youtube_client_secrets_file="/path/to/client_secrets.json",
-    youtube_description_file="/path/to/description.txt",
-)
-# Uses google-auth-oauthlib for OAuth flow
-# Stores credentials in pickle file
-```
-
-**Backend Implementation Plan:**
-
-1. **Store OAuth credentials in Secret Manager**
-   - Upload refresh token to Google Secret Manager
-   - Create helper to retrieve and refresh credentials
-   - File: `backend/services/youtube_service.py` (new)
-
-2. **Update Job model**
-   ```python
-   # backend/models/job.py
-   youtube_upload_enabled: bool = False
-   youtube_description: Optional[str] = None
-   ```
-
-3. **Update video_worker.py**
-   ```python
-   finalise = KaraokeFinalise(
-       youtube_client_secrets_file=None,  # Not used
-       user_youtube_credentials=credentials,  # Pre-loaded from Secret Manager
-       youtube_description_file=youtube_desc_path,  # Downloaded from job
-   )
-   ```
-
-4. **Update remote CLI and API**
-   - Accept `--youtube_upload` flag
-   - Accept `--youtube_description_file` parameter
-   - Upload description file content to GCS with job
-
-**Files to modify:**
-- `backend/models/job.py` - Add youtube fields
-- `backend/workers/video_worker.py` - Load credentials, pass to KaraokeFinalise
-- `backend/services/youtube_service.py` - NEW: Credential management
-- `backend/api/routes/file_upload.py` - Accept youtube params
-- `karaoke_gen/utils/remote_cli.py` - Parse and upload youtube params
-
-#### 1.2 Dropbox Upload (via rclone)
-
-**Goal:** Upload all output files to organized Dropbox folder with brand code naming.
-
-**Current Local CLI Flow:**
-```python
-finalise = KaraokeFinalise(
-    brand_prefix="NOMAD",
-    organised_dir="/local/path/to/dropbox/Karaoke",
-    organised_dir_rclone_root="dropbox-nomad:Karaoke",  # For server-side
-)
-# In server_side_mode, uses rclone to:
-# 1. List existing folders to get next brand code
-# 2. Upload files to brand-coded folder
-# 3. Generate sharing link
-```
-
-**Backend Implementation Plan:**
-
-1. **Store rclone config in Secret Manager**
-   - Upload rclone.conf to Secret Manager
-   - Write to temp file when needed
-   - File: `backend/services/rclone_service.py` (new)
-
-2. **Update Job model**
-   ```python
-   # backend/models/job.py
-   organised_dir_rclone_root: Optional[str] = None
-   ```
-
-3. **Update video_worker.py** (already has the param, just wire it)
-   ```python
-   finalise = KaraokeFinalise(
-       organised_dir_rclone_root=job.organised_dir_rclone_root,
-       server_side_mode=True,
-   )
-   ```
-
-4. **Update remote CLI and API**
-   - Accept `--organised_dir_rclone_root` parameter
-   - Store in job data
-
-**Files to modify:**
-- `backend/models/job.py` - Add rclone root field
-- `backend/workers/video_worker.py` - Pass through rclone root (partial - already has it)
-- `backend/services/rclone_service.py` - NEW: Config management
-- `backend/api/routes/file_upload.py` - Accept rclone params
-- `karaoke_gen/utils/remote_cli.py` - Parse rclone params
-
-#### 1.3 Email Draft Creation
-
-**Goal:** Create draft email in owner's Gmail with YouTube URL and Dropbox link.
-
-**Current Local CLI Flow:**
-```python
-finalise = KaraokeFinalise(
-    email_template_file="/path/to/template.txt",
-)
-# Uses Gmail API to create draft
-# Template has placeholders: {youtube_url}, {dropbox_link}, {artist}, {title}
-```
-
-**Backend Implementation Plan:**
-
-1. **Store Gmail OAuth credentials in Secret Manager**
-   - Similar to YouTube credentials
-   - File: `backend/services/gmail_service.py` (new)
-
-2. **Update Job model**
-   ```python
-   # backend/models/job.py
-   email_template: Optional[str] = None  # Template content
-   ```
-
-3. **Update video_worker.py**
-   - After KaraokeFinalise.process(), call email draft creation
-   - Use results from process() for YouTube URL and Dropbox link
-
-4. **Update remote CLI and API**
-   - Accept `--email_template_file` parameter
-   - Upload template content with job
-
-**Files to modify:**
-- `backend/models/job.py` - Add email template field
-- `backend/workers/video_worker.py` - Create email draft after processing
-- `backend/services/gmail_service.py` - NEW: Gmail API integration
-- `backend/api/routes/file_upload.py` - Accept email template
-- `karaoke_gen/utils/remote_cli.py` - Parse email params
-
-### Phase 2: Input Source Features (MEDIUM PRIORITY)
-
-#### 2.1 YouTube URL Input
-
-**Goal:** Accept YouTube URLs as input source (same as local CLI).
-
-**Implementation:**
-1. Add yt-dlp to backend Docker image
-2. Create `backend/workers/download_worker.py`
-3. Update job submission to accept URL instead of file
-
-**Files to create/modify:**
-- `backend/Dockerfile` - Add yt-dlp
-- `backend/workers/download_worker.py` - NEW
-- `backend/api/routes/file_upload.py` - Accept URL param
-- `backend/models/job.py` - Add input_url field
-
-### Phase 3: Advanced Features (LOW PRIORITY)
-
-#### 3.1 Batch Processing
-- Bulk job submission endpoint
-- Queue management
-- Progress tracking for multiple jobs
-
-#### 3.2 Existing Instrumental Support
-- Accept pre-separated instrumental file
-- Skip audio separation worker
-
-#### 3.3 Lyrics File Support
-- Accept pre-existing lyrics file
-- Skip transcription, go straight to review
-
----
-
-## Future Architecture: Shared Pipeline
-
-Once feature parity is achieved, the codebase should be refactored toward a **shared pipeline architecture** where both local and remote execution use the same abstractions.
-
-### Current State (Divergent Paths)
-
-```
-LOCAL CLI                               CLOUD BACKEND
-─────────                               ─────────────
-KaraokeGen.process()                    API Routes
-    │                                       │
-    ├─► AudioProcessor                      ├─► audio_worker.py
-    │   └── Modal API or local              │   └── Modal API
-    │                                       │
-    ├─► LyricsProcessor                     ├─► lyrics_worker.py
-    │   └── Orchestrates everything         │   └── Transcription only
-    │       including video generation      │
-    │                                       ├─► screens_worker.py
-    │                                       │
-    │                                       ├─► render_video_worker.py
-    │                                       │   └── OutputGenerator directly
-    │                                       │
-    └─► KaraokeFinalise                     └─► video_worker.py
-        └── Encoding, distribution              └── KaraokeFinalise
-```
-
-**Problems:**
-- Video generation called differently (via LyricsProcessor vs OutputGenerator directly)
-- LyricsProcessor does too many things (fetching, transcription, video, file management)
-- Testing requires mocking different things for local vs remote
-- Bug fixes may need to be applied in multiple places
-
-### Target State (Shared Pipeline)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         SHARED PIPELINE ARCHITECTURE                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   AudioInput → Separation → Transcription → Review → Render → Finalize     │
-│       │            │             │            │         │          │        │
-│       ▼            ▼             ▼            ▼         ▼          ▼        │
-│   ┌────────┐  ┌────────┐   ┌────────┐   ┌────────┐ ┌────────┐ ┌────────┐  │
-│   │ Stage  │  │ Stage  │   │ Stage  │   │ Stage  │ │ Stage  │ │ Stage  │  │
-│   │  API   │  │  API   │   │  API   │   │  API   │ │  API   │ │  API   │  │
-│   └────┬───┘  └────┬───┘   └────┬───┘   └────┬───┘ └────┬───┘ └────┬───┘  │
-│        │           │            │            │          │          │       │
-│   ┌────┴───────────┴────────────┴────────────┴──────────┴──────────┴────┐  │
-│   │                         EXECUTION LAYER                              │  │
-│   │                                                                      │  │
-│   │   Local Mode:        │    Remote Mode:                              │  │
-│   │   - Direct calls     │    - HTTP to backend                         │  │
-│   │   - Local GPU/CPU    │    - Workers + Modal                         │  │
-│   │   - Blocking         │    - Async + polling                         │  │
-│   └──────────────────────┴───────────────────────────────────────────────┘  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Benefits:**
-- Single source of truth for each pipeline stage
-- Each stage independently testable
-- Same business logic regardless of execution mode
-- Easier to add new stages or modify existing ones
-- DRY - fix bugs once, works everywhere
-
-### Implementation Approach
-
-1. **Complete feature parity first** (this plan's focus)
-   - Get all features working in remote mode
-   - Identify all the places where logic is duplicated
-
-2. **Extract stage interfaces**
-   ```python
-   class PipelineStage(Protocol):
-       async def execute(self, context: PipelineContext) -> StageResult:
-           ...
-   ```
-
-3. **Create execution adapters**
-   ```python
-   class LocalExecutor:
-       """Runs stages directly in-process"""
-       
-   class RemoteExecutor:
-       """Runs stages via backend API/workers"""
-   ```
-
-4. **Refactor incrementally**
-   - Start with one stage (e.g., Separation)
-   - Prove the pattern works
-   - Migrate other stages
-
-### Reference
-
-See [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) for details on the style loader consolidation, which was the first step toward this unified architecture.
-
----
-
-## Important Files Reference
-
-### Core Backend Files
-
-| File | Purpose |
-|------|---------|
-| `backend/main.py` | FastAPI app entry point |
-| `backend/config.py` | Environment configuration |
-| `backend/models/job.py` | Job data model (Firestore) |
-| `backend/models/requests.py` | API request schemas |
-| `backend/services/job_manager.py` | Job state management |
-| `backend/services/storage_service.py` | GCS operations |
-| `backend/services/worker_service.py` | Worker triggering |
-
-### Worker Files
-
-| File | Purpose |
-|------|---------|
-| `backend/workers/audio_worker.py` | Modal API audio separation |
-| `backend/workers/lyrics_worker.py` | AudioShake transcription |
-| `backend/workers/screens_worker.py` | Title/end screen generation |
-| `backend/workers/render_video_worker.py` | Post-review video with lyrics |
-| `backend/workers/video_worker.py` | Final encoding via KaraokeFinalise |
-| `backend/workers/style_helper.py` | Style config loading from GCS |
-
-### API Routes
-
-| File | Purpose |
-|------|---------|
-| `backend/api/routes/file_upload.py` | Job submission endpoint |
-| `backend/api/routes/jobs.py` | Job status/management |
-| `backend/api/routes/review.py` | Lyrics review endpoints |
-| `backend/api/routes/internal.py` | Worker callback endpoints |
-
-### Shared Code (Used by Both Local and Backend)
-
-| File | Purpose |
-|------|---------|
-| `karaoke_gen/style_loader.py` | **Unified style loading** - single source of truth |
-| `karaoke_gen/karaoke_finalise/karaoke_finalise.py` | Video encoding, CDG, YouTube, Discord, email |
-| `karaoke_gen/video_generator.py` | Title/end screen generation |
-| `karaoke_gen/utils/cli_args.py` | Shared CLI argument definitions |
-
-### Remote CLI
-
-| File | Purpose |
-|------|---------|
-| `karaoke_gen/utils/remote_cli.py` | Remote CLI implementation |
-
----
-
-## Testing
-
-### Running Tests
-
-```bash
-# All tests
-pytest tests/ backend/tests/ -v
-
-# Backend tests only
-pytest backend/tests/ -v
-
-# Specific test files
-pytest backend/tests/test_workers.py -v
-pytest backend/tests/test_style_upload.py -v
-```
-
-### Key Test Files
-
-| File | Tests |
-|------|-------|
-| `backend/tests/test_workers.py` | Worker functionality |
-| `backend/tests/test_style_upload.py` | Style parsing and loading |
-| `backend/tests/test_routes_review.py` | Review API and preview styles |
-| `backend/tests/test_upload_api.py` | File upload validation |
-| `tests/unit/test_karaoke_finalise/` | KaraokeFinalise tests |
-
----
-
-## Deployment
-
-### Environment Variables (Cloud Run)
-
-```
-GOOGLE_CLOUD_PROJECT=karaoke-gen
-GCS_BUCKET_NAME=karaoke-gen-uploads
-MODAL_API_URL=https://modal-api-url
-AUDIOSHAKE_API_TOKEN=xxx
-GENIUS_API_TOKEN=xxx
-ADMIN_TOKEN=xxx
-```
+## Required Secrets Configuration
 
 ### Secret Manager Secrets
 
-| Secret Name | Status | Description |
-|-------------|--------|-------------|
-| `youtube-oauth-credentials` | ✅ Supported | JSON with OAuth tokens for YouTube upload |
-| `rclone-config` | ✅ Supported | rclone.conf content for Dropbox/cloud storage |
-| `gmail-oauth-credentials` | ⏳ Not needed | Email drafts disabled in server-side mode |
+| Secret Name | Status | Contents | Description |
+|-------------|--------|----------|-------------|
+| `youtube-oauth-credentials` | ⚠️ Needs setup | JSON | OAuth tokens for YouTube upload |
+| `rclone-config` | ⚠️ Needs setup | INI | rclone.conf with Dropbox + Google Drive configs |
+| `gmail-oauth-credentials` | ❌ Not created | JSON | OAuth tokens for Gmail API |
 
-**YouTube credentials JSON format:**
+### YouTube Credentials Format
 ```json
 {
   "token": "ya29...",
@@ -480,67 +299,206 @@ ADMIN_TOKEN=xxx
   "token_uri": "https://oauth2.googleapis.com/token",
   "client_id": "xxx.apps.googleusercontent.com",
   "client_secret": "xxx",
-  "scopes": ["https://www.googleapis.com/auth/youtube"]
+  "scopes": ["https://www.googleapis.com/auth/youtube.upload"]
 }
+```
+
+### rclone Config Format
+```ini
+[andrewdropboxfull]
+type = dropbox
+client_id = xxx
+client_secret = xxx
+token = {"access_token":"...","refresh_token":"..."}
+
+[googledrive]
+type = drive
+client_id = xxx
+client_secret = xxx
+token = {"access_token":"...","refresh_token":"..."}
 ```
 
 ---
 
-## Architecture Documents
+## Target Remote CLI Alias
 
-- [ARCHITECTURE.md](../01-reference/ARCHITECTURE.md) - System architecture overview
-- [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) - Style loading consolidation
+Once fully implemented, the remote equivalent of `nomadauto` would be:
+
+```bash
+nomadauto_remote() {
+    karaoke-gen-remote \
+        --style_params_json="/path/to/karaoke-prep-styles-nomad.json" \
+        --enable_cdg \
+        --enable_txt \
+        --brand_prefix=NOMAD \
+        --organised_dir_rclone_root='andrewdropboxfull:MediaUnsynced/Karaoke/Tracks-Organized' \
+        --rclone_destination='googledrive:Nomad Karaoke' \
+        --enable_youtube_upload \
+        --youtube_description_file='/path/to/youtube-video-description.txt' \
+        --discord_webhook_url='https://discord.com/api/webhooks/...' \
+        --email_template_file='/path/to/email-template.txt' \
+        "$@"
+}
+```
+
+**Key Differences from Local:**
+- No `--organised_dir` (uploads directly via API, not local filesystem)
+- No `--public_share_dir` (uploads directly via API, not local filesystem)
+- No `--youtube_client_secrets_file` (uses server-side credentials)
+- Files like youtube description and email template are uploaded with the job
+
+---
+
+## Architecture Considerations
+
+### API vs rclone for Cloud Storage
+
+**Current approach:** Use rclone with config from Secret Manager
+
+**Pros:**
+- Consistent with local CLI
+- Supports many cloud providers
+- rclone handles OAuth token refresh
+
+**Cons:**
+- Extra dependency
+- Need to manage rclone config as secret
+
+**Alternative:** Use native APIs (Dropbox SDK, Google Drive API)
+
+**Pros:**
+- Cleaner, no external dependencies
+- More control over error handling
+
+**Cons:**
+- Need separate implementations for each provider
+- More code to maintain
+
+**Recommendation:** Continue with rclone approach for now, as it's already working locally and provides flexibility. Could migrate to native APIs later if needed.
+
+### Secrets Management
+
+**Current:** Individual secrets in Secret Manager
+
+**Future consideration:** Could consolidate into a single "distribution-config" secret with all OAuth tokens and settings, making it easier to manage.
+
+---
+
+## Implementation Plan
+
+### Phase 1: Complete Distribution Features (HIGH PRIORITY)
+
+1. **YouTube Upload**
+   - [x] Server-side OAuth credential loading
+   - [ ] Test with real credentials
+   - [ ] Upload youtube_description_file content with job
+
+2. **Dropbox Organized Folder**
+   - [x] rclone config loading from Secret Manager
+   - [ ] Test sequence calculation via rclone ls
+   - [ ] Test folder upload and sharing link
+
+3. **Google Drive Public Share**
+   - [ ] Add `--rclone_destination` to remote CLI
+   - [ ] Add to Job model
+   - [ ] Implement upload in video_worker
+
+4. **Gmail Draft**
+   - [ ] Create gmail_service.py
+   - [ ] Add gmail-oauth-credentials to Secret Manager
+   - [ ] Add `--email_template_file` upload support
+   - [ ] Implement draft creation in video_worker
+
+5. **Discord Notification**
+   - [x] Webhook URL passed through
+   - [ ] Test with real webhook
+
+### Phase 2: Testing & Validation
+
+1. **Set up all Secret Manager secrets**
+2. **Run end-to-end test with all features enabled**
+3. **Verify:**
+   - Video uploaded to correct YouTube channel
+   - Folder created in correct Dropbox location with correct brand code
+   - Files uploaded to correct Google Drive folders
+   - Email draft created with correct content
+   - Discord notification sent
+
+### Phase 3: Future Features (LOW PRIORITY)
+
+- YouTube URL input (requires yt-dlp)
+- Batch processing
+- Existing instrumental support
+
+---
+
+## Files Reference
+
+### Core Backend Files
+
+| File | Purpose |
+|------|---------|
+| `backend/models/job.py` | Job data model - add new distribution fields |
+| `backend/workers/video_worker.py` | Final processing - distribution happens here |
+| `backend/services/rclone_service.py` | rclone config from Secret Manager |
+| `backend/services/youtube_service.py` | YouTube OAuth from Secret Manager |
+| `backend/services/gmail_service.py` | Gmail OAuth (to be created) |
+
+### Shared Code
+
+| File | Purpose |
+|------|---------|
+| `karaoke_gen/karaoke_finalise/karaoke_finalise.py` | All distribution logic |
+| `karaoke_gen/utils/cli_args.py` | Shared CLI argument definitions |
+| `karaoke_gen/utils/remote_cli.py` | Remote CLI implementation |
+
+---
+
+## Testing Checklist
+
+Before declaring feature parity complete:
+
+- [ ] Run `karaoke-gen` locally with all distribution features → verify outputs
+- [ ] Run `karaoke-gen-remote` with same inputs → verify SAME outputs appear in SAME locations
+- [ ] Specifically verify:
+  - [ ] Same YouTube channel, same video title/description
+  - [ ] Same Dropbox folder, correct sequence number
+  - [ ] Same Google Drive folders (CDG/, MP4/, MP4-720p/)
+  - [ ] Same email draft content
+  - [ ] Same Discord notification
 
 ---
 
 ## Recent Changes Log
 
-### 2024-12-09: Distribution Features (Phase 1)
-- **Dropbox Upload (rclone)**: Added `organised_dir_rclone_root` field to Job model
-- **Rclone Service**: Created `backend/services/rclone_service.py` to load config from Secret Manager
-- **YouTube Upload**: Added server-side OAuth credential loading from Secret Manager
-- **YouTube Service**: Created `backend/services/youtube_service.py` for credential management
-- **CLI Updates**: Added `--enable_youtube_upload` flag, updated remote CLI to pass distribution params
-- **Video Worker**: Updated to use new services for rclone config and YouTube credentials
+### 2024-12-09: Download Fix
+- Added streaming download endpoint `/api/jobs/{job_id}/download/{category}/{file_key}`
+- Removed dependency on signed URLs (simpler, works without special IAM permissions)
+- CLI downloads via HTTP through backend
 
-### 2024-12-09: Output File Parity
-- Enhanced `remote_cli.py` download to match local CLI output structure
-- Added screen image uploads (.jpg, .png) to screens_worker
-- Added descriptive stem naming with model names
-- Added CDG extraction to root directory
+### 2024-12-09: Non-Interactive Mode
+- Added `-y` flag for automated testing
+- Auto-completes lyrics review
+- Auto-selects clean instrumental
+
+### 2024-12-09: Distribution Features (Partial)
+- Added rclone config loading from Secret Manager
+- Added YouTube OAuth credential loading from Secret Manager
+- Wired `organised_dir_rclone_root` through API and CLI
+- Added `enable_youtube_upload` flag
 
 ### 2024-12-09: Style Loader Consolidation
 - Created `karaoke_gen/style_loader.py` as single source of truth
 - Updated all workers to use unified style loading
-- Fixed preview video custom styles bug
 
 ---
 
 ## Next Steps for New Agent
 
-1. **Read these files first:**
-   - This document (BACKEND-FEATURE-PARITY-PLAN.md)
-   - `backend/workers/video_worker.py` - Main integration point
-   - `karaoke_gen/karaoke_finalise/karaoke_finalise.py` - Has all distribution features
-   - `backend/models/job.py` - Job data model
-
-2. **Phase 1 (Distribution) is mostly complete!**
-   - ✅ Dropbox upload via rclone
-   - ✅ YouTube upload with server-side credentials
-   - ⚠️ Email drafts disabled in server-side mode (Gmail API not critical for workflow)
-
-3. **To use distribution features:**
-   - Add `rclone-config` secret to Secret Manager (rclone.conf content)
-   - Add `youtube-oauth-credentials` secret to Secret Manager (JSON with OAuth tokens)
-   - Pass `--organised_dir_rclone_root` and `--enable_youtube_upload` to remote CLI
-
-4. **Remaining work:**
-   - Phase 2: YouTube URL input (requires yt-dlp in container)
-   - Phase 3: Batch processing, existing instrumental support
-
-5. **Run tests before committing:**
-   ```bash
-   pytest tests/ backend/tests/ -v
-   ```
-
-6. **Bump version in pyproject.toml** on each commit (workspace rule)
+1. **Read this document thoroughly** - understand the distribution features
+2. **Set up Secret Manager secrets** for testing
+3. **Complete the remaining distribution features:**
+   - Google Drive public share upload
+   - Gmail draft creation
+4. **Test end-to-end** with real credentials
+5. **Bump version in pyproject.toml** on each commit
