@@ -1,0 +1,214 @@
+name: Test and Publish
+
+on: [push, pull_request, workflow_dispatch]
+
+# Add permissions for GitHub Pages deployment
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  test-build-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.13']
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      - name: Install dependencies
+        run: |
+          poetry install --with dev
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      
+      - name: Install spaCy language models
+        run: |
+          poetry run python -m spacy download en_core_web_sm
+      
+      - name: Download NLTK data
+        run: |
+          poetry run python -c "import nltk; nltk.download('cmudict')"
+      
+      # Add Node.js and Yarn setup for frontend build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          
+      - name: Enable Yarn
+        run: corepack enable
+      
+      # Frontend needs to be built before tests can run
+      - name: Build Frontend with version sync
+        run: |
+          chmod +x scripts/build_frontend.sh
+          ./scripts/build_frontend.sh
+          echo "🔍 Verifying web_assets was created:"
+          ls -la lyrics_transcriber/frontend/ | grep -E "(web_assets|dist)" || echo "No web_assets or dist found after build"
+
+      - name: Run unit tests
+        run: |
+          poetry run pytest tests/unit/ -v --cov=lyrics_transcriber --cov-report=xml --cov-report=term-missing --cov-fail-under=60
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+  
+      - name: Run integration tests  
+        run: |
+          poetry run pytest tests/integration/ -v
+
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Setup Pages for Frontend
+        uses: actions/configure-pages@v4
+      
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Upload Frontend artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: lyrics_transcriber/frontend/dist/
+      
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Deploy Frontend to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4 
+
+      - name: Build package
+        run: |
+          echo "🔍 Checking for web_assets before building package..."
+          ls -la lyrics_transcriber/frontend/ | grep -E "(web_assets|dist)" || echo "No web_assets or dist found"
+          if [ ! -d "lyrics_transcriber/frontend/web_assets" ]; then
+            echo "❌ web_assets directory missing - rebuilding frontend"
+            ./scripts/build_frontend.sh
+          fi
+          echo "🔍 Frontend directory contents after ensuring web_assets exists:"
+          ls -la lyrics_transcriber/frontend/ | grep -E "(web_assets|dist)"
+          poetry build
+      
+      - name: Verify frontend assets in package
+        run: |
+          # Extract and inspect the wheel to verify frontend assets are included
+          unzip -l dist/*.whl | grep "frontend/web_assets" || (echo "❌ Frontend assets not found in wheel!" && exit 1)
+          echo "✅ Frontend assets found in wheel"
+      
+      - name: Test package installation
+        run: |
+          pip install dist/*.whl
+          python -m lyrics_transcriber.cli.cli_main --help
+          python -c "from lyrics_transcriber import __version__; print(f'Package version: {__version__}')"
+          
+      - name: Verify frontend assets are accessible after installation
+        run: |
+          python -c "
+          from lyrics_transcriber.frontend import get_frontend_assets_dir
+          import os
+          try:
+              frontend_dir = get_frontend_assets_dir()
+              print(f'✅ Frontend assets found at: {frontend_dir}')
+              files = os.listdir(frontend_dir)
+              print(f'✅ Frontend files: {files}')
+          except Exception as e:
+              print(f'❌ Error: {e}')
+              exit(1)
+          "
+        
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Publish to PyPI
+        run: |
+          echo "📦 Publishing the following files to PyPI:"
+          ls -la dist/
+          echo "🔍 Verifying web_assets are in the wheel:"
+          unzip -l dist/*.whl | grep "web_assets" || echo "❌ No web_assets found!"
+          echo "🚀 Publishing to PyPI..."
+          poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+          poetry publish
+
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Extract version
+        id: extract_version
+        run: |
+          VERSION=$(poetry version --short)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📋 Extracted version: $VERSION"
+
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Create Git Tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          
+          VERSION="v${{ steps.extract_version.outputs.version }}"
+          
+          # Check if tag exists locally
+          if git tag -l | grep -q "^${VERSION}$"; then
+            echo "🏷️  Tag ${VERSION} already exists locally, skipping tag creation"
+          else
+            # Check if tag exists on remote
+            if git ls-remote --tags origin | grep -q "refs/tags/${VERSION}$"; then
+              echo "🏷️  Tag ${VERSION} already exists on remote, skipping tag creation"
+            else
+              echo "🏷️  Creating and pushing tag ${VERSION}"
+              git tag -a "${VERSION}" -m "Release ${VERSION}"
+              git push origin "${VERSION}"
+            fi
+          fi
+
+      - if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "v${{ steps.extract_version.outputs.version }}"
+          name: "Release v${{ steps.extract_version.outputs.version }}"
+          body: |
+            ## Changes in v${{ steps.extract_version.outputs.version }}
+            
+            This release was automatically created from the main branch.
+            
+            ### Installation
+            ```bash
+            pip install python-lyrics-transcriber==${{ steps.extract_version.outputs.version }}
+            ```
+            
+            ### Assets
+            - Python package published to PyPI
+            - Frontend assets included in the package
+            
+            For detailed changes, see the commit history.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+
