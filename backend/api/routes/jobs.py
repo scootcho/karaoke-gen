@@ -23,6 +23,7 @@ from backend.models.requests import (
 )
 from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
+from backend.services.storage_service import StorageService
 from backend.config import get_settings
 
 
@@ -523,6 +524,7 @@ async def download_file(job_id: str, category: str, file_key: str):
     
     try:
         # Download to temp file and stream
+        storage = StorageService()
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
             tmp_path = tmp.name
         
