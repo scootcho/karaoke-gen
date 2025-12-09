@@ -333,9 +333,13 @@ class RemoteKaraokeClient:
         return response.json()
     
     def download_file_via_url(self, url: str, local_path: str) -> bool:
-        """Download file from a signed URL via HTTP."""
+        """Download file from a URL via HTTP."""
         try:
-            response = requests.get(url, stream=True, timeout=300)
+            # Handle relative URLs by prepending service URL
+            if url.startswith('/'):
+                url = f"{self.config.service_url}{url}"
+            
+            response = requests.get(url, stream=True, timeout=600)
             if response.status_code != 200:
                 return False
             

@@ -425,11 +425,10 @@ async def select_instrumental(
 @router.get("/{job_id}/download-urls")
 async def get_download_urls(job_id: str) -> dict:
     """
-    Get signed download URLs for all job output files.
+    Get download URLs for all job output files.
     
-    Returns a dictionary mapping file types to signed URLs that can be
-    used to download the files directly via HTTP without authentication.
-    URLs are valid for 2 hours.
+    Returns a dictionary mapping file types to download URLs.
+    Uses the streaming download endpoint which proxies through the backend.
     """
     job = job_manager.get_job(job_id)
     if not job:
@@ -444,25 +443,17 @@ async def get_download_urls(job_id: str) -> dict:
     file_urls = job.file_urls or {}
     download_urls = {}
     
-    # Generate signed URLs for each category of files
+    # Build download URLs using the streaming endpoint
+    base_url = f"/api/jobs/{job_id}/download"
+    
     for category, files in file_urls.items():
         if isinstance(files, dict):
             download_urls[category] = {}
             for file_key, gcs_path in files.items():
                 if gcs_path:
-                    try:
-                        download_urls[category][file_key] = storage.generate_signed_url(
-                            gcs_path, expiration_minutes=120
-                        )
-                    except Exception as e:
-                        logger.warning(f"Could not generate URL for {gcs_path}: {e}")
+                    download_urls[category][file_key] = f"{base_url}/{category}/{file_key}"
         elif isinstance(files, str) and files:
-            try:
-                download_urls[category] = storage.generate_signed_url(
-                    files, expiration_minutes=120
-                )
-            except Exception as e:
-                logger.warning(f"Could not generate URL for {files}: {e}")
+            download_urls[category] = f"{base_url}/{category}"
     
     return {
         "job_id": job_id,
@@ -470,6 +461,92 @@ async def get_download_urls(job_id: str) -> dict:
         "title": job.title,
         "download_urls": download_urls
     }
+
+
+@router.get("/{job_id}/download/{category}/{file_key}")
+async def download_file(job_id: str, category: str, file_key: str):
+    """
+    Stream download a specific file from a completed job.
+    
+    This endpoint proxies the file from GCS through the backend,
+    so no client-side authentication is required.
+    """
+    from fastapi.responses import StreamingResponse
+    import tempfile
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.COMPLETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not complete (current status: {job.status})"
+        )
+    
+    file_urls = job.file_urls or {}
+    category_files = file_urls.get(category)
+    
+    if not category_files:
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+    
+    if isinstance(category_files, dict):
+        gcs_path = category_files.get(file_key)
+    else:
+        gcs_path = category_files if file_key == category else None
+    
+    if not gcs_path:
+        raise HTTPException(status_code=404, detail=f"File '{file_key}' not found in '{category}'")
+    
+    # Determine content type based on file extension
+    ext = gcs_path.split('.')[-1].lower()
+    content_types = {
+        'mp4': 'video/mp4',
+        'mkv': 'video/x-matroska',
+        'mov': 'video/quicktime',
+        'flac': 'audio/flac',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'ass': 'text/plain',
+        'lrc': 'text/plain',
+        'txt': 'text/plain',
+        'json': 'application/json',
+        'zip': 'application/zip',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+    }
+    content_type = content_types.get(ext, 'application/octet-stream')
+    
+    # Get filename for Content-Disposition
+    filename = gcs_path.split('/')[-1]
+    
+    try:
+        # Download to temp file and stream
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+            tmp_path = tmp.name
+        
+        storage.download_file(gcs_path, tmp_path)
+        
+        def file_iterator():
+            try:
+                with open(tmp_path, 'rb') as f:
+                    while chunk := f.read(8192):
+                        yield chunk
+            finally:
+                import os
+                os.unlink(tmp_path)
+        
+        return StreamingResponse(
+            file_iterator(),
+            media_type=content_type,
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error downloading {gcs_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {e}")
 
 
 @router.post("/{job_id}/cancel")
