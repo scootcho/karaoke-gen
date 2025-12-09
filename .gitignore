@@ -9,8 +9,8 @@
 /lyrics/
 /karaoke/
 tests/outputs
-input
-output/
+/input
+/output/
 
 # Next.js / React Frontend (./frontend)
 node_modules/
