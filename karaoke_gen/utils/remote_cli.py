@@ -679,8 +679,8 @@ class JobMonitor:
             self._last_log_index = result.get('next_index', self._last_log_index)
             
         except Exception as e:
-            # Don't fail if log fetching fails
-            pass
+            # Log the error but don't fail
+            self.logger.debug(f"Error fetching worker logs: {e}")
     
     def monitor(self, job_id: str) -> int:
         """Monitor job progress until completion."""

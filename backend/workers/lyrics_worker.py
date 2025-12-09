@@ -116,20 +116,27 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
-    # Create job logger for remote debugging
+    # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "lyrics")
+    
+    # Log immediately to verify logging is working
+    job_log.info("=== LYRICS WORKER STARTED ===")
+    job_log.info(f"Job ID: {job_id}")
     
     # Set up log capture for LyricsTranscriber and its dependencies
     # This ensures logs from the lyrics_transcriber library are also captured
     log_handler = setup_job_logging(job_id, "lyrics", *LYRICS_WORKER_LOGGERS)
+    job_log.info(f"Log handler attached for {len(LYRICS_WORKER_LOGGERS)} loggers")
     
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
+        job_log.error(f"Job {job_id} not found in Firestore!")
         return False
     
     # Create temporary working directory
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
+    job_log.info(f"Created temp directory: {temp_dir}")
     
     try:
         job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")

@@ -178,19 +178,26 @@ async def process_audio_separation(job_id: str) -> bool:
     storage = StorageService()
     settings = get_settings()
     
-    # Create job logger for remote debugging
+    # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "audio")
+    
+    # Log immediately to verify logging is working
+    job_log.info("=== AUDIO WORKER STARTED ===")
+    job_log.info(f"Job ID: {job_id}")
     
     # Set up log capture for AudioProcessor
     log_handler = setup_job_logging(job_id, "audio", *AUDIO_WORKER_LOGGERS)
+    job_log.info(f"Log handler attached for {len(AUDIO_WORKER_LOGGERS)} loggers")
     
     job = job_manager.get_job(job_id)
     if not job:
         logger.error(f"Job {job_id} not found")
+        job_log.error(f"Job {job_id} not found in Firestore!")
         return False
     
     # Create temporary working directory
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_{job_id}_")
+    job_log.info(f"Created temp directory: {temp_dir}")
     
     try:
         job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
