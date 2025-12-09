@@ -422,6 +422,56 @@ async def select_instrumental(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{job_id}/download-urls")
+async def get_download_urls(job_id: str) -> dict:
+    """
+    Get signed download URLs for all job output files.
+    
+    Returns a dictionary mapping file types to signed URLs that can be
+    used to download the files directly via HTTP without authentication.
+    URLs are valid for 2 hours.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.COMPLETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not complete (current status: {job.status})"
+        )
+    
+    file_urls = job.file_urls or {}
+    download_urls = {}
+    
+    # Generate signed URLs for each category of files
+    for category, files in file_urls.items():
+        if isinstance(files, dict):
+            download_urls[category] = {}
+            for file_key, gcs_path in files.items():
+                if gcs_path:
+                    try:
+                        download_urls[category][file_key] = storage.generate_signed_url(
+                            gcs_path, expiration_minutes=120
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not generate URL for {gcs_path}: {e}")
+        elif isinstance(files, str) and files:
+            try:
+                download_urls[category] = storage.generate_signed_url(
+                    files, expiration_minutes=120
+                )
+            except Exception as e:
+                logger.warning(f"Could not generate URL for {files}: {e}")
+    
+    return {
+        "job_id": job_id,
+        "artist": job.artist,
+        "title": job.title,
+        "download_urls": download_urls
+    }
+
+
 @router.post("/{job_id}/cancel")
 async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
     """

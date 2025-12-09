@@ -321,8 +321,36 @@ class RemoteKaraokeClient:
             raise RuntimeError(f"Error selecting instrumental: {error_detail}")
         return response.json()
     
+    def get_download_urls(self, job_id: str) -> Dict[str, Any]:
+        """Get signed download URLs for all job output files."""
+        response = self._request('GET', f'/api/jobs/{job_id}/download-urls')
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error getting download URLs: {error_detail}")
+        return response.json()
+    
+    def download_file_via_url(self, url: str, local_path: str) -> bool:
+        """Download file from a signed URL via HTTP."""
+        try:
+            response = requests.get(url, stream=True, timeout=300)
+            if response.status_code != 200:
+                return False
+            
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return True
+        except Exception:
+            return False
+    
     def download_file_via_gsutil(self, gcs_path: str, local_path: str) -> bool:
-        """Download file from GCS using gsutil."""
+        """Download file from GCS using gsutil (fallback method)."""
         try:
             bucket_name = os.environ.get('KARAOKE_GEN_BUCKET', 'karaoke-gen-storage-nomadkaraoke')
             gcs_uri = f"gs://{bucket_name}/{gcs_path}"
@@ -560,8 +588,31 @@ class JobMonitor:
         
         self.logger.info(f"Downloading output files to: {output_dir}")
         
+        # Get signed download URLs from the API
+        try:
+            download_data = self.client.get_download_urls(job_id)
+            download_urls = download_data.get('download_urls', {})
+        except Exception as e:
+            self.logger.warning(f"Could not get signed download URLs: {e}")
+            self.logger.warning("Falling back to gsutil (requires gcloud auth)")
+            download_urls = {}
+        
         file_urls = job_data.get('file_urls', {})
         base_name = f"{artist} - {title}"
+        
+        def download_file(category: str, key: str, local_path: Path, filename: str) -> bool:
+            """Helper to download a file using signed URL or gsutil fallback."""
+            # Try signed URL first
+            signed_url = download_urls.get(category, {}).get(key)
+            if signed_url:
+                if self.client.download_file_via_url(signed_url, str(local_path)):
+                    return True
+            
+            # Fall back to gsutil
+            gcs_path = file_urls.get(category, {}).get(key)
+            if gcs_path:
+                return self.client.download_file_via_gsutil(gcs_path, str(local_path))
+            return False
         
         # Download final videos
         finals = file_urls.get('finals', {})
@@ -570,7 +621,6 @@ class JobMonitor:
             for key, blob_path in finals.items():
                 if blob_path:
                     # Use descriptive filename
-                    ext = Path(blob_path).suffix
                     if 'lossless_4k_mp4' in key:
                         filename = f"{base_name} (Final Karaoke Lossless 4k).mp4"
                     elif 'lossless_4k_mkv' in key:
@@ -584,7 +634,7 @@ class JobMonitor:
                     
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
-                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                    if download_file('finals', key, local_path, filename):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
@@ -604,7 +654,7 @@ class JobMonitor:
                     
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
-                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                    if download_file('packages', key, local_path, filename):
                         self.logger.info(f"    OK: {local_path}")
                         
                         # Extract CDG files to match local CLI (individual .cdg and .mp3 at root)
@@ -624,7 +674,7 @@ class JobMonitor:
                     filename = f"{base_name} (Karaoke){ext}"
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
-                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                    if download_file('lyrics', key, local_path, filename):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
@@ -646,7 +696,7 @@ class JobMonitor:
                 if blob_path:
                     local_path = output_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
-                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                    if download_file('screens', key, local_path, filename):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
@@ -659,7 +709,7 @@ class JobMonitor:
                 filename = f"{base_name} (With Vocals).mkv"
                 local_path = output_dir / filename
                 self.logger.info(f"  Downloading {filename}...")
-                if self.client.download_file_via_gsutil(videos['with_vocals'], str(local_path)):
+                if download_file('videos', 'with_vocals', local_path, filename):
                     self.logger.info(f"    OK: {local_path}")
                 else:
                     self.logger.warning(f"    FAILED: {filename}")
@@ -692,7 +742,7 @@ class JobMonitor:
                     filename = stem_name_mappings.get(key, Path(blob_path).name)
                     local_path = stems_dir / filename
                     self.logger.info(f"  Downloading {filename}...")
-                    if self.client.download_file_via_gsutil(blob_path, str(local_path)):
+                    if download_file('stems', key, local_path, filename):
                         self.logger.info(f"    OK: {local_path}")
                     else:
                         self.logger.warning(f"    FAILED: {filename}")
