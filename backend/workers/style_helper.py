@@ -193,6 +193,9 @@ class StyleConfig:
         The uploaded style_params.json may have paths like "/tmp/font.ttf"
         which don't exist on the Cloud Run instance. We need to replace
         these with the actual downloaded file paths.
+        
+        After updating, saves the modified JSON to a new file so that
+        LyricsTranscriber can read the correct paths.
         """
         if not self._style_params:
             return
@@ -211,12 +214,26 @@ class StyleConfig:
             ('cdg', 'outro_background'): 'cdg_outro_background',
         }
         
+        updates_made = False
         for (section, key), asset_key in path_mappings.items():
             if section in self._style_params and key in self._style_params[section]:
                 if asset_key in self._local_assets:
                     old_path = self._style_params[section][key]
                     self._style_params[section][key] = self._local_assets[asset_key]
-                    logger.debug(f"Updated {section}.{key}: {old_path} -> {self._local_assets[asset_key]}")
+                    logger.info(f"Updated {section}.{key}: {old_path} -> {self._local_assets[asset_key]}")
+                    updates_made = True
+        
+        # Save the updated style params to a new file so LyricsTranscriber can read them
+        if updates_made:
+            updated_style_path = os.path.join(self.style_dir, "style_params_updated.json")
+            try:
+                with open(updated_style_path, 'w') as f:
+                    json.dump(self._style_params, f, indent=2)
+                logger.info(f"Saved updated style params to: {updated_style_path}")
+                # Update the local assets to point to the new file
+                self._local_assets['style_params_updated'] = updated_style_path
+            except Exception as e:
+                logger.error(f"Failed to save updated style params: {e}")
     
     def get_intro_format(self) -> Dict[str, Any]:
         """Get title/intro screen format, with custom styles if available."""
@@ -250,7 +267,15 @@ class StyleConfig:
         return None
     
     def get_style_params_path(self) -> Optional[str]:
-        """Get local path to style_params.json if available."""
+        """
+        Get local path to style_params.json with updated asset paths.
+        
+        Returns the updated JSON file (with local paths) if available,
+        otherwise falls back to the original downloaded file.
+        """
+        # Prefer the updated file with corrected local paths
+        if 'style_params_updated' in self._local_assets:
+            return self._local_assets['style_params_updated']
         return self._local_assets.get('style_params')
     
     def get_local_asset_path(self, asset_key: str) -> Optional[str]:

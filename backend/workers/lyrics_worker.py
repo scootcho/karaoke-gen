@@ -39,10 +39,19 @@ logger = logging.getLogger(__name__)
 LYRICS_WORKER_LOGGERS = [
     "karaoke_gen.lyrics_processor",
     "lyrics_transcriber",
+    "lyrics_transcriber.core",
     "lyrics_transcriber.core.controller",
     "lyrics_transcriber.lyrics",
+    "lyrics_transcriber.lyrics.genius",
+    "lyrics_transcriber.lyrics.spotify",
+    "lyrics_transcriber.lyrics.musixmatch",
+    "lyrics_transcriber.lyrics.lrclib",
     "lyrics_transcriber.correction",
+    "lyrics_transcriber.correction.corrector",
+    "lyrics_transcriber.correction.anchor_sequence",
     "lyrics_transcriber.transcribers",
+    "lyrics_transcriber.transcribers.audioshake",
+    "lyrics_transcriber.output",
 ]
 
 
@@ -170,11 +179,24 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         
         if style_params_json_path:
             job_log.info(f"Using custom style params: {style_params_json_path}")
+            # Log the contents of the style params for debugging
+            try:
+                with open(style_params_json_path, 'r') as f:
+                    style_content = json.load(f)
+                job_log.info(f"Style params sections: {list(style_content.keys())}")
+                if 'karaoke' in style_content:
+                    karaoke_style = style_content['karaoke']
+                    job_log.info(f"  karaoke.background_image: {karaoke_style.get('background_image', 'NOT SET')}")
+                    job_log.info(f"  karaoke.font_path: {karaoke_style.get('font_path', 'NOT SET')}")
+            except Exception as e:
+                job_log.warning(f"Could not read style params for logging: {e}")
         else:
             job_log.info("No custom style params found, using defaults")
         
         # Create LyricsProcessor instance (reuses karaoke_gen code)
         job_log.info("Creating LyricsProcessor instance...")
+        job_log.info(f"  temp_dir: {temp_dir}")
+        job_log.info(f"  style_params_json: {style_params_json_path}")
         lyrics_processor = create_lyrics_processor(temp_dir, style_params_json=style_params_json_path)
         
         # Run transcription + correction

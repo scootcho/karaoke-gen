@@ -19,6 +19,12 @@ WORKDIR /app
 # Copy backend code (this is the only thing that changes frequently)
 COPY backend /app/backend
 
+# TEMPORARY: Install lyrics_transcriber from local folder to override PyPI version
+# This allows rapid iteration without publishing to PyPI
+# Remove this once the PyPI version is stable
+COPY lyrics_transcriber_temp /app/lyrics_transcriber_temp
+RUN pip install --no-cache-dir -e /app/lyrics_transcriber_temp
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
