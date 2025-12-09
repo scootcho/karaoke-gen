@@ -3597,18 +3597,18 @@ files = [
 
 [[package]]
 name = "langchain"
-version = "1.1.2"
+version = "1.1.3"
 description = "Building applications with LLMs through composability"
 optional = false
 python-versions = "<4.0.0,>=3.10.0"
 groups = ["main"]
 files = [
-    {file = "langchain-1.1.2-py3-none-any.whl", hash = "sha256:b8154e1ff090093ab5b3d6eee0e51ac91d83b5f42af0258700594a47a3a6b089"},
-    {file = "langchain-1.1.2.tar.gz", hash = "sha256:5d59557cf9939ff6db60c09bbfca80742865c511ddc33b24fc27920b2bb6157b"},
+    {file = "langchain-1.1.3-py3-none-any.whl", hash = "sha256:e5b208ed93e553df4087117a40bd0d450f9095030a843cad35c53ff2814bf731"},
+    {file = "langchain-1.1.3.tar.gz", hash = "sha256:8c641a750a4277d948c3836529f31de496e7ed4ea9f1c77f66f1845cb586987d"},
 ]
 
 [package.dependencies]
-langchain-core = ">=1.1.0,<2.0.0"
+langchain-core = ">=1.1.2,<2.0.0"
 langgraph = ">=1.0.2,<1.1.0"
 pydantic = ">=2.7.4,<3.0.0"
 
@@ -10319,4 +10319,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "7d6498286f465458318c2b87a4904bb01899e1040c9b9295879280a2bae61d59"
+content-hash = "b228b18864a45fdb6c1583d2547e4883797c206790756709cc79f4c0f55e6f50"
