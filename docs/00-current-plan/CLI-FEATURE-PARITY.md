@@ -2,7 +2,7 @@
 
 This document tracks the feature parity between the local `karaoke-gen` CLI and the cloud-hosted `karaoke-gen-remote` CLI.
 
-**Last Updated:** 2025-12-08
+**Last Updated:** 2024-12-09
 
 ## Summary
 
@@ -56,6 +56,7 @@ karaoke-gen-remote \
 | Lyrics transcription | AudioShake API | Same implementation |
 | Auto-correction | Automatic lyrics correction | LyricsTranscriber library |
 | Human review | Browser-based UI | https://lyrics.nomadkaraoke.com |
+| **Preview video with custom styles** | Preview uses custom backgrounds/fonts | ✅ Fixed 2024-12-09 |
 | Instrumental selection | Clean vs with-backing-vocals | CLI prompt |
 | **Style configuration** | Custom backgrounds, fonts, colors | Uploads style JSON + all asset files |
 | **CDG generation** | CDG+MP3 ZIP packages | Uses CDGGenerator with custom styles |
@@ -101,6 +102,8 @@ karaoke-gen-remote \
 
 ### Style Configuration Flow
 
+Style loading is consolidated in a **unified module** (`karaoke_gen/style_loader.py`) used by both local CLI and cloud backend. See [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) for architecture details.
+
 1. **CLI parses** `--style_params_json` and extracts all file references:
    - `intro.background_image`, `intro.font`
    - `karaoke.background_image`, `karaoke.font_path`
@@ -111,8 +114,10 @@ karaoke-gen-remote \
 
 3. **Backend stores** all files in GCS under `uploads/{job_id}/style/`
 
-4. **Workers download** style assets from GCS and use them:
+4. **Workers download** style assets from GCS using `load_styles_from_gcs()`:
    - `screens_worker.py` uses style config for title/end screens
+   - `render_video_worker.py` uses style config for karaoke video with lyrics
+   - `review.py` uses style config for preview video generation
    - `video_worker.py` passes CDG styles to `KaraokeFinalise`
 
 ### Video Worker Architecture
@@ -163,9 +168,13 @@ On job completion, the CLI downloads all outputs with proper naming:
 
 | File | Changes |
 |------|---------|
+| `karaoke_gen/style_loader.py` | **New** - Unified style loading module (defaults, asset mappings, GCS loading) |
+| `karaoke_gen/config.py` | Delegates to style_loader for style operations |
 | `backend/models/job.py` | Added `style_assets`, `brand_prefix`, `discord_webhook_url` fields |
 | `backend/api/routes/file_upload.py` | Accepts style files (JSON, images, fonts) as multipart upload |
-| `backend/workers/style_helper.py` | **New** - Downloads and parses style config from GCS |
+| `backend/api/routes/review.py` | Uses `load_styles_from_gcs()` for preview video custom styles |
+| `backend/workers/style_helper.py` | `StyleConfig` class wraps unified style_loader |
+| `backend/workers/render_video_worker.py` | Uses `load_styles_from_gcs()` for post-review video |
 | `backend/workers/screens_worker.py` | Uses `StyleConfig` for title/end screens |
 | `backend/workers/video_worker.py` | Reuses `KaraokeFinalise.process()` with all params |
 | `karaoke_gen/utils/remote_cli.py` | Parses style JSON, uploads all files, improved downloads |
@@ -182,6 +191,21 @@ On job completion, the CLI downloads all outputs with proper naming:
 | Approval prompts | CLI prompt | N/A (async) |
 
 **Note:** Both CLIs use the hosted review UI at `https://lyrics.nomadkaraoke.com`. Set `LYRICS_REVIEW_UI_URL=local` to use the bundled local frontend instead.
+
+---
+
+## Recent Fixes
+
+### 2024-12-09: Preview Video Custom Styles
+- **Bug**: Preview videos in remote mode showed black background instead of custom background images
+- **Cause**: `review.py` was using minimal styles instead of downloading job's custom styles from GCS
+- **Fix**: Updated to use unified `load_styles_from_gcs()` function
+- **Result**: Preview videos now correctly display custom backgrounds/fonts during lyrics review
+
+### 2024-12-09: Style Loader Consolidation
+- **Problem**: Style loading code was duplicated in 5+ places with slight variations, causing bugs
+- **Fix**: Created `karaoke_gen/style_loader.py` as single source of truth
+- **Details**: See [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md)
 
 ---
 
@@ -204,12 +228,14 @@ On job completion, the CLI downloads all outputs with proper naming:
 
 ## Testing
 
-Tests are in `backend/tests/test_style_upload.py`:
-- `TestRemoteCLIStyleParsing` - Tests CLI style JSON parsing
-- `TestStyleHelper` - Tests backend style config loading
-- `TestJobModelStyleFields` - Tests Job model has required fields
+Tests are in `backend/tests/`:
+- `test_style_upload.py` - Style parsing and loading tests
+  - `TestRemoteCLIStyleParsing` - Tests CLI style JSON parsing
+  - `TestStyleHelper` - Tests backend style config loading
+- `test_routes_review.py` - Review API tests
+  - `TestPreviewStyleLoading` - Tests unified style loader for previews
 
-Run with: `pytest backend/tests/test_style_upload.py -v`
+Run with: `pytest backend/tests/test_style_upload.py backend/tests/test_routes_review.py -v`
 
 ---
 
@@ -218,3 +244,4 @@ Run with: `pytest backend/tests/test_style_upload.py -v`
 - [KARAOKE-GEN-CLI-WORKFLOW.md](../01-reference/KARAOKE-GEN-CLI-WORKFLOW.md) - Full local CLI workflow
 - [CURRENT-STATUS.md](./CURRENT-STATUS.md) - Backend implementation status
 - [WORKER-IMPLEMENTATION-PLAN.md](./WORKER-IMPLEMENTATION-PLAN.md) - Worker architecture
+- [STYLE-LOADER-REFACTOR.md](./STYLE-LOADER-REFACTOR.md) - Style loader consolidation details
