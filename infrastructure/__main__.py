@@ -164,12 +164,12 @@ github_actions_logging = gcp.projects.IAMMember(
 )
 
 # Grant Cloud Build logs viewer - needed for `gcloud builds log` to read build output
-# Cloud Build stores logs in a GCS bucket ({PROJECT_NUMBER}.cloudbuild-logs.googleusercontent.com)
-# The builds.editor role doesn't include storage read access to this bucket
-github_actions_cloudbuild_logs = gcp.storage.BucketIAMMember(
-    "github-actions-cloudbuild-logs",
-    bucket=f"{project.number}.cloudbuild-logs.googleusercontent.com",
-    role="roles/storage.objectViewer",
+# The cloudbuild-logs bucket is Google-managed, so we use project-level logging.viewer
+# which allows reading logs from Cloud Logging where build logs are also stored
+github_actions_logging_viewer = gcp.projects.IAMMember(
+    "github-actions-logging-viewer",
+    project=project_id,
+    role="roles/logging.viewer",
     member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 

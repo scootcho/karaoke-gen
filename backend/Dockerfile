@@ -3,9 +3,9 @@
 # The base image (karaoke-backend-base) contains:
 # - Python 3.11, ffmpeg, sox, system deps
 # - All pip dependencies from requirements.txt
-# - The karaoke_gen package
 #
-# This Dockerfile only copies the backend code, making builds very fast (~30s).
+# This Dockerfile copies the backend code and reinstalls karaoke_gen from local source
+# to ensure any new modules are included without rebuilding the base image.
 # 
 # If the base image doesn't exist yet, build it first:
 #   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
@@ -18,6 +18,12 @@ WORKDIR /app
 
 # Copy backend code (this is the only thing that changes frequently)
 COPY backend /app/backend
+
+# Copy and reinstall karaoke_gen from local source
+# This ensures new modules (like style_loader.py) are included without rebuilding base image
+COPY karaoke_gen /app/karaoke_gen
+COPY pyproject.toml README.md LICENSE /app/
+RUN pip install --no-cache-dir -e .
 
 # TEMPORARY: Install lyrics_transcriber from local folder to override PyPI version
 # This allows rapid iteration without publishing to PyPI
