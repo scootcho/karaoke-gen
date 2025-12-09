@@ -5,9 +5,9 @@
 *.mp3
 
 # Andrew functional adds
-audio/
-lyrics/
-karaoke/
+/audio/
+/lyrics/
+/karaoke/
 tests/outputs
 input
 output/
