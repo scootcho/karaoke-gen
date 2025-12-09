@@ -219,7 +219,15 @@ jobs:
               break
             elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
               echo "❌ Base image build failed with status: $BUILD_STATUS"
-              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke || true
+              echo ""
+              echo "==================== BUILD LOGS ===================="
+              gcloud logging read "resource.type=build AND resource.labels.build_id=$BASE_BUILD_ID" \
+                --project=nomadkaraoke \
+                --format="value(textPayload)" \
+                --limit=200 \
+                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
+              echo "===================================================="
+              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke 2>&1 || true
               exit 1
             fi
             
@@ -242,7 +250,7 @@ jobs:
           echo "Build ID: $BUILD_ID"
           echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
           
-          # Poll for build completion (log streaming requires additional permissions)
+          # Poll for build completion
           echo "Waiting for build to complete..."
           while true; do
             BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
@@ -253,8 +261,18 @@ jobs:
               break
             elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
               echo "❌ Build failed with status: $BUILD_STATUS"
-              # Try to get build logs (may fail due to permissions)
-              gcloud builds log $BUILD_ID --project=nomadkaraoke || true
+              echo ""
+              echo "==================== BUILD LOGS ===================="
+              # Use Cloud Logging to get build logs (works with roles/logging.viewer)
+              gcloud logging read "resource.type=build AND resource.labels.build_id=$BUILD_ID" \
+                --project=nomadkaraoke \
+                --format="value(textPayload)" \
+                --limit=200 \
+                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
+              echo "===================================================="
+              echo ""
+              # Also try the direct logs command as fallback
+              gcloud builds log $BUILD_ID --project=nomadkaraoke 2>&1 || true
               exit 1
             fi
             
