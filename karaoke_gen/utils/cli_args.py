@@ -265,8 +265,13 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         help="Optional: Public share directory for final files. Example: --public_share_dir='/path/to/Tracks-PublicShare'",
     )
     finalise_group.add_argument(
+        "--enable_youtube_upload",
+        action="store_true",
+        help="Optional: Enable YouTube upload. For remote mode, uses server-side credentials. Example: --enable_youtube_upload",
+    )
+    finalise_group.add_argument(
         "--youtube_client_secrets_file",
-        help="Optional: Path to youtube client secrets file. Example: --youtube_client_secrets_file='/path/to/client_secret.json'",
+        help="Optional: Path to youtube client secrets file (local mode only). Example: --youtube_client_secrets_file='/path/to/client_secret.json'",
     )
     finalise_group.add_argument(
         "--youtube_description_file",

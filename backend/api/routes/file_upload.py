@@ -67,6 +67,8 @@ async def upload_and_create_job(
     discord_webhook_url: Optional[str] = Form(None, description="Discord webhook URL for notifications"),
     webhook_url: Optional[str] = Form(None, description="Generic webhook URL"),
     user_email: Optional[str] = Form(None, description="User email for notifications"),
+    # Distribution options
+    organised_dir_rclone_root: Optional[str] = Form(None, description="rclone remote path for Dropbox upload (e.g., dropbox-nomad:Karaoke)"),
 ):
     """
     Upload an audio file and create a karaoke generation job with full style configuration.
@@ -136,6 +138,7 @@ async def upload_and_create_job(
             discord_webhook_url=discord_webhook_url,
             webhook_url=webhook_url,
             user_email=user_email,
+            organised_dir_rclone_root=organised_dir_rclone_root,
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
@@ -214,6 +217,8 @@ async def upload_and_create_job(
             update_data['discord_webhook_url'] = discord_webhook_url
         if youtube_description:
             update_data['youtube_description_template'] = youtube_description
+        if organised_dir_rclone_root:
+            update_data['organised_dir_rclone_root'] = organised_dir_rclone_root
         
         job_manager.update_job(job_id, update_data)
         

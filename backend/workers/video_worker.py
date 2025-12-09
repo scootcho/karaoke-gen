@@ -27,6 +27,8 @@ from pathlib import Path
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.rclone_service import get_rclone_service
+from backend.services.youtube_service import get_youtube_service
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config
 from backend.workers.worker_logging import create_job_logger, setup_job_logging
@@ -81,6 +83,25 @@ async def generate_video(job_id: str) -> bool:
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_video_{job_id}_")
     original_cwd = os.getcwd()
     
+    # Set up rclone config if needed for Dropbox upload
+    rclone_service = None
+    if getattr(job, 'organised_dir_rclone_root', None):
+        rclone_service = get_rclone_service()
+        if rclone_service.setup_rclone_config():
+            job_log.info("Rclone config loaded for Dropbox upload")
+        else:
+            job_log.warning("Rclone config not available - Dropbox upload will be skipped")
+    
+    # Load YouTube credentials if needed
+    youtube_credentials = None
+    if getattr(job, 'enable_youtube_upload', False):
+        youtube_service = get_youtube_service()
+        if youtube_service.is_configured:
+            youtube_credentials = youtube_service.get_credentials_dict()
+            job_log.info("YouTube credentials loaded for video upload")
+        else:
+            job_log.warning("YouTube credentials not available - upload will be skipped")
+    
     try:
         job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
         logger.info(f"Starting video generation for job {job_id}")
@@ -134,6 +155,15 @@ async def generate_video(job_id: str) -> bool:
         
         # Create KaraokeFinalise with ALL the parameters from the job
         # This reuses all existing functionality!
+        
+        # Set up YouTube description file if template is provided
+        youtube_desc_path = None
+        if youtube_credentials and getattr(job, 'youtube_description_template', None):
+            youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
+            with open(youtube_desc_path, 'w') as f:
+                f.write(job.youtube_description_template)
+            job_log.info("YouTube description template written to temp file")
+        
         finalise = KaraokeFinalise(
             logger=logger,
             log_level=logging.INFO,
@@ -150,9 +180,10 @@ async def generate_video(job_id: str) -> bool:
             public_share_dir=None,  # Not used in cloud
             # Notifications
             discord_webhook_url=getattr(job, 'discord_webhook_url', None),
-            # YouTube (not yet implemented for cloud)
-            youtube_client_secrets_file=None,
-            youtube_description_file=None,
+            # YouTube upload (server-side with pre-loaded credentials)
+            youtube_client_secrets_file=None,  # Not used with pre-stored credentials
+            youtube_description_file=youtube_desc_path,
+            user_youtube_credentials=youtube_credentials,  # Pre-loaded from Secret Manager
             rclone_destination=None,
             email_template_file=None,
             # Server-side optimizations
@@ -225,6 +256,10 @@ async def generate_video(job_id: str) -> bool:
                 logging.getLogger(logger_name).removeHandler(log_handler)
             except Exception:
                 pass
+        
+        # Cleanup rclone config file
+        if rclone_service:
+            rclone_service.cleanup()
         
         # Cleanup temporary directory
         if os.path.exists(temp_dir):

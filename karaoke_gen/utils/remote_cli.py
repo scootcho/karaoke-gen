@@ -172,6 +172,8 @@ class RemoteKaraokeClient:
         brand_prefix: Optional[str] = None,
         discord_webhook_url: Optional[str] = None,
         youtube_description: Optional[str] = None,
+        organised_dir_rclone_root: Optional[str] = None,
+        enable_youtube_upload: bool = False,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -253,6 +255,10 @@ class RemoteKaraokeClient:
                 data['discord_webhook_url'] = discord_webhook_url
             if youtube_description:
                 data['youtube_description'] = youtube_description
+            if organised_dir_rclone_root:
+                data['organised_dir_rclone_root'] = organised_dir_rclone_root
+            if enable_youtube_upload:
+                data['enable_youtube_upload'] = str(enable_youtube_upload).lower()
             
             self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
             
@@ -1033,8 +1039,7 @@ def main():
     # These are now supported but server-side handling may be partial
     if args.organised_dir:
         ignored_features.append("--organised_dir (local-only)")
-    if args.organised_dir_rclone_root:
-        ignored_features.append("--organised_dir_rclone_root (local-only)")
+    # organised_dir_rclone_root is now supported in remote mode
     if args.public_share_dir:
         ignored_features.append("--public_share_dir (local-only)")
     if args.youtube_client_secrets_file:
@@ -1109,6 +1114,10 @@ def main():
     logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
     if args.brand_prefix:
         logger.info(f"Brand: {args.brand_prefix}")
+    if getattr(args, 'enable_youtube_upload', False):
+        logger.info(f"YouTube Upload: enabled (server-side)")
+    if args.organised_dir_rclone_root:
+        logger.info(f"Dropbox: {args.organised_dir_rclone_root}")
     if args.discord_webhook_url:
         logger.info(f"Discord: enabled")
     logger.info(f"Service URL: {config.service_url}")
@@ -1137,6 +1146,8 @@ def main():
             brand_prefix=args.brand_prefix,
             discord_webhook_url=args.discord_webhook_url,
             youtube_description=youtube_description,
+            organised_dir_rclone_root=args.organised_dir_rclone_root,
+            enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])

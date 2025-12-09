@@ -73,18 +73,24 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 | Feature | Current State | Needed Work |
 |---------|---------------|-------------|
-| Dropbox upload | Has `organised_dir_rclone_root` param but not wired | Wire through from job model |
 | Public share copy | Has server-side rclone support | Add to job model and API |
 
 ### ❌ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **YouTube upload** | HIGH | Server-side OAuth required |
-| **Email draft** | HIGH | Gmail API integration |
-| **rclone sync** | MEDIUM | For public share distribution |
+| **Email draft** | MEDIUM | Gmail API integration (disabled in server-side mode) |
 | YouTube URL input | LOW | Requires yt-dlp in container |
 | Batch processing | LOW | Queue management needed |
+
+### ✅ Recently Implemented (2024-12-09)
+
+| Feature | Implementation |
+|---------|----------------|
+| **Dropbox upload (rclone)** | `organised_dir_rclone_root` field added to Job model, wired through API and remote CLI. Rclone config loaded from Secret Manager (`rclone-config` secret). |
+| **YouTube upload** | Server-side OAuth credentials loaded from Secret Manager (`youtube-oauth-credentials` secret). `enable_youtube_upload` flag added to CLI and API. |
+| **rclone config service** | New `backend/services/rclone_service.py` loads rclone.conf from Secret Manager |
+| **YouTube credential service** | New `backend/services/youtube_service.py` loads OAuth credentials from Secret Manager |
 
 ---
 
@@ -458,12 +464,24 @@ GENIUS_API_TOKEN=xxx
 ADMIN_TOKEN=xxx
 ```
 
-### Secret Manager Secrets (To Add)
+### Secret Manager Secrets
 
-```
-youtube-oauth-credentials   # For YouTube upload
-gmail-oauth-credentials     # For email draft
-rclone-config              # For Dropbox sync
+| Secret Name | Status | Description |
+|-------------|--------|-------------|
+| `youtube-oauth-credentials` | ✅ Supported | JSON with OAuth tokens for YouTube upload |
+| `rclone-config` | ✅ Supported | rclone.conf content for Dropbox/cloud storage |
+| `gmail-oauth-credentials` | ⏳ Not needed | Email drafts disabled in server-side mode |
+
+**YouTube credentials JSON format:**
+```json
+{
+  "token": "ya29...",
+  "refresh_token": "1//...",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "xxx.apps.googleusercontent.com",
+  "client_secret": "xxx",
+  "scopes": ["https://www.googleapis.com/auth/youtube"]
+}
 ```
 
 ---
@@ -476,6 +494,14 @@ rclone-config              # For Dropbox sync
 ---
 
 ## Recent Changes Log
+
+### 2024-12-09: Distribution Features (Phase 1)
+- **Dropbox Upload (rclone)**: Added `organised_dir_rclone_root` field to Job model
+- **Rclone Service**: Created `backend/services/rclone_service.py` to load config from Secret Manager
+- **YouTube Upload**: Added server-side OAuth credential loading from Secret Manager
+- **YouTube Service**: Created `backend/services/youtube_service.py` for credential management
+- **CLI Updates**: Added `--enable_youtube_upload` flag, updated remote CLI to pass distribution params
+- **Video Worker**: Updated to use new services for rclone config and YouTube credentials
 
 ### 2024-12-09: Output File Parity
 - Enhanced `remote_cli.py` download to match local CLI output structure
@@ -498,19 +524,23 @@ rclone-config              # For Dropbox sync
    - `karaoke_gen/karaoke_finalise/karaoke_finalise.py` - Has all distribution features
    - `backend/models/job.py` - Job data model
 
-2. **Start with Phase 1.2 (Dropbox upload)** - Simplest to implement:
-   - The `organised_dir_rclone_root` parameter already exists in KaraokeFinalise
-   - The video_worker already has the parameter wired (just getting None)
-   - Just need to add field to job model and pass through from API
+2. **Phase 1 (Distribution) is mostly complete!**
+   - ✅ Dropbox upload via rclone
+   - ✅ YouTube upload with server-side credentials
+   - ⚠️ Email drafts disabled in server-side mode (Gmail API not critical for workflow)
 
-3. **Then Phase 1.1 (YouTube upload):**
-   - More complex due to OAuth credential management
-   - KaraokeFinalise already supports `user_youtube_credentials` param
-   - Need Secret Manager integration for credential storage
+3. **To use distribution features:**
+   - Add `rclone-config` secret to Secret Manager (rclone.conf content)
+   - Add `youtube-oauth-credentials` secret to Secret Manager (JSON with OAuth tokens)
+   - Pass `--organised_dir_rclone_root` and `--enable_youtube_upload` to remote CLI
 
-4. **Run tests before committing:**
+4. **Remaining work:**
+   - Phase 2: YouTube URL input (requires yt-dlp in container)
+   - Phase 3: Batch processing, existing instrumental support
+
+5. **Run tests before committing:**
    ```bash
    pytest tests/ backend/tests/ -v
    ```
 
-5. **Bump version in pyproject.toml** on each commit (workspace rule)
+6. **Bump version in pyproject.toml** on each commit (workspace rule)
