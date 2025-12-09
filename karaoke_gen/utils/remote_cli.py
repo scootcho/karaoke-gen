@@ -362,7 +362,7 @@ class RemoteKaraokeClient:
     
     def get_review_data(self, job_id: str) -> Dict[str, Any]:
         """Get the current review/correction data for a job."""
-        response = self._request('GET', f'/api/review/{job_id}/data')
+        response = self._request('GET', f'/api/review/{job_id}/correction-data')
         if response.status_code != 200:
             try:
                 error_detail = response.json()
@@ -454,10 +454,14 @@ class JobMonitor:
                     return
                 else:
                     self.logger.error(f"Failed to auto-complete review: {result}")
+                    # In non-interactive mode, raise exception instead of falling back to manual
+                    raise RuntimeError(f"Failed to auto-complete review: {result}")
             except Exception as e:
                 self.logger.error(f"Error auto-completing review: {e}")
-                self.logger.info("Falling back to manual review...")
+                # In non-interactive mode, we can't fall back to manual - raise the error
+                raise RuntimeError(f"Non-interactive review failed: {e}")
         
+        # Interactive mode - open browser and wait
         self.logger.info("The transcription is ready for review.")
         self.logger.info("Please review and correct the lyrics in the browser.")
         
