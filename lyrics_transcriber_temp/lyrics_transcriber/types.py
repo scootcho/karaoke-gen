@@ -149,9 +149,9 @@ class WordCorrection:
 
     original_word: str
     corrected_word: str  # Empty string indicates word should be deleted
-    original_position: int
     source: str  # e.g., "spotify", "genius"
     reason: str  # e.g., "matched_in_3_sources", "high_confidence_match"
+    original_position: int = 0  # Default to 0 for backwards compatibility with frontend
     segment_index: int = 0  # Default to 0 since it's often not needed
     confidence: Optional[float] = None
     alternatives: Dict[str, int] = field(default_factory=dict)  # Other possible corrections and their occurrence counts
