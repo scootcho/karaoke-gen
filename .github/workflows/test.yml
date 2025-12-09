@@ -159,6 +159,73 @@ jobs:
         with:
           version: 'latest'
       
+      - name: Check if base image needs rebuild
+        id: check-base
+        run: |
+          echo "🔍 Checking if base image needs rebuild..."
+          
+          # Calculate current poetry.lock hash
+          CURRENT_HASH=$(sha256sum poetry.lock | cut -d' ' -f1)
+          echo "Current poetry.lock hash: $CURRENT_HASH"
+          
+          # Try to get the hash from the existing base image
+          # First, authenticate to Artifact Registry
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          
+          # Try to pull the base image and get its label
+          BASE_IMAGE="us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest"
+          EXISTING_HASH=""
+          
+          if docker pull $BASE_IMAGE 2>/dev/null; then
+            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
+            echo "Existing base image hash: $EXISTING_HASH"
+          else
+            echo "⚠️ No existing base image found"
+          fi
+          
+          # Compare hashes
+          if [ "$CURRENT_HASH" != "$EXISTING_HASH" ]; then
+            echo "🔄 Base image needs rebuild (poetry.lock changed)"
+            echo "needs_rebuild=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Base image is up to date"
+            echo "needs_rebuild=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Rebuild base image (if needed)
+        if: steps.check-base.outputs.needs_rebuild == 'true'
+        run: |
+          echo "🏗️ Rebuilding base image with updated dependencies..."
+          
+          # Submit base image build and wait for completion
+          BASE_BUILD_ID=$(gcloud builds submit \
+            --config=cloudbuild-base.yaml \
+            --project=nomadkaraoke \
+            --format='value(id)' \
+            --async \
+            .)
+          
+          echo "Base Build ID: $BASE_BUILD_ID"
+          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BASE_BUILD_ID?project=nomadkaraoke"
+          
+          # Poll for build completion
+          echo "Waiting for base image build to complete..."
+          while true; do
+            BUILD_STATUS=$(gcloud builds describe $BASE_BUILD_ID --project=nomadkaraoke --format='value(status)')
+            echo "Base build status: $BUILD_STATUS"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Base image build completed successfully"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Base image build failed with status: $BUILD_STATUS"
+              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke || true
+              exit 1
+            fi
+            
+            sleep 30
+          done
+      
       - name: Trigger Cloud Build
         run: |
           echo "🚀 Triggering Cloud Build for deployment..."

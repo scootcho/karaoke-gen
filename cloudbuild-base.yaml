@@ -5,23 +5,34 @@
 #   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
 #
 # The base image is used by the main Dockerfile for fast app builds.
+# The poetry.lock hash is stored as a label for change detection.
 
 steps:
+  # Calculate poetry.lock hash for change detection
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        POETRY_LOCK_HASH=$$(sha256sum poetry.lock | cut -d' ' -f1)
+        echo "Poetry.lock hash: $$POETRY_LOCK_HASH"
+        echo "$$POETRY_LOCK_HASH" > /workspace/POETRY_LOCK_HASH
+
   # Build base image with all dependencies
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
     args:
-      - 'build'
-      - '--build-arg'
-      - 'BUILD_DATE=$BUILD_ID'
-      - '--build-arg'
-      - 'BUILD_ID=$BUILD_ID'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:latest'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:$BUILD_ID'
-      - '-f'
-      - 'backend/Dockerfile.base'
-      - '.'
+      - '-c'
+      - |
+        POETRY_LOCK_HASH=$$(cat /workspace/POETRY_LOCK_HASH)
+        docker build \
+          --build-arg BUILD_DATE=$BUILD_ID \
+          --build-arg BUILD_ID=$BUILD_ID \
+          --label "poetry.lock.hash=$$POETRY_LOCK_HASH" \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:latest \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:$BUILD_ID \
+          -f backend/Dockerfile.base \
+          .
 
   # Push base image
   - name: 'gcr.io/cloud-builders/docker'
