@@ -12,6 +12,7 @@ from backend.models.job import JobCreate, JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
+from backend.services.credential_manager import get_credential_manager, CredentialStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
@@ -127,6 +128,37 @@ async def upload_and_create_job(
                     status_code=400,
                     detail=f"Invalid font file type '{ext}'. Allowed: {', '.join(ALLOWED_FONT_EXTENSIONS)}"
                 )
+        
+        # Validate credentials for requested distribution services
+        # This prevents accepting jobs that will fail later due to missing credentials
+        invalid_services = []
+        credential_manager = get_credential_manager()
+        
+        if enable_youtube_upload:
+            result = credential_manager.check_youtube_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"youtube ({result.message})")
+        
+        if dropbox_path:
+            result = credential_manager.check_dropbox_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"dropbox ({result.message})")
+        
+        if gdrive_folder_id:
+            result = credential_manager.check_gdrive_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"gdrive ({result.message})")
+        
+        if invalid_services:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "credentials_invalid",
+                    "message": f"The following distribution services need re-authorization: {', '.join(invalid_services)}",
+                    "invalid_services": invalid_services,
+                    "auth_url": "/api/auth/status"
+                }
+            )
         
         # Create job first to get job_id
         job_create = JobCreate(
