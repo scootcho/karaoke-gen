@@ -236,6 +236,107 @@ class TestRemoteExecutor:
         assert executor is not None
         assert executor.service_url == "https://api.example.com"
 
+    def test_executor_default_poll_interval(self):
+        """Test default poll interval."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        assert executor.poll_interval == 5
+
+    def test_executor_custom_poll_interval(self):
+        """Test custom poll interval."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        
+        executor = RemoteExecutor(
+            service_url="https://api.example.com",
+            poll_interval=10,
+        )
+        assert executor.poll_interval == 10
+
+    def test_session_property_creates_session(self):
+        """Test that session property creates a session."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        import requests
+        
+        executor = RemoteExecutor(
+            service_url="https://api.example.com",
+            auth_token="test-token",
+        )
+        
+        session = executor.session
+        assert session is not None
+        assert isinstance(session, requests.Session)
+
+    def test_session_includes_auth_header(self):
+        """Test that session includes authorization header."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        
+        executor = RemoteExecutor(
+            service_url="https://api.example.com",
+            auth_token="test-token",
+        )
+        
+        session = executor.session
+        assert 'Authorization' in session.headers
+        assert session.headers['Authorization'] == 'Bearer test-token'
+
+    def test_session_cached(self):
+        """Test that session is cached."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        
+        session1 = executor.session
+        session2 = executor.session
+        assert session1 is session2
+
+    @pytest.mark.asyncio
+    async def test_run_stage_returns_skipped(self):
+        """Test that run_stage returns SKIPPED (handled by backend)."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.base import PipelineStage, StageResult, StageStatus
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        class TestStage(PipelineStage):
+            @property
+            def name(self):
+                return "test"
+            
+            async def execute(self, context):
+                return StageResult(status=StageStatus.COMPLETED)
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        result = await executor.run_stage(TestStage(), context)
+        
+        # Remote executor doesn't run stages directly
+        assert result.status == StageStatus.SKIPPED
+
+    def test_get_job_status(self):
+        """Test get_job_status method."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "complete", "progress": 100}
+        
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_response
+        executor._session = mock_session
+        
+        result = executor.get_job_status("test-job-123")
+        
+        assert result["status"] == "complete"
+        assert result["progress"] == 100
+
 
 class TestExecutorModuleExports:
     """Tests for module exports."""

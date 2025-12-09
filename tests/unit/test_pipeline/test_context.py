@@ -3,6 +3,7 @@ Tests for PipelineContext.
 """
 import pytest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 
 class TestPipelineContext:
@@ -274,3 +275,122 @@ class TestPipelineContext:
         assert restored.brand_prefix == original.brand_prefix
         assert restored.enable_cdg == original.enable_cdg
         assert restored.stage_outputs == original.stage_outputs
+
+    def test_cleanup_temp_paths(self):
+        """Test cleanup_temp_paths removes files."""
+        from karaoke_gen.pipeline.context import PipelineContext
+        import tempfile
+        import os
+        
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Create temp files
+        temp_files = []
+        for i in range(2):
+            with tempfile.NamedTemporaryFile(delete=False) as f:
+                f.write(b"test")
+                temp_files.append(f.name)
+                context.add_temp_path(f.name)
+        
+        # Verify files exist
+        for path in temp_files:
+            assert os.path.exists(path)
+        
+        # Cleanup
+        context.cleanup_temp_paths()
+        
+        # Verify files are removed
+        for path in temp_files:
+            assert not os.path.exists(path)
+        
+        # Verify temp_paths is cleared
+        assert context.temp_paths == []
+
+    def test_cleanup_temp_paths_handles_missing_files(self):
+        """Test cleanup_temp_paths handles missing files gracefully."""
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Add non-existent path
+        context.add_temp_path("/nonexistent/path/file.txt")
+        
+        # Should not raise
+        context.cleanup_temp_paths()
+        assert context.temp_paths == []
+
+    def test_log_with_logger(self):
+        """Test log method uses logger."""
+        from karaoke_gen.pipeline.context import PipelineContext
+        import logging
+        
+        mock_logger = MagicMock()
+        
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+            logger=mock_logger,
+            current_stage="test_stage",
+        )
+        
+        context.log("INFO", "Test message")
+        mock_logger.info.assert_called()
+
+    def test_log_with_callback(self):
+        """Test log method calls callback."""
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        log_calls = []
+        
+        def mock_log(stage, level, message):
+            log_calls.append((stage, level, message))
+        
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+            on_log=mock_log,
+            current_stage="test_stage",
+        )
+        
+        context.log("INFO", "Test message")
+        
+        assert len(log_calls) == 1
+        assert log_calls[0][0] == "test_stage"
+        assert log_calls[0][1] == "INFO"
+        assert log_calls[0][2] == "Test message"
+
+    def test_from_dict_with_minimal_data(self):
+        """Test from_dict with minimal data uses defaults."""
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        data = {
+            "job_id": "test",
+            "artist": "Artist",
+            "title": "Title",
+            "input_audio_path": "/audio.flac",
+            "output_dir": "/output",
+        }
+        
+        context = PipelineContext.from_dict(data)
+        
+        assert context.enable_cdg is True  # Default
+        assert context.enable_txt is True  # Default
+        assert context.stage_outputs == {}  # Default
