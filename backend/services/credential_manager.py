@@ -460,12 +460,17 @@ class CredentialManager:
         if response.status_code != 200:
             raise Exception(f"Device auth request failed: {response.text}")
         
+        logger.info(f"Device auth response: {response.text}")
+        
         data = response.json()
+        
+        # Google uses 'verification_uri' but some docs show 'verification_url'
+        verification_url = data.get("verification_uri") or data.get("verification_url")
         
         device_info = DeviceAuthInfo(
             device_code=data["device_code"],
             user_code=data["user_code"],
-            verification_url=data["verification_uri"],
+            verification_url=verification_url,
             expires_in=data["expires_in"],
             interval=data.get("interval", 5),
             started_at=datetime.utcnow()
