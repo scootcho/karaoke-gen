@@ -8,17 +8,25 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.api.routes import health, jobs, internal, file_upload, review, auth
+from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
 
 
 from backend.version import VERSION
 
 
-# Configure logging
+# Configure logging with trace ID support
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper()),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry tracing (must happen before app creation)
+tracing_enabled = setup_tracing(
+    service_name="karaoke-backend",
+    service_version=VERSION,
+    enable_in_dev=False,  # Set to True to enable tracing locally
+)
 
 
 async def validate_credentials_on_startup():
@@ -58,6 +66,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting karaoke generation backend")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"GCS Bucket: {settings.gcs_bucket_name}")
+    logger.info(f"Tracing enabled: {tracing_enabled}")
     
     # Validate OAuth credentials (non-blocking)
     try:
@@ -78,6 +87,10 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan
 )
+
+# Instrument FastAPI with OpenTelemetry (adds automatic spans for all requests)
+if tracing_enabled:
+    instrument_app(app)
 
 # Configure CORS
 app.add_middleware(

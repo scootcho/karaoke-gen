@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.71.6"
+version = "0.71.7"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -51,6 +51,14 @@ google-cloud-storage = ">=2.14.0"
 google-cloud-secret-manager = ">=2.18.0"
 python-dotenv = ">=1.0.0"
 pydub = ">=0.25.1"
+# OpenTelemetry for distributed tracing
+opentelemetry-api = ">=1.20.0"
+opentelemetry-sdk = ">=1.20.0"
+opentelemetry-instrumentation-fastapi = ">=0.41b0"
+opentelemetry-instrumentation-httpx = ">=0.41b0"
+opentelemetry-instrumentation-logging = ">=0.41b0"
+opentelemetry-exporter-gcp-trace = ">=1.6.0"
+opentelemetry-resourcedetector-gcp = ">=1.6.0"
 
 [tool.poetry.group.dev.dependencies]
 black = ">=23"
