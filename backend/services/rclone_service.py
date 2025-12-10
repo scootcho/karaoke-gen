@@ -81,9 +81,12 @@ class RcloneService:
                 logger.debug(f"Cleaned up rclone config file: {self._config_file}")
             except Exception as e:
                 logger.warning(f"Failed to cleanup rclone config: {e}")
-            finally:
-                self._config_file = None
-                self._config_loaded = False
+        
+        # Always reset internal state and environment, even if the file was missing
+        if self._config_file is not None:
+            os.environ.pop("RCLONE_CONFIG", None)
+        self._config_file = None
+        self._config_loaded = False
     
     @property
     def is_configured(self) -> bool:

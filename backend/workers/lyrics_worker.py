@@ -23,6 +23,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 
 from backend.models.job import JobStatus
+from karaoke_gen.utils import sanitize_filename
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.workers.worker_logging import create_job_logger, setup_job_logging
@@ -391,7 +392,10 @@ async def upload_lyrics_results(
     
     # Upload corrections JSON (for review interface)
     # LyricsProcessor saves it as "{artist} - {title} (Lyrics Corrections).json"
-    corrections_filename = f"{job.artist} - {job.title} (Lyrics Corrections).json"
+    # Sanitize artist/title to prevent path injection and match LyricsProcessor's sanitization
+    safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+    safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+    corrections_filename = f"{safe_artist} - {safe_title} (Lyrics Corrections).json"
     corrections_file = os.path.join(lyrics_dir, corrections_filename)
     
     # Also check for generic corrections.json (fallback)
