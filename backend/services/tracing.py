@@ -220,8 +220,13 @@ def get_tracer() -> trace.Tracer:
     return _tracer
 
 
-# Convenience alias
-tracer = property(lambda self: get_tracer())
+# Convenience alias - lazily forwards attribute access to get_tracer()
+class _TracerProxy:
+    """Proxy that lazily returns the global tracer."""
+    def __getattr__(self, name):
+        return getattr(get_tracer(), name)
+
+tracer = _TracerProxy()
 
 
 @contextmanager

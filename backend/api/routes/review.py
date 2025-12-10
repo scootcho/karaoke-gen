@@ -462,10 +462,10 @@ async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
             except Exception as e:
                 logger.error(f"Job {job_id}: Failed to generate preview video: {e}", exc_info=True)
                 span.set_attribute("error", str(e))
-                return {
-                    "status": "error",
-                    "message": f"Failed to generate preview video: {str(e)}"
-                }
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate preview video: {e}"
+                ) from e
 
 
 @router.get("/{job_id}/preview-video/{preview_hash}")

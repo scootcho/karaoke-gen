@@ -61,12 +61,13 @@ class RcloneService:
                 self._config_loaded = True
                 return True
                 
-            except Exception as e:
+            except Exception:
                 # Clean up the temp file on error
-                os.close(fd)
+                # Note: os.fdopen() takes ownership of fd, so it's already closed
+                # We only need to remove the temp file if it exists
                 if os.path.exists(config_path):
                     os.unlink(config_path)
-                raise e
+                raise
                 
         except Exception as e:
             logger.error(f"Failed to setup rclone config: {e}")

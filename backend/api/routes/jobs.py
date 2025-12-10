@@ -605,7 +605,8 @@ async def get_download_urls(job_id: str) -> dict:
                 if gcs_path:
                     download_urls[category][file_key] = f"{base_url}/{category}/{file_key}"
         elif isinstance(files, str) and files:
-            download_urls[category] = f"{base_url}/{category}"
+            # For single-file categories, use the category name as the file_key
+            download_urls[category] = f"{base_url}/{category}/{category}"
     
     return {
         "job_id": job_id,

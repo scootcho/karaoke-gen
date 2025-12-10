@@ -126,17 +126,19 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     log_handler = setup_job_logging(job_id, "lyrics", *LYRICS_WORKER_LOGGERS)
     job_log.info(f"Log handler attached for {len(LYRICS_WORKER_LOGGERS)} loggers")
     
-    job = job_manager.get_job(job_id)
-    if not job:
-        logger.error(f"Job {job_id} not found")
-        job_log.error(f"Job {job_id} not found in Firestore!")
-        return False
-    
-    # Create temporary working directory
-    temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
-    job_log.info(f"Created temp directory: {temp_dir}")
+    # Initialize temp_dir before try block so finally can check it
+    temp_dir = None
     
     try:
+        job = job_manager.get_job(job_id)
+        if not job:
+            logger.error(f"Job {job_id} not found")
+            job_log.error(f"Job {job_id} not found in Firestore!")
+            return False
+        
+        # Create temporary working directory
+        temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
+        job_log.info(f"Created temp directory: {temp_dir}")
         job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")
         job_log.info(f"Log capture enabled for: {', '.join(LYRICS_WORKER_LOGGERS)}")
         logger.info(f"Starting lyrics transcription for job {job_id}")
@@ -267,8 +269,8 @@ async def process_lyrics_transcription(job_id: str) -> bool:
             except Exception:
                 pass
         
-        # Cleanup temporary directory
-        if os.path.exists(temp_dir):
+        # Cleanup temporary directory (only if it was created)
+        if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             logger.debug(f"Cleaned up temp directory: {temp_dir}")
 

@@ -224,12 +224,13 @@ class TestDropboxService:
         result = service.create_shared_link("/test/path")
         assert result == "https://dropbox.com/shared/test"
 
-    def test_create_shared_link_already_exists(self):
-        """Test shared link retrieval when link already exists.
+    def test_sharing_list_shared_links_mock_setup(self):
+        """Test that mock setup for sharing_list_shared_links works correctly.
         
         Note: Properly mocking Dropbox's ApiError is complex because it
         requires specific exception class structure. This test verifies
-        the basic mock setup is correct for the success path.
+        the mock configuration is correct for the success path, which is
+        a prerequisite for more complex error-handling tests.
         """
         from backend.services.dropbox_service import DropboxService
         
@@ -243,12 +244,13 @@ class TestDropboxService:
         mock_links_result.links = [mock_existing_link]
         mock_client.sharing_list_shared_links.return_value = mock_links_result
         
-        # For this test, verify the mock setup is correct
+        # Assign the mock client to the service
         service._client = mock_client
         
-        # Verify the mock returns the expected link
+        # Verify the mock returns the expected link structure
         result = mock_client.sharing_list_shared_links(path="/test/path")
         assert result.links[0].url == "https://dropbox.com/existing/link"
+        mock_client.sharing_list_shared_links.assert_called_once_with(path="/test/path")
 
 
 class TestGoogleDriveService:

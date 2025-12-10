@@ -276,18 +276,29 @@ class JobManager:
         if progress is not None:
             updates['progress'] = progress
         
+        # If we have state_data_updates, merge them with existing state_data
+        merged_state_data = None
         if state_data_updates:
             job = self.get_job(job_id)
             if job:
-                updated_state_data = {**job.state_data, **state_data_updates}
-                updates['state_data'] = updated_state_data
+                merged_state_data = {**job.state_data, **state_data_updates}
         
-        self.update_job_status(
-            job_id=job_id,
-            status=new_status,
-            progress=progress,
-            message=message
-        )
+        # Update job status (includes timeline event), passing state_data if present
+        if merged_state_data is not None:
+            self.update_job_status(
+                job_id=job_id,
+                status=new_status,
+                progress=progress,
+                message=message,
+                state_data=merged_state_data
+            )
+        else:
+            self.update_job_status(
+                job_id=job_id,
+                status=new_status,
+                progress=progress,
+                message=message
+            )
         
         logger.info(f"Job {job_id} transitioned to {new_status}")
         return True
