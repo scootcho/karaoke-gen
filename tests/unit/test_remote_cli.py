@@ -858,6 +858,9 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False  # New attribute for bulk delete mode
+        mock_args.filter_environment = None  # New attribute for filtering
+        mock_args.filter_client_id = None  # New attribute for filtering
         mock_args.args = []  # No positional args
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
