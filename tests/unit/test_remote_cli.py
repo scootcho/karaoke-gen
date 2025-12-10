@@ -780,6 +780,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -806,6 +811,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -832,6 +842,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -891,6 +906,11 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = "job-123"
+        mock_args.bulk_delete = False  # New attribute
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -933,20 +953,25 @@ class TestMain:
         mock_args.list_jobs = True
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False  # New attribute for bulk delete mode
+        mock_args.filter_environment = None  # New attribute for filtering
+        mock_args.filter_client_id = None  # New attribute for filtering
+        mock_args.environment = ""  # Job tracking
+        mock_args.client_id = ""  # Job tracking
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         
         mock_client = MagicMock()
         mock_client.list_jobs.return_value = [
-            {"job_id": "job-1", "status": "complete", "artist": "Artist 1", "title": "Title 1"},
-            {"job_id": "job-2", "status": "processing", "artist": "Artist 2", "title": "Title 2"},
+            {"job_id": "job-1", "status": "complete", "artist": "Artist 1", "title": "Title 1", "request_metadata": {}},
+            {"job_id": "job-2", "status": "processing", "artist": "Artist 2", "title": "Title 2", "request_metadata": {}},
         ]
         mock_client_class.return_value = mock_client
         
         result = main()
         
         assert result == 0
-        mock_client.list_jobs.assert_called_once_with(limit=100)
+        mock_client.list_jobs.assert_called_once_with(environment=None, client_id=None, limit=100)
     
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -969,6 +994,11 @@ class TestMain:
         mock_args.list_jobs = True
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         
@@ -1001,6 +1031,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = "job-123"
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         
@@ -1039,6 +1074,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = "nonexistent"
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         
@@ -1072,6 +1112,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = "job-123"
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.yes = False  # Interactive mode
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -1112,6 +1157,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = "job-123"
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.yes = False  # Interactive mode
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -1150,6 +1200,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = "job-123"
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.yes = True  # Non-interactive mode
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -1191,6 +1246,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.args = ["/path/to/folder"]
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -1229,6 +1289,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.args = ["Artist", "Title"]  # Audio search format (not yet supported in remote)
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -1268,6 +1333,11 @@ class TestMain:
         mock_args.list_jobs = False
         mock_args.cancel = None
         mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
         mock_args.args = ["/path/to/file.mp3"]  # File only, no artist/title
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
