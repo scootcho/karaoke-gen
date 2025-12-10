@@ -257,6 +257,14 @@ class KaraokeFinalise:
 
             self.logger.debug(f"YouTube upload checks passed, enabling YouTube upload")
             self.youtube_upload_enabled = True
+        
+        # Also enable YouTube upload if pre-stored credentials are provided (server-side mode)
+        elif self.user_youtube_credentials is not None and self.youtube_description_file is not None:
+            if not os.path.isfile(self.youtube_description_file):
+                raise Exception(f"YouTube description file does not exist: {self.youtube_description_file}")
+            
+            self.logger.debug(f"Pre-stored YouTube credentials provided, enabling YouTube upload")
+            self.youtube_upload_enabled = True
 
         # Enable discord notifications if webhook URL is provided and is valid URL
         if self.discord_webhook_url is not None:
@@ -1087,6 +1095,11 @@ class KaraokeFinalise:
         if self.skip_notifications:
             self.logger.info(f"Skipping Discord notification as video was previously uploaded to YouTube")
             return
+        
+        # Only post if we have a YouTube URL
+        if not self.youtube_url:
+            self.logger.info(f"Skipping Discord notification - no YouTube URL available")
+            return
 
         if self.dry_run:
             self.logger.info(
@@ -1268,14 +1281,18 @@ class KaraokeFinalise:
                 self.upload_final_mp4_to_youtube_with_title_thumbnail(artist, title, input_files, output_files, replace_existing)
             except Exception as e:
                 self.logger.error(f"Failed to upload video to YouTube: {e}")
-                print("Please manually upload the video to YouTube.")
-                print()
-                self.youtube_video_id = input("Enter the manually uploaded YouTube video ID: ").strip()
-                self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
-                self.logger.info(f"Using manually provided YouTube video ID: {self.youtube_video_id}")
+                if not self.non_interactive:
+                    print("Please manually upload the video to YouTube.")
+                    print()
+                    self.youtube_video_id = input("Enter the manually uploaded YouTube video ID: ").strip()
+                    self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
+                    self.logger.info(f"Using manually provided YouTube video ID: {self.youtube_video_id}")
+                else:
+                    self.logger.error("YouTube upload failed in non-interactive mode, skipping")
 
-            if self.discord_notication_enabled:
-                self.post_discord_notification()
+        # Discord notification - runs independently of YouTube upload
+        if self.discord_notication_enabled:
+            self.post_discord_notification()
 
         # Handle folder organization - different logic for server-side vs local mode
         if self.server_side_mode and self.brand_prefix and self.organised_dir_rclone_root:

@@ -160,6 +160,8 @@ def test_execute_optional_features_youtube_fails(mock_input, mock_discord, mock_
     finaliser_for_process.folder_organisation_enabled = False
     finaliser_for_process.public_share_copy_enabled = False
     finaliser_for_process.public_share_rclone_enabled = False
+    # Enable interactive mode so manual input prompt is shown
+    finaliser_for_process.non_interactive = False
 
     finaliser_for_process.execute_optional_features(ARTIST, TITLE, BASE_NAME, ALL_INPUT_FILES, ALL_OUTPUT_FILES, False)
 
