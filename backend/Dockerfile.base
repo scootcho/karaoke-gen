@@ -3,11 +3,6 @@
 # 
 # Build with: gcloud builds submit --config=cloudbuild-base.yaml
 # Or manually: docker build -f backend/Dockerfile.base -t karaoke-backend-base .
-#
-# IMPORTANT: After changing pyproject.toml dependencies, regenerate requirements-frozen.txt:
-#   poetry lock && poetry install
-#   poetry run pip freeze | grep -v "^-e" | grep -v "^karaoke-gen" | grep -v "^lyrics-transcriber" > backend/requirements-frozen.txt
-#   Then rebuild this base image.
 
 FROM python:3.11-slim
 
@@ -23,11 +18,14 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies ONLY (the slow part - cached in base image)
-# This file is generated from poetry.lock via pip freeze (see comment at top of file)
-COPY backend/requirements-frozen.txt /app/backend/requirements-frozen.txt
+# Copy dependency files and source code needed for pip install
+COPY pyproject.toml README.md LICENSE /app/
+COPY karaoke_gen /app/karaoke_gen
+COPY lyrics_transcriber_temp /app/lyrics_transcriber_temp
+
+# Install all Python dependencies (the slow part - cached in base image)
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r backend/requirements-frozen.txt
+    pip install --no-cache-dir -e .
 
 # Label with build info
 ARG BUILD_DATE

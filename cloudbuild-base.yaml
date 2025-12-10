@@ -4,10 +4,6 @@
 # Run this manually when poetry.lock changes:
 #   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
 #
-# IMPORTANT: After changing pyproject.toml dependencies, regenerate requirements-frozen.txt:
-#   poetry lock && poetry install
-#   poetry run pip freeze | grep -v "^-e" | grep -v "^karaoke-gen" | grep -v "^lyrics-transcriber" > backend/requirements-frozen.txt
-#
 # The base image is used by the main Dockerfile for fast app builds.
 # The poetry.lock hash is stored as a label for change detection.
 

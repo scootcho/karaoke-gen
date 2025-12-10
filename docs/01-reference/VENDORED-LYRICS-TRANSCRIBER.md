@@ -122,17 +122,17 @@ git commit -m "Remove vendored lyrics-transcriber, use PyPI version 0.83.0"
 
 ## Docker Build
 
-The Docker build is optimized for fast iteration:
+The Docker build uses a two-stage approach:
 
 ### Base Image (`Dockerfile.base`)
 - Contains system deps (ffmpeg, sox) and ALL Python dependencies
-- **No application code** - just dependencies from `requirements-frozen.txt`
-- Rebuilt only when `poetry.lock` changes
+- Installs from `pyproject.toml` via `pip install -e .`
+- Rebuilt only when `poetry.lock` changes (CI detects this automatically)
 
 ### App Image (`Dockerfile`)  
 - Built on top of base image
-- Copies application code (`karaoke_gen/`, `lyrics_transcriber_temp/`, `backend/`)
-- Runs `pip install -e .` (fast - deps already installed)
+- Copies fresh application code (`karaoke_gen/`, `lyrics_transcriber_temp/`, `backend/`)
+- Runs `pip install -e .` (fast - deps already installed in base)
 - **Build time: ~1-2 minutes**
 
 ### Updating Dependencies
@@ -140,17 +140,14 @@ The Docker build is optimized for fast iteration:
 When you change `pyproject.toml` dependencies:
 
 ```bash
-# 1. Update lock file and install
+# 1. Update lock file and install locally
 poetry lock && poetry install
 
-# 2. Regenerate frozen requirements
-poetry run pip freeze | grep -v "^-e" | grep -v "^karaoke-gen" | grep -v "^lyrics-transcriber" > backend/requirements-frozen.txt
-
-# 3. Rebuild base image
+# 2. Rebuild base image (CI does this automatically when poetry.lock changes)
 gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
 ```
 
-When un-vendoring, remove the `COPY lyrics_transcriber_temp` line from `backend/Dockerfile`.
+When un-vendoring, remove the `COPY lyrics_transcriber_temp` line from both Dockerfiles.
 
 ## Potential Conflicts
 

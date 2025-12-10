@@ -17,16 +17,19 @@ jobs:
         with:
           submodules: false
       
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       
       - name: Install dependencies
-        run: |
-          pip install -r backend/requirements-frozen.txt
-          pip install --no-deps -e .
+        run: poetry install
       
       - name: Run unit tests
         env:
@@ -35,7 +38,7 @@ jobs:
           FIRESTORE_COLLECTION: jobs
           ENVIRONMENT: test
         run: |
-          PYTHONPATH=$GITHUB_WORKSPACE:$PYTHONPATH pytest \
+          poetry run pytest \
             backend/tests/test_models.py \
             backend/tests/test_job_manager.py \
             backend/tests/test_file_upload.py \
@@ -59,11 +62,16 @@ jobs:
         with:
           submodules: false
       
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       
       - name: Set up Java 21 (required by Firestore emulator)
         uses: actions/setup-java@v4
@@ -81,9 +89,7 @@ jobs:
           gcloud components install beta cloud-firestore-emulator --quiet
       
       - name: Install dependencies
-        run: |
-          pip install -r backend/requirements-frozen.txt
-          pip install --no-deps -e .
+        run: poetry install
       
       - name: Start Docker for GCS emulator
         run: |
@@ -112,22 +118,25 @@ jobs:
         with:
           submodules: false
       
-      - name: Set up Python 3.12
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
       
       - name: Install dependencies
-        run: |
-          pip install -r backend/requirements-frozen.txt
-          pip install --no-deps -e .
-          pip install flake8 black isort
+        run: poetry install
       
       - name: Run validation (syntax check only)
         run: |
           # Skip full validation as it requires GCP credentials
           # Just check Python syntax and imports
-          python -m py_compile backend/main.py backend/config.py
+          poetry run python -m py_compile backend/main.py backend/config.py
           echo "✅ Basic syntax validation passed"
   
   deploy:

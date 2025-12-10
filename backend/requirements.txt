@@ -1,5 +1,5 @@
 # DEPRECATED: This file is no longer used for Docker builds or CI.
-# Use requirements-frozen.txt instead, which is generated from poetry.lock.
+# Docker and CI both use poetry/pyproject.toml directly.
 # This file is kept for reference only.
 
 fastapi>=0.104.0,<1.0.0
