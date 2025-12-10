@@ -267,16 +267,16 @@ async def upload_and_create_job(
         
         if brand_prefix:
             update_data['brand_prefix'] = brand_prefix
-        if discord_webhook_url:
-            update_data['discord_webhook_url'] = discord_webhook_url
+        if effective_discord_webhook_url:
+            update_data['discord_webhook_url'] = effective_discord_webhook_url
         if youtube_description:
             update_data['youtube_description_template'] = youtube_description
         
-        # Native API distribution (preferred for remote CLI)
-        if dropbox_path:
-            update_data['dropbox_path'] = dropbox_path
-        if gdrive_folder_id:
-            update_data['gdrive_folder_id'] = gdrive_folder_id
+        # Native API distribution (use effective values which include defaults)
+        if effective_dropbox_path:
+            update_data['dropbox_path'] = effective_dropbox_path
+        if effective_gdrive_folder_id:
+            update_data['gdrive_folder_id'] = effective_gdrive_folder_id
         
         # Legacy rclone distribution (deprecated)
         if organised_dir_rclone_root:
