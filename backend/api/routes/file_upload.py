@@ -4,7 +4,7 @@ File upload route for local file submission with style configuration support.
 import asyncio
 import json
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -23,6 +23,56 @@ router = APIRouter(tags=["jobs"])
 job_manager = JobManager()
 storage_service = StorageService()
 worker_service = get_worker_service()
+
+
+def extract_request_metadata(request: Request, created_from: str = "upload") -> Dict[str, Any]:
+    """
+    Extract metadata from a FastAPI Request for job tracking.
+    
+    Captures:
+    - Client IP address (handles X-Forwarded-For for proxies)
+    - User-Agent header
+    - Environment from X-Environment header (test/production/development)
+    - Client ID from X-Client-ID header
+    - All custom X-* headers
+    - Server version
+    - Creation source (upload/url)
+    
+    Args:
+        request: FastAPI Request object
+        created_from: How the job was created ("upload" or "url")
+        
+    Returns:
+        Dict with metadata fields for storage in job.request_metadata
+    """
+    headers = dict(request.headers)
+    
+    # Extract client IP (check X-Forwarded-For for proxy scenarios)
+    client_ip = headers.get('x-forwarded-for', '').split(',')[0].strip()
+    if not client_ip and request.client:
+        client_ip = request.client.host
+    
+    # Extract standard headers
+    user_agent = headers.get('user-agent', '')
+    environment = headers.get('x-environment', '')  # test, production, development
+    client_id = headers.get('x-client-id', '')  # Customer/user identifier
+    
+    # Collect all X-* custom headers (excluding standard ones we already captured)
+    custom_headers = {}
+    for key, value in headers.items():
+        if key.lower().startswith('x-') and key.lower() not in ('x-forwarded-for', 'x-forwarded-proto', 'x-forwarded-host'):
+            # Normalize header name to original casing if possible
+            custom_headers[key] = value
+    
+    return {
+        'client_ip': client_ip,
+        'user_agent': user_agent,
+        'environment': environment,
+        'client_id': client_id,
+        'server_version': VERSION,
+        'created_from': created_from,
+        'custom_headers': custom_headers,
+    }
 
 
 # File extension validation
@@ -46,6 +96,7 @@ async def _trigger_workers_parallel(job_id: str) -> None:
 
 @router.post("/jobs/upload")
 async def upload_and_create_job(
+    request: Request,
     background_tasks: BackgroundTasks,
     # Required fields
     file: UploadFile = File(..., description="Audio file to process"),

@@ -55,6 +55,8 @@ class JobManager:
             youtube_description=job_create.youtube_description,
             webhook_url=job_create.webhook_url,
             user_email=job_create.user_email,
+            # Request metadata (for tracking and filtering)
+            request_metadata=job_create.request_metadata,
         )
         
         self.firestore.create_job(job)
