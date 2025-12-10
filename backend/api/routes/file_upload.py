@@ -6,7 +6,7 @@ import json
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from backend.models.job import JobCreate, JobStatus
 from backend.services.job_manager import JobManager
@@ -14,6 +14,7 @@ from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
 from backend.services.credential_manager import get_credential_manager, CredentialStatus
 from backend.config import get_settings
+from backend.version import VERSION
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
@@ -311,12 +312,48 @@ async def upload_and_create_job(
         # (FastAPI's BackgroundTasks runs async tasks sequentially)
         background_tasks.add_task(_trigger_workers_parallel, job_id)
         
+        # Build distribution services info for response
+        distribution_services: Dict[str, Any] = {}
+        
+        if effective_dropbox_path:
+            dropbox_result = credential_manager.check_dropbox_credentials()
+            distribution_services["dropbox"] = {
+                "enabled": True,
+                "path": effective_dropbox_path,
+                "credentials_valid": dropbox_result.status == CredentialStatus.VALID,
+                "using_default": dropbox_path is None,
+            }
+        
+        if effective_gdrive_folder_id:
+            gdrive_result = credential_manager.check_gdrive_credentials()
+            distribution_services["gdrive"] = {
+                "enabled": True,
+                "folder_id": effective_gdrive_folder_id,
+                "credentials_valid": gdrive_result.status == CredentialStatus.VALID,
+                "using_default": gdrive_folder_id is None,
+            }
+        
+        if enable_youtube_upload:
+            youtube_result = credential_manager.check_youtube_credentials()
+            distribution_services["youtube"] = {
+                "enabled": True,
+                "credentials_valid": youtube_result.status == CredentialStatus.VALID,
+            }
+        
+        if effective_discord_webhook_url:
+            distribution_services["discord"] = {
+                "enabled": True,
+                "using_default": discord_webhook_url is None,
+            }
+        
         return {
             "status": "success",
             "job_id": job_id,
             "message": "Files uploaded successfully. Processing started.",
             "filename": file.filename,
-            "style_assets_uploaded": list(style_assets.keys()) if style_assets else []
+            "style_assets_uploaded": list(style_assets.keys()) if style_assets else [],
+            "server_version": VERSION,
+            "distribution_services": distribution_services,
         }
         
     except HTTPException:

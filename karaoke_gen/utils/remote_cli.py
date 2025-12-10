@@ -299,6 +299,28 @@ class RemoteKaraokeClient:
         if result.get('status') != 'success':
             raise RuntimeError(f"Error submitting job: {result}")
         
+        # Log distribution services info if available
+        if 'distribution_services' in result:
+            dist_services = result['distribution_services']
+            self.logger.info("")
+            self.logger.info("Distribution Services:")
+            
+            for service_name, service_info in dist_services.items():
+                if service_info.get('enabled'):
+                    status = "✓" if service_info.get('credentials_valid', True) else "✗"
+                    default_note = " (default)" if service_info.get('using_default') else ""
+                    
+                    if service_name == 'dropbox':
+                        path = service_info.get('path', '')
+                        self.logger.info(f"  {status} Dropbox: {path}{default_note}")
+                    elif service_name == 'gdrive':
+                        folder_id = service_info.get('folder_id', '')
+                        self.logger.info(f"  {status} Google Drive: folder {folder_id}{default_note}")
+                    elif service_name == 'youtube':
+                        self.logger.info(f"  {status} YouTube: enabled")
+                    elif service_name == 'discord':
+                        self.logger.info(f"  {status} Discord: notifications{default_note}")
+        
         return result
     
     def get_job(self, job_id: str) -> Dict[str, Any]:
@@ -1289,8 +1311,10 @@ def main():
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
+        server_version = result.get('server_version', 'unknown')
         
         logger.info(f"Job submitted successfully: {job_id}")
+        logger.info(f"Server version: {server_version}")
         if style_assets:
             logger.info(f"Style assets uploaded: {', '.join(style_assets)}")
         logger.info("")

@@ -10,29 +10,7 @@ from backend.config import settings
 from backend.api.routes import health, jobs, internal, file_upload, review, auth
 
 
-import os
-
-
-def get_version() -> str:
-    """Get package version from environment variable, installed package, or fallback."""
-    # First check environment variable (set during deployment)
-    env_version = os.environ.get("KARAOKE_GEN_VERSION")
-    if env_version:
-        return env_version
-    
-    # Try to get from installed package metadata
-    try:
-        from importlib.metadata import version
-        return version("karaoke-gen")
-    except Exception:
-        pass
-    
-    # Fallback if package not installed (e.g., during development)
-    return "dev"
-
-
-# Package version
-VERSION = get_version()
+from backend.version import VERSION
 
 
 # Configure logging
