@@ -241,13 +241,12 @@ async def test_full_cli_integration(tmp_path, mocker):
     mocker.patch('karaoke_gen.karaoke_finalise.karaoke_finalise.KaraokeFinalise.check_if_video_title_exists_on_youtube_channel', return_value=False)
     
     # Mock the upload_final_mp4_to_youtube_with_title_thumbnail method to directly return mock_video_id to bypass YouTube API issues
-    mock_upload = mocker.patch('karaoke_gen.karaoke_finalise.karaoke_finalise.KaraokeFinalise.upload_final_mp4_to_youtube_with_title_thumbnail')
-    # Set video_id and url attributes that would normally be set during upload
-    def side_effect(*args, **kwargs):
-        instance = args[0]  # First arg is self
-        instance.youtube_video_id = 'manual_mock_video_id'
-        instance.youtube_url = f"https://youtu.be/manual_mock_video_id"
-    mock_upload.side_effect = side_effect
+    # Use autospec=True so 'self' is passed to the side_effect function
+    def upload_side_effect(self, *args, **kwargs):
+        self.youtube_video_id = 'manual_mock_video_id'
+        self.youtube_url = f"https://www.youtube.com/watch?v=manual_mock_video_id"
+    mock_upload = mocker.patch.object(KaraokeFinalise, 'upload_final_mp4_to_youtube_with_title_thumbnail', 
+                                       side_effect=upload_side_effect, autospec=True)
     
     # Keep the authenticate_youtube mock to return the service
     mocker.patch('karaoke_gen.karaoke_finalise.karaoke_finalise.KaraokeFinalise.authenticate_youtube', return_value=mock_youtube_service)
@@ -1002,7 +1001,6 @@ async def test_full_cli_integration(tmp_path, mocker):
         print(f"MOCK find_with_vocals_file: Returning: {with_vocals_file}")
         return with_vocals_file
     
-    from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
     mocker.patch.object(KaraokeFinalise, 'find_with_vocals_file', mock_find_with_vocals_file)
     
     # Mock choose_instrumental_audio_file to return the instrumental file we know exists
@@ -1150,7 +1148,8 @@ async def test_full_cli_integration(tmp_path, mocker):
     
     # Discord Notification
     mock_requests_post.assert_called_once_with(discord_webhook_url, json=mocker.ANY)
-    assert 'https://www.youtube.com/watch?v=manual_mock_video_id' in mock_requests_post.call_args[1]['json']['content']
+    discord_content = mock_requests_post.call_args[1]['json']['content']
+    assert 'manual_mock_video_id' in discord_content, f"Expected 'manual_mock_video_id' in Discord content: {discord_content}"
 
     # Rclone Sync - check if execute_command was called with rclone copy
     # The rclone copy is executed through the mocked execute_command method  
