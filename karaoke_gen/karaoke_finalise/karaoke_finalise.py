@@ -552,10 +552,17 @@ class KaraokeFinalise:
             self.logger.info(f"Uploaded video to YouTube: {self.youtube_url}")
 
             # Uploading the thumbnail
-            if input_files["title_jpg"]:
-                media_thumbnail = MediaFileUpload(input_files["title_jpg"], mimetype="image/jpeg")
-                youtube.thumbnails().set(videoId=self.youtube_video_id, media_body=media_thumbnail).execute()
-                self.logger.info(f"Uploaded thumbnail for video ID {self.youtube_video_id}")
+            if input_files.get("title_jpg") and os.path.isfile(input_files["title_jpg"]):
+                try:
+                    self.logger.info(f"Uploading thumbnail from: {input_files['title_jpg']}")
+                    media_thumbnail = MediaFileUpload(input_files["title_jpg"], mimetype="image/jpeg")
+                    youtube.thumbnails().set(videoId=self.youtube_video_id, media_body=media_thumbnail).execute()
+                    self.logger.info(f"Uploaded thumbnail for video ID {self.youtube_video_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to upload thumbnail: {e}")
+                    self.logger.warning("Video uploaded but thumbnail not set. You may need to set it manually on YouTube.")
+            else:
+                self.logger.warning(f"Thumbnail file not found, skipping thumbnail upload: {input_files.get('title_jpg')}")
 
     def get_next_brand_code(self):
         """

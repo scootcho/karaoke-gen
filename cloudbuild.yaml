@@ -75,7 +75,7 @@ steps:
           --max-instances 10 \
           --min-instances 0 \
           --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET_NAME=karaoke-gen-storage-$PROJECT_ID,FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run,KARAOKE_GEN_VERSION=$$VERSION,DEFAULT_DROPBOX_PATH=/MediaUnsynced/Karaoke/Tracks-Organized,DEFAULT_GDRIVE_FOLDER_ID=1laRKAyxo0v817SstfM5XkpbWiNKNAMSX" \
-          --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest,DEFAULT_DISCORD_WEBHOOK_URL=discord-alert-webhook:latest"
+          --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest,DEFAULT_DISCORD_WEBHOOK_URL=discord-releases-webhook:latest"
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend:latest'
