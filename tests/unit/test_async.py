@@ -83,77 +83,55 @@ class TestAsync:
             assert mock_separate.call_count >= 1
     
     @pytest.mark.asyncio
-    async def test_prep_single_track_with_url(self, basic_karaoke_gen):
-        """Test preparing a single track with a URL."""
-        # Setup
-        basic_karaoke_gen.input_media = "https://example.com/video"
+    async def test_prep_single_track_with_flacfetch(self, basic_karaoke_gen, temp_dir):
+        """Test preparing a single track using flacfetch when no input file provided."""
+        # Setup - enable audio fetcher mode
+        basic_karaoke_gen.input_media = None  # No input file
         basic_karaoke_gen.artist = "Test Artist"
         basic_karaoke_gen.title = "Test Title"
-        basic_karaoke_gen.url = "https://example.com/video" # Explicitly set URL
-        basic_karaoke_gen.extractor = "youtube" # Explicitly set extractor
-        basic_karaoke_gen.media_id = "12345" # Explicitly set media_id
+        basic_karaoke_gen._use_audio_fetcher = True  # Enable flacfetch mode
+        basic_karaoke_gen.auto_download = True  # Auto-select best result
+        basic_karaoke_gen.extractor = "flacfetch"  # Explicitly set extractor
+        
+        # Mock audio fetcher result
+        mock_fetch_result = MagicMock()
+        mock_fetch_result.filepath = os.path.join(temp_dir, "downloaded.flac")
+        mock_fetch_result.provider = "YouTube"
+        mock_fetch_result.duration = 180
+        mock_fetch_result.quality = "FLAC"
         
         # Mock dependencies
-        with patch('karaoke_gen.metadata.extract_info_for_online_media') as mock_extract, \
-             patch('karaoke_gen.metadata.parse_track_metadata') as mock_parse, \
-             patch.object(basic_karaoke_gen.file_handler, 'setup_output_paths', return_value=("output_dir", "Test Artist - Test Title")) as mock_setup_paths, \
-             patch.object(basic_karaoke_gen.file_handler, 'download_video', return_value="downloaded_file.mp4") as mock_download, \
-             patch.object(basic_karaoke_gen.file_handler, 'extract_still_image_from_video', return_value="still_image.png") as mock_extract_image, \
-             patch.object(basic_karaoke_gen.file_handler, 'convert_to_wav', return_value="output.wav") as mock_convert, \
+        with patch.object(basic_karaoke_gen.file_handler, 'setup_output_paths', return_value=(temp_dir, "Test Artist - Test Title")) as mock_setup_paths, \
+             patch.object(basic_karaoke_gen.audio_fetcher, 'search_and_download', return_value=mock_fetch_result) as mock_search_download, \
+             patch.object(basic_karaoke_gen.file_handler, 'download_audio_from_fetcher_result', return_value=os.path.join(temp_dir, "downloaded.flac")) as mock_process_fetch, \
+             patch.object(basic_karaoke_gen.file_handler, 'convert_to_wav', return_value=os.path.join(temp_dir, "converted.wav")) as mock_convert, \
              patch.object(basic_karaoke_gen.file_handler, '_file_exists', return_value=False) as mock_file_exists, \
              patch.object(basic_karaoke_gen.lyrics_processor, 'transcribe_lyrics', AsyncMock(return_value={'lrc_filepath': 'lyrics.lrc'})) as mock_transcribe, \
              patch.object(basic_karaoke_gen.audio_processor, 'process_audio_separation', AsyncMock(return_value={'instrumental': 'inst.flac'})) as mock_separate, \
              patch.object(basic_karaoke_gen.video_generator, 'create_title_video', MagicMock()) as mock_create_title, \
              patch.object(basic_karaoke_gen.video_generator, 'create_end_video', MagicMock()) as mock_create_end:
             
-            # Configure mock asyncio.gather to return mock results
+            # Configure mocks
             mock_separate.return_value = {}
-            
-            # Configure mock asyncio.create_task to return a mock future
-            mock_future = AsyncMock() # Use AsyncMock for tasks
-            mock_download.return_value = "downloaded_file.mp4"
-            mock_extract_image.return_value = "still_image.png"
-            mock_convert.return_value = "output.wav"
-            mock_create_title.return_value = None
-            mock_create_end.return_value = None
-            mock_future.return_value = {
-                "track_output_dir": "output_dir",
-                "artist": "Test Artist",
-                "title": "Test Title",
-                "input_media": "downloaded_file.mp4",
-                "input_still_image": "still_image.png",
-                "input_audio_wav": "output.wav",
-                "separated_audio": {},
-                "extractor": "youtube",
-                "extracted_info": ANY,
-                "lyrics": None,
-                "processed_lyrics": None,
-                "title_image_png": ANY,
-                "title_image_jpg": ANY,
-                "title_video": ANY,
-                "end_image_png": ANY,
-                "end_image_jpg": ANY,
-                "end_video": ANY,
-            }
-            
-            # Configure the mock to return our expected result
-            # No need to mock future.result, the function returns the dict directly
             
             # Call the method
             result = await basic_karaoke_gen.prep_single_track()
             
             # Verify the result structure
             assert result is not None
-            assert result["artist"] == mock_future.return_value["artist"]
-            assert result["title"] == mock_future.return_value["title"]
-            # assert result["input_media"] == "downloaded_file.mp4"
-            print(f"DEBUG: Actual input_media = {result.get('input_media')}") # Debug print
-            assert result["input_still_image"] == "still_image.png"
-            assert result["input_audio_wav"] == "output.wav"
-            assert result["extractor"].lower() == "youtube"
-            if not isinstance(result["separated_audio"], asyncio.futures.Future) and not asyncio.iscoroutine(result["separated_audio"]):
-                 assert result["separated_audio"] == {}
-            # assert result["extractor"].lower() == mock_future.return_value["extractor"].lower() # Case-insensitive compare
+            assert result["artist"] == "Test Artist"
+            assert result["title"] == "Test Title"
+            assert result["input_audio_wav"] == os.path.join(temp_dir, "converted.wav")
+            assert "flacfetch" in result["extractor"]
+            
+            # Verify audio fetcher was called
+            mock_search_download.assert_called_once_with(
+                artist="Test Artist",
+                title="Test Title",
+                output_dir=temp_dir,
+                output_filename="Test Artist - Test Title (flacfetch)",
+                auto_select=True,
+            )
     
     @pytest.mark.asyncio
     async def test_prep_single_track_with_existing_files(self, basic_karaoke_gen, temp_dir):
@@ -557,28 +535,15 @@ class TestAsync:
             assert result[0] == {"track": "result"}
     
     @pytest.mark.asyncio
-    async def test_process_online_media(self, basic_karaoke_gen):
-        """Test processing online media."""
-        # Setup
-        basic_karaoke_gen.input_media = "https://example.com/video"
+    async def test_process_with_artist_title_only(self, basic_karaoke_gen):
+        """Test processing with artist and title only (uses flacfetch)."""
+        # Setup - no input file, just artist and title
+        basic_karaoke_gen.input_media = None  # Will trigger flacfetch
         basic_karaoke_gen.artist = "Test Artist"
         basic_karaoke_gen.title = "Test Title"
         
         # Mock dependencies
-        with patch('karaoke_gen.metadata.ydl') as mock_ydl, \
-             patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
-            
-            # Configure the mock ydl context manager
-            mock_ydl_instance = MagicMock()
-            mock_ydl_instance.extract_info.return_value = {
-                "title": "Test Video",
-                "extractor_key": "Youtube",
-                "id": "12345",
-                "url": "https://example.com/video"
-            }
-            mock_ydl.return_value.__enter__.return_value = mock_ydl_instance
-            
-            basic_karaoke_gen.extracted_info = {}  # Not a playlist
+        with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
             mock_prep_single_track.return_value = {"track": "result"}
             
             result = await basic_karaoke_gen.process()
@@ -586,36 +551,22 @@ class TestAsync:
             # Verify prep_single_track was called
             mock_prep_single_track.assert_called_once()
             
+            # Verify flacfetch mode was enabled
+            assert basic_karaoke_gen._use_audio_fetcher is True
+            assert basic_karaoke_gen.extractor == "flacfetch"
+            
             # Verify the result
             assert len(result) == 1
             assert result[0] == {"track": "result"}
     
     @pytest.mark.asyncio
-    async def test_process_online_playlist(self, basic_karaoke_gen):
-        """Test processing an online playlist."""
-        # Setup
-        basic_karaoke_gen.input_media = "https://example.com/playlist"
+    async def test_process_missing_artist_or_title_raises_error(self, basic_karaoke_gen):
+        """Test that processing without artist OR title raises an error."""
+        # Setup - no input file and missing title
+        basic_karaoke_gen.input_media = None  # Not a file
         basic_karaoke_gen.artist = "Test Artist"
-        basic_karaoke_gen.title = "Test Title"
+        basic_karaoke_gen.title = None  # Missing title
         
-        # Mock dependencies
-        with patch('karaoke_gen.metadata.ydl') as mock_ydl, \
-             patch.object(basic_karaoke_gen, 'process_playlist', new_callable=AsyncMock) as mock_process_playlist:
-            
-            # Configure the mock ydl context manager
-            mock_ydl_instance = MagicMock()
-            mock_ydl_instance.extract_info.return_value = {"playlist_count": 2}
-            mock_ydl.return_value.__enter__.return_value = mock_ydl_instance
-            
-            basic_karaoke_gen.extracted_info = {"playlist_count": 2}  # Is a playlist
-            mock_process_playlist.return_value = [{"track": "result1"}, {"track": "result2"}]
-            
-            result = await basic_karaoke_gen.process()
-            
-            # Verify process_playlist was called
-            mock_process_playlist.assert_called_once()
-            
-            # Verify the result
-            assert len(result) == 2
-            assert result[0] == {"track": "result1"}
-            assert result[1] == {"track": "result2"}
+        # Test that ValueError is raised
+        with pytest.raises(ValueError, match="Either a local file path or both artist and title must be provided"):
+            await basic_karaoke_gen.process()

@@ -1,11 +1,21 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.66.2"
+version = "0.71.16"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "karaoke_gen" }]
+packages = [
+    { include = "karaoke_gen" },
+    { include = "lyrics_transcriber", from = "lyrics_transcriber_temp" }
+]
+include = [
+    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets",
+    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets/**/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/fonts/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/images/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/transitions/*"
+]
 homepage = "https://github.com/nomadkaraoke/karaoke-gen"
 repository = "https://github.com/nomadkaraoke/karaoke-gen"
 documentation = "https://github.com/nomadkaraoke/karaoke-gen/blob/main/README.md"
@@ -15,7 +25,7 @@ python = ">=3.10,<3.14"
 torch = ">=2.7"
 requests = ">=2"
 beautifulsoup4 = ">=4"
-yt-dlp = "*"
+flacfetch = ">=0.3"
 lyricsgenius = ">=3"
 fetch-lyrics-from-genius = ">=0.1"
 pillow = ">=10.1"
@@ -28,7 +38,33 @@ thefuzz = ">=0.22"
 numpy = ">=2"
 audio-separator = { version = ">=0.34.0", extras = ["cpu"] }
 lyrics-converter = ">=0.2.1"
-lyrics-transcriber = ">=0.72"
+# lyrics-transcriber is vendored in lyrics_transcriber_temp/ and included via packages
+# Dependencies from vendored lyrics_transcriber:
+python-slugify = ">=8"
+syrics = ">=0"
+karaoke-lyrics-processor = ">=0.6"
+dropbox = ">=12"
+spacy = ">=3.8.7"
+srsly = ">=2.5.1"
+tqdm = ">=4.67"
+python-levenshtein = ">=0.26"
+transformers = ">=4.47"
+metaphone = ">=0.6"
+nltk = ">=3.9"
+spacy-syllables = ">=3"
+syllables = ">=1"
+fonttools = ">=4.55"
+ollama = ">=0.4.7"
+shortuuid = ">=1.0.13"
+openai = ">=1.63.2"
+langgraph = ">=0.2.0"
+langchain = ">=0.3.0"
+langchain-core = ">=0.3.0"
+langchain-openai = ">=0.2.0"
+langchain-anthropic = ">=0.2.0"
+langchain-ollama = ">=0.2.0"
+langfuse = ">=3.0.0"
+jiwer = ">=3.0.0"
 kbputils = "^0.0.16"
 attrs = ">=24.2.0"
 cattrs = ">=24.1.2"
@@ -38,9 +74,27 @@ psutil = "^7.0.0"
 pyperclip = "*"
 pytest-asyncio = "*"
 ffmpeg-python = "^0.2.0"
-modal = "^1.0.5"
 python-multipart = "^0.0.20"
 matplotlib = ">=3"
+# Backend API dependencies
+fastapi = ">=0.104.0"
+uvicorn = { version = ">=0.24.0", extras = ["standard"] }
+pydantic = ">=2.5.0"
+pydantic-settings = ">=2.1.0"
+httpx = ">=0.25.0"
+google-cloud-firestore = ">=2.14.0"
+google-cloud-storage = ">=2.14.0"
+google-cloud-secret-manager = ">=2.18.0"
+python-dotenv = ">=1.0.0"
+pydub = ">=0.25.1"
+# OpenTelemetry for distributed tracing
+opentelemetry-api = ">=1.20.0"
+opentelemetry-sdk = ">=1.20.0"
+opentelemetry-instrumentation-fastapi = ">=0.41b0"
+opentelemetry-instrumentation-httpx = ">=0.41b0"
+opentelemetry-instrumentation-logging = ">=0.41b0"
+opentelemetry-exporter-gcp-trace = ">=1.6.0"
+opentelemetry-resourcedetector-gcp = ">=1.6.0a0"
 
 [tool.poetry.group.dev.dependencies]
 black = ">=23"
@@ -53,6 +107,7 @@ pytest-asyncio = "*"
 
 [tool.poetry.scripts]
 karaoke-gen = 'karaoke_gen.utils.gen_cli:main'
+karaoke-gen-remote = 'karaoke_gen.utils.remote_cli:main'
 karaoke-bulk = 'karaoke_gen.utils.bulk_cli:main'
 
 [tool.black]
@@ -63,18 +118,18 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration"]
+testpaths = ["tests/unit", "tests/integration", "backend/tests"]
 python_files = ["test_*.py"]
 addopts = [
-    "--cov=karaoke_gen",
-    "--cov-report=term-missing",
-    "--cov-report=html:htmlcov",
     "--asyncio-mode=auto",
+    "-v",
+    "--tb=short",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "asyncio: mark test as async",
+    "emulator: marks tests requiring GCP emulators",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

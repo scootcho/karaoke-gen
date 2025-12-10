@@ -90,6 +90,7 @@ def mock_base_args():
         style_override=None,
         background_video=None,
         background_video_darkness=0,
+        auto_download=False,  # New flacfetch parameter
         enable_cdg=False,
         enable_txt=False,
         brand_prefix=None,
@@ -210,8 +211,8 @@ async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_
     assert mock_kprep_class.call_args.kwargs["title"] == "Test Title"
     assert mock_kprep_class.call_args.kwargs["input_media"] is None
     mock_kprep_instance.process.assert_awaited_once()
-    # Verify warning about YouTube search is shown
-    assert "No input media provided, the top YouTube search result for" in caplog.text
+    # Verify message about flacfetch search is shown
+    assert "flacfetch will search for" in caplog.text
 
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)

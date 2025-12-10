@@ -1,0 +1,343 @@
+"""
+Firestore database operations for job management.
+"""
+import logging
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+from google.cloud import firestore
+from google.cloud.firestore_v1 import FieldFilter
+
+from backend.config import settings
+from backend.models.job import Job, JobStatus, TimelineEvent
+
+
+logger = logging.getLogger(__name__)
+
+
+class FirestoreService:
+    """Service for Firestore database operations."""
+    
+    def __init__(self):
+        """Initialize Firestore client."""
+        self.db = firestore.Client(project=settings.google_cloud_project)
+        self.collection = settings.firestore_collection
+        self.tokens_collection = "auth_tokens"  # Collection for access tokens
+        
+    def create_job(self, job: Job) -> None:
+        """Create a new job in Firestore."""
+        try:
+            doc_ref = self.db.collection(self.collection).document(job.job_id)
+            doc_ref.set(job.model_dump(mode='json'))
+            logger.info(f"Created job {job.job_id} in Firestore")
+        except Exception as e:
+            logger.error(f"Error creating job {job.job_id}: {e}")
+            raise
+    
+    def get_job(self, job_id: str) -> Optional[Job]:
+        """Get a job by ID."""
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            doc = doc_ref.get()
+            
+            logger.debug(f"Fetching job {job_id} from collection {self.collection}")
+            logger.debug(f"Document exists: {doc.exists}")
+            
+            if not doc.exists:
+                return None
+            
+            data = doc.to_dict()
+            logger.debug(f"Document data keys: {list(data.keys()) if data else 'None'}")
+            logger.debug(f"Document data: {data}")
+            
+            return Job(**data)
+        except Exception as e:
+            logger.error(f"Error getting job {job_id}: {e}")
+            raise
+    
+    def update_job(self, job_id: str, updates: Dict[str, Any]) -> None:
+        """Update a job with partial data."""
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            
+            # Add updated_at timestamp
+            updates['updated_at'] = datetime.utcnow()
+            
+            doc_ref.update(updates)
+            logger.info(f"Updated job {job_id} in Firestore")
+        except Exception as e:
+            logger.error(f"Error updating job {job_id}: {e}")
+            raise
+    
+    def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        progress: Optional[int] = None,
+        message: Optional[str] = None,
+        **additional_fields
+    ) -> None:
+        """Update job status and add timeline event."""
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            
+            # Create timeline event
+            timeline_event = TimelineEvent(
+                status=status.value,
+                timestamp=datetime.utcnow().isoformat(),
+                progress=progress,
+                message=message
+            )
+            
+            # Prepare updates
+            updates = {
+                'status': status.value,
+                'updated_at': datetime.utcnow(),
+                'timeline': firestore.ArrayUnion([timeline_event.model_dump(mode='json')])
+            }
+            
+            if progress is not None:
+                updates['progress'] = progress
+            
+            # Add any additional fields
+            updates.update(additional_fields)
+            
+            doc_ref.update(updates)
+            logger.info(f"Updated job {job_id} status to {status.value}")
+        except Exception as e:
+            logger.error(f"Error updating job status {job_id}: {e}")
+            raise
+    
+    def list_jobs(
+        self,
+        status: Optional[JobStatus] = None,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Job]:
+        """
+        List jobs with optional filters.
+        
+        Args:
+            status: Filter by job status
+            environment: Filter by request_metadata.environment (test/production/development)
+            client_id: Filter by request_metadata.client_id
+            created_after: Filter jobs created after this datetime
+            created_before: Filter jobs created before this datetime
+            limit: Maximum number of jobs to return
+            
+        Returns:
+            List of Job objects matching filters, ordered by created_at descending
+        """
+        try:
+            query = self.db.collection(self.collection)
+            
+            if status:
+                query = query.where(filter=FieldFilter('status', '==', status.value))
+            
+            # Filter by request_metadata fields using dot notation
+            if environment:
+                query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
+            
+            if client_id:
+                query = query.where(filter=FieldFilter('request_metadata.client_id', '==', client_id))
+            
+            # Date range filters
+            if created_after:
+                query = query.where(filter=FieldFilter('created_at', '>=', created_after))
+            
+            if created_before:
+                query = query.where(filter=FieldFilter('created_at', '<=', created_before))
+            
+            query = query.order_by('created_at', direction=firestore.Query.DESCENDING).limit(limit)
+            
+            docs = query.stream()
+            jobs = [Job(**doc.to_dict()) for doc in docs]
+            
+            return jobs
+        except Exception as e:
+            logger.error(f"Error listing jobs: {e}")
+            raise
+    
+    def delete_jobs_by_filter(
+        self,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        status: Optional[JobStatus] = None,
+        created_before: Optional[datetime] = None,
+    ) -> int:
+        """
+        Delete multiple jobs matching filter criteria.
+        
+        CAUTION: This is a destructive operation. Use carefully.
+        
+        Args:
+            environment: Delete jobs with this environment (e.g., "test")
+            client_id: Delete jobs from this client
+            status: Delete jobs with this status
+            created_before: Delete jobs created before this datetime
+            
+        Returns:
+            Number of jobs deleted
+        """
+        try:
+            query = self.db.collection(self.collection)
+            
+            if environment:
+                query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
+            
+            if client_id:
+                query = query.where(filter=FieldFilter('request_metadata.client_id', '==', client_id))
+            
+            if status:
+                query = query.where(filter=FieldFilter('status', '==', status.value))
+            
+            if created_before:
+                query = query.where(filter=FieldFilter('created_at', '<=', created_before))
+            
+            # Get matching documents
+            docs = list(query.stream())
+            deleted_count = 0
+            
+            # Delete in batches
+            batch = self.db.batch()
+            batch_count = 0
+            
+            for doc in docs:
+                batch.delete(doc.reference)
+                batch_count += 1
+                deleted_count += 1
+                
+                # Firestore batch limit is 500
+                if batch_count >= 500:
+                    batch.commit()
+                    batch = self.db.batch()
+                    batch_count = 0
+            
+            # Commit any remaining deletes
+            if batch_count > 0:
+                batch.commit()
+            
+            logger.info(f"Deleted {deleted_count} jobs matching filter criteria")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error deleting jobs by filter: {e}")
+            raise
+    
+    def delete_job(self, job_id: str) -> None:
+        """Delete a job from Firestore."""
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            doc_ref.delete()
+            logger.info(f"Deleted job {job_id} from Firestore")
+        except Exception as e:
+            logger.error(f"Error deleting job {job_id}: {e}")
+            raise
+    
+    def append_worker_log(self, job_id: str, log_entry: Dict[str, Any]) -> None:
+        """
+        Atomically append a log entry to worker_logs using ArrayUnion.
+        
+        This avoids the race condition of read-modify-write when multiple
+        workers are logging concurrently.
+        
+        Args:
+            job_id: Job ID
+            log_entry: Log entry dict with timestamp, level, worker, message
+        """
+        try:
+            doc_ref = self.db.collection(self.collection).document(job_id)
+            doc_ref.update({
+                'worker_logs': firestore.ArrayUnion([log_entry]),
+                'updated_at': datetime.utcnow()
+            })
+            # Don't log every append - too spammy
+        except Exception as e:
+            # Log but don't raise - logging shouldn't break workers
+            logger.debug(f"Error appending worker log for job {job_id}: {e}")
+    
+    # ============================================
+    # Token Management Methods
+    # ============================================
+    
+    def create_token(self, token: str, token_data: Dict[str, Any]) -> None:
+        """Create a new access token in Firestore."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc_ref.set(token_data)
+            logger.info(f"Created token in Firestore")
+        except Exception as e:
+            logger.error(f"Error creating token: {e}")
+            raise
+    
+    def get_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get token data by token string."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                return None
+            
+            return doc.to_dict()
+        except Exception as e:
+            logger.error(f"Error getting token: {e}")
+            return None
+    
+    def update_token(self, token: str, updates: Dict[str, Any]) -> None:
+        """Update token data."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            doc_ref.update(updates)
+            logger.info(f"Updated token in Firestore")
+        except Exception as e:
+            logger.error(f"Error updating token: {e}")
+            raise
+    
+    def increment_token_usage(self, token: str, job_id: str) -> None:
+        """Increment token usage count and add job to history."""
+        try:
+            doc_ref = self.db.collection(self.tokens_collection).document(token)
+            
+            # Use Firestore transaction to ensure atomic increment
+            @firestore.transactional
+            def update_in_transaction(transaction, doc_ref):
+                snapshot = doc_ref.get(transaction=transaction)
+                if not snapshot.exists:
+                    raise ValueError("Token not found")
+                
+                data = snapshot.to_dict()
+                current_usage = data.get("usage_count", 0)
+                jobs = data.get("jobs", [])
+                
+                # Increment usage
+                transaction.update(doc_ref, {
+                    "usage_count": current_usage + 1,
+                    "last_used": datetime.utcnow(),
+                    "jobs": firestore.ArrayUnion([{
+                        "job_id": job_id,
+                        "created_at": datetime.utcnow()
+                    }])
+                })
+            
+            transaction = self.db.transaction()
+            update_in_transaction(transaction, doc_ref)
+            
+            logger.info(f"Incremented token usage for job {job_id}")
+        except Exception as e:
+            logger.error(f"Error incrementing token usage: {e}")
+            raise
+    
+    def list_tokens(self) -> List[Dict[str, Any]]:
+        """List all tokens (admin only)."""
+        try:
+            docs = self.db.collection(self.tokens_collection).stream()
+            tokens = [doc.to_dict() for doc in docs]
+            logger.info(f"Retrieved {len(tokens)} tokens from Firestore")
+            return tokens
+        except Exception as e:
+            logger.error(f"Error listing tokens: {e}")
+            return []
+

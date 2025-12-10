@@ -1,0 +1,761 @@
+"""
+Job management routes.
+
+Handles job lifecycle endpoints including:
+- Job creation and submission
+- Status polling
+- Human-in-the-loop interactions (lyrics review, instrumental selection)
+- Job deletion and cancellation
+"""
+import asyncio
+import logging
+import httpx
+from typing import List, Optional, Dict, Any, Tuple
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+
+from backend.models.job import Job, JobCreate, JobResponse, JobStatus
+from backend.models.requests import (
+    URLSubmissionRequest,
+    CorrectionsSubmission,
+    InstrumentalSelection,
+    StartReviewRequest,
+    CancelJobRequest
+)
+from backend.services.job_manager import JobManager
+from backend.services.worker_service import get_worker_service
+from backend.services.storage_service import StorageService
+from backend.config import get_settings
+from backend.api.dependencies import require_admin
+from backend.services.auth_service import UserType
+
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+# Initialize services
+job_manager = JobManager()
+worker_service = get_worker_service()
+settings = get_settings()
+
+
+async def _trigger_workers_parallel(job_id: str) -> None:
+    """
+    Trigger both audio and lyrics workers in parallel.
+    
+    FastAPI's BackgroundTasks runs async tasks sequentially, so we use
+    asyncio.gather to ensure both workers start at the same time.
+    """
+    await asyncio.gather(
+        worker_service.trigger_audio_worker(job_id),
+        worker_service.trigger_lyrics_worker(job_id)
+    )
+
+
+@router.post("", response_model=JobResponse)
+async def create_job(
+    request: URLSubmissionRequest,
+    background_tasks: BackgroundTasks
+) -> JobResponse:
+    """
+    Create a new karaoke generation job from a URL.
+    
+    This triggers the complete workflow:
+    1. Job created in PENDING state
+    2. Audio and lyrics workers triggered in parallel
+    3. Both workers update job state as they progress
+    4. When both complete, job transitions to AWAITING_REVIEW
+    """
+    try:
+        # Create job with all preferences
+        job_create = JobCreate(
+            url=str(request.url),
+            artist=request.artist,
+            title=request.title,
+            enable_cdg=request.enable_cdg,
+            enable_txt=request.enable_txt,
+            enable_youtube_upload=request.enable_youtube_upload,
+            youtube_description=request.youtube_description,
+            webhook_url=request.webhook_url,
+            user_email=request.user_email
+        )
+        job = job_manager.create_job(job_create)
+        
+        # Trigger both workers in parallel using asyncio.gather
+        # (FastAPI's BackgroundTasks runs async tasks sequentially)
+        background_tasks.add_task(_trigger_workers_parallel, job.job_id)
+        
+        logger.info(f"Job {job.job_id} created, workers triggered")
+        
+        return JobResponse(
+            status="success",
+            job_id=job.job_id,
+            message="Job created successfully. Processing started."
+        )
+    except Exception as e:
+        logger.error(f"Error creating job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Worker triggering is now handled by WorkerService
+# See backend/services/worker_service.py
+
+
+@router.get("/{job_id}", response_model=Job)
+async def get_job(job_id: str) -> Job:
+    """Get job status and details."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # If job is complete, include download URLs
+    if job.status == JobStatus.COMPLETE:
+        job.download_urls = job_manager.get_output_urls(job_id)
+    
+    return job
+
+
+@router.get("", response_model=List[Job])
+async def list_jobs(
+    status: Optional[JobStatus] = None,
+    environment: Optional[str] = None,
+    client_id: Optional[str] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
+    limit: int = 100
+) -> List[Job]:
+    """
+    List jobs with optional filters.
+    
+    Args:
+        status: Filter by job status (pending, complete, failed, etc.)
+        environment: Filter by request_metadata.environment (test/production/development)
+        client_id: Filter by request_metadata.client_id (customer identifier)
+        created_after: Filter jobs created after this ISO datetime (e.g., 2024-01-01T00:00:00Z)
+        created_before: Filter jobs created before this ISO datetime
+        limit: Maximum number of jobs to return (default 100)
+        
+    Returns:
+        List of jobs matching filters, ordered by created_at descending
+    """
+    from datetime import datetime
+    
+    try:
+        # Parse datetime strings if provided
+        created_after_dt = None
+        created_before_dt = None
+        
+        if created_after:
+            try:
+                created_after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_after format: {created_after}")
+        
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        jobs = job_manager.list_jobs(
+            status=status,
+            environment=environment,
+            client_id=client_id,
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            limit=limit
+        )
+        return jobs
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing jobs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{job_id}")
+async def delete_job(job_id: str, delete_files: bool = True) -> dict:
+    """Delete a job and optionally its output files."""
+    try:
+        job = job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        job_manager.delete_job(job_id, delete_files=delete_files)
+        
+        return {"status": "success", "message": f"Job {job_id} deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("")
+async def bulk_delete_jobs(
+    environment: Optional[str] = None,
+    client_id: Optional[str] = None,
+    status: Optional[JobStatus] = None,
+    created_before: Optional[str] = None,
+    delete_files: bool = True,
+    confirm: bool = False,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
+) -> dict:
+    """
+    Delete multiple jobs matching filter criteria.
+    
+    CAUTION: This is a destructive operation. Requires confirm=true.
+    
+    Use cases:
+    - Delete all test jobs: ?environment=test&confirm=true
+    - Delete jobs from a specific client: ?client_id=test-runner&confirm=true
+    - Delete old failed jobs: ?status=failed&created_before=2024-01-01T00:00:00Z&confirm=true
+    
+    Args:
+        environment: Delete jobs with this environment (test/production/development)
+        client_id: Delete jobs from this client
+        status: Delete jobs with this status
+        created_before: Delete jobs created before this ISO datetime
+        delete_files: Also delete GCS files (default True)
+        confirm: Must be True to execute deletion (safety check)
+        
+    Returns:
+        Statistics about the deletion
+    """
+    from datetime import datetime
+    
+    # Require at least one filter to prevent accidental deletion of all jobs
+    if not any([environment, client_id, status, created_before]):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one filter (environment, client_id, status, created_before) is required"
+        )
+    
+    # Require explicit confirmation
+    if not confirm:
+        # Return preview of what would be deleted
+        created_before_dt = None
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        jobs = job_manager.list_jobs(
+            status=status,
+            environment=environment,
+            client_id=client_id,
+            created_before=created_before_dt,
+            limit=1000
+        )
+        
+        return {
+            "status": "preview",
+            "message": "Add &confirm=true to execute deletion",
+            "jobs_to_delete": len(jobs),
+            "sample_jobs": [
+                {
+                    "job_id": j.job_id,
+                    "artist": j.artist,
+                    "title": j.title,
+                    "status": j.status,
+                    "environment": j.request_metadata.get('environment'),
+                    "client_id": j.request_metadata.get('client_id'),
+                    "created_at": j.created_at.isoformat() if j.created_at else None
+                }
+                for j in jobs[:10]  # Show first 10 as sample
+            ]
+        }
+    
+    try:
+        # Parse datetime string
+        created_before_dt = None
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        result = job_manager.delete_jobs_by_filter(
+            environment=environment,
+            client_id=client_id,
+            status=status,
+            created_before=created_before_dt,
+            delete_files=delete_files
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Deleted {result['jobs_deleted']} jobs",
+            "jobs_deleted": result['jobs_deleted'],
+            "files_deleted": result.get('files_deleted', 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error bulk deleting jobs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Human-in-the-Loop Interaction Endpoints
+# ============================================================================
+
+@router.get("/{job_id}/review-data")
+async def get_review_data(job_id: str) -> Dict[str, Any]:
+    """
+    Get data needed for lyrics review interface.
+    
+    Returns corrections JSON URL and audio URL.
+    Frontend loads these to render the review UI.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for review (current status: {job.status})"
+        )
+    
+    # Get URLs from file_urls
+    corrections_url = job.file_urls.get('lyrics', {}).get('corrections')
+    audio_url = job.file_urls.get('lyrics', {}).get('audio')
+    
+    if not corrections_url or not audio_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Review data not available"
+        )
+    
+    # Generate signed URLs for direct access
+    from backend.services.storage_service import StorageService
+    storage = StorageService()
+    
+    return {
+        "corrections_url": storage.generate_signed_url(corrections_url, expiration_minutes=120),
+        "audio_url": storage.generate_signed_url(audio_url, expiration_minutes=120),
+        "status": job.status,
+        "artist": job.artist,
+        "title": job.title
+    }
+
+
+@router.post("/{job_id}/start-review")
+async def start_review(job_id: str, request: StartReviewRequest) -> dict:
+    """
+    Mark job as IN_REVIEW (user opened review interface).
+    
+    This helps track that the user is actively working on the review.
+    """
+    success = job_manager.transition_to_state(
+        job_id=job_id,
+        new_status=JobStatus.IN_REVIEW,
+        message="User started reviewing lyrics"
+    )
+    
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot start review")
+    
+    return {"status": "success", "job_status": "in_review"}
+
+
+@router.post("/{job_id}/corrections")
+async def submit_corrections(
+    job_id: str,
+    submission: CorrectionsSubmission,
+    background_tasks: BackgroundTasks
+) -> dict:
+    """
+    Save corrected lyrics during human review.
+    
+    This endpoint saves review progress but does NOT complete the review.
+    Call POST /{job_id}/complete-review to finish and trigger video rendering.
+    
+    Can be called multiple times to save progress.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not in review state (current status: {job.status})"
+        )
+    
+    try:
+        # Store corrected lyrics in state_data
+        job_manager.update_state_data(job_id, 'corrected_lyrics', submission.corrections)
+        if submission.user_notes:
+            job_manager.update_state_data(job_id, 'review_notes', submission.user_notes)
+        
+        # Transition to IN_REVIEW if not already
+        if job.status == JobStatus.AWAITING_REVIEW:
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.IN_REVIEW,
+                message="User is reviewing lyrics"
+            )
+        
+        # Save updated corrections to GCS for the render worker
+        from backend.services.storage_service import StorageService
+        storage = StorageService()
+        
+        corrections_gcs_path = f"jobs/{job_id}/lyrics/corrections_updated.json"
+        storage.upload_json(corrections_gcs_path, submission.corrections)
+        job_manager.update_file_url(job_id, 'lyrics', 'corrections_updated', corrections_gcs_path)
+        
+        logger.info(f"Job {job_id}: Corrections saved (review in progress)")
+        
+        return {
+            "status": "success",
+            "job_status": "in_review",
+            "message": "Corrections saved. Call /complete-review when done."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving corrections for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{job_id}/complete-review")
+async def complete_review(
+    job_id: str,
+    background_tasks: BackgroundTasks
+) -> dict:
+    """
+    Complete the human review and trigger video rendering.
+    
+    This is the FIRST critical human-in-the-loop completion point.
+    After this:
+    1. Job transitions to REVIEW_COMPLETE
+    2. Render video worker is triggered
+    3. Worker uses OutputGenerator to create with_vocals.mkv
+    4. Job transitions to AWAITING_INSTRUMENTAL_SELECTION
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not in review state (current status: {job.status})"
+        )
+    
+    try:
+        # Transition to REVIEW_COMPLETE
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.REVIEW_COMPLETE,
+            progress=70,
+            message="Review complete, rendering video with corrected lyrics"
+        )
+        
+        # Trigger render video worker
+        background_tasks.add_task(worker_service.trigger_render_video_worker, job_id)
+        
+        logger.info(f"Job {job_id}: Review complete, triggering render video worker")
+        
+        return {
+            "status": "success",
+            "job_status": "review_complete",
+            "message": "Review complete. Video rendering started."
+        }
+        
+    except Exception as e:
+        logger.error(f"Error completing review for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{job_id}/instrumental-options")
+async def get_instrumental_options(job_id: str) -> Dict[str, Any]:
+    """
+    Get instrumental audio options for user selection.
+    
+    Returns signed URLs for both options:
+    1. Clean instrumental (no backing vocals)
+    2. Instrumental with backing vocals
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for instrumental selection (current status: {job.status})"
+        )
+    
+    # Get stem URLs
+    stems = job.file_urls.get('stems', {})
+    clean_url = stems.get('instrumental_clean')
+    backing_url = stems.get('instrumental_with_backing')
+    
+    if not clean_url or not backing_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Instrumental options not available"
+        )
+    
+    # Generate signed URLs
+    from backend.services.storage_service import StorageService
+    storage = StorageService()
+    
+    return {
+        "options": [
+            {
+                "id": "clean",
+                "label": "Clean Instrumental (no backing vocals)",
+                "audio_url": storage.generate_signed_url(clean_url, expiration_minutes=120),
+                "duration_seconds": None  # TODO: Extract from audio file
+            },
+            {
+                "id": "with_backing",
+                "label": "Instrumental with Backing Vocals",
+                "audio_url": storage.generate_signed_url(backing_url, expiration_minutes=120),
+                "duration_seconds": None  # TODO: Extract from audio file
+            }
+        ],
+        "status": job.status,
+        "artist": job.artist,
+        "title": job.title
+    }
+
+
+@router.post("/{job_id}/select-instrumental")
+async def select_instrumental(
+    job_id: str,
+    selection: InstrumentalSelection,
+    background_tasks: BackgroundTasks
+) -> dict:
+    """
+    Submit instrumental selection.
+    
+    This is the SECOND critical human-in-the-loop interaction point.
+    After selection, the job proceeds to video generation.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for instrumental selection (current status: {job.status})"
+        )
+    
+    try:
+        # Store selection in state_data
+        job_manager.update_state_data(job_id, 'instrumental_selection', selection.selection)
+        
+        # Transition to INSTRUMENTAL_SELECTED
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.INSTRUMENTAL_SELECTED,
+            progress=65,
+            message=f"Instrumental selected: {selection.selection}"
+        )
+        
+        # Trigger video generation worker
+        background_tasks.add_task(worker_service.trigger_video_worker, job_id)
+        
+        logger.info(f"Job {job_id}: Instrumental selected ({selection.selection}), triggering video generation")
+        
+        return {
+            "status": "success",
+            "job_status": "instrumental_selected",
+            "selection": selection.selection,
+            "message": "Selection accepted, starting video generation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error selecting instrumental for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{job_id}/download-urls")
+async def get_download_urls(job_id: str) -> dict:
+    """
+    Get download URLs for all job output files.
+    
+    Returns a dictionary mapping file types to download URLs.
+    Uses the streaming download endpoint which proxies through the backend.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.COMPLETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not complete (current status: {job.status})"
+        )
+    
+    file_urls = job.file_urls or {}
+    download_urls = {}
+    
+    # Build download URLs using the streaming endpoint
+    base_url = f"/api/jobs/{job_id}/download"
+    
+    for category, files in file_urls.items():
+        if isinstance(files, dict):
+            download_urls[category] = {}
+            for file_key, gcs_path in files.items():
+                if gcs_path:
+                    download_urls[category][file_key] = f"{base_url}/{category}/{file_key}"
+        elif isinstance(files, str) and files:
+            # For single-file categories, use the category name as the file_key
+            download_urls[category] = f"{base_url}/{category}/{category}"
+    
+    return {
+        "job_id": job_id,
+        "artist": job.artist,
+        "title": job.title,
+        "download_urls": download_urls
+    }
+
+
+@router.get("/{job_id}/download/{category}/{file_key}")
+async def download_file(job_id: str, category: str, file_key: str):
+    """
+    Stream download a specific file from a completed job.
+    
+    This endpoint proxies the file from GCS through the backend,
+    so no client-side authentication is required.
+    """
+    from fastapi.responses import StreamingResponse
+    import tempfile
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.COMPLETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not complete (current status: {job.status})"
+        )
+    
+    file_urls = job.file_urls or {}
+    category_files = file_urls.get(category)
+    
+    if not category_files:
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+    
+    if isinstance(category_files, dict):
+        gcs_path = category_files.get(file_key)
+    else:
+        gcs_path = category_files if file_key == category else None
+    
+    if not gcs_path:
+        raise HTTPException(status_code=404, detail=f"File '{file_key}' not found in '{category}'")
+    
+    # Determine content type based on file extension
+    ext = gcs_path.split('.')[-1].lower()
+    content_types = {
+        'mp4': 'video/mp4',
+        'mkv': 'video/x-matroska',
+        'mov': 'video/quicktime',
+        'flac': 'audio/flac',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'ass': 'text/plain',
+        'lrc': 'text/plain',
+        'txt': 'text/plain',
+        'json': 'application/json',
+        'zip': 'application/zip',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+    }
+    content_type = content_types.get(ext, 'application/octet-stream')
+    
+    # Get filename for Content-Disposition
+    filename = gcs_path.split('/')[-1]
+    
+    try:
+        # Download to temp file and stream
+        storage = StorageService()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+            tmp_path = tmp.name
+        
+        storage.download_file(gcs_path, tmp_path)
+        
+        def file_iterator():
+            try:
+                with open(tmp_path, 'rb') as f:
+                    while chunk := f.read(8192):
+                        yield chunk
+            finally:
+                import os
+                os.unlink(tmp_path)
+        
+        return StreamingResponse(
+            file_iterator(),
+            media_type=content_type,
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error downloading {gcs_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error downloading file: {e}")
+
+
+@router.post("/{job_id}/cancel")
+async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
+    """
+    Cancel a job.
+    
+    Jobs can be cancelled at any stage before completion.
+    """
+    success = job_manager.cancel_job(job_id, reason=request.reason)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot cancel job")
+    
+    return {
+        "status": "success",
+        "job_status": "cancelled",
+        "message": "Job cancelled successfully"
+    }
+
+
+@router.get("/{job_id}/logs")
+async def get_worker_logs(
+    job_id: str,
+    since_index: int = 0,
+    worker: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get worker logs for debugging.
+    
+    This endpoint returns worker logs stored in Firestore.
+    Use `since_index` for efficient polling (returns only new logs).
+    
+    Args:
+        job_id: Job ID
+        since_index: Return only logs after this index (for pagination/polling)
+        worker: Filter by worker name (audio, lyrics, screens, video, render)
+    
+    Returns:
+        {
+            "logs": [{"timestamp": "...", "level": "INFO", "worker": "audio", "message": "..."}],
+            "next_index": 42,  # Use this for next poll
+            "total_logs": 42
+        }
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    logs = job_manager.get_worker_logs(job_id, since_index=since_index, worker=worker)
+    total = len(job.worker_logs) if job.worker_logs else 0
+    
+    return {
+        "logs": logs,
+        "next_index": total,
+        "total_logs": total
+    }
+

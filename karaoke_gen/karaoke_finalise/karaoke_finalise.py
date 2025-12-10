@@ -257,6 +257,14 @@ class KaraokeFinalise:
 
             self.logger.debug(f"YouTube upload checks passed, enabling YouTube upload")
             self.youtube_upload_enabled = True
+        
+        # Also enable YouTube upload if pre-stored credentials are provided (server-side mode)
+        elif self.user_youtube_credentials is not None and self.youtube_description_file is not None:
+            if not os.path.isfile(self.youtube_description_file):
+                raise Exception(f"YouTube description file does not exist: {self.youtube_description_file}")
+            
+            self.logger.debug(f"Pre-stored YouTube credentials provided, enabling YouTube upload")
+            self.youtube_upload_enabled = True
 
         # Enable discord notifications if webhook URL is provided and is valid URL
         if self.discord_webhook_url is not None:
@@ -544,10 +552,17 @@ class KaraokeFinalise:
             self.logger.info(f"Uploaded video to YouTube: {self.youtube_url}")
 
             # Uploading the thumbnail
-            if input_files["title_jpg"]:
-                media_thumbnail = MediaFileUpload(input_files["title_jpg"], mimetype="image/jpeg")
-                youtube.thumbnails().set(videoId=self.youtube_video_id, media_body=media_thumbnail).execute()
-                self.logger.info(f"Uploaded thumbnail for video ID {self.youtube_video_id}")
+            if input_files.get("title_jpg") and os.path.isfile(input_files["title_jpg"]):
+                try:
+                    self.logger.info(f"Uploading thumbnail from: {input_files['title_jpg']}")
+                    media_thumbnail = MediaFileUpload(input_files["title_jpg"], mimetype="image/jpeg")
+                    youtube.thumbnails().set(videoId=self.youtube_video_id, media_body=media_thumbnail).execute()
+                    self.logger.info(f"Uploaded thumbnail for video ID {self.youtube_video_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to upload thumbnail: {e}")
+                    self.logger.warning("Video uploaded but thumbnail not set. You may need to set it manually on YouTube.")
+            else:
+                self.logger.warning(f"Thumbnail file not found, skipping thumbnail upload: {input_files.get('title_jpg')}")
 
     def get_next_brand_code(self):
         """
@@ -1087,6 +1102,11 @@ class KaraokeFinalise:
         if self.skip_notifications:
             self.logger.info(f"Skipping Discord notification as video was previously uploaded to YouTube")
             return
+        
+        # Only post if we have a YouTube URL
+        if not self.youtube_url:
+            self.logger.info(f"Skipping Discord notification - no YouTube URL available")
+            return
 
         if self.dry_run:
             self.logger.info(
@@ -1268,14 +1288,18 @@ class KaraokeFinalise:
                 self.upload_final_mp4_to_youtube_with_title_thumbnail(artist, title, input_files, output_files, replace_existing)
             except Exception as e:
                 self.logger.error(f"Failed to upload video to YouTube: {e}")
-                print("Please manually upload the video to YouTube.")
-                print()
-                self.youtube_video_id = input("Enter the manually uploaded YouTube video ID: ").strip()
-                self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
-                self.logger.info(f"Using manually provided YouTube video ID: {self.youtube_video_id}")
+                if not self.non_interactive:
+                    print("Please manually upload the video to YouTube.")
+                    print()
+                    self.youtube_video_id = input("Enter the manually uploaded YouTube video ID: ").strip()
+                    self.youtube_url = f"{self.youtube_url_prefix}{self.youtube_video_id}"
+                    self.logger.info(f"Using manually provided YouTube video ID: {self.youtube_video_id}")
+                else:
+                    self.logger.error("YouTube upload failed in non-interactive mode, skipping")
 
-            if self.discord_notication_enabled:
-                self.post_discord_notification()
+        # Discord notification - runs independently of YouTube upload
+        if self.discord_notication_enabled:
+            self.post_discord_notification()
 
         # Handle folder organization - different logic for server-side vs local mode
         if self.server_side_mode and self.brand_prefix and self.organised_dir_rclone_root:
@@ -1436,89 +1460,87 @@ class KaraokeFinalise:
             return "aac"
 
     def detect_nvenc_support(self):
-        """Detect if NVENC hardware encoding is available with comprehensive checks."""
+        """Detect if NVENC hardware encoding is available."""
         try:
-            self.logger.info("🔍 Detecting NVENC hardware acceleration support...")
+            self.logger.info("🔍 Detecting NVENC hardware acceleration...")
             
             if self.dry_run:
-                self.logger.info("DRY RUN: Assuming NVENC is available")
+                self.logger.info("  DRY RUN: Assuming NVENC is available")
                 return True
             
             import subprocess
             import os
             import shutil
             
-            # Step 1: Check for nvidia-smi (indicates NVIDIA driver presence)
+            # Check for nvidia-smi (indicates NVIDIA driver presence)
             try:
                 nvidia_smi_result = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"], 
                                                   capture_output=True, text=True, timeout=10)
                 if nvidia_smi_result.returncode == 0:
                     gpu_info = nvidia_smi_result.stdout.strip()
-                    self.logger.info(f"✓ NVIDIA GPU detected: {gpu_info}")
+                    self.logger.info(f"  ✓ NVIDIA GPU detected: {gpu_info}")
                 else:
-                    self.logger.warning("⚠️ nvidia-smi not available or no NVIDIA GPU detected")
+                    self.logger.debug(f"nvidia-smi failed: {nvidia_smi_result.stderr}")
+                    self.logger.info("  ✗ NVENC not available (no NVIDIA GPU)")
                     return False
-            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                self.logger.warning("⚠️ nvidia-smi not available or failed")
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError) as e:
+                self.logger.debug(f"nvidia-smi not available: {e}")
+                self.logger.info("  ✗ NVENC not available (no NVIDIA GPU)")
                 return False
             
-            # Step 2: Check for NVENC encoders in FFmpeg
+            # Check for NVENC encoders in FFmpeg
             try:
                 encoders_cmd = f"{self.ffmpeg_base_command} -hide_banner -encoders 2>/dev/null | grep nvenc"
                 encoders_result = subprocess.run(encoders_cmd, shell=True, capture_output=True, text=True, timeout=10)
                 if encoders_result.returncode == 0 and "nvenc" in encoders_result.stdout:
                     nvenc_encoders = [line.strip() for line in encoders_result.stdout.split('\n') if 'nvenc' in line]
-                    self.logger.info("✓ Found NVENC encoders in FFmpeg:")
-                    for encoder in nvenc_encoders:
-                        if encoder:
-                            self.logger.info(f"  {encoder}")
+                    self.logger.debug(f"Found NVENC encoders: {nvenc_encoders}")
                 else:
-                    self.logger.warning("⚠️ No NVENC encoders found in FFmpeg")
+                    self.logger.debug("No NVENC encoders found in FFmpeg")
+                    self.logger.info("  ✗ NVENC not available (no FFmpeg support)")
                     return False
             except Exception as e:
-                self.logger.warning(f"⚠️ Failed to check FFmpeg NVENC encoders: {e}")
+                self.logger.debug(f"Failed to check FFmpeg NVENC encoders: {e}")
+                self.logger.info("  ✗ NVENC not available")
                 return False
             
-            # Step 3: Check for libcuda.so.1 (critical for NVENC)
+            # Check for libcuda.so.1 (critical for NVENC)
             try:
                 libcuda_check = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=10)
                 if libcuda_check.returncode == 0 and "libcuda.so.1" in libcuda_check.stdout:
-                    self.logger.info("✅ libcuda.so.1 found in system libraries")
+                    self.logger.debug("libcuda.so.1 found in system libraries")
                 else:
-                    self.logger.warning("❌ libcuda.so.1 NOT found in system libraries")
-                    self.logger.warning("💡 This usually indicates the CUDA runtime image is needed instead of devel")
+                    self.logger.debug("libcuda.so.1 NOT found - may need nvidia/cuda:*-devel image")
+                    self.logger.info("  ✗ NVENC not available (missing CUDA libraries)")
                     return False
             except Exception as e:
-                self.logger.warning(f"⚠️ Failed to check for libcuda.so.1: {e}")
+                self.logger.debug(f"Failed to check for libcuda.so.1: {e}")
+                self.logger.info("  ✗ NVENC not available")
                 return False
             
-            # Step 4: Test h264_nvenc encoder with simple test
-            self.logger.info("🧪 Testing h264_nvenc encoder...")
-            test_cmd = f"{self.ffmpeg_base_command} -hide_banner -loglevel warning -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -c:v h264_nvenc -f null -"
-            self.logger.debug(f"Running test command: {test_cmd}")
+            # Test h264_nvenc encoder
+            test_cmd = f"{self.ffmpeg_base_command} -hide_banner -loglevel error -f lavfi -i testsrc=duration=1:size=320x240:rate=1 -c:v h264_nvenc -f null -"
+            self.logger.debug(f"Testing NVENC: {test_cmd}")
             
             try:
                 result = subprocess.run(test_cmd, shell=True, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode == 0:
-                    self.logger.info("✅ NVENC hardware encoding available for video generation")
-                    self.logger.info(f"Test command succeeded. Output: {result.stderr if result.stderr else '...'}")
+                    self.logger.info("  ✓ NVENC encoding available")
                     return True
                 else:
-                    self.logger.warning(f"❌ NVENC test failed with exit code {result.returncode}")
-                    if result.stderr:
-                        self.logger.warning(f"Error output: {result.stderr}")
-                        if "Cannot load libcuda.so.1" in result.stderr:
-                            self.logger.warning("💡 Root cause: libcuda.so.1 cannot be loaded by NVENC")
-                            self.logger.warning("💡 Solution: Use nvidia/cuda:*-devel-* image instead of runtime")
+                    self.logger.debug(f"NVENC test failed (exit code {result.returncode}): {result.stderr}")
+                    self.logger.info("  ✗ NVENC not available")
                     return False
                     
             except subprocess.TimeoutExpired:
-                self.logger.warning("❌ NVENC test timed out")
+                self.logger.debug("NVENC test timed out")
+                self.logger.info("  ✗ NVENC not available (timeout)")
                 return False
                 
         except Exception as e:
-            self.logger.warning(f"❌ Failed to detect NVENC support: {e}, falling back to software encoding")
+            self.logger.debug(f"Failed to detect NVENC support: {e}")
+            self.logger.info("  ✗ NVENC not available (error)")
             return False
 
     def configure_hardware_acceleration(self):
@@ -1529,12 +1551,12 @@ class KaraokeFinalise:
             # Remove -hwaccel_output_format cuda as it causes pixel format conversion issues
             self.hwaccel_decode_flags = "-hwaccel cuda"
             self.scale_filter = "scale"  # Use CPU scaling for complex filter chains
-            self.logger.info("Configured for NVIDIA hardware acceleration (simplified for filter compatibility)")
+            self.logger.info("🚀 Using NVENC hardware acceleration for video encoding")
         else:
             self.video_encoder = "libx264"
             self.hwaccel_decode_flags = ""
             self.scale_filter = "scale"
-            self.logger.info("Configured for software encoding")
+            self.logger.info("🔧 Using software encoding (libx264) for video")
 
     def get_nvenc_quality_settings(self, quality_mode="high"):
         """Get NVENC settings based on quality requirements."""

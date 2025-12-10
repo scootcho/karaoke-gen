@@ -1,0 +1,112 @@
+"""
+Configuration management for the karaoke generation backend.
+"""
+import os
+import logging
+from typing import Optional, Dict
+from pydantic_settings import BaseSettings
+from google.cloud import secretmanager
+
+
+logger = logging.getLogger(__name__)
+
+
+class Settings(BaseSettings):
+    """Application settings."""
+    
+    # Google Cloud
+    google_cloud_project: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    gcs_bucket_name: str = os.getenv("GCS_BUCKET_NAME", "karaoke-gen-storage")
+    gcs_temp_bucket: str = os.getenv("GCS_TEMP_BUCKET", "karaoke-gen-temp")
+    gcs_output_bucket: str = os.getenv("GCS_OUTPUT_BUCKET", "karaoke-gen-outputs")
+    firestore_collection: str = os.getenv("FIRESTORE_COLLECTION", "jobs")
+    
+    # Audio Separator API (for GPU processing)
+    audio_separator_api_url: Optional[str] = os.getenv("AUDIO_SEPARATOR_API_URL")
+    
+    # External APIs (can be set via env or Secret Manager)
+    audioshake_api_key: Optional[str] = os.getenv("AUDIOSHAKE_API_KEY")
+    genius_api_key: Optional[str] = os.getenv("GENIUS_API_KEY")
+    spotify_cookie: Optional[str] = os.getenv("SPOTIFY_COOKIE_SP_DC")
+    rapidapi_key: Optional[str] = os.getenv("RAPIDAPI_KEY")
+    
+    # Authentication
+    admin_tokens: Optional[str] = os.getenv("ADMIN_TOKENS")  # Comma-separated list
+    
+    # Application
+    environment: str = os.getenv("ENVIRONMENT", "development")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    
+    # Processing
+    max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "5"))
+    job_timeout_seconds: int = int(os.getenv("JOB_TIMEOUT_SECONDS", "3600"))
+    
+    # Storage paths
+    temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")
+    
+    # Default distribution settings (can be overridden per-request)
+    default_dropbox_path: Optional[str] = os.getenv("DEFAULT_DROPBOX_PATH")
+    default_gdrive_folder_id: Optional[str] = os.getenv("DEFAULT_GDRIVE_FOLDER_ID")
+    default_discord_webhook_url: Optional[str] = os.getenv("DEFAULT_DISCORD_WEBHOOK_URL")
+    
+    # Secret Manager cache
+    _secret_cache: Dict[str, str] = {}
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+    
+    def get_secret(self, secret_id: str) -> Optional[str]:
+        """
+        Get a secret from Google Secret Manager.
+        
+        Caches secrets in memory to avoid repeated API calls.
+        Falls back to environment variables if Secret Manager unavailable.
+        
+        Args:
+            secret_id: Secret name (e.g., "audioshake-api-key")
+            
+        Returns:
+            Secret value or None if not found
+        """
+        # Check cache first
+        if secret_id in self._secret_cache:
+            return self._secret_cache[secret_id]
+        
+        # Check environment variable (development mode)
+        env_var = secret_id.upper().replace('-', '_')
+        env_value = os.getenv(env_var)
+        if env_value:
+            logger.debug(f"Using {secret_id} from environment variable")
+            self._secret_cache[secret_id] = env_value
+            return env_value
+        
+        # Try Secret Manager (production mode)
+        if not self.google_cloud_project:
+            logger.warning(f"Cannot fetch secret {secret_id}: No GCP project configured")
+            return None
+        
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{self.google_cloud_project}/secrets/{secret_id}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            secret_value = response.payload.data.decode('UTF-8')
+            
+            # Cache it
+            self._secret_cache[secret_id] = secret_value
+            logger.info(f"Loaded secret {secret_id} from Secret Manager")
+            return secret_value
+            
+        except Exception as e:
+            logger.error(f"Failed to load secret {secret_id} from Secret Manager: {e}")
+            return None
+
+
+# Global settings instance
+settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Get the global settings instance."""
+    return settings
+

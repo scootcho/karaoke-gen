@@ -29,6 +29,7 @@ from .audio_processor import AudioProcessor
 from .lyrics_processor import LyricsProcessor
 from .video_generator import VideoGenerator
 from .video_background_processor import VideoBackgroundProcessor
+from .audio_fetcher import create_audio_fetcher, AudioFetcherError, NoResultsError
 
 
 class KaraokePrep:
@@ -74,8 +75,8 @@ class KaraokePrep:
         # Video Background Configuration
         background_video=None,
         background_video_darkness=0,
-        # YouTube/Online Configuration
-        cookies_str=None,
+        # Audio Fetcher Configuration
+        auto_download=False,
     ):
         self.log_level = log_level
         self.log_formatter = log_formatter
@@ -137,8 +138,11 @@ class KaraokePrep:
         self.background_video = background_video
         self.background_video_darkness = background_video_darkness
 
-        # YouTube/Online Config
-        self.cookies_str = cookies_str # Passed to metadata extraction and file download
+        # Audio Fetcher Config (replaces yt-dlp)
+        self.auto_download = auto_download  # If True, automatically select best audio source
+        
+        # Initialize audio fetcher for searching and downloading audio when no input file is provided
+        self.audio_fetcher = create_audio_fetcher(logger=self.logger)
 
         # Load style parameters using the config module
         self.style_params = load_style_params(self.style_params_json, self.style_overrides, self.logger)
@@ -240,7 +244,7 @@ class KaraokePrep:
     # Compatibility methods for tests - these call the new functions in metadata.py
     def extract_info_for_online_media(self, input_url=None, input_artist=None, input_title=None):
         """Compatibility method that calls the function in metadata.py"""
-        self.extracted_info = extract_info_for_online_media(input_url, input_artist, input_title, self.logger, self.cookies_str)
+        self.extracted_info = extract_info_for_online_media(input_url, input_artist, input_title, self.logger)
         return self.extracted_info
 
     def parse_single_track_metadata(self, input_artist, input_title):
@@ -365,46 +369,68 @@ class KaraokePrep:
                     processed_track["input_audio_wav"] = self.file_handler.convert_to_wav(processed_track["input_media"], output_filename_no_extension)
 
             else:
-                # --- URL or Existing Files Handling ---
+                # --- AudioFetcher or Existing Files Handling ---
                 # Construct patterns using the determined extractor
                 base_pattern = os.path.join(track_output_dir, f"{artist_title} ({self.extractor}*)")
-                input_media_glob = glob.glob(f"{base_pattern}.*webm") + glob.glob(f"{base_pattern}.*mp4") # Add other common formats if needed
+                input_media_glob = glob.glob(f"{base_pattern}.*flac") + glob.glob(f"{base_pattern}.*mp3") + glob.glob(f"{base_pattern}.*wav") + glob.glob(f"{base_pattern}.*webm") + glob.glob(f"{base_pattern}.*mp4")
                 input_png_glob = glob.glob(f"{base_pattern}.png")
                 input_wav_glob = glob.glob(f"{base_pattern}.wav")
 
-                if input_media_glob and input_png_glob and input_wav_glob:
+                if input_media_glob and input_wav_glob:
                     # Existing files found
                     processed_track["input_media"] = input_media_glob[0]
-                    processed_track["input_still_image"] = input_png_glob[0]
+                    processed_track["input_still_image"] = input_png_glob[0] if input_png_glob else None
                     processed_track["input_audio_wav"] = input_wav_glob[0]
                     self.logger.info(f"Found existing media files matching extractor '{self.extractor}', skipping download/conversion.")
-                    # Ensure self.extractor reflects the found files if it was a fallback
-                    # Extract the actual extractor string from the filename if needed, though it should match
 
-                elif self.url: # URL provided and files not found, proceed with download
-                    # Use media_id if available for better uniqueness
-                    filename_suffix = f"{self.extractor} {self.media_id}" if self.media_id else self.extractor
-                    output_filename_no_extension = os.path.join(track_output_dir, f"{artist_title} ({filename_suffix})")
-
-                    self.logger.info(f"Downloading input media from {self.url}...")
-                    # Delegate to FileHandler
-                    processed_track["input_media"] = self.file_handler.download_video(self.url, output_filename_no_extension, self.cookies_str)
-
-                    self.logger.info("Extracting still image from downloaded media (if input is video)...")
-                    # Delegate to FileHandler
-                    processed_track["input_still_image"] = self.file_handler.extract_still_image_from_video(
-                        processed_track["input_media"], output_filename_no_extension
-                    )
-
-                    self.logger.info("Converting downloaded video to WAV for audio processing...")
-                    # Delegate to FileHandler
-                    processed_track["input_audio_wav"] = self.file_handler.convert_to_wav(
-                        processed_track["input_media"], output_filename_no_extension
-                    )
+                elif getattr(self, '_use_audio_fetcher', False):
+                    # Use flacfetch to search and download audio
+                    self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
+                    
+                    try:
+                        # Search and download audio using the AudioFetcher
+                        fetch_result = self.audio_fetcher.search_and_download(
+                            artist=self.artist,
+                            title=self.title,
+                            output_dir=track_output_dir,
+                            output_filename=f"{artist_title} (flacfetch)",
+                            auto_select=self.auto_download,
+                        )
+                        
+                        # Update extractor to reflect the actual provider used
+                        self.extractor = f"flacfetch-{fetch_result.provider}"
+                        
+                        # Set up the output paths
+                        output_filename_no_extension = os.path.join(track_output_dir, f"{artist_title} ({self.extractor})")
+                        
+                        # Copy/move the downloaded file to the expected location
+                        processed_track["input_media"] = self.file_handler.download_audio_from_fetcher_result(
+                            fetch_result.filepath, output_filename_no_extension
+                        )
+                        
+                        self.logger.info(f"Audio downloaded from {fetch_result.provider}: {processed_track['input_media']}")
+                        
+                        # Convert to WAV for audio processing
+                        self.logger.info("Converting downloaded audio to WAV for processing...")
+                        processed_track["input_audio_wav"] = self.file_handler.convert_to_wav(
+                            processed_track["input_media"], output_filename_no_extension
+                        )
+                        
+                        # No still image for audio-only downloads
+                        processed_track["input_still_image"] = None
+                        
+                    except NoResultsError as e:
+                        self.logger.error(f"No audio found: {e}")
+                        return None
+                    except AudioFetcherError as e:
+                        self.logger.error(f"Failed to fetch audio: {e}")
+                        return None
+                        
                 else:
-                     # This case means input_media was None, not a URL, and no existing files found
-                     self.logger.error(f"Cannot proceed: No input file, no URL, and no existing files found for {artist_title}.")
-                     return None
+                    # This case means input_media was None, no audio fetcher flag, and no existing files found
+                    self.logger.error(f"Cannot proceed: No input file and no existing files found for {artist_title}.")
+                    self.logger.error("Please provide a local audio file or use artist+title to search for audio.")
+                    return None
 
             if self.skip_lyrics:
                 self.logger.info("Skipping lyrics fetch as requested.")
@@ -853,21 +879,31 @@ class KaraokePrep:
             self.logger.info(f"Input media {self.input_media} is a local folder, processing each file individually...")
             return await self.process_folder()
         elif self.input_media is not None and os.path.isfile(self.input_media):
-            self.logger.info(f"Input media {self.input_media} is a local file, youtube logic will be skipped")
+            self.logger.info(f"Input media {self.input_media} is a local file, audio download will be skipped")
+            return [await self.prep_single_track()]
+        elif self.artist and self.title:
+            # No input file provided - use flacfetch to search and download audio
+            self.logger.info(f"No input file provided, using flacfetch to search for: {self.artist} - {self.title}")
+            
+            # Set up the extracted_info for metadata consistency
+            self.extracted_info = {
+                "title": f"{self.artist} - {self.title}",
+                "artist": self.artist,
+                "track_title": self.title,
+                "extractor_key": "flacfetch",
+                "id": f"flacfetch_{self.artist}_{self.title}".replace(" ", "_"),
+                "url": None,
+                "source": "flacfetch",
+            }
+            self.extractor = "flacfetch"
+            self.url = None  # URL will be determined by flacfetch
+            
+            # Mark that we need to use audio fetcher for download
+            self._use_audio_fetcher = True
+            
             return [await self.prep_single_track()]
         else:
-            self.url = self.input_media
-            # Use the imported extract_info_for_online_media function
-            self.extracted_info = extract_info_for_online_media(
-                input_url=self.url, input_artist=self.artist, input_title=self.title, logger=self.logger, cookies_str=self.cookies_str
+            raise ValueError(
+                "Either a local file path or both artist and title must be provided. "
+                "URL-based input has been replaced with flacfetch audio fetching."
             )
-
-            if self.extracted_info and "playlist_count" in self.extracted_info:
-                self.persistent_artist = self.artist
-                self.logger.info(f"Input URL is a playlist, beginning batch operation with persistent artist: {self.persistent_artist}")
-                return await self.process_playlist()
-            else:
-                self.logger.info(f"Input URL is not a playlist, processing single track")
-                # Parse metadata to extract artist and title before processing
-                self.parse_single_track_metadata(self.artist, self.title)
-                return [await self.prep_single_track()]

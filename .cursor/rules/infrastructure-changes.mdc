@@ -1,0 +1,14 @@
+# Infrastructure Changes
+
+All Google Cloud infrastructure (IAM, Cloud Storage, Cloud Run, Secret Manager, Artifact Registry, etc.) must be managed via Pulumi in the `infrastructure/` folder.
+
+## Rules
+
+- **Reading/querying** with `gcloud` CLI is fine
+- **Creating or modifying** resources must go through IaC — never use `gcloud` or the Console to make changes
+
+## Workflow
+
+1. Make changes in `infrastructure/`
+2. Run `pulumi preview` and verify the output
+3. Run `pulumi up` to apply

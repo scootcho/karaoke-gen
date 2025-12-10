@@ -4,7 +4,6 @@ import glob
 import shutil
 from unittest.mock import MagicMock, patch, mock_open, call, DEFAULT
 from karaoke_gen.karaoke_gen import KaraokePrep
-import yt_dlp # Keep import for patching target
 from karaoke_gen.utils import sanitize_filename # Import utility
 
 class TestFileOperations:
@@ -41,102 +40,45 @@ class TestFileOperations:
             # Verify the correct file path was returned
             assert result == file_path
     
-    def test_download_video(self, basic_karaoke_gen, temp_dir):
-        """Test downloading a video from a URL."""
-        url = "https://example.com/video"
+    def test_download_audio_from_fetcher_result(self, basic_karaoke_gen, temp_dir):
+        """Test processing downloaded audio from flacfetch."""
+        # Create a mock source file
+        source_file = os.path.join(temp_dir, "source.flac")
+        with open(source_file, "w") as f:
+            f.write("test audio content")
+        
         output_filename = os.path.join(temp_dir, "output")
-        downloaded_file = output_filename + ".mp4"
         
-        # Mock the yt_dlp.YoutubeDL context manager and its methods
-        mock_ydl_instance = MagicMock()
-        # Mock extract_info to prevent network calls during download process
-        mock_ydl_instance.extract_info.return_value = {'id': 'video_id', 'formats': [], 'ext': 'mp4'} 
-        # Completely mock the download method to do nothing
-        mock_ydl_instance.download = MagicMock(return_value=None) 
-        
-        # Mock glob.glob to return our "downloaded" file
-        mock_glob_result = [downloaded_file]
-        
-        # Patch the 'ydl' class used in file_handler.py and glob.glob
-        with patch('karaoke_gen.file_handler.ydl') as mock_ydl_context, \
-             patch('glob.glob', return_value=mock_glob_result):
-            
-            # Configure the context manager to return our mock instance
-            mock_ydl_context.return_value.__enter__.return_value = mock_ydl_instance
-            
-            # Create the file that glob will "find"
-            os.makedirs(os.path.dirname(downloaded_file), exist_ok=True)
-            with open(downloaded_file, "w") as f:
-                f.write("test video content")
-            
-            # Call the method
-            result = basic_karaoke_gen.file_handler.download_video(url, output_filename)
+        # Test with mocked shutil.copy2
+        with patch('shutil.copy2') as mock_copy:
+            result = basic_karaoke_gen.file_handler.download_audio_from_fetcher_result(
+                source_file, output_filename
+            )
             
             # Verify the correct file path was returned
-            assert result == downloaded_file
+            assert result == output_filename + ".flac"
             
-            # Verify ydl was instantiated with correct options
-            expected_ydl_opts = {
-                "quiet": True,
-                "format": "bv*+ba/b",
-                "outtmpl": f"{output_filename}.%(ext)s",
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "referer": "https://www.youtube.com/",
-                "sleep_interval": 1,
-                "max_sleep_interval": 3,
-                "fragment_retries": 3,
-                "extractor_retries": 3,
-                "retries": 3,
-                "http_headers": {
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "en-us,en;q=0.5",
-                    "Accept-Encoding": "gzip, deflate",
-                    "DNT": "1",
-                    "Connection": "keep-alive",
-                    "Upgrade-Insecure-Requests": "1",
-                },
-            }
-            mock_ydl_context.assert_called_once_with(expected_ydl_opts)
-            
-            # Verify download was called on the instance
-            mock_ydl_instance.download.assert_called_once_with([url])
-            
-            # Verify glob was called
-            glob.glob.assert_called_once_with(f"{output_filename}.*")
+            # Verify shutil.copy2 was called with correct arguments
+            mock_copy.assert_called_once_with(source_file, output_filename + ".flac")
     
-    def test_download_video_no_files_found(self, basic_karaoke_gen):
-        """Test downloading a video when no files are found after download."""
-        url = "https://example.com/video"
-        output_filename = "output"
+    def test_download_audio_from_fetcher_result_same_location(self, basic_karaoke_gen, temp_dir):
+        """Test processing when source and target are effectively the same."""
+        # Create a source file
+        source_file = os.path.join(temp_dir, "output.flac")
+        with open(source_file, "w") as f:
+            f.write("test audio content")
         
-        # Mock the yt_dlp.YoutubeDL context manager and its methods
-        mock_ydl_instance = MagicMock()
-        # Mock extract_info to prevent network calls during download process
-        mock_ydl_instance.extract_info.return_value = {'id': 'video_id', 'formats': [], 'ext': 'mp4'}
-        # Completely mock the download method to do nothing
-        mock_ydl_instance.download = MagicMock(return_value=None)
+        output_filename = os.path.join(temp_dir, "output")
         
-        # Mock glob.glob to return empty list (no files found)
-        with patch('karaoke_gen.file_handler.ydl') as mock_ydl_context, \
-             patch('glob.glob', return_value=[]):
+        # Test when source and target are the same
+        with patch('shutil.copy2') as mock_copy:
+            result = basic_karaoke_gen.file_handler.download_audio_from_fetcher_result(
+                source_file, output_filename
+            )
             
-            # Configure the context manager to return our mock instance
-            mock_ydl_context.return_value.__enter__.return_value = mock_ydl_instance
-            
-            # Call the method
-            result = basic_karaoke_gen.file_handler.download_video(url, output_filename)
-            
-            # Verify None was returned
-            assert result is None
-            
-            # Verify ydl was instantiated
-            mock_ydl_context.assert_called_once()
-            
-            # Verify download was called on the instance
-            mock_ydl_instance.download.assert_called_once_with([url])
-            
-            # Verify glob was called
-            glob.glob.assert_called_once_with(f"{output_filename}.*")
+            # Should return the source file without copying
+            assert result == source_file
+            mock_copy.assert_not_called()
     
     def test_extract_still_image_from_video(self, basic_karaoke_gen):
         """Test extracting a still image from a video."""

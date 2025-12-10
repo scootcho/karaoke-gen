@@ -1,0 +1,313 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main, replace-modal-with-google-cloud ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      - name: Install dependencies
+        run: poetry install
+      
+      - name: Run unit tests
+        env:
+          GOOGLE_CLOUD_PROJECT: test-project
+          GCS_BUCKET_NAME: test-bucket
+          FIRESTORE_COLLECTION: jobs
+          ENVIRONMENT: test
+        run: |
+          poetry run pytest \
+            backend/tests/test_models.py \
+            backend/tests/test_job_manager.py \
+            backend/tests/test_file_upload.py \
+            backend/tests/test_services.py \
+            -v --tb=short
+  
+  emulator-tests:
+    name: Emulator Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          df -h
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      - name: Set up Java 21 (required by Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Install Firestore emulator
+        run: |
+          gcloud components install beta cloud-firestore-emulator --quiet
+      
+      - name: Install dependencies
+        run: poetry install
+      
+      - name: Start Docker for GCS emulator
+        run: |
+          docker pull fsouza/fake-gcs-server:latest
+      
+      - name: Run emulator integration tests
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/run-emulator-tests.sh
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: backend/htmlcov/
+          retention-days: 7
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      
+      - name: Install dependencies
+        run: poetry install
+      
+      - name: Run validation (syntax check only)
+        run: |
+          # Skip full validation as it requires GCP credentials
+          # Just check Python syntax and imports
+          poetry run python -m py_compile backend/main.py backend/config.py
+          echo "✅ Basic syntax validation passed"
+  
+  deploy:
+    name: Deploy via Cloud Build
+    runs-on: ubuntu-latest
+    needs: [unit-tests, emulator-tests, lint]
+    # Only deploy on push to the branch (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/replace-modal-with-google-cloud'
+    
+    permissions:
+      contents: read
+      id-token: write  # Required for Workload Identity Federation
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Authenticate to Google Cloud (Workload Identity)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+      
+      - name: Check if base image needs rebuild
+        id: check-base
+        run: |
+          echo "🔍 Checking if base image needs rebuild..."
+          
+          # Calculate current poetry.lock hash
+          CURRENT_HASH=$(sha256sum poetry.lock | cut -d' ' -f1)
+          echo "Current poetry.lock hash: $CURRENT_HASH"
+          
+          # Try to get the hash from the existing base image
+          # First, authenticate to Artifact Registry
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          
+          # Try to pull the base image and get its label
+          BASE_IMAGE="us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest"
+          EXISTING_HASH=""
+          
+          if docker pull $BASE_IMAGE 2>/dev/null; then
+            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
+            echo "Existing base image hash: $EXISTING_HASH"
+          else
+            echo "⚠️ No existing base image found"
+          fi
+          
+          # Compare hashes
+          if [ "$CURRENT_HASH" != "$EXISTING_HASH" ]; then
+            echo "🔄 Base image needs rebuild (poetry.lock changed)"
+            echo "needs_rebuild=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Base image is up to date"
+            echo "needs_rebuild=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Rebuild base image (if needed)
+        if: steps.check-base.outputs.needs_rebuild == 'true'
+        run: |
+          echo "🏗️ Rebuilding base image with updated dependencies..."
+          
+          # Submit base image build and wait for completion
+          BASE_BUILD_ID=$(gcloud builds submit \
+            --config=cloudbuild-base.yaml \
+            --project=nomadkaraoke \
+            --format='value(id)' \
+            --async \
+            .)
+          
+          echo "Base Build ID: $BASE_BUILD_ID"
+          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BASE_BUILD_ID?project=nomadkaraoke"
+          
+          # Poll for build completion
+          echo "Waiting for base image build to complete..."
+          while true; do
+            BUILD_STATUS=$(gcloud builds describe $BASE_BUILD_ID --project=nomadkaraoke --format='value(status)')
+            echo "Base build status: $BUILD_STATUS"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Base image build completed successfully"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Base image build failed with status: $BUILD_STATUS"
+              echo ""
+              echo "==================== BUILD LOGS ===================="
+              gcloud logging read "resource.type=build AND resource.labels.build_id=$BASE_BUILD_ID" \
+                --project=nomadkaraoke \
+                --format="value(textPayload)" \
+                --limit=200 \
+                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
+              echo "===================================================="
+              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke 2>&1 || true
+              exit 1
+            fi
+            
+            sleep 30
+          done
+      
+      - name: Trigger Cloud Build
+        run: |
+          echo "🚀 Triggering Cloud Build for deployment..."
+          echo "Commit: ${{ github.sha }}"
+          
+          # Submit build and wait for completion
+          BUILD_ID=$(gcloud builds submit \
+            --config=cloudbuild.yaml \
+            --project=nomadkaraoke \
+            --format='value(id)' \
+            --async \
+            .)
+          
+          echo "Build ID: $BUILD_ID"
+          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
+          
+          # Poll for build completion
+          echo "Waiting for build to complete..."
+          while true; do
+            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
+            echo "Build status: $BUILD_STATUS"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Build completed successfully"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Build failed with status: $BUILD_STATUS"
+              echo ""
+              echo "==================== BUILD LOGS ===================="
+              # Use Cloud Logging to get build logs (works with roles/logging.viewer)
+              gcloud logging read "resource.type=build AND resource.labels.build_id=$BUILD_ID" \
+                --project=nomadkaraoke \
+                --format="value(textPayload)" \
+                --limit=200 \
+                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
+              echo "===================================================="
+              echo ""
+              # Also try the direct logs command as fallback
+              gcloud builds log $BUILD_ID --project=nomadkaraoke 2>&1 || true
+              exit 1
+            fi
+            
+            sleep 30
+          done
+      
+      - name: Verify deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe karaoke-backend \
+            --region us-central1 \
+            --format 'value(status.url)')
+          
+          echo "Service URL: $SERVICE_URL"
+          
+          # Wait a few seconds for the service to be ready
+          sleep 10
+          
+          # Test health endpoint
+          curl -f "$SERVICE_URL/api/health" || exit 1
+          
+          echo "✅ Deployment verified - service is healthy"
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Run: ${{ github.run_number }}"

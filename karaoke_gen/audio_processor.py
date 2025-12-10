@@ -291,36 +291,6 @@ class AudioProcessor:
             )
             self._normalize_audio_files(result, artist_title, track_output_dir)
 
-            # Create Audacity LOF file
-            if result["backing_vocals"]:
-                lof_path = os.path.join(stems_dir, f"{artist_title} (Audacity).lof")
-                first_model = list(result["backing_vocals"].keys())[0]
-
-                files_to_include = [
-                    audio_file,  # Original audio
-                    result["clean_instrumental"]["instrumental"],  # Clean instrumental
-                    result["backing_vocals"][first_model]["backing_vocals"],  # Backing vocals
-                    result["combined_instrumentals"][first_model],  # Combined instrumental+BV
-                ]
-
-                # Convert to absolute paths
-                files_to_include = [os.path.abspath(f) for f in files_to_include]
-
-                with open(lof_path, "w") as lof:
-                    for file_path in files_to_include:
-                        lof.write(f'file "{file_path}"\n')
-
-                self.logger.info(f"Created Audacity LOF file: {lof_path}")
-                result["audacity_lof"] = lof_path
-
-                # Launch Audacity with multiple tracks
-                if sys.platform == "darwin":  # Check if we're on macOS
-                    if lof_path and os.path.exists(lof_path):
-                        self.logger.info(f"Launching Audacity with LOF file: {lof_path}")
-                        os.system(f'open -a Audacity "{lof_path}"')
-                    else:
-                        self.logger.debug("Audacity LOF file not available or not found")
-
             self.logger.info("Audio separation, combination, and normalization process completed")
             return result
         finally:
@@ -443,36 +413,6 @@ class AudioProcessor:
             
             # Normalize audio files
             self._normalize_audio_files(result, artist_title, track_output_dir)
-
-            # Create Audacity LOF file
-            if result["backing_vocals"]:
-                lof_path = os.path.join(stems_dir, f"{artist_title} (Audacity).lof")
-                first_model = list(result["backing_vocals"].keys())[0]
-
-                files_to_include = [
-                    audio_file,  # Original audio
-                    result["clean_instrumental"]["instrumental"],  # Clean instrumental
-                    result["backing_vocals"][first_model]["backing_vocals"],  # Backing vocals
-                    result["combined_instrumentals"][first_model],  # Combined instrumental+BV
-                ]
-
-                # Convert to absolute paths
-                files_to_include = [os.path.abspath(f) for f in files_to_include]
-
-                with open(lof_path, "w") as lof:
-                    for file_path in files_to_include:
-                        lof.write(f'file "{file_path}"\n')
-
-                self.logger.info(f"Created Audacity LOF file: {lof_path}")
-                result["audacity_lof"] = lof_path
-
-                # Launch Audacity with multiple tracks
-                if sys.platform == "darwin":  # Check if we're on macOS
-                    if lof_path and os.path.exists(lof_path):
-                        self.logger.info(f"Launching Audacity with LOF file: {lof_path}")
-                        os.system(f'open -a Audacity "{lof_path}"')
-                    else:
-                        self.logger.debug("Audacity LOF file not available or not found")
 
             self.logger.info("Remote audio separation, combination, and normalization process completed")
             return result

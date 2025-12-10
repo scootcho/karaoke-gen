@@ -433,7 +433,8 @@ def test_delete_youtube_video_dry_run(mock_auth, finaliser_for_yt, mock_youtube_
 @patch.object(KaraokeFinalise, 'authenticate_youtube')
 @patch.object(KaraokeFinalise, 'check_if_video_title_exists_on_youtube_channel', return_value=False) # Assume not exists
 @patch.object(KaraokeFinalise, 'truncate_to_nearest_word', side_effect=lambda t, l: t) # Passthrough truncate
-def test_upload_youtube_success(mock_truncate, mock_check_exists, mock_auth, mock_media_upload_cls, mock_open_desc, finaliser_for_yt, mock_youtube_service):
+@patch('os.path.isfile', return_value=True)  # Mock isfile to allow thumbnail upload
+def test_upload_youtube_success(mock_isfile, mock_truncate, mock_check_exists, mock_auth, mock_media_upload_cls, mock_open_desc, finaliser_for_yt, mock_youtube_service):
     """Test successful YouTube upload."""
     mock_auth.return_value = mock_youtube_service
     # Mock the instances returned by the MediaFileUpload constructor
@@ -504,7 +505,8 @@ def test_upload_youtube_exists_skip(mock_delete, mock_check_exists, mock_auth, m
 @patch.object(KaraokeFinalise, 'authenticate_youtube')
 @patch.object(KaraokeFinalise, 'check_if_video_title_exists_on_youtube_channel', return_value=True) # Assume exists
 @patch.object(KaraokeFinalise, 'delete_youtube_video', return_value=True) # Delete succeeds
-def test_upload_youtube_exists_replace_success(mock_delete, mock_check_exists, mock_auth, mock_media_upload_cls, mock_open_desc, finaliser_for_yt, mock_youtube_service):
+@patch('os.path.isfile', return_value=True)  # Mock isfile to allow thumbnail upload
+def test_upload_youtube_exists_replace_success(mock_isfile, mock_delete, mock_check_exists, mock_auth, mock_media_upload_cls, mock_open_desc, finaliser_for_yt, mock_youtube_service):
     """Test replacing an existing video successfully."""
     mock_auth.return_value = mock_youtube_service
     finaliser_for_yt.youtube_video_id = "existing_id" # Set by check_if_video_title_exists
