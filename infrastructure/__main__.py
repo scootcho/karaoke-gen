@@ -72,11 +72,19 @@ storage_iam = gcp.projects.IAMMember(
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
-# Grant Secret Manager permissions
-secrets_iam = gcp.projects.IAMMember(
+# Grant Secret Manager read permissions
+secrets_read_iam = gcp.projects.IAMMember(
     "karaoke-backend-secrets-access",
     project=project_id,
     role="roles/secretmanager.secretAccessor",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Secret Manager write permissions (for OAuth token refresh/device auth)
+secrets_write_iam = gcp.projects.IAMMember(
+    "karaoke-backend-secrets-write",
+    project=project_id,
+    role="roles/secretmanager.secretVersionManager",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 

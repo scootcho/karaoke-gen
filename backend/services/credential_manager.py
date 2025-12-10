@@ -517,6 +517,8 @@ class CredentialManager:
         """Start Google device authorization flow."""
         import requests
         
+        logger.info(f"[{service_name}] Starting device auth flow with scopes: {scopes}")
+        
         response = requests.post(
             self.GOOGLE_DEVICE_AUTH_URI,
             data={
@@ -526,9 +528,10 @@ class CredentialManager:
         )
         
         if response.status_code != 200:
+            logger.error(f"[{service_name}] Device auth request failed: {response.status_code} - {response.text}")
             raise Exception(f"Device auth request failed: {response.text}")
         
-        logger.info(f"Device auth response: {response.text}")
+        logger.info(f"[{service_name}] Device auth initiated successfully")
         
         data = response.json()
         
@@ -574,6 +577,8 @@ class CredentialManager:
         """
         import requests
         
+        logger.info(f"[{service_name}] Polling device auth for code: {device_code[:20]}...")
+        
         # Get client credentials from Secret Manager (stateless approach)
         if service_name == "youtube":
             client_creds = self.get_youtube_client_credentials()
@@ -584,16 +589,21 @@ class CredentialManager:
             scopes = self.GDRIVE_SCOPES
             secret_name = self.GDRIVE_SECRET
         else:
+            logger.error(f"[{service_name}] Unknown service")
             return ("error", {"message": f"Unknown service: {service_name}"})
         
         if not client_creds:
+            logger.error(f"[{service_name}] Client credentials not found in Secret Manager")
             return ("error", {"message": f"Client credentials not found in Secret Manager for {service_name}"})
         
         client_id = client_creds.get("client_id")
         client_secret = client_creds.get("client_secret")
         
         if not client_id or not client_secret:
+            logger.error(f"[{service_name}] Invalid client credentials (missing client_id or client_secret)")
             return ("error", {"message": f"Invalid client credentials for {service_name}"})
+        
+        logger.info(f"[{service_name}] Got client credentials, polling Google token endpoint...")
         
         # Poll Google token endpoint
         response = requests.post(
@@ -607,9 +617,11 @@ class CredentialManager:
         )
         
         data = response.json()
-        logger.debug(f"Device auth poll response for {service_name}: {data}")
+        logger.info(f"[{service_name}] Token endpoint response: status={response.status_code}")
         
         if response.status_code == 200:
+            logger.info(f"[{service_name}] Token exchange successful! Got access token and refresh_token={bool(data.get('refresh_token'))}")
+            
             # Success! Store the credentials
             token_data = {
                 "token": data["access_token"],
@@ -621,44 +633,87 @@ class CredentialManager:
             }
             
             # Save to Secret Manager
-            self._save_credentials_to_secret(secret_name, token_data)
+            logger.info(f"[{service_name}] Saving credentials to secret: {secret_name}")
+            saved = self._save_credentials_to_secret(secret_name, token_data)
+            if not saved:
+                logger.error(f"[{service_name}] Failed to save credentials to Secret Manager!")
+                return ("error", {"message": "Token exchange succeeded but failed to save credentials to Secret Manager"})
             
+            logger.info(f"[{service_name}] Device auth flow COMPLETE - credentials saved successfully")
             return ("complete", token_data)
         
         elif "error" in data:
             error = data["error"]
+            logger.info(f"[{service_name}] Token endpoint returned error: {error}")
+            
             if error == "authorization_pending":
                 return ("pending", {"message": "Waiting for user to authorize. Please visit the verification URL and enter the code."})
             elif error == "slow_down":
                 return ("pending", {"message": "Please wait a few more seconds before polling again."})
             elif error == "expired_token":
+                logger.warning(f"[{service_name}] Device code expired")
                 return ("expired", {"message": "Device code expired. Please start a new device auth flow."})
             elif error == "access_denied":
+                logger.warning(f"[{service_name}] User denied access")
                 return ("error", {"message": "User denied access"})
             else:
+                logger.error(f"[{service_name}] Unexpected error: {data}")
                 return ("error", {"message": data.get("error_description", error)})
         
+        logger.error(f"[{service_name}] Unknown response from token endpoint: {data}")
         return ("error", {"message": "Unknown response from token endpoint"})
     
     def _save_credentials_to_secret(self, secret_name: str, token_data: dict) -> bool:
-        """Save credentials to Secret Manager."""
+        """Save credentials to Secret Manager, creating the secret if needed."""
+        logger.info(f"[SecretManager] Attempting to save credentials to: {secret_name}")
+        
         try:
             from google.cloud import secretmanager
+            from google.api_core import exceptions as gcp_exceptions
             
             client = secretmanager.SecretManagerServiceClient()
             project_id = self.settings.google_cloud_project
-            secret_path = f"projects/{project_id}/secrets/{secret_name}"
             
-            client.add_secret_version(
-                parent=secret_path,
-                payload={"data": json.dumps(token_data).encode("utf-8")}
-            )
+            if not project_id:
+                logger.error(f"[SecretManager] No GCP project configured!")
+                return False
+                
+            parent = f"projects/{project_id}"
+            secret_path = f"{parent}/secrets/{secret_name}"
             
-            logger.info(f"Saved new credentials to {secret_name}")
-            return True
+            logger.info(f"[SecretManager] Using project: {project_id}, secret path: {secret_path}")
+            
+            # Try to add a version to existing secret
+            try:
+                client.add_secret_version(
+                    parent=secret_path,
+                    payload={"data": json.dumps(token_data).encode("utf-8")}
+                )
+                logger.info(f"[SecretManager] SUCCESS - Added new version to existing secret: {secret_name}")
+                return True
+                
+            except gcp_exceptions.NotFound:
+                # Secret doesn't exist, create it first
+                logger.info(f"[SecretManager] Secret {secret_name} not found, creating new secret...")
+                client.create_secret(
+                    parent=parent,
+                    secret_id=secret_name,
+                    secret={"replication": {"automatic": {}}}
+                )
+                logger.info(f"[SecretManager] Created secret: {secret_name}")
+                
+                # Now add the version
+                client.add_secret_version(
+                    parent=secret_path,
+                    payload={"data": json.dumps(token_data).encode("utf-8")}
+                )
+                logger.info(f"[SecretManager] SUCCESS - Created secret and saved credentials to: {secret_name}")
+                return True
             
         except Exception as e:
-            logger.error(f"Failed to save credentials to {secret_name}: {e}")
+            logger.error(f"[SecretManager] FAILED to save credentials to {secret_name}: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"[SecretManager] Traceback: {traceback.format_exc()}")
             return False
     
     # =========================================================================
