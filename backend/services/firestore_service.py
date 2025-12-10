@@ -110,14 +110,45 @@ class FirestoreService:
     def list_jobs(
         self,
         status: Optional[JobStatus] = None,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
         limit: int = 100
     ) -> List[Job]:
-        """List jobs with optional status filter."""
+        """
+        List jobs with optional filters.
+        
+        Args:
+            status: Filter by job status
+            environment: Filter by request_metadata.environment (test/production/development)
+            client_id: Filter by request_metadata.client_id
+            created_after: Filter jobs created after this datetime
+            created_before: Filter jobs created before this datetime
+            limit: Maximum number of jobs to return
+            
+        Returns:
+            List of Job objects matching filters, ordered by created_at descending
+        """
         try:
             query = self.db.collection(self.collection)
             
             if status:
                 query = query.where(filter=FieldFilter('status', '==', status.value))
+            
+            # Filter by request_metadata fields using dot notation
+            if environment:
+                query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
+            
+            if client_id:
+                query = query.where(filter=FieldFilter('request_metadata.client_id', '==', client_id))
+            
+            # Date range filters
+            if created_after:
+                query = query.where(filter=FieldFilter('created_at', '>=', created_after))
+            
+            if created_before:
+                query = query.where(filter=FieldFilter('created_at', '<=', created_before))
             
             query = query.order_by('created_at', direction=firestore.Query.DESCENDING).limit(limit)
             
@@ -127,6 +158,72 @@ class FirestoreService:
             return jobs
         except Exception as e:
             logger.error(f"Error listing jobs: {e}")
+            raise
+    
+    def delete_jobs_by_filter(
+        self,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        status: Optional[JobStatus] = None,
+        created_before: Optional[datetime] = None,
+    ) -> int:
+        """
+        Delete multiple jobs matching filter criteria.
+        
+        CAUTION: This is a destructive operation. Use carefully.
+        
+        Args:
+            environment: Delete jobs with this environment (e.g., "test")
+            client_id: Delete jobs from this client
+            status: Delete jobs with this status
+            created_before: Delete jobs created before this datetime
+            
+        Returns:
+            Number of jobs deleted
+        """
+        try:
+            query = self.db.collection(self.collection)
+            
+            if environment:
+                query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
+            
+            if client_id:
+                query = query.where(filter=FieldFilter('request_metadata.client_id', '==', client_id))
+            
+            if status:
+                query = query.where(filter=FieldFilter('status', '==', status.value))
+            
+            if created_before:
+                query = query.where(filter=FieldFilter('created_at', '<=', created_before))
+            
+            # Get matching documents
+            docs = list(query.stream())
+            deleted_count = 0
+            
+            # Delete in batches
+            batch = self.db.batch()
+            batch_count = 0
+            
+            for doc in docs:
+                batch.delete(doc.reference)
+                batch_count += 1
+                deleted_count += 1
+                
+                # Firestore batch limit is 500
+                if batch_count >= 500:
+                    batch.commit()
+                    batch = self.db.batch()
+                    batch_count = 0
+            
+            # Commit any remaining deletes
+            if batch_count > 0:
+                batch.commit()
+            
+            logger.info(f"Deleted {deleted_count} jobs matching filter criteria")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error deleting jobs by filter: {e}")
             raise
     
     def delete_job(self, job_id: str) -> None:
