@@ -19,4 +19,9 @@ Before committing and pushing changes, ensure all tests pass:
 python -m pytest tests/ backend/tests/ -v -x --ignore=tests/integration
 ```
 
+Ensure all code touched is thoroughly covered by unit tests, we have a 70% coverage minimum in CI:
+```bash
+poetry run pytest tests/unit/ -v --cov=karaoke_gen --cov-report=xml --cov-report=term-missing --cov-fail-under=70
+```
+
 Do not commit or push code that fails tests. Fix any test failures before proceeding.
