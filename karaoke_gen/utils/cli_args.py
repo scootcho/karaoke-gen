@@ -85,6 +85,22 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         metavar="JOB_ID",
         help="Resume monitoring an existing job (remote mode only). Example: --resume abc12345",
     )
+    workflow_group.add_argument(
+        "--cancel",
+        metavar="JOB_ID",
+        help="Cancel a running job (remote mode only). Stops processing but keeps the job record. Example: --cancel abc12345",
+    )
+    workflow_group.add_argument(
+        "--delete",
+        metavar="JOB_ID",
+        help="Delete a job and all its files (remote mode only). Permanent removal. Example: --delete abc12345",
+    )
+    workflow_group.add_argument(
+        "--list", "--list-jobs",
+        action="store_true",
+        dest="list_jobs",
+        help="List all jobs (remote mode only). Shows job ID, status, artist, and title. Example: --list",
+    )
 
     # Logging & Debugging
     debug_group = parser.add_argument_group("Logging & Debugging")

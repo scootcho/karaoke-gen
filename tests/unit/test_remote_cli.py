@@ -656,6 +656,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -679,6 +682,9 @@ class TestMain:
         mock_args.edit_lyrics = True
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -702,6 +708,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = True
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
@@ -725,6 +734,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_args.args = []  # No positional args
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -796,6 +808,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_args.args = ["/path/to/folder"]
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -831,6 +846,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_args.args = ["Artist", "Title"]  # Audio search format (not yet supported in remote)
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
@@ -867,6 +885,9 @@ class TestMain:
         mock_args.edit_lyrics = False
         mock_args.test_email_template = False
         mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.delete = None
         mock_args.args = ["/path/to/file.mp3"]  # File only, no artist/title
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser

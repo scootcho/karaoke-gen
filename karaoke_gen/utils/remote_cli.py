@@ -8,6 +8,9 @@ Set KARAOKE_GEN_URL environment variable to your cloud backend URL.
 Usage:
     karaoke-gen-remote <filepath> <artist> <title>
     karaoke-gen-remote --resume <job_id>
+    karaoke-gen-remote --list
+    karaoke-gen-remote --cancel <job_id>
+    karaoke-gen-remote --delete <job_id>
 """
 # Suppress SyntaxWarnings from third-party dependencies (pydub, syrics)
 # that have invalid escape sequences in regex patterns (not yet fixed for Python 3.12+)
@@ -330,6 +333,48 @@ class RemoteKaraokeClient:
             raise ValueError(f"Job not found: {job_id}")
         if response.status_code != 200:
             raise RuntimeError(f"Error getting job: {response.text}")
+        return response.json()
+    
+    def cancel_job(self, job_id: str, reason: str = "User requested") -> Dict[str, Any]:
+        """Cancel a running job. Stops processing but keeps the job record."""
+        response = self._request(
+            'POST',
+            f'/api/jobs/{job_id}/cancel',
+            json={'reason': reason}
+        )
+        if response.status_code == 404:
+            raise ValueError(f"Job not found: {job_id}")
+        if response.status_code == 400:
+            try:
+                error_detail = response.json().get('detail', response.text)
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Cannot cancel job: {error_detail}")
+        if response.status_code != 200:
+            raise RuntimeError(f"Error cancelling job: {response.text}")
+        return response.json()
+    
+    def delete_job(self, job_id: str, delete_files: bool = True) -> Dict[str, Any]:
+        """Delete a job and optionally its files. Permanent removal."""
+        response = self._request(
+            'DELETE',
+            f'/api/jobs/{job_id}',
+            params={'delete_files': str(delete_files).lower()}
+        )
+        if response.status_code == 404:
+            raise ValueError(f"Job not found: {job_id}")
+        if response.status_code != 200:
+            raise RuntimeError(f"Error deleting job: {response.text}")
+        return response.json()
+    
+    def list_jobs(self, status: Optional[str] = None, limit: int = 100) -> list:
+        """List all jobs with optional status filter."""
+        params = {'limit': limit}
+        if status:
+            params['status'] = status
+        response = self._request('GET', '/api/jobs', params=params)
+        if response.status_code != 200:
+            raise RuntimeError(f"Error listing jobs: {response.text}")
         return response.json()
     
     def get_instrumental_options(self, job_id: str) -> Dict[str, Any]:
@@ -1154,6 +1199,115 @@ def main():
             return 1
         except Exception as e:
             logger.error(f"Error resuming job: {e}")
+            return 1
+    
+    # Handle list jobs mode
+    if getattr(args, 'list_jobs', False):
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - List Jobs")
+        logger.info("=" * 60)
+        logger.info("")
+        
+        try:
+            jobs = client.list_jobs(limit=100)
+            
+            if not jobs:
+                logger.info("No jobs found.")
+                return 0
+            
+            # Print header
+            logger.info(f"{'JOB ID':<12} {'STATUS':<30} {'ARTIST':<20} {'TITLE':<30}")
+            logger.info("-" * 92)
+            
+            # Print each job
+            for job in jobs:
+                job_id = job.get('job_id', 'unknown')[:10]
+                status = job.get('status', 'unknown')[:28]
+                artist = job.get('artist', 'Unknown')[:18]
+                title = job.get('title', 'Unknown')[:28]
+                logger.info(f"{job_id:<12} {status:<30} {artist:<20} {title:<30}")
+            
+            logger.info("")
+            logger.info(f"Total: {len(jobs)} jobs")
+            logger.info("")
+            logger.info("To delete a job: karaoke-gen-remote --delete <JOB_ID>")
+            logger.info("To cancel a job: karaoke-gen-remote --cancel <JOB_ID>")
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error listing jobs: {e}")
+            return 1
+    
+    # Handle cancel job mode
+    if args.cancel:
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Cancel Job")
+        logger.info("=" * 60)
+        logger.info(f"Job ID: {args.cancel}")
+        
+        try:
+            # Get job info first
+            job_data = client.get_job(args.cancel)
+            artist = job_data.get('artist', 'Unknown')
+            title = job_data.get('title', 'Unknown')
+            status = job_data.get('status', 'unknown')
+            
+            logger.info(f"Artist: {artist}")
+            logger.info(f"Title: {title}")
+            logger.info(f"Current status: {status}")
+            logger.info("")
+            
+            # Cancel the job
+            result = client.cancel_job(args.cancel)
+            logger.info(f"✓ Job cancelled successfully")
+            return 0
+            
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
+        except RuntimeError as e:
+            logger.error(str(e))
+            return 1
+        except Exception as e:
+            logger.error(f"Error cancelling job: {e}")
+            return 1
+    
+    # Handle delete job mode
+    if args.delete:
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Delete Job")
+        logger.info("=" * 60)
+        logger.info(f"Job ID: {args.delete}")
+        
+        try:
+            # Get job info first
+            job_data = client.get_job(args.delete)
+            artist = job_data.get('artist', 'Unknown')
+            title = job_data.get('title', 'Unknown')
+            status = job_data.get('status', 'unknown')
+            
+            logger.info(f"Artist: {artist}")
+            logger.info(f"Title: {title}")
+            logger.info(f"Status: {status}")
+            logger.info("")
+            
+            # Confirm deletion unless -y flag is set
+            if not config.non_interactive:
+                confirm = input("Are you sure you want to delete this job and all its files? [y/N]: ")
+                if confirm.lower() != 'y':
+                    logger.info("Deletion cancelled.")
+                    return 0
+            
+            # Delete the job
+            result = client.delete_job(args.delete, delete_files=True)
+            logger.info(f"✓ Job deleted successfully (including all files)")
+            return 0
+            
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
+        except Exception as e:
+            logger.error(f"Error deleting job: {e}")
             return 1
     
     # Warn about unsupported features
