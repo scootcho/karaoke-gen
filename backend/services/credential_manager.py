@@ -559,6 +559,10 @@ class CredentialManager:
         """
         Poll for device authorization completion.
         
+        This method is STATELESS - it fetches client credentials from Secret Manager
+        and polls Google directly. This works correctly in serverless environments
+        like Cloud Run where in-memory state is not preserved between requests.
+        
         Args:
             service_name: "youtube" or "gdrive"
             device_code: The device code from start_*_device_auth
@@ -570,31 +574,40 @@ class CredentialManager:
         """
         import requests
         
-        key = f"{service_name}:{device_code}"
-        if key not in self._pending_device_auths:
-            return ("error", {"message": "Unknown device code"})
+        # Get client credentials from Secret Manager (stateless approach)
+        if service_name == "youtube":
+            client_creds = self.get_youtube_client_credentials()
+            scopes = self.YOUTUBE_SCOPES
+            secret_name = self.YOUTUBE_SECRET
+        elif service_name == "gdrive":
+            client_creds = self.get_gdrive_client_credentials()
+            scopes = self.GDRIVE_SCOPES
+            secret_name = self.GDRIVE_SECRET
+        else:
+            return ("error", {"message": f"Unknown service: {service_name}"})
         
-        auth_data = self._pending_device_auths[key]
-        device_info = auth_data["info"]
+        if not client_creds:
+            return ("error", {"message": f"Client credentials not found in Secret Manager for {service_name}"})
         
-        # Check if expired
-        elapsed = (datetime.utcnow() - device_info.started_at).total_seconds()
-        if elapsed > device_info.expires_in:
-            del self._pending_device_auths[key]
-            return ("expired", None)
+        client_id = client_creds.get("client_id")
+        client_secret = client_creds.get("client_secret")
+        
+        if not client_id or not client_secret:
+            return ("error", {"message": f"Invalid client credentials for {service_name}"})
         
         # Poll Google token endpoint
         response = requests.post(
             self.GOOGLE_TOKEN_URI,
             data={
-                "client_id": auth_data["client_id"],
-                "client_secret": auth_data["client_secret"],
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "device_code": device_code,
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             }
         )
         
         data = response.json()
+        logger.debug(f"Device auth poll response for {service_name}: {data}")
         
         if response.status_code == 200:
             # Success! Store the credentials
@@ -602,33 +615,25 @@ class CredentialManager:
                 "token": data["access_token"],
                 "refresh_token": data.get("refresh_token"),
                 "token_uri": self.GOOGLE_TOKEN_URI,
-                "client_id": auth_data["client_id"],
-                "client_secret": auth_data["client_secret"],
-                "scopes": auth_data["scopes"],
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scopes": scopes,
             }
             
             # Save to Secret Manager
-            secret_name = self.YOUTUBE_SECRET if service_name == "youtube" else self.GDRIVE_SECRET
             self._save_credentials_to_secret(secret_name, token_data)
-            
-            # Cleanup
-            del self._pending_device_auths[key]
             
             return ("complete", token_data)
         
         elif "error" in data:
             error = data["error"]
             if error == "authorization_pending":
-                return ("pending", None)
+                return ("pending", {"message": "Waiting for user to authorize. Please visit the verification URL and enter the code."})
             elif error == "slow_down":
-                # Increase polling interval
-                device_info.interval += 5
-                return ("pending", None)
+                return ("pending", {"message": "Please wait a few more seconds before polling again."})
             elif error == "expired_token":
-                del self._pending_device_auths[key]
-                return ("expired", None)
+                return ("expired", {"message": "Device code expired. Please start a new device auth flow."})
             elif error == "access_denied":
-                del self._pending_device_auths[key]
                 return ("error", {"message": "User denied access"})
             else:
                 return ("error", {"message": data.get("error_description", error)})

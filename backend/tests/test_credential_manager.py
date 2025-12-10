@@ -254,73 +254,70 @@ class TestCredentialManager:
             key = f"youtube:{device_info.device_code}"
             assert key in manager._pending_device_auths
     
-    def test_poll_device_auth_unknown_code(self):
-        """Test polling with unknown device code."""
+    def test_poll_device_auth_no_client_creds(self):
+        """Test polling when client credentials are not in Secret Manager."""
         manager = CredentialManager()
         
-        status, data = manager.poll_device_auth("youtube", "unknown_code")
+        # Mock get_youtube_client_credentials to return None (no creds)
+        with patch.object(manager, 'get_youtube_client_credentials', return_value=None):
+            status, data = manager.poll_device_auth("youtube", "some_code")
         
         assert status == "error"
-        assert "unknown" in data["message"].lower()
+        assert "client credentials not found" in data["message"].lower()
     
     def test_poll_device_auth_expired(self):
         """Test polling with expired device code."""
         manager = CredentialManager()
         
-        # Create an expired device auth
-        from datetime import timedelta
-        old_time = datetime.utcnow() - timedelta(hours=1)
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {"error": "expired_token"}
         
-        device_info = DeviceAuthInfo(
-            device_code="expired_code",
-            user_code="TEST",
-            verification_url="https://google.com/device",
-            expires_in=1800,
-            interval=5,
-            started_at=old_time
-        )
-        
-        manager._pending_device_auths["youtube:expired_code"] = {
-            "info": device_info,
-            "client_id": "test",
-            "client_secret": "test",
-            "scopes": [],
-            "service_name": "youtube"
-        }
-        
-        status, data = manager.poll_device_auth("youtube", "expired_code")
+        with patch.object(manager, 'get_youtube_client_credentials', 
+                          return_value={"client_id": "test", "client_secret": "test"}):
+            with patch('requests.post', return_value=mock_response):
+                status, data = manager.poll_device_auth("youtube", "expired_code")
         
         assert status == "expired"
+        assert "expired" in data["message"].lower()
     
     def test_poll_device_auth_pending(self):
         """Test polling when authorization is pending."""
         manager = CredentialManager()
         
-        device_info = DeviceAuthInfo(
-            device_code="pending_code",
-            user_code="TEST",
-            verification_url="https://google.com/device",
-            expires_in=1800,
-            interval=5,
-            started_at=datetime.utcnow()
-        )
-        
-        manager._pending_device_auths["youtube:pending_code"] = {
-            "info": device_info,
-            "client_id": "test",
-            "client_secret": "test",
-            "scopes": ["https://www.googleapis.com/auth/youtube"],
-            "service_name": "youtube"
-        }
-        
         mock_response = MagicMock()
         mock_response.status_code = 400
         mock_response.json.return_value = {"error": "authorization_pending"}
         
-        with patch('requests.post', return_value=mock_response):
-            status, data = manager.poll_device_auth("youtube", "pending_code")
-            
-            assert status == "pending"
+        with patch.object(manager, 'get_youtube_client_credentials',
+                          return_value={"client_id": "test", "client_secret": "test"}):
+            with patch('requests.post', return_value=mock_response):
+                status, data = manager.poll_device_auth("youtube", "pending_code")
+        
+        assert status == "pending"
+        assert "waiting" in data["message"].lower()
+    
+    def test_poll_device_auth_success(self):
+        """Test polling when authorization completes successfully."""
+        manager = CredentialManager()
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_access_token",
+            "refresh_token": "new_refresh_token"
+        }
+        
+        with patch.object(manager, 'get_youtube_client_credentials',
+                          return_value={"client_id": "test_id", "client_secret": "test_secret"}):
+            with patch('requests.post', return_value=mock_response):
+                with patch.object(manager, '_save_credentials_to_secret', return_value=True):
+                    status, data = manager.poll_device_auth("youtube", "completed_code")
+        
+        assert status == "complete"
+        assert data["token"] == "new_access_token"
+        assert data["refresh_token"] == "new_refresh_token"
+        assert data["client_id"] == "test_id"
 
 
 class TestGetCredentialManager:
