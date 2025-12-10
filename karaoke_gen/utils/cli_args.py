@@ -351,6 +351,32 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         default=int(os.environ.get('POLL_INTERVAL', '5')),
         help="Seconds between status polls (default: 5)",
     )
+    
+    # Job tracking and filtering options (remote mode)
+    tracking_group = parser.add_argument_group("Job Tracking Options (karaoke-gen-remote only)")
+    tracking_group.add_argument(
+        "--environment",
+        default=os.environ.get('KARAOKE_GEN_ENVIRONMENT', ''),
+        help="Tag jobs with environment (test/production/development). Sent as X-Environment header. Can also set via KARAOKE_GEN_ENVIRONMENT env var. Example: --environment=test",
+    )
+    tracking_group.add_argument(
+        "--client-id",
+        default=os.environ.get('KARAOKE_GEN_CLIENT_ID', ''),
+        help="Tag jobs with client identifier for filtering. Sent as X-Client-ID header. Can also set via KARAOKE_GEN_CLIENT_ID env var. Example: --client-id=my-user-id",
+    )
+    tracking_group.add_argument(
+        "--filter-environment",
+        help="Filter jobs by environment when using --list. Example: --list --filter-environment=test",
+    )
+    tracking_group.add_argument(
+        "--filter-client-id",
+        help="Filter jobs by client ID when using --list. Example: --list --filter-client-id=my-user-id",
+    )
+    tracking_group.add_argument(
+        "--bulk-delete",
+        action="store_true",
+        help="Delete all jobs matching filters. Requires --filter-environment or --filter-client-id. Example: --bulk-delete --filter-environment=test",
+    )
 
     return parser
 

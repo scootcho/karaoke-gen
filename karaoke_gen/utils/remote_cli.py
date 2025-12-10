@@ -75,6 +75,9 @@ class Config:
     output_dir: str
     auth_token: Optional[str] = None
     non_interactive: bool = False  # Auto-accept defaults for testing
+    # Job tracking metadata (sent as headers for filtering/tracking)
+    environment: str = ""  # test/production/development
+    client_id: str = ""  # Customer/user identifier
 
 
 class RemoteKaraokeClient:
@@ -91,9 +94,23 @@ class RemoteKaraokeClient:
         self._setup_auth()
     
     def _setup_auth(self) -> None:
-        """Set up authentication headers."""
+        """Set up authentication and tracking headers."""
         if self.config.auth_token:
             self.session.headers['Authorization'] = f'Bearer {self.config.auth_token}'
+        
+        # Set up job tracking headers (used for filtering and operational management)
+        if self.config.environment:
+            self.session.headers['X-Environment'] = self.config.environment
+        if self.config.client_id:
+            self.session.headers['X-Client-ID'] = self.config.client_id
+        
+        # Always include CLI version as user-agent
+        from importlib import metadata
+        try:
+            version = metadata.version("karaoke-gen")
+        except metadata.PackageNotFoundError:
+            version = "unknown"
+        self.session.headers['User-Agent'] = f'karaoke-gen-remote/{version}'
     
     def _get_auth_token_from_gcloud(self) -> Optional[str]:
         """Get auth token from gcloud CLI."""
@@ -367,14 +384,75 @@ class RemoteKaraokeClient:
             raise RuntimeError(f"Error deleting job: {response.text}")
         return response.json()
     
-    def list_jobs(self, status: Optional[str] = None, limit: int = 100) -> list:
-        """List all jobs with optional status filter."""
+    def list_jobs(
+        self,
+        status: Optional[str] = None,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        limit: int = 100
+    ) -> list:
+        """
+        List all jobs with optional filters.
+        
+        Args:
+            status: Filter by job status
+            environment: Filter by request_metadata.environment
+            client_id: Filter by request_metadata.client_id
+            limit: Maximum number of jobs to return
+        """
         params = {'limit': limit}
         if status:
             params['status'] = status
+        if environment:
+            params['environment'] = environment
+        if client_id:
+            params['client_id'] = client_id
         response = self._request('GET', '/api/jobs', params=params)
         if response.status_code != 200:
             raise RuntimeError(f"Error listing jobs: {response.text}")
+        return response.json()
+    
+    def bulk_delete_jobs(
+        self,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        status: Optional[str] = None,
+        confirm: bool = False,
+        delete_files: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Delete multiple jobs matching filter criteria.
+        
+        Args:
+            environment: Delete jobs with this environment
+            client_id: Delete jobs from this client
+            status: Delete jobs with this status
+            confirm: Must be True to execute deletion
+            delete_files: Also delete GCS files
+            
+        Returns:
+            Dict with deletion results or preview
+        """
+        params = {
+            'confirm': str(confirm).lower(),
+            'delete_files': str(delete_files).lower(),
+        }
+        if environment:
+            params['environment'] = environment
+        if client_id:
+            params['client_id'] = client_id
+        if status:
+            params['status'] = status
+        
+        response = self._request('DELETE', '/api/jobs', params=params)
+        if response.status_code == 400:
+            try:
+                error_detail = response.json().get('detail', response.text)
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error: {error_detail}")
+        if response.status_code != 200:
+            raise RuntimeError(f"Error bulk deleting jobs: {response.text}")
         return response.json()
     
     def get_instrumental_options(self, job_id: str) -> Dict[str, Any]:
