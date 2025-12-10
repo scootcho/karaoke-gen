@@ -1,11 +1,21 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.71.9"
+version = "0.71.11"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
 readme = "README.md"
-packages = [{ include = "karaoke_gen" }]
+packages = [
+    { include = "karaoke_gen" },
+    { include = "lyrics_transcriber", from = "lyrics_transcriber_temp" }
+]
+include = [
+    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets",
+    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets/**/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/fonts/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/images/*",
+    "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/transitions/*"
+]
 homepage = "https://github.com/nomadkaraoke/karaoke-gen"
 repository = "https://github.com/nomadkaraoke/karaoke-gen"
 documentation = "https://github.com/nomadkaraoke/karaoke-gen/blob/main/README.md"
@@ -28,7 +38,33 @@ thefuzz = ">=0.22"
 numpy = ">=2"
 audio-separator = { version = ">=0.34.0", extras = ["cpu"] }
 lyrics-converter = ">=0.2.1"
-lyrics-transcriber = ">=0.81"
+# lyrics-transcriber is vendored in lyrics_transcriber_temp/ and included via packages
+# Dependencies from vendored lyrics_transcriber:
+python-slugify = ">=8"
+syrics = ">=0"
+karaoke-lyrics-processor = ">=0.6"
+dropbox = ">=12"
+spacy = ">=3.8.7"
+srsly = ">=2.5.1"
+tqdm = ">=4.67"
+python-levenshtein = ">=0.26"
+transformers = ">=4.47"
+metaphone = ">=0.6"
+nltk = ">=3.9"
+spacy-syllables = ">=3"
+syllables = ">=1"
+fonttools = ">=4.55"
+ollama = ">=0.4.7"
+shortuuid = ">=1.0.13"
+openai = ">=1.63.2"
+langgraph = ">=0.2.0"
+langchain = ">=0.3.0"
+langchain-core = ">=0.3.0"
+langchain-openai = ">=0.2.0"
+langchain-anthropic = ">=0.2.0"
+langchain-ollama = ">=0.2.0"
+langfuse = ">=3.0.0"
+jiwer = ">=3.0.0"
 kbputils = "^0.0.16"
 attrs = ">=24.2.0"
 cattrs = ">=24.1.2"

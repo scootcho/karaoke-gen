@@ -1,8 +1,13 @@
 # Base image with all Python dependencies pre-installed
-# This image is rebuilt only when requirements.txt changes
+# This image is rebuilt only when poetry.lock changes
 # 
 # Build with: gcloud builds submit --config=cloudbuild-base.yaml
 # Or manually: docker build -f backend/Dockerfile.base -t karaoke-backend-base .
+#
+# IMPORTANT: After changing pyproject.toml dependencies, regenerate requirements-frozen.txt:
+#   poetry lock && poetry install
+#   poetry run pip freeze | grep -v "^-e" | grep -v "^karaoke-gen" | grep -v "^lyrics-transcriber" > backend/requirements-frozen.txt
+#   Then rebuild this base image.
 
 FROM python:3.11-slim
 
@@ -18,24 +23,18 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml /app/
-COPY README.md /app/
-COPY LICENSE /app/
-COPY backend/requirements.txt /app/backend/requirements.txt
-
-# Install Python dependencies (the slow part - cached in base image)
+# Install Python dependencies ONLY (the slow part - cached in base image)
+# This file is generated from poetry.lock via pip freeze (see comment at top of file)
+COPY backend/requirements-frozen.txt /app/backend/requirements-frozen.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r backend/requirements.txt
-
-# Copy and install karaoke_gen package (dependencies cached above)
-COPY karaoke_gen /app/karaoke_gen
-RUN pip install --no-cache-dir -e .
+    pip install --no-cache-dir -r backend/requirements-frozen.txt
 
 # Label with build info
 ARG BUILD_DATE
 ARG BUILD_ID
+ARG POETRY_LOCK_HASH
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${BUILD_ID}"
 LABEL org.opencontainers.image.title="karaoke-backend-base"
 LABEL org.opencontainers.image.description="Base image with Python dependencies for karaoke-backend"
+LABEL poetry.lock.hash="${POETRY_LOCK_HASH}"

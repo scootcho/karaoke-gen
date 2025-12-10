@@ -1,3 +1,7 @@
+# DEPRECATED: This file is no longer used for Docker builds or CI.
+# Use requirements-frozen.txt instead, which is generated from poetry.lock.
+# This file is kept for reference only.
+
 fastapi>=0.104.0,<1.0.0
 uvicorn[standard]>=0.24.0,<1.0.0
 pydantic>=2.5.0,<3.0.0

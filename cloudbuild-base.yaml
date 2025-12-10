@@ -1,8 +1,12 @@
 # Cloud Build configuration for base image
 # 
 # This builds the base image with all Python dependencies pre-installed.
-# Run this manually when requirements.txt changes:
+# Run this manually when poetry.lock changes:
 #   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
+#
+# IMPORTANT: After changing pyproject.toml dependencies, regenerate requirements-frozen.txt:
+#   poetry lock && poetry install
+#   poetry run pip freeze | grep -v "^-e" | grep -v "^karaoke-gen" | grep -v "^lyrics-transcriber" > backend/requirements-frozen.txt
 #
 # The base image is used by the main Dockerfile for fast app builds.
 # The poetry.lock hash is stored as a label for change detection.
@@ -28,7 +32,7 @@ steps:
         docker build \
           --build-arg BUILD_DATE=$BUILD_ID \
           --build-arg BUILD_ID=$BUILD_ID \
-          --label "poetry.lock.hash=$$POETRY_LOCK_HASH" \
+          --build-arg POETRY_LOCK_HASH=$$POETRY_LOCK_HASH \
           -t us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:latest \
           -t us-central1-docker.pkg.dev/$PROJECT_ID/karaoke-repo/karaoke-backend-base:$BUILD_ID \
           -f backend/Dockerfile.base \
