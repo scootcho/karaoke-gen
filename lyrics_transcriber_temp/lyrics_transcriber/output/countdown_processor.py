@@ -129,9 +129,10 @@ class CountdownProcessor:
             raise FileNotFoundError(f"Audio file not found: {audio_filepath}")
 
         # Create output path in cache directory
+        # Always use .flac extension since we encode with FLAC codec for quality
         basename = os.path.basename(audio_filepath)
-        name, ext = os.path.splitext(basename)
-        padded_filename = f"{name}_padded{ext}"
+        name, _ = os.path.splitext(basename)
+        padded_filename = f"{name}_padded.flac"
         padded_filepath = os.path.join(self.cache_dir, padded_filename)
 
         self.logger.info(f"Creating padded audio file: {padded_filename}")
