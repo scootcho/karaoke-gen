@@ -226,6 +226,9 @@ async def upload_and_create_job(
                 }
             )
         
+        # Extract request metadata for tracking and filtering
+        request_metadata = extract_request_metadata(request, created_from="upload")
+        
         # Create job first to get job_id
         job_create = JobCreate(
             artist=artist,
@@ -244,6 +247,8 @@ async def upload_and_create_job(
             gdrive_folder_id=effective_gdrive_folder_id,
             # Legacy rclone distribution (deprecated)
             organised_dir_rclone_root=organised_dir_rclone_root,
+            # Request metadata for tracking and filtering
+            request_metadata=request_metadata,
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
