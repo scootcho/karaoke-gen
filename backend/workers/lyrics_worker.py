@@ -13,6 +13,7 @@ Re-uses:
 - karaoke_gen.lyrics_processor.LyricsProcessor for lyrics fetching and orchestration
 - lyrics_transcriber library (submodule) for transcription and correction
 """
+import asyncio
 import logging
 import os
 import shutil
@@ -330,8 +331,8 @@ async def download_audio(
                     logger.error(f"Job {job_id}: Audio worker failed, cannot proceed with lyrics")
                     return None
                 
-                # Wait before next poll
-                time.sleep(poll_interval)
+                # Wait before next poll - use asyncio.sleep to not block event loop
+                await asyncio.sleep(poll_interval)
             
             logger.error(f"Job {job_id}: Timed out waiting for audio download (waited {max_wait_seconds}s)")
             return None

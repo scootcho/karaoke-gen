@@ -399,7 +399,8 @@ class CredentialManager:
                     "refresh_token": creds["refresh_token"],
                     "client_id": creds["app_key"],
                     "client_secret": creds["app_secret"],
-                }
+                },
+                timeout=30
             )
             
             if response.status_code == 200:
@@ -524,7 +525,8 @@ class CredentialManager:
             data={
                 "client_id": client_id,
                 "scope": " ".join(scopes),
-            }
+            },
+            timeout=30
         )
         
         if response.status_code != 200:
@@ -613,7 +615,8 @@ class CredentialManager:
                 "client_secret": client_secret,
                 "device_code": device_code,
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            }
+            },
+            timeout=30
         )
         
         data = response.json()
@@ -769,7 +772,7 @@ class CredentialManager:
                 }]
             }
             
-            response = requests.post(discord_webhook_url, json=message)
+            response = requests.post(discord_webhook_url, json=message, timeout=30)
             return response.status_code in (200, 204)
             
         except Exception as e:

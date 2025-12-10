@@ -179,8 +179,20 @@ karaoke-gen-remote \
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `KARAOKE_GEN_URL` | Backend service URL | Required |
+| `KARAOKE_GEN_AUTH_TOKEN` | Admin auth token (for protected endpoints) | Optional |
 | `REVIEW_UI_URL` | Lyrics review UI URL | `https://lyrics.nomadkaraoke.com` |
 | `POLL_INTERVAL` | Seconds between status polls | `5` |
+
+### Authentication
+
+The backend uses token-based authentication for admin operations (bulk delete, internal worker triggers). For basic job submission and monitoring, authentication is optional.
+
+**For admin access:**
+```bash
+export KARAOKE_GEN_AUTH_TOKEN="your-admin-token"
+```
+
+The token must match one of the tokens configured in the backend's `ADMIN_TOKENS` environment variable.
 
 ### Non-Interactive Mode
 

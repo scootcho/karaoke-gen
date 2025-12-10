@@ -9,15 +9,17 @@ Usage:
   
 The baseApiUrl includes the job_id, and all endpoints are relative to that.
 """
+import asyncio
 import logging
 import hashlib
 import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Dict, Any, Set
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from typing import Dict, Any
 
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
@@ -41,6 +43,9 @@ _job_contexts: Dict[str, Dict[str, Any]] = {}
 
 # Store preview video paths for serving
 _preview_videos: Dict[str, Dict[str, str]] = {}
+
+# Keep references to background tasks to prevent garbage collection
+_background_tasks: Set[asyncio.Task] = set()
 
 
 def _get_audio_hash(job_id: str) -> str:
@@ -221,9 +226,10 @@ async def complete_review(job_id: str, updated_data: Dict[str, Any]):
         from backend.services.worker_service import get_worker_service
         worker_service = get_worker_service()
         
-        # Run in background
-        import asyncio
-        asyncio.create_task(worker_service.trigger_render_video_worker(job_id))
+        # Run in background, keep reference to prevent garbage collection
+        task = asyncio.create_task(worker_service.trigger_render_video_worker(job_id))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         
         logger.info(f"Job {job_id}: Review complete, triggered render video worker")
         

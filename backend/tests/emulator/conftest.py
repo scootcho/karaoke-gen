@@ -53,10 +53,11 @@ def setup_gcs_bucket():
         response = requests.post(
             "http://127.0.0.1:4443/storage/v1/b",
             json={"name": "test-bucket"},
-            params={"project": "test-project"}
+            params={"project": "test-project"},
+            timeout=5
         )
         if response.status_code in [200, 409]:
-            print(f"✅ GCS bucket 'test-bucket' ready in emulator")
+            print("✅ GCS bucket 'test-bucket' ready in emulator")
     except Exception as e:
         print(f"⚠️  GCS bucket setup failed: {e}")
     yield

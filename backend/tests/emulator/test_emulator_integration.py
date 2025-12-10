@@ -11,17 +11,8 @@ The fixtures are defined in conftest.py in this directory.
 """
 import pytest
 import time
-import requests
 
-
-def emulators_running() -> bool:
-    """Check if GCP emulators are running."""
-    try:
-        requests.get("http://127.0.0.1:8080", timeout=1)
-        requests.get("http://127.0.0.1:4443", timeout=1)
-        return True
-    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        return False
+from .conftest import emulators_running
 
 
 # Skip all tests in this module if emulators aren't running

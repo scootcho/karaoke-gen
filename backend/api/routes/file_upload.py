@@ -193,7 +193,7 @@ async def upload_and_create_job(
         if effective_gdrive_folder_id and not gdrive_folder_id:
             logger.info(f"Using default gdrive_folder_id: {effective_gdrive_folder_id}")
         if effective_discord_webhook_url and not discord_webhook_url:
-            logger.info(f"Using default discord_webhook_url (from env)")
+            logger.info("Using default discord_webhook_url (from env)")
         
         # Validate credentials for requested distribution services (including defaults)
         # This prevents accepting jobs that will fail later due to missing credentials
@@ -416,4 +416,4 @@ async def upload_and_create_job(
         raise
     except Exception as e:
         logger.error(f"Error uploading files: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

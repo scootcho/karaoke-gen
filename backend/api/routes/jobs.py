@@ -10,8 +10,8 @@ Handles job lifecycle endpoints including:
 import asyncio
 import logging
 import httpx
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 
 from backend.models.job import Job, JobCreate, JobResponse, JobStatus
 from backend.models.requests import (
@@ -25,6 +25,8 @@ from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
+from backend.api.dependencies import require_admin
+from backend.services.auth_service import UserType
 
 
 logger = logging.getLogger(__name__)
@@ -195,7 +197,8 @@ async def bulk_delete_jobs(
     status: Optional[JobStatus] = None,
     created_before: Optional[str] = None,
     delete_files: bool = True,
-    confirm: bool = False
+    confirm: bool = False,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ) -> dict:
     """
     Delete multiple jobs matching filter criteria.

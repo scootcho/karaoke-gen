@@ -31,6 +31,19 @@ class WorkerService:
         """Initialize worker service."""
         self.settings = get_settings()
         self._base_url = self._get_base_url()
+        self._admin_token = self._get_admin_token()
+    
+    def _get_admin_token(self) -> Optional[str]:
+        """
+        Get admin token for internal API authentication.
+        
+        Returns the first admin token from ADMIN_TOKENS env var.
+        """
+        admin_tokens_str = self.settings.admin_tokens or ""
+        tokens = [t.strip() for t in admin_tokens_str.split(",") if t.strip()]
+        if tokens:
+            return tokens[0]
+        return None
     
     def _get_base_url(self) -> str:
         """
@@ -79,12 +92,18 @@ class WorkerService:
             True if trigger successful, False otherwise
         """
         try:
+            # Build headers with admin auth token
+            headers = {}
+            if self._admin_token:
+                headers["Authorization"] = f"Bearer {self._admin_token}"
+            
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 url = f"{self._base_url}/api/internal/workers/{worker_type}"
                 
                 response = await client.post(
                     url,
-                    json={"job_id": job_id}
+                    json={"job_id": job_id},
+                    headers=headers
                 )
                 
                 if response.status_code == 200:

@@ -2,11 +2,12 @@
 Internal API routes for worker coordination.
 
 These endpoints are for internal use only (backend → workers).
-They should be protected from external access via authentication or network rules.
+They are protected by admin authentication.
 """
 import logging
 import asyncio
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from typing import Tuple
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 
 from backend.workers.audio_worker import process_audio_separation
@@ -14,6 +15,8 @@ from backend.workers.lyrics_worker import process_lyrics_transcription
 from backend.workers.screens_worker import generate_screens
 from backend.workers.video_worker import generate_video
 from backend.workers.render_video_worker import process_render_video
+from backend.api.dependencies import require_admin
+from backend.services.auth_service import UserType
 
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,8 @@ class WorkerResponse(BaseModel):
 @router.post("/workers/audio", response_model=WorkerResponse)
 async def trigger_audio_worker(
     request: WorkerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
     """
     Trigger audio separation worker for a job.
@@ -63,7 +67,8 @@ async def trigger_audio_worker(
 @router.post("/workers/lyrics", response_model=WorkerResponse)
 async def trigger_lyrics_worker(
     request: WorkerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
     """
     Trigger lyrics transcription worker for a job.
@@ -89,7 +94,8 @@ async def trigger_lyrics_worker(
 @router.post("/workers/screens", response_model=WorkerResponse)
 async def trigger_screens_worker(
     request: WorkerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
     """
     Trigger title/end screen generation worker.
@@ -112,7 +118,8 @@ async def trigger_screens_worker(
 @router.post("/workers/video", response_model=WorkerResponse)
 async def trigger_video_worker(
     request: WorkerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
     """
     Trigger final video generation and encoding worker.
@@ -136,7 +143,8 @@ async def trigger_video_worker(
 @router.post("/workers/render-video", response_model=WorkerResponse)
 async def trigger_render_video_worker(
     request: WorkerRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
     """
     Trigger render video worker (post-review).
@@ -162,11 +170,14 @@ async def trigger_render_video_worker(
 
 
 @router.get("/health")
-async def internal_health():
+async def internal_health(
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
+):
     """
     Internal health check endpoint.
     
     Used to verify the internal API is responsive.
+    Requires admin authentication.
     """
     return {"status": "healthy", "service": "karaoke-backend-internal"}
 

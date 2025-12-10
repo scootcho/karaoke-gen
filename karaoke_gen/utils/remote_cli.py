@@ -1229,13 +1229,16 @@ def main():
     # Check prerequisites
     check_prerequisites(logger)
     
-    # Create config (API is currently unauthenticated)
+    # Get auth token from environment variable
+    auth_token = get_auth_token(logger)
+    
+    # Create config
     config = Config(
         service_url=args.service_url.rstrip('/'),
         review_ui_url=args.review_ui_url.rstrip('/'),
         poll_interval=args.poll_interval,
         output_dir=args.output_dir,
-        auth_token=None,  # API is unauthenticated for now
+        auth_token=auth_token,
         non_interactive=getattr(args, 'yes', False),  # -y / --yes flag
         # Job tracking metadata
         environment=getattr(args, 'environment', ''),

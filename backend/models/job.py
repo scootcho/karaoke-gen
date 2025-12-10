@@ -324,22 +324,9 @@ class Job(BaseModel):
     - Bulk cleanup of test jobs
     """
     
-    @validator('status')
-    def validate_status_transition(cls, v, values):
-        """Validate state transitions are legal."""
-        # Skip validation during initial creation
-        if 'status' not in values:
-            return v
-        
-        old_status = values.get('status')
-        if old_status and old_status != v:
-            valid_transitions = STATE_TRANSITIONS.get(old_status, [])
-            if v not in valid_transitions:
-                raise ValueError(
-                    f"Invalid state transition from {old_status} to {v}. "
-                    f"Valid transitions: {valid_transitions}"
-                )
-        return v
+    # Note: Status transition validation is handled by JobManager.validate_state_transition()
+    # which is called before status updates. The Job model does not validate transitions
+    # because Firestore updates happen directly without reconstructing the model.
     
     class Config:
         use_enum_values = True

@@ -12,7 +12,7 @@ import subprocess
 import time
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import os
 
 
@@ -25,6 +25,22 @@ pytestmark = pytest.mark.skipif(
 # Configuration
 SERVICE_URL = "https://karaoke-backend-718638054799.us-central1.run.app"
 TEST_YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # Rick Astley - Never Gonna Give You Up
+DEFAULT_TIMEOUT = 30  # seconds
+
+
+def api_get(url: str, headers: Optional[Dict[str, str]] = None, **kwargs) -> requests.Response:
+    """Make a GET request with default timeout."""
+    return requests.get(url, headers=headers, timeout=DEFAULT_TIMEOUT, **kwargs)
+
+
+def api_post(url: str, headers: Optional[Dict[str, str]] = None, **kwargs) -> requests.Response:
+    """Make a POST request with default timeout."""
+    return requests.post(url, headers=headers, timeout=DEFAULT_TIMEOUT, **kwargs)
+
+
+def api_delete(url: str, headers: Optional[Dict[str, str]] = None, **kwargs) -> requests.Response:
+    """Make a DELETE request with default timeout."""
+    return requests.delete(url, headers=headers, timeout=DEFAULT_TIMEOUT, **kwargs)
 
 
 def get_auth_token() -> str:
@@ -53,7 +69,7 @@ class TestHealthEndpoint:
     
     def test_health_check(self, auth_headers):
         """Test that health endpoint returns 200 OK."""
-        response = requests.get(f"{SERVICE_URL}/api/health", headers=auth_headers)
+        response = api_get(f"{SERVICE_URL}/api/health", headers=auth_headers)
         assert response.status_code == 200
         
         data = response.json()
@@ -62,7 +78,7 @@ class TestHealthEndpoint:
     
     def test_health_check_without_auth(self):
         """Test that health endpoint requires authentication."""
-        response = requests.get(f"{SERVICE_URL}/api/health")
+        response = api_get(f"{SERVICE_URL}/api/health")
         assert response.status_code == 403
 
 
@@ -71,7 +87,7 @@ class TestRootEndpoint:
     
     def test_root_endpoint(self, auth_headers):
         """Test root endpoint returns service info."""
-        response = requests.get(SERVICE_URL, headers=auth_headers)
+        response = api_get(SERVICE_URL, headers=auth_headers)
         assert response.status_code == 200
         
         data = response.json()
@@ -86,7 +102,7 @@ class TestJobSubmission:
     def test_submit_job_with_youtube_url(self, auth_headers):
         """Test submitting a job with a YouTube URL."""
         payload = {"url": TEST_YOUTUBE_URL}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -106,7 +122,7 @@ class TestJobSubmission:
     def test_submit_job_with_invalid_url(self, auth_headers):
         """Test that invalid URLs are rejected."""
         payload = {"url": "not-a-url"}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -117,7 +133,7 @@ class TestJobSubmission:
     def test_submit_job_without_url(self, auth_headers):
         """Test that missing URL is rejected."""
         payload = {}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -133,7 +149,7 @@ class TestJobRetrieval:
     def test_job_id(self, auth_headers):
         """Create a test job for retrieval tests."""
         payload = {"url": TEST_YOUTUBE_URL}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -144,14 +160,14 @@ class TestJobRetrieval:
         yield job_id
         
         # Cleanup
-        requests.delete(
+        api_delete(
             f"{SERVICE_URL}/api/jobs/{job_id}",
             headers=auth_headers
         )
     
     def test_get_job_status(self, auth_headers, test_job_id):
         """Test retrieving job status."""
-        response = requests.get(
+        response = api_get(
             f"{SERVICE_URL}/api/jobs/{test_job_id}",
             headers=auth_headers
         )
@@ -161,9 +177,16 @@ class TestJobRetrieval:
         
         assert data["job_id"] == test_job_id
         assert "status" in data
-        assert data["status"] in ["queued", "processing", "awaiting_review", 
-                                  "ready_for_finalization", "finalizing", 
-                                  "complete", "error"]
+        # Updated to use current JobStatus enum values
+        assert data["status"] in ["pending", "downloading", "separating_stage1",
+                                  "separating_stage2", "audio_complete",
+                                  "transcribing", "correcting", "lyrics_complete",
+                                  "generating_screens", "applying_padding",
+                                  "awaiting_review", "in_review", "review_complete",
+                                  "rendering_video", "awaiting_instrumental_selection",
+                                  "instrumental_selected", "generating_video",
+                                  "encoding", "packaging", "uploading", "notifying",
+                                  "complete", "failed", "cancelled"]
         assert "progress" in data
         assert "created_at" in data
         assert "updated_at" in data
@@ -172,7 +195,7 @@ class TestJobRetrieval:
     def test_get_nonexistent_job(self, auth_headers):
         """Test that requesting nonexistent job returns 404."""
         fake_job_id = "nonexistent-job-id"
-        response = requests.get(
+        response = api_get(
             f"{SERVICE_URL}/api/jobs/{fake_job_id}",
             headers=auth_headers
         )
@@ -181,7 +204,7 @@ class TestJobRetrieval:
     
     def test_list_jobs(self, auth_headers, test_job_id):
         """Test listing all jobs."""
-        response = requests.get(
+        response = api_get(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers
         )
@@ -196,8 +219,8 @@ class TestJobRetrieval:
     
     def test_list_jobs_with_status_filter(self, auth_headers):
         """Test filtering jobs by status."""
-        response = requests.get(
-            f"{SERVICE_URL}/api/jobs?status=queued",
+        response = api_get(
+            f"{SERVICE_URL}/api/jobs?status=pending",
             headers=auth_headers
         )
         
@@ -205,13 +228,13 @@ class TestJobRetrieval:
         data = response.json()
         
         assert isinstance(data, list)
-        # All returned jobs should be queued
+        # All returned jobs should be pending
         for job in data:
-            assert job["status"] == "queued"
+            assert job["status"] == "pending"
     
     def test_list_jobs_with_limit(self, auth_headers):
         """Test limiting number of returned jobs."""
-        response = requests.get(
+        response = api_get(
             f"{SERVICE_URL}/api/jobs?limit=5",
             headers=auth_headers
         )
@@ -230,7 +253,7 @@ class TestJobDeletion:
         """Test deleting a job."""
         # Create a job
         payload = {"url": TEST_YOUTUBE_URL}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -239,7 +262,7 @@ class TestJobDeletion:
         job_id = response.json()["job_id"]
         
         # Delete the job
-        response = requests.delete(
+        response = api_delete(
             f"{SERVICE_URL}/api/jobs/{job_id}",
             headers=auth_headers
         )
@@ -249,7 +272,7 @@ class TestJobDeletion:
         assert data["status"] == "success"
         
         # Verify job is deleted
-        response = requests.get(
+        response = api_get(
             f"{SERVICE_URL}/api/jobs/{job_id}",
             headers=auth_headers
         )
@@ -259,7 +282,7 @@ class TestJobDeletion:
         """Test deleting a job without deleting files."""
         # Create a job
         payload = {"url": TEST_YOUTUBE_URL}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -268,7 +291,7 @@ class TestJobDeletion:
         job_id = response.json()["job_id"]
         
         # Delete job but keep files
-        response = requests.delete(
+        response = api_delete(
             f"{SERVICE_URL}/api/jobs/{job_id}?delete_files=false",
             headers=auth_headers
         )
@@ -280,7 +303,7 @@ class TestJobDeletion:
     def test_delete_nonexistent_job(self, auth_headers):
         """Test deleting nonexistent job returns 404."""
         fake_job_id = "nonexistent-job-id"
-        response = requests.delete(
+        response = api_delete(
             f"{SERVICE_URL}/api/jobs/{fake_job_id}",
             headers=auth_headers
         )
@@ -310,8 +333,8 @@ class TestFileUpload:
                 "Authorization": auth_headers["Authorization"]
             }
             
-            response = requests.post(
-                f"{SERVICE_URL}/api/upload",
+            response = api_post(
+                f"{SERVICE_URL}/api/jobs/upload",
                 headers=headers,
                 files=files,
                 data=data
@@ -324,7 +347,7 @@ class TestFileUpload:
         assert "job_id" in result
         
         # Cleanup
-        requests.delete(
+        api_delete(
             f"{SERVICE_URL}/api/jobs/{result['job_id']}",
             headers=auth_headers
         )
@@ -346,8 +369,8 @@ class TestFileUpload:
                 "Authorization": auth_headers["Authorization"]
             }
             
-            response = requests.post(
-                f"{SERVICE_URL}/api/upload",
+            response = api_post(
+                f"{SERVICE_URL}/api/jobs/upload",
                 headers=headers,
                 files=files,
                 data=data
@@ -367,8 +390,8 @@ class TestFileUpload:
                 "Authorization": auth_headers["Authorization"]
             }
             
-            response = requests.post(
-                f"{SERVICE_URL}/api/upload",
+            response = api_post(
+                f"{SERVICE_URL}/api/jobs/upload",
                 headers=headers,
                 files=files
             )
@@ -390,7 +413,7 @@ class TestJobProcessing:
         """
         # Submit job
         payload = {"url": TEST_YOUTUBE_URL}
-        response = requests.post(
+        response = api_post(
             f"{SERVICE_URL}/api/jobs",
             headers=auth_headers,
             json=payload
@@ -403,7 +426,7 @@ class TestJobProcessing:
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            response = requests.get(
+            response = api_get(
                 f"{SERVICE_URL}/api/jobs/{job_id}",
                 headers=auth_headers
             )
@@ -417,7 +440,7 @@ class TestJobProcessing:
                 assert "download_urls" in job
                 assert len(job["download_urls"]) > 0
                 break
-            elif status == "error":
+            elif status == "failed":
                 pytest.fail(f"Job failed: {job.get('error_message')}")
             
             # Wait before next poll
@@ -426,7 +449,7 @@ class TestJobProcessing:
             pytest.fail(f"Job did not complete within {timeout} seconds")
         
         # Cleanup
-        requests.delete(
+        api_delete(
             f"{SERVICE_URL}/api/jobs/{job_id}",
             headers=auth_headers
         )
