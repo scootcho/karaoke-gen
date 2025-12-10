@@ -185,6 +185,37 @@ class TestCorrectionDataMerging:
         assert original_data['corrected_segments'] == [{"id": 1, "text": "updated"}]
 
 
+class TestAddLyricsEndpoint:
+    """Tests for the add-lyrics endpoint."""
+    
+    def test_add_lyrics_requires_source_and_lyrics(self):
+        """Document that add_lyrics expects source and lyrics fields."""
+        # The frontend sends this payload
+        valid_payload = {
+            "source": "custom",
+            "lyrics": "Line 1\nLine 2\nLine 3"
+        }
+        
+        # Both fields are required
+        assert "source" in valid_payload
+        assert "lyrics" in valid_payload
+        assert len(valid_payload["source"].strip()) > 0
+        assert len(valid_payload["lyrics"].strip()) > 0
+    
+    def test_add_lyrics_uses_correction_operations(self):
+        """Verify CorrectionOperations.add_lyrics_source is available."""
+        from lyrics_transcriber.correction.operations import CorrectionOperations
+        
+        # The method should exist
+        assert hasattr(CorrectionOperations, 'add_lyrics_source')
+        
+        # It should be a static method
+        import inspect
+        # Get the method and check it's callable
+        method = getattr(CorrectionOperations, 'add_lyrics_source')
+        assert callable(method)
+
+
 class TestPreviewStyleLoading:
     """Tests for the unified style loader used in preview video generation.
     

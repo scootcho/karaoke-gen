@@ -249,12 +249,80 @@ async def update_handlers(job_id: str, enabled_handlers: list):
 @router.post("/{job_id}/add-lyrics")
 async def add_lyrics(job_id: str, data: Dict[str, str]):
     """
-    Add custom lyrics source (optional feature).
+    Add custom lyrics source and rerun correction.
     
-    For now, just acknowledge the request.
+    Uses the LyricsTranscriber's CorrectionOperations to add a new lyrics source
+    and regenerate corrections with the new source included.
     """
-    logger.info(f"Job {job_id}: Add lyrics requested (not implemented)")
-    return {"status": "success", "message": "Add lyrics not yet implemented"}
+    job_manager = JobManager()
+    storage = StorageService()
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Job must be in review state to add lyrics
+    if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not in review state (current status: {job.status})"
+        )
+    
+    source = data.get("source", "").strip()
+    lyrics_text = data.get("lyrics", "").strip()
+    
+    logger.info(f"Job {job_id}: Adding lyrics source '{source}' with {len(lyrics_text)} characters")
+    
+    try:
+        # Create temp directory for this operation
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download current corrections.json
+            corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
+            corrections_path = os.path.join(temp_dir, "corrections.json")
+            storage.download_file(corrections_gcs, corrections_path)
+            
+            with open(corrections_path, 'r', encoding='utf-8') as f:
+                original_data = json.load(f)
+            
+            # Load as CorrectionResult
+            correction_result = CorrectionResult.from_dict(original_data)
+            
+            # Set up cache directory
+            cache_dir = os.path.join(temp_dir, "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            # Add lyrics source using CorrectionOperations
+            updated_result = CorrectionOperations.add_lyrics_source(
+                correction_result=correction_result,
+                source=source,
+                lyrics_text=lyrics_text,
+                cache_dir=cache_dir,
+                logger=logger
+            )
+            
+            # Add audio hash for the frontend
+            audio_hash = _get_audio_hash(job_id)
+            if not updated_result.metadata:
+                updated_result.metadata = {}
+            updated_result.metadata['audio_hash'] = audio_hash
+            updated_result.metadata['artist'] = job.artist
+            updated_result.metadata['title'] = job.title
+            
+            # Upload updated corrections back to GCS
+            updated_data = updated_result.to_dict()
+            storage.upload_json(corrections_gcs, updated_data)
+            
+            logger.info(f"Job {job_id}: Successfully added lyrics source '{source}'")
+            
+            return {"status": "success", "data": updated_data}
+            
+    except ValueError as e:
+        # ValueError from CorrectionOperations (e.g., duplicate source name)
+        logger.warning(f"Job {job_id}: Invalid add lyrics request: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Job {job_id}: Failed to add lyrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add lyrics: {str(e)}")
 
 
 @router.post("/{job_id}/preview-video")
