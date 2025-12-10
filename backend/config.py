@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")
     
+    # Default distribution settings (can be overridden per-request)
+    default_dropbox_path: Optional[str] = os.getenv("DEFAULT_DROPBOX_PATH")
+    default_gdrive_folder_id: Optional[str] = os.getenv("DEFAULT_GDRIVE_FOLDER_ID")
+    default_discord_webhook_url: Optional[str] = os.getenv("DEFAULT_DISCORD_WEBHOOK_URL")
+    
     # Secret Manager cache
     _secret_cache: Dict[str, str] = {}
     
