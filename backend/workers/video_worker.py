@@ -492,12 +492,17 @@ async def _setup_working_directory(
         storage.download_file(lrc_url, lrc_path)
         logger.info(f"Job {job_id}: Downloaded LRC file")
     
-    # Also create title/end JPG files if needed (KaraokeFinalise checks for these)
-    # For now, we'll create placeholder files - the actual MOV files are what matter
-    title_jpg_path = os.path.join(temp_dir, f"{base_name} (Title).jpg")
-    end_jpg_path = os.path.join(temp_dir, f"{base_name} (End).jpg")
-    Path(title_jpg_path).touch()
-    Path(end_jpg_path).touch()
+    # Download title/end JPG files (used for YouTube thumbnail)
+    screens = job.file_urls.get('screens', {})
+    if screens.get('title_jpg'):
+        title_jpg_path = os.path.join(temp_dir, f"{base_name} (Title).jpg")
+        storage.download_file(screens['title_jpg'], title_jpg_path)
+        logger.info(f"Job {job_id}: Downloaded title JPG for thumbnail")
+    
+    if screens.get('end_jpg'):
+        end_jpg_path = os.path.join(temp_dir, f"{base_name} (End).jpg")
+        storage.download_file(screens['end_jpg'], end_jpg_path)
+        logger.info(f"Job {job_id}: Downloaded end JPG")
 
 
 async def _upload_results(
