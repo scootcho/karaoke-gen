@@ -115,12 +115,56 @@ async def get_job(job_id: str) -> Job:
 @router.get("", response_model=List[Job])
 async def list_jobs(
     status: Optional[JobStatus] = None,
+    environment: Optional[str] = None,
+    client_id: Optional[str] = None,
+    created_after: Optional[str] = None,
+    created_before: Optional[str] = None,
     limit: int = 100
 ) -> List[Job]:
-    """List jobs with optional status filter."""
+    """
+    List jobs with optional filters.
+    
+    Args:
+        status: Filter by job status (pending, complete, failed, etc.)
+        environment: Filter by request_metadata.environment (test/production/development)
+        client_id: Filter by request_metadata.client_id (customer identifier)
+        created_after: Filter jobs created after this ISO datetime (e.g., 2024-01-01T00:00:00Z)
+        created_before: Filter jobs created before this ISO datetime
+        limit: Maximum number of jobs to return (default 100)
+        
+    Returns:
+        List of jobs matching filters, ordered by created_at descending
+    """
+    from datetime import datetime
+    
     try:
-        jobs = job_manager.list_jobs(status=status, limit=limit)
+        # Parse datetime strings if provided
+        created_after_dt = None
+        created_before_dt = None
+        
+        if created_after:
+            try:
+                created_after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_after format: {created_after}")
+        
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        jobs = job_manager.list_jobs(
+            status=status,
+            environment=environment,
+            client_id=client_id,
+            created_after=created_after_dt,
+            created_before=created_before_dt,
+            limit=limit
+        )
         return jobs
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing jobs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
