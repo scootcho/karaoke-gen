@@ -112,6 +112,35 @@ class StorageService:
             logger.error(f"Error deleting file {blob_path}: {e}")
             raise
     
+    def delete_folder(self, prefix: str) -> int:
+        """
+        Delete all files in GCS with a given prefix (folder).
+        
+        Args:
+            prefix: The folder prefix to delete (e.g., "uploads/abc123/")
+            
+        Returns:
+            Number of files deleted
+        """
+        try:
+            blobs = list(self.bucket.list_blobs(prefix=prefix))
+            deleted_count = 0
+            
+            for blob in blobs:
+                try:
+                    blob.delete()
+                    deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Error deleting blob {blob.name}: {e}")
+            
+            if deleted_count > 0:
+                logger.info(f"Deleted {deleted_count} files from gs://{settings.gcs_bucket_name}/{prefix}")
+            
+            return deleted_count
+        except Exception as e:
+            logger.error(f"Error deleting folder {prefix}: {e}")
+            return 0  # Don't raise - folder deletion shouldn't break operations
+    
     def list_files(self, prefix: str) -> list:
         """List files in GCS with a given prefix."""
         try:
