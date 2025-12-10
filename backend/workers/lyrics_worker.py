@@ -115,7 +115,6 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     """
     job_manager = JobManager()
     storage = StorageService()
-    settings = get_settings()
     
     # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "lyrics")
@@ -218,7 +217,11 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         job_log.info(f"  Artist: {job.artist}")
         job_log.info(f"  Title: {job.title}")
         logger.info(f"Job {job_id}: Calling lyrics_processor.transcribe_lyrics()")
-        result = lyrics_processor.transcribe_lyrics(
+        
+        # Run transcription in thread pool to avoid blocking the event loop
+        # (transcribe_lyrics is synchronous and takes 1-2 minutes)
+        result = await asyncio.to_thread(
+            lyrics_processor.transcribe_lyrics,
             input_audio_wav=audio_path,
             artist=job.artist,
             title=job.title,

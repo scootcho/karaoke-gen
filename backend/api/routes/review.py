@@ -20,6 +20,7 @@ from typing import Dict, Any, Set
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
@@ -179,7 +180,7 @@ async def _stream_audio(job_id: str):
             tmp_path,
             media_type=media_type,
             filename=os.path.basename(audio_gcs_path),
-            # Note: FileResponse will clean up the temp file after sending
+            background=BackgroundTask(os.unlink, tmp_path),
         )
         
     except Exception as e:
@@ -499,7 +500,8 @@ async def get_preview_video(job_id: str, preview_hash: str):
                 "Accept-Ranges": "bytes",
                 "Content-Disposition": "inline",
                 "Cache-Control": "no-cache",
-            }
+            },
+            background=BackgroundTask(os.unlink, tmp_path),
         )
         
     except Exception as e:
