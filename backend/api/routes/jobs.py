@@ -188,6 +188,110 @@ async def delete_job(job_id: str, delete_files: bool = True) -> dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("")
+async def bulk_delete_jobs(
+    environment: Optional[str] = None,
+    client_id: Optional[str] = None,
+    status: Optional[JobStatus] = None,
+    created_before: Optional[str] = None,
+    delete_files: bool = True,
+    confirm: bool = False
+) -> dict:
+    """
+    Delete multiple jobs matching filter criteria.
+    
+    CAUTION: This is a destructive operation. Requires confirm=true.
+    
+    Use cases:
+    - Delete all test jobs: ?environment=test&confirm=true
+    - Delete jobs from a specific client: ?client_id=test-runner&confirm=true
+    - Delete old failed jobs: ?status=failed&created_before=2024-01-01T00:00:00Z&confirm=true
+    
+    Args:
+        environment: Delete jobs with this environment (test/production/development)
+        client_id: Delete jobs from this client
+        status: Delete jobs with this status
+        created_before: Delete jobs created before this ISO datetime
+        delete_files: Also delete GCS files (default True)
+        confirm: Must be True to execute deletion (safety check)
+        
+    Returns:
+        Statistics about the deletion
+    """
+    from datetime import datetime
+    
+    # Require at least one filter to prevent accidental deletion of all jobs
+    if not any([environment, client_id, status, created_before]):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one filter (environment, client_id, status, created_before) is required"
+        )
+    
+    # Require explicit confirmation
+    if not confirm:
+        # Return preview of what would be deleted
+        created_before_dt = None
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        jobs = job_manager.list_jobs(
+            status=status,
+            environment=environment,
+            client_id=client_id,
+            created_before=created_before_dt,
+            limit=1000
+        )
+        
+        return {
+            "status": "preview",
+            "message": "Add &confirm=true to execute deletion",
+            "jobs_to_delete": len(jobs),
+            "sample_jobs": [
+                {
+                    "job_id": j.job_id,
+                    "artist": j.artist,
+                    "title": j.title,
+                    "status": j.status,
+                    "environment": j.request_metadata.get('environment'),
+                    "client_id": j.request_metadata.get('client_id'),
+                    "created_at": j.created_at.isoformat() if j.created_at else None
+                }
+                for j in jobs[:10]  # Show first 10 as sample
+            ]
+        }
+    
+    try:
+        # Parse datetime string
+        created_before_dt = None
+        if created_before:
+            try:
+                created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+        
+        result = job_manager.delete_jobs_by_filter(
+            environment=environment,
+            client_id=client_id,
+            status=status,
+            created_before=created_before_dt,
+            delete_files=delete_files
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Deleted {result['jobs_deleted']} jobs",
+            "jobs_deleted": result['jobs_deleted'],
+            "files_deleted": result.get('files_deleted', 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error bulk deleting jobs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # Human-in-the-Loop Interaction Endpoints
 # ============================================================================
