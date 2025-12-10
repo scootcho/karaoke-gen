@@ -296,6 +296,34 @@ class Job(BaseModel):
     }
     """
     
+    # Request metadata (captured at job creation for tracking and filtering)
+    request_metadata: Dict[str, Any] = Field(default_factory=dict)
+    """
+    Metadata captured from the original API request.
+    Used for tracking, filtering, and operational management.
+    
+    Standard fields:
+    {
+        "client_ip": "192.168.1.1",           # IP address of the client
+        "user_agent": "karaoke-gen-remote/0.71.0",  # User-Agent header
+        "environment": "test",                 # From X-Environment header (test/production/development)
+        "client_id": "cli-user-123",          # From X-Client-ID header (customer/user identifier)
+        "server_version": "0.71.0",           # Server version at job creation
+        "created_from": "upload",              # "upload" (file) or "url" (YouTube URL)
+        "custom_headers": {                    # All X-* headers for extensibility
+            "X-Environment": "test",
+            "X-Client-ID": "cli-user-123",
+            "X-Request-ID": "abc-123"
+        }
+    }
+    
+    Use cases:
+    - Filter test vs production jobs
+    - Track jobs by customer/client
+    - Debug issues with specific clients
+    - Bulk cleanup of test jobs
+    """
+    
     @validator('status')
     def validate_status_transition(cls, v, values):
         """Validate state transitions are legal."""
@@ -352,6 +380,18 @@ class JobCreate(BaseModel):
     
     # Legacy (rclone - deprecated, use dropbox_path instead)
     organised_dir_rclone_root: Optional[str] = None
+    
+    # Request metadata (set by API endpoint from request headers)
+    request_metadata: Dict[str, Any] = Field(default_factory=dict)
+    """
+    Populated by the API endpoint with request context:
+    - client_ip: Client IP address
+    - user_agent: User-Agent header
+    - environment: From X-Environment header (test/production/development)
+    - client_id: From X-Client-ID header
+    - server_version: Current server version
+    - custom_headers: All X-* headers
+    """
     
     @validator('url', 'artist', 'title')
     def validate_inputs(cls, v):
