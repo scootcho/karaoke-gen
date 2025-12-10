@@ -431,11 +431,12 @@ async def upload_lyrics_results(
     
     # Upload reference lyrics if available
     # Note: Source names use .title() so "lrclib" -> "Lrclib", "genius" -> "Genius"
+    # Use sanitized artist/title to match LyricsProcessor's file naming
     reference_files = [
-        (f"{job.artist} - {job.title} (Lyrics Genius).txt", "Genius"),
-        (f"{job.artist} - {job.title} (Lyrics Spotify).txt", "Spotify"),
-        (f"{job.artist} - {job.title} (Lyrics Musixmatch).txt", "Musixmatch"),
-        (f"{job.artist} - {job.title} (Lyrics Lrclib).txt", "LRCLib"),  # Note: source is 'lrclib', .title() = 'Lrclib'
+        (f"{safe_artist} - {safe_title} (Lyrics Genius).txt", "Genius"),
+        (f"{safe_artist} - {safe_title} (Lyrics Spotify).txt", "Spotify"),
+        (f"{safe_artist} - {safe_title} (Lyrics Musixmatch).txt", "Musixmatch"),
+        (f"{safe_artist} - {safe_title} (Lyrics Lrclib).txt", "LRCLib"),  # Note: source is 'lrclib', .title() = 'Lrclib'
     ]
     
     found_reference = False
@@ -455,8 +456,8 @@ async def upload_lyrics_results(
             job_log.warning("No reference lyrics found from any source (Genius, Spotify, Musixmatch, LRCLib)")
         logger.warning(f"Job {job_id}: No reference lyrics found from any source")
     
-    # Upload uncorrected transcription if available
-    uncorrected_file = os.path.join(lyrics_dir, f"{job.artist} - {job.title} (Lyrics Uncorrected).txt")
+    # Upload uncorrected transcription if available (use sanitized names)
+    uncorrected_file = os.path.join(lyrics_dir, f"{safe_artist} - {safe_title} (Lyrics Uncorrected).txt")
     if os.path.exists(uncorrected_file):
         gcs_path = f"jobs/{job_id}/lyrics/uncorrected.txt"
         url = storage.upload_file(uncorrected_file, gcs_path)
