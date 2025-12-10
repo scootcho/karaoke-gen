@@ -1212,10 +1212,11 @@ def main():
             
             # Print each job
             for job in jobs:
-                job_id = job.get('job_id', 'unknown')[:10]
-                status = job.get('status', 'unknown')[:28]
-                artist = job.get('artist', 'Unknown')[:18]
-                title = job.get('title', 'Unknown')[:28]
+                # Use 'or' to handle None values (not just missing keys)
+                job_id = (job.get('job_id') or 'unknown')[:10]
+                status = (job.get('status') or 'unknown')[:28]
+                artist = (job.get('artist') or 'Unknown')[:18]
+                title = (job.get('title') or 'Unknown')[:28]
                 logger.info(f"{job_id:<12} {status:<30} {artist:<20} {title:<30}")
             
             logger.info("")
