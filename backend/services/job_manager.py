@@ -89,9 +89,95 @@ class JobManager:
         """Update job with arbitrary fields."""
         self.firestore.update_job(job_id, updates)
     
-    def list_jobs(self, status: Optional[JobStatus] = None, limit: int = 100) -> List[Job]:
-        """List jobs with optional filtering."""
-        return self.firestore.list_jobs(status=status, limit=limit)
+    def list_jobs(
+        self,
+        status: Optional[JobStatus] = None,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        created_after: Optional[datetime] = None,
+        created_before: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Job]:
+        """
+        List jobs with optional filtering.
+        
+        Args:
+            status: Filter by job status
+            environment: Filter by request_metadata.environment (test/production/development)
+            client_id: Filter by request_metadata.client_id (customer identifier)
+            created_after: Filter jobs created after this datetime
+            created_before: Filter jobs created before this datetime
+            limit: Maximum number of jobs to return
+            
+        Returns:
+            List of Job objects matching filters
+        """
+        return self.firestore.list_jobs(
+            status=status,
+            environment=environment,
+            client_id=client_id,
+            created_after=created_after,
+            created_before=created_before,
+            limit=limit
+        )
+    
+    def delete_jobs_by_filter(
+        self,
+        environment: Optional[str] = None,
+        client_id: Optional[str] = None,
+        status: Optional[JobStatus] = None,
+        created_before: Optional[datetime] = None,
+        delete_files: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Delete multiple jobs matching filter criteria.
+        
+        CAUTION: This is a destructive operation. Use carefully.
+        
+        Args:
+            environment: Delete jobs with this environment (e.g., "test")
+            client_id: Delete jobs from this client
+            status: Delete jobs with this status
+            created_before: Delete jobs created before this datetime
+            delete_files: Also delete GCS files (default True)
+            
+        Returns:
+            Dict with deletion statistics
+        """
+        # First get matching jobs to delete their files
+        if delete_files:
+            jobs = self.firestore.list_jobs(
+                status=status,
+                environment=environment,
+                client_id=client_id,
+                created_before=created_before,
+                limit=10000  # High limit for deletion
+            )
+            
+            files_deleted = 0
+            for job in jobs:
+                # Delete files from various locations
+                try:
+                    # Delete uploads folder
+                    self.storage.delete_folder(f"uploads/{job.job_id}/")
+                    # Delete jobs folder
+                    self.storage.delete_folder(f"jobs/{job.job_id}/")
+                    files_deleted += 1
+                except Exception as e:
+                    logger.warning(f"Error deleting files for job {job.job_id}: {e}")
+        
+        # Delete the jobs from Firestore
+        deleted_count = self.firestore.delete_jobs_by_filter(
+            environment=environment,
+            client_id=client_id,
+            status=status,
+            created_before=created_before
+        )
+        
+        return {
+            'jobs_deleted': deleted_count,
+            'files_deleted': files_deleted if delete_files else 0
+        }
     
     def mark_job_error(self, job_id: str, error_message: str) -> None:
         """Mark a job as errored."""
