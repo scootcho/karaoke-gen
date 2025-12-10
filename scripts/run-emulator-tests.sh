@@ -28,12 +28,17 @@ export FIRESTORE_COLLECTION="jobs"
 export ENVIRONMENT="test"
 export ADMIN_TOKENS="test-admin-token"
 
-# Activate venv if available
-if [ -d "$PROJECT_ROOT/backend/venv" ]; then
+# Determine how to run pytest
+if command -v poetry &> /dev/null && [ -f "$PROJECT_ROOT/pyproject.toml" ]; then
+    echo "Step 2/3: Using poetry environment..."
+    PYTEST_CMD="poetry run pytest"
+elif [ -d "$PROJECT_ROOT/backend/venv" ]; then
     echo "Step 2/3: Activating Python virtual environment..."
     source "$PROJECT_ROOT/backend/venv/bin/activate"
+    PYTEST_CMD="pytest"
 else
-    echo "⚠️  Warning: backend/venv not found. Using system Python."
+    echo "⚠️  Warning: No poetry or backend/venv found. Using system Python."
+    PYTEST_CMD="pytest"
 fi
 
 echo ""
@@ -48,7 +53,7 @@ echo ""
 cd "$PROJECT_ROOT"
 
 # Run the emulator integration tests with more verbose output on failure
-if pytest backend/tests/emulator/ -v --tb=short --color=yes --log-cli-level=ERROR; then
+if $PYTEST_CMD backend/tests/emulator/ -v --tb=short --color=yes --log-cli-level=ERROR; then
     echo ""
     echo "✅ All emulator integration tests passed!"
     echo ""
