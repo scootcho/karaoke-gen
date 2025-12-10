@@ -415,68 +415,75 @@ class AnchorSequenceFinder:
             self._check_timeout(start_time, "parallel processing start")
             self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Timeout check passed - about to start parallel processing")
             
+            pool = None
             try:
                 self.logger.info(f"🔍 ANCHOR SEARCH: 🚀 Starting parallel processing with {max(cpu_count() - 1, 1)} processes, pool timeout: {pool_timeout}s")
-                with Pool(processes=max(cpu_count() - 1, 1)) as pool:
-                    self.logger.debug(f"🔍 ANCHOR SEARCH: Pool created successfully")
-                    results = []
-                    
-                    # Submit all jobs first
-                    self.logger.info(f"🔍 ANCHOR SEARCH: Submitting {len(n_gram_lengths)} n-gram processing jobs...")
-                    async_results = []
-                    for i, n in enumerate(n_gram_lengths):
-                        self.logger.debug(f"🔍 ANCHOR SEARCH: Submitting job {i+1}/{len(n_gram_lengths)} for n-gram length {n}")
-                        async_result = pool.apply_async(process_length_partial, (n,))
-                        async_results.append(async_result)
-                    
-                    self.logger.info(f"🔍 ANCHOR SEARCH: ✅ All {len(async_results)} jobs submitted")
-                    
-                    # Collect results with individual timeouts
-                    batch_results = []
-                    batch_size = 10
-                    
-                    for i, async_result in enumerate(async_results):
-                        n_gram_length = n_gram_lengths[i]
-                        try:
-                            # Check remaining time for pool timeout (more lenient than overall timeout)
-                            elapsed_time = time.time() - start_time
-                            remaining_time = max(10, self.timeout_seconds - elapsed_time) if self.timeout_seconds > 0 else pool_timeout
-                            
-                            self.logger.debug(f"🔍 ANCHOR SEARCH: Remaining time for n-gram {n_gram_length}: {remaining_time}s")
-                            
-                            # Use a more lenient timeout for individual results to allow fallback
-                            individual_timeout = min(pool_timeout, remaining_time) if self.timeout_seconds > 0 else pool_timeout
-                            
-                            result = async_result.get(timeout=individual_timeout)
-                            results.append(result)
-                            
-                            # Batch logging - collect info for batched logging
-                            batch_results.append((n_gram_length, len(result)))
-                            
-                            # Log progress every batch_size results or on the last result
-                            if (i + 1) % batch_size == 0 or (i + 1) == len(async_results):
-                                total_anchors_in_batch = sum(anchor_count for _, anchor_count in batch_results)
-                                n_gram_ranges = [str(ng) for ng, _ in batch_results]
-                                range_str = f"{n_gram_ranges[0]}-{n_gram_ranges[-1]}" if len(n_gram_ranges) > 1 else n_gram_ranges[0]
-                                self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Completed n-gram lengths {range_str} ({i+1-len(batch_results)+1}-{i+1}/{len(async_results)}) - found {total_anchors_in_batch} anchors total")
-                                batch_results = []  # Reset batch
-                            
-                        except Exception as e:
-                            self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ n-gram length {n_gram_length} failed or timed out: {str(e)}")
-                            results.append([])  # Add empty result to maintain order
-                            
-                            # Add failed result to batch for logging
-                            batch_results.append((n_gram_length, 0))
-                            
-                            # If we're running short on time, trigger fallback early
-                            if self.timeout_seconds > 0 and (time.time() - start_time) > (self.timeout_seconds * 0.8):
-                                self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ Approaching timeout limit, triggering early fallback")
-                                # Raise exception to trigger fallback to sequential processing
-                                raise Exception("Parallel processing timeout, triggering fallback")
-                    
-                    self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Parallel processing completed, combining results...")
-                    for anchors in results:
-                        candidate_anchors.extend(anchors)
+                pool = Pool(processes=max(cpu_count() - 1, 1))
+                self.logger.debug(f"🔍 ANCHOR SEARCH: Pool created successfully")
+                results = []
+                
+                # Submit all jobs first
+                self.logger.info(f"🔍 ANCHOR SEARCH: Submitting {len(n_gram_lengths)} n-gram processing jobs...")
+                async_results = []
+                for i, n in enumerate(n_gram_lengths):
+                    self.logger.debug(f"🔍 ANCHOR SEARCH: Submitting job {i+1}/{len(n_gram_lengths)} for n-gram length {n}")
+                    async_result = pool.apply_async(process_length_partial, (n,))
+                    async_results.append(async_result)
+                
+                self.logger.info(f"🔍 ANCHOR SEARCH: ✅ All {len(async_results)} jobs submitted")
+                
+                # Collect results with individual timeouts
+                batch_results = []
+                batch_size = 10
+                
+                for i, async_result in enumerate(async_results):
+                    n_gram_length = n_gram_lengths[i]
+                    try:
+                        # Check remaining time for pool timeout (more lenient than overall timeout)
+                        elapsed_time = time.time() - start_time
+                        remaining_time = max(10, self.timeout_seconds - elapsed_time) if self.timeout_seconds > 0 else pool_timeout
+                        
+                        self.logger.debug(f"🔍 ANCHOR SEARCH: Remaining time for n-gram {n_gram_length}: {remaining_time}s")
+                        
+                        # Use a more lenient timeout for individual results to allow fallback
+                        individual_timeout = min(pool_timeout, remaining_time) if self.timeout_seconds > 0 else pool_timeout
+                        
+                        result = async_result.get(timeout=individual_timeout)
+                        results.append(result)
+                        
+                        # Batch logging - collect info for batched logging
+                        batch_results.append((n_gram_length, len(result)))
+                        
+                        # Log progress every batch_size results or on the last result
+                        if (i + 1) % batch_size == 0 or (i + 1) == len(async_results):
+                            total_anchors_in_batch = sum(anchor_count for _, anchor_count in batch_results)
+                            n_gram_ranges = [str(ng) for ng, _ in batch_results]
+                            range_str = f"{n_gram_ranges[0]}-{n_gram_ranges[-1]}" if len(n_gram_ranges) > 1 else n_gram_ranges[0]
+                            self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Completed n-gram lengths {range_str} ({i+1-len(batch_results)+1}-{i+1}/{len(async_results)}) - found {total_anchors_in_batch} anchors total")
+                            batch_results = []  # Reset batch
+                        
+                    except Exception as e:
+                        self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ n-gram length {n_gram_length} failed or timed out: {str(e)}")
+                        results.append([])  # Add empty result to maintain order
+                        
+                        # Add failed result to batch for logging
+                        batch_results.append((n_gram_length, 0))
+                        
+                        # If we're running short on time, trigger fallback early
+                        if self.timeout_seconds > 0 and (time.time() - start_time) > (self.timeout_seconds * 0.8):
+                            self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ Approaching timeout limit, triggering early fallback")
+                            # Raise exception to trigger fallback to sequential processing
+                            raise Exception("Parallel processing timeout, triggering fallback")
+                
+                self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Parallel processing completed, combining results...")
+                for anchors in results:
+                    candidate_anchors.extend(anchors)
+                
+                # Explicitly cleanup pool to avoid hangs in containerized environments
+                self.logger.info(f"🔍 ANCHOR SEARCH: 🧹 Cleaning up pool...")
+                pool.close()
+                pool.terminate()
+                self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Pool cleanup completed")
                         
             except AnchorSequenceTimeoutError:
                 self.logger.error(f"🔍 ANCHOR SEARCH: ❌ Parallel processing timed out")
@@ -506,6 +513,16 @@ class AnchorSequenceFinder:
                     except Exception as e:
                         self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ Sequential processing failed for n-gram length {n}: {str(e)}")
                         continue
+            finally:
+                # Always ensure pool is cleaned up to avoid hangs in containerized environments
+                if pool is not None:
+                    try:
+                        self.logger.info(f"🔍 ANCHOR SEARCH: 🧹 Final pool cleanup...")
+                        pool.terminate()
+                        pool.join(timeout=5)  # Wait max 5 seconds for workers to terminate
+                        self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Final pool cleanup completed")
+                    except Exception as cleanup_error:
+                        self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ Pool cleanup error (ignored): {cleanup_error}")
 
             self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Found {len(candidate_anchors)} candidate anchors in {time.time() - start_time:.1f}s")
             
@@ -663,44 +680,51 @@ class AnchorSequenceFinder:
         scored_anchors = []
         pool_timeout = 300  # 5 minutes for scoring phase
         
+        scoring_pool = None
         try:
             self.logger.info(f"🔍 FILTERING: 🚀 Starting parallel scoring with timeout {pool_timeout}s")
-            with Pool(processes=num_processes) as pool:
-                # Submit scoring jobs with timeout
-                async_results = []
-                batch_size = 50
-                
-                self.logger.info(f"🔍 FILTERING: Splitting {len(anchors)} anchors into batches of {batch_size}")
-                for i in range(0, len(anchors), batch_size):
-                    batch = anchors[i:i + batch_size]
-                    async_result = pool.apply_async(self._score_batch_static, (batch, context))
-                    async_results.append(async_result)
-                
-                self.logger.info(f"🔍 FILTERING: Submitted {len(async_results)} scoring batches")
-                
-                # Collect results with timeout
-                for i, async_result in enumerate(async_results):
-                    try:
-                        self.logger.debug(f"🔍 FILTERING: ⏳ Collecting batch {i+1}/{len(async_results)}")
-                        batch_results = async_result.get(timeout=pool_timeout)
-                        scored_anchors.extend(batch_results)
-                        self.logger.debug(f"🔍 FILTERING: ✅ Completed scoring batch {i+1}/{len(async_results)}")
-                    except Exception as e:
-                        self.logger.warning(f"🔍 FILTERING: ⚠️ Scoring batch {i+1} failed or timed out: {str(e)}")
-                        # Add basic scores for failed batch
-                        start_idx = i * batch_size
-                        end_idx = min((i + 1) * batch_size, len(anchors))
-                        for j in range(start_idx, end_idx):
-                            if j < len(anchors):
-                                try:
-                                    phrase_score = PhraseScore(
-                                        total_score=1.0,
-                                        natural_break_score=1.0,
-                                        phrase_type=PhraseType.COMPLETE
-                                    )
-                                    scored_anchors.append(ScoredAnchor(anchor=anchors[j], phrase_score=phrase_score))
-                                except:
-                                    continue
+            scoring_pool = Pool(processes=num_processes)
+            # Submit scoring jobs with timeout
+            async_results = []
+            batch_size = 50
+            
+            self.logger.info(f"🔍 FILTERING: Splitting {len(anchors)} anchors into batches of {batch_size}")
+            for i in range(0, len(anchors), batch_size):
+                batch = anchors[i:i + batch_size]
+                async_result = scoring_pool.apply_async(self._score_batch_static, (batch, context))
+                async_results.append(async_result)
+            
+            self.logger.info(f"🔍 FILTERING: Submitted {len(async_results)} scoring batches")
+            
+            # Collect results with timeout
+            for i, async_result in enumerate(async_results):
+                try:
+                    self.logger.debug(f"🔍 FILTERING: ⏳ Collecting batch {i+1}/{len(async_results)}")
+                    batch_results = async_result.get(timeout=pool_timeout)
+                    scored_anchors.extend(batch_results)
+                    self.logger.debug(f"🔍 FILTERING: ✅ Completed scoring batch {i+1}/{len(async_results)}")
+                except Exception as e:
+                    self.logger.warning(f"🔍 FILTERING: ⚠️ Scoring batch {i+1} failed or timed out: {str(e)}")
+                    # Add basic scores for failed batch
+                    start_idx = i * batch_size
+                    end_idx = min((i + 1) * batch_size, len(anchors))
+                    for j in range(start_idx, end_idx):
+                        if j < len(anchors):
+                            try:
+                                phrase_score = PhraseScore(
+                                    total_score=1.0,
+                                    natural_break_score=1.0,
+                                    phrase_type=PhraseType.COMPLETE
+                                )
+                                scored_anchors.append(ScoredAnchor(anchor=anchors[j], phrase_score=phrase_score))
+                            except:
+                                continue
+            
+            # Explicitly cleanup pool to avoid hangs in containerized environments
+            self.logger.info(f"🔍 FILTERING: 🧹 Cleaning up scoring pool...")
+            scoring_pool.close()
+            scoring_pool.terminate()
+            self.logger.info(f"🔍 FILTERING: ✅ Scoring pool cleanup completed")
                         
         except Exception as e:
             self.logger.warning(f"🔍 FILTERING: ❌ Parallel scoring failed: {str(e)}, falling back to basic scoring")
@@ -715,6 +739,16 @@ class AnchorSequenceFinder:
                     scored_anchors.append(ScoredAnchor(anchor=anchor, phrase_score=phrase_score))
                 except:
                     continue
+        finally:
+            # Always ensure scoring pool is cleaned up to avoid hangs
+            if scoring_pool is not None:
+                try:
+                    self.logger.info(f"🔍 FILTERING: 🧹 Final scoring pool cleanup...")
+                    scoring_pool.terminate()
+                    scoring_pool.join(timeout=5)  # Wait max 5 seconds for workers to terminate
+                    self.logger.info(f"🔍 FILTERING: ✅ Final scoring pool cleanup completed")
+                except Exception as cleanup_error:
+                    self.logger.warning(f"🔍 FILTERING: ⚠️ Scoring pool cleanup error (ignored): {cleanup_error}")
 
         parallel_time = time.time() - start_time
         self.logger.info(f"🔍 FILTERING: ✅ Parallel scoring completed in {parallel_time:.2f}s, scored {len(scored_anchors)} anchors")
