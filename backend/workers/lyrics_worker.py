@@ -25,7 +25,6 @@ from pathlib import Path
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
-from backend.config import get_settings
 from backend.workers.worker_logging import create_job_logger, setup_job_logging
 from backend.workers.style_helper import load_style_config
 
@@ -56,7 +55,7 @@ LYRICS_WORKER_LOGGERS = [
 ]
 
 
-def create_lyrics_processor(temp_dir: str, style_params_json: Optional[str] = None) -> LyricsProcessor:
+def create_lyrics_processor(style_params_json: Optional[str] = None) -> LyricsProcessor:
     """
     Create a LyricsProcessor instance configured for Cloud Run processing.
     
@@ -67,7 +66,6 @@ def create_lyrics_processor(temp_dir: str, style_params_json: Optional[str] = No
     - Generates corrections JSON for review interface
     
     Args:
-        temp_dir: Temporary directory for processing
         style_params_json: Optional path to style parameters JSON file
         
     Returns:
@@ -202,9 +200,8 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         
         # Create LyricsProcessor instance (reuses karaoke_gen code)
         job_log.info("Creating LyricsProcessor instance...")
-        job_log.info(f"  temp_dir: {temp_dir}")
         job_log.info(f"  style_params_json: {style_params_json_path}")
-        lyrics_processor = create_lyrics_processor(temp_dir, style_params_json=style_params_json_path)
+        lyrics_processor = create_lyrics_processor(style_params_json=style_params_json_path)
         
         # Run transcription + correction
         # This will:
