@@ -1151,22 +1151,13 @@ def main():
     # Check prerequisites
     check_prerequisites(logger)
     
-    # Get auth token
-    logger.info("Authenticating with GCP...")
-    auth_token = get_auth_token(logger)
-    if auth_token:
-        logger.info("Authenticated successfully")
-    else:
-        logger.warning("No authentication token found. Requests may fail.")
-        logger.warning("Run: gcloud auth login")
-    
-    # Create config
+    # Create config (API is currently unauthenticated)
     config = Config(
         service_url=args.service_url.rstrip('/'),
         review_ui_url=args.review_ui_url.rstrip('/'),
         poll_interval=args.poll_interval,
         output_dir=args.output_dir,
-        auth_token=auth_token,
+        auth_token=None,  # API is unauthenticated for now
         non_interactive=getattr(args, 'yes', False),  # -y / --yes flag
     )
     
