@@ -1237,6 +1237,9 @@ def main():
         output_dir=args.output_dir,
         auth_token=None,  # API is unauthenticated for now
         non_interactive=getattr(args, 'yes', False),  # -y / --yes flag
+        # Job tracking metadata
+        environment=getattr(args, 'environment', ''),
+        client_id=getattr(args, 'client_id', ''),
     )
     
     # Create client
@@ -1270,37 +1273,120 @@ def main():
             logger.error(f"Error resuming job: {e}")
             return 1
     
-    # Handle list jobs mode
-    if getattr(args, 'list_jobs', False):
+    # Handle bulk delete mode
+    if getattr(args, 'bulk_delete', False):
+        filter_env = getattr(args, 'filter_environment', None)
+        filter_client = getattr(args, 'filter_client_id', None)
+        
+        if not filter_env and not filter_client:
+            logger.error("Bulk delete requires at least one filter: --filter-environment or --filter-client-id")
+            return 1
+        
         logger.info("=" * 60)
-        logger.info("Karaoke Generator (Remote) - List Jobs")
+        logger.info("Karaoke Generator (Remote) - Bulk Delete Jobs")
         logger.info("=" * 60)
+        if filter_env:
+            logger.info(f"Environment filter: {filter_env}")
+        if filter_client:
+            logger.info(f"Client ID filter: {filter_client}")
         logger.info("")
         
         try:
-            jobs = client.list_jobs(limit=100)
+            # First get preview
+            result = client.bulk_delete_jobs(
+                environment=filter_env,
+                client_id=filter_client,
+                confirm=False
+            )
+            
+            jobs_to_delete = result.get('jobs_to_delete', 0)
+            sample_jobs = result.get('sample_jobs', [])
+            
+            if jobs_to_delete == 0:
+                logger.info("No jobs match the specified filters.")
+                return 0
+            
+            logger.info(f"Found {jobs_to_delete} jobs matching filters:")
+            logger.info("")
+            
+            # Show sample
+            for job in sample_jobs:
+                logger.info(f"  {job.get('job_id', 'unknown')[:10]}: {job.get('artist', 'Unknown')} - {job.get('title', 'Unknown')} ({job.get('status', 'unknown')})")
+            
+            if len(sample_jobs) < jobs_to_delete:
+                logger.info(f"  ... and {jobs_to_delete - len(sample_jobs)} more")
+            
+            logger.info("")
+            
+            # Confirm unless -y flag is set
+            if not config.non_interactive:
+                confirm = input(f"Are you sure you want to delete {jobs_to_delete} jobs and all their files? [y/N]: ")
+                if confirm.lower() != 'y':
+                    logger.info("Bulk deletion cancelled.")
+                    return 0
+            
+            # Execute deletion
+            result = client.bulk_delete_jobs(
+                environment=filter_env,
+                client_id=filter_client,
+                confirm=True
+            )
+            
+            logger.info(f"✓ Deleted {result.get('jobs_deleted', 0)} jobs")
+            if result.get('files_deleted'):
+                logger.info(f"✓ Cleaned up files from {result.get('files_deleted', 0)} jobs")
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error bulk deleting jobs: {e}")
+            return 1
+    
+    # Handle list jobs mode
+    if getattr(args, 'list_jobs', False):
+        filter_env = getattr(args, 'filter_environment', None)
+        filter_client = getattr(args, 'filter_client_id', None)
+        
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - List Jobs")
+        logger.info("=" * 60)
+        if filter_env:
+            logger.info(f"Environment filter: {filter_env}")
+        if filter_client:
+            logger.info(f"Client ID filter: {filter_client}")
+        logger.info("")
+        
+        try:
+            jobs = client.list_jobs(
+                environment=filter_env,
+                client_id=filter_client,
+                limit=100
+            )
             
             if not jobs:
                 logger.info("No jobs found.")
                 return 0
             
-            # Print header
-            logger.info(f"{'JOB ID':<12} {'STATUS':<30} {'ARTIST':<20} {'TITLE':<30}")
+            # Print header - include environment/client if available
+            logger.info(f"{'JOB ID':<12} {'STATUS':<25} {'ENV':<8} {'ARTIST':<18} {'TITLE':<25}")
             logger.info("-" * 92)
             
             # Print each job
             for job in jobs:
                 # Use 'or' to handle None values (not just missing keys)
                 job_id = (job.get('job_id') or 'unknown')[:10]
-                status = (job.get('status') or 'unknown')[:28]
-                artist = (job.get('artist') or 'Unknown')[:18]
-                title = (job.get('title') or 'Unknown')[:28]
-                logger.info(f"{job_id:<12} {status:<30} {artist:<20} {title:<30}")
+                status = (job.get('status') or 'unknown')[:23]
+                artist = (job.get('artist') or 'Unknown')[:16]
+                title = (job.get('title') or 'Unknown')[:23]
+                # Get environment from request_metadata
+                req_metadata = job.get('request_metadata') or {}
+                env = (req_metadata.get('environment') or '-')[:6]
+                logger.info(f"{job_id:<12} {status:<25} {env:<8} {artist:<18} {title:<25}")
             
             logger.info("")
             logger.info(f"Total: {len(jobs)} jobs")
             logger.info("")
             logger.info("To delete a job: karaoke-gen-remote --delete <JOB_ID>")
+            logger.info("To bulk delete: karaoke-gen-remote --bulk-delete --filter-environment=test")
             logger.info("To cancel a job: karaoke-gen-remote --cancel <JOB_ID>")
             return 0
             
