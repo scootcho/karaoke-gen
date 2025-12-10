@@ -24,6 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.job_logging import job_log_context, JobLogger
 
 # LyricsTranscriber imports for preview generation
 from lyrics_transcriber.types import CorrectionResult
@@ -279,56 +280,58 @@ async def add_lyrics(job_id: str, data: Dict[str, str]):
     
     logger.info(f"Job {job_id}: Adding lyrics source '{source}' with {len(lyrics_text)} characters")
     
-    try:
-        # Create temp directory for this operation
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Download current corrections.json
-            corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
-            corrections_path = os.path.join(temp_dir, "corrections.json")
-            storage.download_file(corrections_gcs, corrections_path)
-            
-            with open(corrections_path, 'r', encoding='utf-8') as f:
-                original_data = json.load(f)
-            
-            # Load as CorrectionResult
-            correction_result = CorrectionResult.from_dict(original_data)
-            
-            # Set up cache directory
-            cache_dir = os.path.join(temp_dir, "cache")
-            os.makedirs(cache_dir, exist_ok=True)
-            
-            # Add lyrics source using CorrectionOperations
-            updated_result = CorrectionOperations.add_lyrics_source(
-                correction_result=correction_result,
-                source=source,
-                lyrics_text=lyrics_text,
-                cache_dir=cache_dir,
-                logger=logger
-            )
-            
-            # Add audio hash for the frontend
-            audio_hash = _get_audio_hash(job_id)
-            if not updated_result.metadata:
-                updated_result.metadata = {}
-            updated_result.metadata['audio_hash'] = audio_hash
-            updated_result.metadata['artist'] = job.artist
-            updated_result.metadata['title'] = job.title
-            
-            # Upload updated corrections back to GCS
-            updated_data = updated_result.to_dict()
-            storage.upload_json(corrections_gcs, updated_data)
-            
-            logger.info(f"Job {job_id}: Successfully added lyrics source '{source}'")
-            
-            return {"status": "success", "data": updated_data}
-            
-    except ValueError as e:
-        # ValueError from CorrectionOperations (e.g., duplicate source name)
-        logger.warning(f"Job {job_id}: Invalid add lyrics request: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Job {job_id}: Failed to add lyrics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to add lyrics: {str(e)}")
+    # Use job_log_context to capture all logs and stream them to the CLI
+    with job_log_context(job_id, worker="add-lyrics"):
+        try:
+            # Create temp directory for this operation
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Download current corrections.json
+                corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
+                corrections_path = os.path.join(temp_dir, "corrections.json")
+                storage.download_file(corrections_gcs, corrections_path)
+                
+                with open(corrections_path, 'r', encoding='utf-8') as f:
+                    original_data = json.load(f)
+                
+                # Load as CorrectionResult
+                correction_result = CorrectionResult.from_dict(original_data)
+                
+                # Set up cache directory
+                cache_dir = os.path.join(temp_dir, "cache")
+                os.makedirs(cache_dir, exist_ok=True)
+                
+                # Add lyrics source using CorrectionOperations
+                updated_result = CorrectionOperations.add_lyrics_source(
+                    correction_result=correction_result,
+                    source=source,
+                    lyrics_text=lyrics_text,
+                    cache_dir=cache_dir,
+                    logger=logger
+                )
+                
+                # Add audio hash for the frontend
+                audio_hash = _get_audio_hash(job_id)
+                if not updated_result.metadata:
+                    updated_result.metadata = {}
+                updated_result.metadata['audio_hash'] = audio_hash
+                updated_result.metadata['artist'] = job.artist
+                updated_result.metadata['title'] = job.title
+                
+                # Upload updated corrections back to GCS
+                updated_data = updated_result.to_dict()
+                storage.upload_json(corrections_gcs, updated_data)
+                
+                logger.info(f"Job {job_id}: Successfully added lyrics source '{source}'")
+                
+                return {"status": "success", "data": updated_data}
+                
+        except ValueError as e:
+            # ValueError from CorrectionOperations (e.g., duplicate source name)
+            logger.warning(f"Job {job_id}: Invalid add lyrics request: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Job {job_id}: Failed to add lyrics: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to add lyrics: {str(e)}")
 
 
 @router.post("/{job_id}/preview-video")
@@ -355,81 +358,83 @@ async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
     
     logger.info(f"Job {job_id}: Generating preview video")
     
-    try:
-        # Create temp directory for this preview operation
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # 1. Download original corrections.json (has full structure)
-            corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
-            corrections_path = os.path.join(temp_dir, "corrections.json")
-            storage.download_file(corrections_gcs, corrections_path)
-            
-            with open(corrections_path, 'r', encoding='utf-8') as f:
-                original_data = json.load(f)
-            
-            # 2. Download input audio
-            audio_path = os.path.join(temp_dir, "audio.flac")
-            storage.download_file(job.input_media_gcs_path, audio_path)
-            
-            # 3. Load original as CorrectionResult
-            correction_result = CorrectionResult.from_dict(original_data)
-            
-            # 4. Get or create styles file for preview using unified style loader
-            # This downloads custom styles from GCS if the job has them,
-            # or falls back to minimal styles for basic preview
-            styles_path, _ = load_styles_from_gcs(
-                style_params_gcs_path=job.style_params_gcs_path,
-                style_assets=job.style_assets,
-                temp_dir=temp_dir,
-                download_func=storage.download_file,
-                logger=logger,
-            )
-            
-            # 5. Set up output config for preview
-            output_dir = os.path.join(temp_dir, "output")
-            cache_dir = os.path.join(temp_dir, "cache")
-            os.makedirs(output_dir, exist_ok=True)
-            os.makedirs(cache_dir, exist_ok=True)
-            
-            output_config = OutputConfig(
-                output_styles_json=styles_path,
-                output_dir=output_dir,
-                cache_dir=cache_dir,
-                video_resolution="360p",
-            )
-            
-            # 6. Generate preview video using CorrectionOperations
-            result = CorrectionOperations.generate_preview_video(
-                correction_result=correction_result,
-                updated_data=updated_data,
-                output_config=output_config,
-                audio_filepath=audio_path,
-                artist=job.artist,
-                title=job.title,
-                logger=logger
-            )
-            
-            # 6. Upload preview video to GCS for serving
-            preview_hash = result["preview_hash"]
-            video_path = result["video_path"]
-            
-            preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
-            storage.upload_file(video_path, preview_gcs_path)
-            
-            # Store the GCS path for serving
-            if job_id not in _preview_videos:
-                _preview_videos[job_id] = {}
-            _preview_videos[job_id][preview_hash] = preview_gcs_path
-            
-            logger.info(f"Job {job_id}: Preview video generated: {preview_hash}")
-            
-            return {"status": "success", "preview_hash": preview_hash}
-            
-    except Exception as e:
-        logger.error(f"Job {job_id}: Failed to generate preview video: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "message": f"Failed to generate preview video: {str(e)}"
-        }
+    # Use job_log_context to capture all logs and stream them to the CLI
+    with job_log_context(job_id, worker="preview"):
+        try:
+            # Create temp directory for this preview operation
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # 1. Download original corrections.json (has full structure)
+                corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
+                corrections_path = os.path.join(temp_dir, "corrections.json")
+                storage.download_file(corrections_gcs, corrections_path)
+                
+                with open(corrections_path, 'r', encoding='utf-8') as f:
+                    original_data = json.load(f)
+                
+                # 2. Download input audio
+                audio_path = os.path.join(temp_dir, "audio.flac")
+                storage.download_file(job.input_media_gcs_path, audio_path)
+                
+                # 3. Load original as CorrectionResult
+                correction_result = CorrectionResult.from_dict(original_data)
+                
+                # 4. Get or create styles file for preview using unified style loader
+                # This downloads custom styles from GCS if the job has them,
+                # or falls back to minimal styles for basic preview
+                styles_path, _ = load_styles_from_gcs(
+                    style_params_gcs_path=job.style_params_gcs_path,
+                    style_assets=job.style_assets,
+                    temp_dir=temp_dir,
+                    download_func=storage.download_file,
+                    logger=logger,
+                )
+                
+                # 5. Set up output config for preview
+                output_dir = os.path.join(temp_dir, "output")
+                cache_dir = os.path.join(temp_dir, "cache")
+                os.makedirs(output_dir, exist_ok=True)
+                os.makedirs(cache_dir, exist_ok=True)
+                
+                output_config = OutputConfig(
+                    output_styles_json=styles_path,
+                    output_dir=output_dir,
+                    cache_dir=cache_dir,
+                    video_resolution="360p",
+                )
+                
+                # 6. Generate preview video using CorrectionOperations
+                result = CorrectionOperations.generate_preview_video(
+                    correction_result=correction_result,
+                    updated_data=updated_data,
+                    output_config=output_config,
+                    audio_filepath=audio_path,
+                    artist=job.artist,
+                    title=job.title,
+                    logger=logger
+                )
+                
+                # 6. Upload preview video to GCS for serving
+                preview_hash = result["preview_hash"]
+                video_path = result["video_path"]
+                
+                preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
+                storage.upload_file(video_path, preview_gcs_path)
+                
+                # Store the GCS path for serving
+                if job_id not in _preview_videos:
+                    _preview_videos[job_id] = {}
+                _preview_videos[job_id][preview_hash] = preview_gcs_path
+                
+                logger.info(f"Job {job_id}: Preview video generated: {preview_hash}")
+                
+                return {"status": "success", "preview_hash": preview_hash}
+                
+        except Exception as e:
+            logger.error(f"Job {job_id}: Failed to generate preview video: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"Failed to generate preview video: {str(e)}"
+            }
 
 
 @router.get("/{job_id}/preview-video/{preview_hash}")
