@@ -860,7 +860,7 @@ class KaraokeFinalise:
         return env_mov_input, ffmpeg_filter
 
     def remux_and_encode_output_video_files(self, with_vocals_file, input_files, output_files):
-        self.logger.info(f"Remuxing and encoding output video files...")
+        self.logger.info(f"Remuxing and encoding output video files (4 formats, ~15-20 minutes total)...")
 
         # Check if output files already exist
         if os.path.isfile(output_files["final_karaoke_lossless_mp4"]) and os.path.isfile(output_files["final_karaoke_lossless_mkv"]):
@@ -871,16 +871,20 @@ class KaraokeFinalise:
                 return
 
         # Create karaoke version with instrumental audio
+        self.logger.info(f"[Step 1/6] Remuxing video with instrumental audio...")
         self.remux_with_instrumental(with_vocals_file, input_files["instrumental_audio"], output_files["karaoke_mp4"])
 
         # Convert the with vocals video to MP4 if needed
         if not with_vocals_file.endswith(".mp4"):
+            self.logger.info(f"[Step 2/6] Converting karaoke video to MP4...")
             self.convert_mov_to_mp4(with_vocals_file, output_files["with_vocals_mp4"])
 
             # Delete the with vocals mov after successfully converting it to mp4
             if not self.dry_run and os.path.isfile(with_vocals_file):
                 self.logger.info(f"Deleting with vocals MOV file: {with_vocals_file}")
                 os.remove(with_vocals_file)
+        else:
+            self.logger.info(f"[Step 2/6] Skipped - video already in MP4 format")
 
         # Quote file paths to handle special characters
         title_mov_file = shlex.quote(os.path.abspath(input_files["title_mov"]))
@@ -889,10 +893,17 @@ class KaraokeFinalise:
         # Prepare concat filter for combining videos
         env_mov_input, ffmpeg_filter = self.prepare_concat_filter(input_files)
 
-        # Create all output versions
+        # Create all output versions with progress logging
+        self.logger.info(f"[Step 3/6] Encoding lossless 4K MP4 (title + karaoke + end, ~5 minutes)...")
         self.encode_lossless_mp4(title_mov_file, karaoke_mp4_file, env_mov_input, ffmpeg_filter, output_files["final_karaoke_lossless_mp4"])
+        
+        self.logger.info(f"[Step 4/6] Encoding lossy 4K MP4 with AAC audio (~1 minute)...")
         self.encode_lossy_mp4(output_files["final_karaoke_lossless_mp4"], output_files["final_karaoke_lossy_mp4"])
+        
+        self.logger.info(f"[Step 5/6] Creating MKV with FLAC audio for YouTube (~1 minute)...")
         self.encode_lossless_mkv(output_files["final_karaoke_lossless_mp4"], output_files["final_karaoke_lossless_mkv"])
+        
+        self.logger.info(f"[Step 6/6] Encoding 720p version (~3 minutes)...")
         self.encode_720p_version(output_files["final_karaoke_lossless_mp4"], output_files["final_karaoke_lossy_720p_mp4"])
 
         # Skip user confirmation in non-interactive mode for Modal deployment
@@ -1668,11 +1679,17 @@ class KaraokeFinalise:
         if self.dry_run:
             self.logger.warning("Dry run enabled. No actions will be performed.")
 
+        self.logger.info("=" * 60)
+        self.logger.info("Starting KaraokeFinalise processing pipeline")
+        self.logger.info("=" * 60)
+
         # Check required input files and parameters exist, get user to confirm features before proceeding
         self.validate_input_parameters_for_features()
 
         with_vocals_file = self.find_with_vocals_file()
         base_name, artist, title = self.get_names_from_withvocals(with_vocals_file)
+        
+        self.logger.info(f"Processing: {artist} - {title}")
 
         # Use the selected instrumental file if provided, otherwise search for one
         if self.selected_instrumental_file:
@@ -1688,13 +1705,20 @@ class KaraokeFinalise:
         output_files = self.prepare_output_filenames(base_name)
 
         if self.enable_cdg:
+            self.logger.info("Creating CDG package...")
             self.create_cdg_zip_file(input_files, output_files, artist, title)
+            self.logger.info("CDG package created successfully")
 
         if self.enable_txt:
+            self.logger.info("Creating TXT package...")
             self.create_txt_zip_file(input_files, output_files)
+            self.logger.info("TXT package created successfully")
 
+        self.logger.info("Starting video encoding (this is the longest step, ~15-20 minutes)...")
         self.remux_and_encode_output_video_files(with_vocals_file, input_files, output_files)
+        self.logger.info("Video encoding completed successfully")
 
+        self.logger.info("Executing distribution features (YouTube, Dropbox, Discord)...")
         self.execute_optional_features(artist, title, base_name, input_files, output_files, replace_existing)
 
         result = {
