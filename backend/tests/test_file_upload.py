@@ -427,6 +427,163 @@ class TestJobCreateLyricsFields:
         assert job_create.subtitle_offset_ms == 0
 
 
+class TestAudioModelConfigurationFields:
+    """Test that Job and JobCreate models support audio model configuration fields."""
+    
+    def test_job_has_clean_instrumental_model_field(self):
+        """Test that Job model has clean_instrumental_model field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            clean_instrumental_model="custom_model.ckpt"
+        )
+        
+        assert hasattr(job, 'clean_instrumental_model')
+        assert job.clean_instrumental_model == "custom_model.ckpt"
+    
+    def test_job_has_backing_vocals_models_field(self):
+        """Test that Job model has backing_vocals_models field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            backing_vocals_models=["model1.ckpt", "model2.ckpt"]
+        )
+        
+        assert hasattr(job, 'backing_vocals_models')
+        assert job.backing_vocals_models == ["model1.ckpt", "model2.ckpt"]
+    
+    def test_job_has_other_stems_models_field(self):
+        """Test that Job model has other_stems_models field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            other_stems_models=["htdemucs_6s.yaml"]
+        )
+        
+        assert hasattr(job, 'other_stems_models')
+        assert job.other_stems_models == ["htdemucs_6s.yaml"]
+    
+    def test_audio_model_fields_are_optional(self):
+        """Test that audio model fields default to None."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        assert job.clean_instrumental_model is None
+        assert job.backing_vocals_models is None
+        assert job.other_stems_models is None
+    
+    def test_job_create_has_audio_model_fields(self):
+        """Test that JobCreate model has all audio model configuration fields."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title",
+            clean_instrumental_model="custom_clean.ckpt",
+            backing_vocals_models=["custom_bv.ckpt"],
+            other_stems_models=["custom_stems.yaml"]
+        )
+        
+        assert job_create.clean_instrumental_model == "custom_clean.ckpt"
+        assert job_create.backing_vocals_models == ["custom_bv.ckpt"]
+        assert job_create.other_stems_models == ["custom_stems.yaml"]
+    
+    def test_job_create_audio_model_fields_optional(self):
+        """Test that audio model fields are optional in JobCreate."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title"
+        )
+        
+        assert job_create.clean_instrumental_model is None
+        assert job_create.backing_vocals_models is None
+        assert job_create.other_stems_models is None
+    
+    def test_pydantic_includes_audio_model_fields_in_serialization(self):
+        """Test that Pydantic includes audio model fields in serialization."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            clean_instrumental_model="custom.ckpt",
+            backing_vocals_models=["bv1.ckpt", "bv2.ckpt"],
+            other_stems_models=["stems.yaml"]
+        )
+        
+        job_dict = job.model_dump()
+        
+        assert "clean_instrumental_model" in job_dict
+        assert job_dict["clean_instrumental_model"] == "custom.ckpt"
+        assert "backing_vocals_models" in job_dict
+        assert job_dict["backing_vocals_models"] == ["bv1.ckpt", "bv2.ckpt"]
+        assert "other_stems_models" in job_dict
+        assert job_dict["other_stems_models"] == ["stems.yaml"]
+
+
+class TestCommaDelimitedModelParsing:
+    """Test parsing of comma-delimited model strings."""
+    
+    def test_parse_single_model(self):
+        """Test parsing a single model string."""
+        model_str = "model1.ckpt"
+        result = [m.strip() for m in model_str.split(',') if m.strip()]
+        assert result == ["model1.ckpt"]
+    
+    def test_parse_multiple_models(self):
+        """Test parsing multiple models."""
+        model_str = "model1.ckpt,model2.ckpt,model3.ckpt"
+        result = [m.strip() for m in model_str.split(',') if m.strip()]
+        assert result == ["model1.ckpt", "model2.ckpt", "model3.ckpt"]
+    
+    def test_parse_models_with_whitespace(self):
+        """Test parsing models with whitespace around commas."""
+        model_str = "model1.ckpt , model2.ckpt, model3.ckpt "
+        result = [m.strip() for m in model_str.split(',') if m.strip()]
+        assert result == ["model1.ckpt", "model2.ckpt", "model3.ckpt"]
+    
+    def test_parse_empty_string(self):
+        """Test parsing empty string."""
+        model_str = ""
+        result = [m.strip() for m in model_str.split(',') if m.strip()]
+        assert result == []
+    
+    def test_parse_none_returns_none(self):
+        """Test that None model string is handled correctly."""
+        model_str = None
+        result = None
+        if model_str:
+            result = [m.strip() for m in model_str.split(',') if m.strip()]
+        assert result is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

@@ -1,7 +1,7 @@
 # Backend Feature Parity Plan
 
-**Last Updated:** 2024-12-10  
-**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 Complete ✅
+**Last Updated:** 2024-12-11  
+**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
@@ -14,7 +14,7 @@ This document tracks the progress toward complete feature parity between the loc
 | Lyrics Configuration | 5 | 5 | **100%** | ✅ **Batch 1 Complete** (L1-L4) |
 | Style Configuration | 1 | 4 | **25%** | S2-S4 are MEDIUM priority |
 | Workflow Control | 0 | 3 | **0%** | W1/W2 HIGH, W7 MEDIUM (skip flags deferred) |
-| Audio Processing | 0 | 4 | **0%** | AP1-3, AP5 are HIGH priority |
+| Audio Processing | 3 | 4 | **75%** | ✅ **Batch 2 Complete** (AP1-AP3), AP5 remaining |
 | Input Modes | 1 | 3 | **33%** | P2, P3 are HIGH priority |
 | Audio Fetching | 0 | 1 | **0%** | A1 is HIGH priority |
 | Flags to Remove | - | - | - | I3-I6, AP6 (simplify codebase) |
@@ -162,17 +162,19 @@ This section provides a comprehensive comparison of all CLI parameters between `
 
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
-| AP1 | `--clean_instrumental_model` | ✅ | ❌ | **Stage 1 separation model.** AI model for initial vocal/instrumental separation. Default: `model_bs_roformer_ep_317_sdr_12.9755.ckpt`. Different models have different quality/speed tradeoffs. |
-| AP2 | `--backing_vocals_models` | ✅ | ❌ | **Stage 2 separation model(s).** AI model(s) for separating lead vocals from backing vocals. Default: `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt`. |
-| AP3 | `--other_stems_models` | ✅ | ❌ | **Multi-stem separation model.** AI model for separating drums, bass, guitar, piano, other. Default: `htdemucs_6s.yaml`. |
+| AP1 | `--clean_instrumental_model` | ✅ | ✅ | **Stage 1 separation model.** AI model for initial vocal/instrumental separation. Default: `model_bs_roformer_ep_317_sdr_12.9755.ckpt`. Different models have different quality/speed tradeoffs. |
+| AP2 | `--backing_vocals_models` | ✅ | ✅ | **Stage 2 separation model(s).** AI model(s) for separating lead vocals from backing vocals. Default: `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt`. |
+| AP3 | `--other_stems_models` | ✅ | ✅ | **Multi-stem separation model.** AI model for separating drums, bass, guitar, piano, other. Default: `htdemucs_6s.yaml`. |
 | AP4 | `--model_file_dir` | ✅ | N/A | **Model cache directory.** Where to store/load AI model files. Default: `/tmp/audio-separator-models/`. |
 | AP5 | `--existing_instrumental` | ✅ | ❌ | **Use pre-made instrumental.** Path to an existing instrumental file to use instead of running AI separation. Useful when you have a better instrumental from another source (official instrumental release, manual editing, etc.). Skips audio separation entirely. |
 | AP6 | `--instrumental_format` | 🗑️ | N/A | **REMOVE FROM LOCAL CLI.** FLAC is always fine, no need for format option. |
 
-**Remote Implementation Plan:**
-- **AP1-AP3 Model selection**: HIGH PRIORITY. All model options must work remotely! The Modal-hosted audio-separator API can download any model on demand and caches them. Just pass model name to API. Use case: A/B testing models, using newer models as they release.
+**Remote Implementation Status:** ✅ **BATCH 2 COMPLETE** (PR #9, v0.71.24)
+- **AP1 `--clean_instrumental_model`**: ✅ IMPLEMENTED. Sent as form field to backend. Audio worker passes to Modal API.
+- **AP2 `--backing_vocals_models`**: ✅ IMPLEMENTED. Sent as comma-separated list, parsed and passed to Modal API.
+- **AP3 `--other_stems_models`**: ✅ IMPLEMENTED. Sent as comma-separated list, parsed and passed to Modal API.
 - **AP4 `--model_file_dir`**: N/A for remote - Modal API handles model caching internally.
-- **AP5 `--existing_instrumental`**: HIGH PRIORITY. User uploads instrumental file with job. Backend STILL runs separation (for consistent stem outputs in download folder), but uses provided instrumental for karaoke remux and final video. **VALIDATION REQUIRED**: At job start, validate provided instrumental duration matches input audio duration (within 0.5 seconds tolerance) to ensure sync before proceeding.
+- **AP5 `--existing_instrumental`**: HIGH PRIORITY (Batch 3). User uploads instrumental file with job. Backend STILL runs separation (for consistent stem outputs in download folder), but uses provided instrumental for karaoke remux and final video. **VALIDATION REQUIRED**: At job start, validate provided instrumental duration matches input audio duration (within 0.5 seconds tolerance) to ensure sync before proceeding.
 - **AP6**: REMOVE from local CLI - FLAC is always fine.
 
 ---
@@ -320,19 +322,24 @@ Bump the patch version in `pyproject.toml` before committing.
 
 ---
 
-### Batch 2: Audio Separation Model Selection (HIGH)
+### Batch 2: Audio Separation Model Selection (HIGH) ✅ COMPLETE
 **Parameters:** AP1 `--clean_instrumental_model`, AP2 `--backing_vocals_models`, AP3 `--other_stems_models`
 
-**Scope:**
-- Remote CLI: Add 3 form fields to `submit_job()`
-- Backend: Add 3 Form parameters to upload endpoint
-- Backend: Store in job, pass to audio worker
-- Backend: Audio worker passes model names to Modal API (already supports any model)
+**Status:** ✅ **IMPLEMENTED** - PR #9 merged (v0.71.24)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - add to submit_job()
-- `backend/api/routes/file_upload.py` - add Form fields
-- `backend/workers/audio_worker.py` - pass model names to Modal API
+**Implementation Summary:**
+- Remote CLI: Added 3 form fields to `submit_job()`, sends models as comma-separated strings
+- Backend: Added 3 Form parameters to `/api/jobs/upload` endpoint, parses comma-separated lists
+- Backend: Job model stores model configuration as optional fields
+- Backend: Audio worker passes model names to AudioProcessor which uses Modal API
+
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - submit_job() with model params
+- `backend/api/routes/file_upload.py` - Form fields + comma parsing
+- `backend/models/job.py` - clean_instrumental_model, backing_vocals_models, other_stems_models fields
+- `backend/workers/audio_worker.py` - create_audio_processor() accepts model params from job
+
+**Tests added:** 15+ unit tests covering Job model fields, form parsing, AudioProcessor configuration
 
 **Complexity:** Low (Modal API already supports dynamic model selection)
 
@@ -496,7 +503,7 @@ Bump the patch version in `pyproject.toml` before committing.
 | Batch | Parameters | Priority | Complexity | Status |
 |-------|------------|----------|------------|--------|
 | 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | ✅ **COMPLETE** (PR #8) |
-| 2 | AP1-AP3 (model selection) | HIGH | Low | ⏳ Pending |
+| 2 | AP1-AP3 (model selection) | HIGH | Low | ✅ **COMPLETE** (PR #9) |
 | 3 | AP5 (existing instrumental) | HIGH | Medium | ⏳ Pending |
 | 4 | P2 (YouTube URLs) | HIGH | Medium-High | ⏳ Pending |
 | 5 | P3, A1 (flacfetch search) | HIGH | High | ⏳ Pending |
@@ -506,7 +513,7 @@ Bump the patch version in `pyproject.toml` before committing.
 | 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | ⏳ Pending |
 | 10 | F14, D2, D3, removals | LOW | Mixed | ⏳ Pending |
 
-**Recommended Order:** ~~1~~ → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+**Recommended Order:** ~~1~~ → ~~2~~ → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 Batches 1-3 are quick wins that add significant value. Batches 4-6 are larger but high priority. Batches 7-10 can be done as time permits.
 
@@ -615,13 +622,13 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 | Feature | Version | PR | Notes |
 |---------|---------|-----|-------|
+|| Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
 | Lyrics override params | v0.71.22 | #8 | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms` |
 
 ### ⏳ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Audio model selection | HIGH | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
 | Existing instrumental | HIGH | `--existing_instrumental` for re-processing |
 | Style override | MEDIUM | `--style_override` for quick tweaks |
 | Skip separation/transcription | MEDIUM | Workflow control for re-processing |
@@ -874,6 +881,16 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 
 ## Recent Changes Log
 
+### 2024-12-11: v0.71.24 - Batch 2 Complete (Audio Model Selection)
+
+**PR #9: Audio Model Selection for Remote CLI**
+
+- ✅ `--clean_instrumental_model` - Custom Stage 1 separation model
+- ✅ `--backing_vocals_models` - Custom backing vocals separation models
+- ✅ `--other_stems_models` - Custom multi-stem separation models (bass, drums, etc.)
+- Added 15+ unit tests for new functionality
+- Files: `remote_cli.py`, `file_upload.py`, `job.py`, `audio_worker.py`
+
 ### 2024-12-10: v0.71.22 - Batch 1 Complete (Lyrics Configuration)
 
 **PR #8: Lyrics Configuration for Remote CLI**
@@ -936,12 +953,11 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
    - `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms`
    - PR #8, v0.71.22
 
-2. **Audio Model Selection** (Batch 2 - NEXT)
-   - Add `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` support
-   - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`
-   - Enables: A/B testing models, using newer models as they release
+2. ✅ **Audio Model Selection** (Batch 2 - COMPLETE)
+   - `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models`
+   - PR #9, v0.71.24
 
-3. **Existing Instrumental** (Batch 3)
+3. **Existing Instrumental** (Batch 3 - NEXT)
    - Add `--existing_instrumental` upload support
    - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`, `render_worker.py`
    - Enables: Re-processing with better instrumentals

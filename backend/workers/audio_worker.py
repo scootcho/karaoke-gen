@@ -112,7 +112,12 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
         return None
 
 
-def create_audio_processor(temp_dir: str) -> AudioProcessor:
+def create_audio_processor(
+    temp_dir: str,
+    clean_instrumental_model: Optional[str] = None,
+    backing_vocals_models: Optional[list] = None,
+    other_stems_models: Optional[list] = None
+) -> AudioProcessor:
     """
     Create an AudioProcessor instance configured for remote API processing.
     
@@ -120,10 +125,13 @@ def create_audio_processor(temp_dir: str) -> AudioProcessor:
     - Uses remote Modal API (via AUDIO_SEPARATOR_API_URL env var)
     - No local models needed (model_file_dir=None)
     - FLAC output format for quality
-    - Standard model configurations from karaoke-gen CLI
+    - Model configurations from job or CLI defaults
     
     Args:
         temp_dir: Temporary directory for processing
+        clean_instrumental_model: Model for clean instrumental separation (optional, uses default if not provided)
+        backing_vocals_models: List of models for backing vocals separation (optional, uses default if not provided)
+        other_stems_models: List of models for other stems separation (optional, uses default if not provided)
         
     Returns:
         Configured AudioProcessor instance
@@ -132,10 +140,10 @@ def create_audio_processor(temp_dir: str) -> AudioProcessor:
     audio_logger = logging.getLogger("karaoke_gen.audio_processor")
     audio_logger.setLevel(logging.INFO)
     
-    # Model configurations (same as CLI defaults)
-    clean_instrumental_model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
-    backing_vocals_models = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
-    other_stems_models = ["htdemucs_6s.yaml"]  # For 6-stem separation (bass, drums, etc.)
+    # Model configurations - use provided values or CLI defaults
+    effective_clean_model = clean_instrumental_model or "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+    effective_backing_models = backing_vocals_models or ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+    effective_other_models = other_stems_models or ["htdemucs_6s.yaml"]  # For 6-stem separation (bass, drums, etc.)
     
     # FFmpeg command for combining audio files (must be a string, not a list)
     ffmpeg_base_command = "ffmpeg -hide_banner -loglevel error -nostats -y"
@@ -146,9 +154,9 @@ def create_audio_processor(temp_dir: str) -> AudioProcessor:
         log_formatter=None,  # Not needed for our use case
         model_file_dir=None,  # No local models, using remote API
         lossless_output_format="FLAC",
-        clean_instrumental_model=clean_instrumental_model,
-        backing_vocals_models=backing_vocals_models,
-        other_stems_models=other_stems_models,
+        clean_instrumental_model=effective_clean_model,
+        backing_vocals_models=effective_backing_models,
+        other_stems_models=effective_other_models,
         ffmpeg_base_command=ffmpeg_base_command
     )
 
@@ -226,8 +234,21 @@ async def process_audio_separation(job_id: str) -> bool:
         })
         
         # Create AudioProcessor instance (reuses karaoke_gen code)
+        # Use model configuration from job if provided, otherwise use defaults
         job_log.info("Creating AudioProcessor instance...")
-        audio_processor = create_audio_processor(temp_dir)
+        if job.clean_instrumental_model:
+            job_log.info(f"  Using clean instrumental model: {job.clean_instrumental_model}")
+        if job.backing_vocals_models:
+            job_log.info(f"  Using backing vocals models: {job.backing_vocals_models}")
+        if job.other_stems_models:
+            job_log.info(f"  Using other stems models: {job.other_stems_models}")
+        
+        audio_processor = create_audio_processor(
+            temp_dir,
+            clean_instrumental_model=job.clean_instrumental_model,
+            backing_vocals_models=job.backing_vocals_models,
+            other_stems_models=job.other_stems_models
+        )
         
         # Format artist-title for file naming (matches CLI behavior)
         artist_title = f"{job.artist} - {job.title}"

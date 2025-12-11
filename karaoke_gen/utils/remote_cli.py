@@ -204,6 +204,10 @@ class RemoteKaraokeClient:
         lyrics_title: Optional[str] = None,
         lyrics_file: Optional[str] = None,
         subtitle_offset_ms: int = 0,
+        # Audio separation model configuration
+        clean_instrumental_model: Optional[str] = None,
+        backing_vocals_models: Optional[list] = None,
+        other_stems_models: Optional[list] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -226,6 +230,9 @@ class RemoteKaraokeClient:
             lyrics_title: Override title for lyrics search
             lyrics_file: Path to user-provided lyrics file
             subtitle_offset_ms: Subtitle timing offset in milliseconds
+            clean_instrumental_model: Model for clean instrumental separation
+            backing_vocals_models: List of models for backing vocals separation
+            other_stems_models: List of models for other stems (bass, drums, etc.)
         """
         file_path = Path(filepath)
         
@@ -320,6 +327,14 @@ class RemoteKaraokeClient:
                 data['lyrics_title'] = lyrics_title
             if subtitle_offset_ms != 0:
                 data['subtitle_offset_ms'] = str(subtitle_offset_ms)
+            
+            # Audio separation model configuration
+            if clean_instrumental_model:
+                data['clean_instrumental_model'] = clean_instrumental_model
+            if backing_vocals_models:
+                data['backing_vocals_models'] = ','.join(backing_vocals_models)
+            if other_stems_models:
+                data['other_stems_models'] = ','.join(other_stems_models)
             
             self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
             
@@ -1747,6 +1762,13 @@ def main():
         logger.info(f"Lyrics File: {args.lyrics_file}")
     if getattr(args, 'subtitle_offset_ms', 0):
         logger.info(f"Subtitle Offset: {args.subtitle_offset_ms}ms")
+    # Audio model configuration
+    if getattr(args, 'clean_instrumental_model', None):
+        logger.info(f"Clean Instrumental Model: {args.clean_instrumental_model}")
+    if getattr(args, 'backing_vocals_models', None):
+        logger.info(f"Backing Vocals Models: {args.backing_vocals_models}")
+    if getattr(args, 'other_stems_models', None):
+        logger.info(f"Other Stems Models: {args.other_stems_models}")
     logger.info(f"Service URL: {config.service_url}")
     logger.info(f"Review UI: {config.review_ui_url}")
     if config.non_interactive:
@@ -1785,6 +1807,10 @@ def main():
             lyrics_title=getattr(args, 'lyrics_title', None),
             lyrics_file=getattr(args, 'lyrics_file', None),
             subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
+            # Audio separation model configuration
+            clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
+            backing_vocals_models=getattr(args, 'backing_vocals_models', None),
+            other_stems_models=getattr(args, 'other_stems_models', None),
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
