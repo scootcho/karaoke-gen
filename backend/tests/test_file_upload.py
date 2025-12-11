@@ -683,7 +683,7 @@ class TestValidFileTypes:
         assert '.docx' in VALID_FILE_TYPES['lyrics_file']
 
 
-class TestGCSPathGeneration:
+class TestSignedUrlGCSPathGeneration:
     """Test GCS path generation for signed URL upload."""
     
     def test_audio_gcs_path(self):

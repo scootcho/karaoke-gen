@@ -859,7 +859,6 @@ async def mark_uploads_complete(
         background_tasks.add_task(_trigger_workers_parallel, job_id)
         
         # Get distribution services info for response
-        settings = get_settings()
         credential_manager = get_credential_manager()
         distribution_services: Dict[str, Any] = {}
         
