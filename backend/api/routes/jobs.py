@@ -772,12 +772,16 @@ async def retry_job(
             })
             
             # Reset to INSTRUMENTAL_SELECTED and trigger video worker
-            job_manager.transition_to_state(
+            if not job_manager.transition_to_state(
                 job_id=job_id,
                 new_status=JobStatus.INSTRUMENTAL_SELECTED,
                 progress=65,
                 message=f"Retrying video generation from failed state"
-            )
+            ):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to transition job status for retry"
+                )
             
             # Trigger video generation worker
             background_tasks.add_task(worker_service.trigger_video_worker, job_id)
@@ -802,12 +806,16 @@ async def retry_job(
             })
             
             # Reset to REVIEW_COMPLETE and trigger render worker
-            job_manager.transition_to_state(
+            if not job_manager.transition_to_state(
                 job_id=job_id,
                 new_status=JobStatus.REVIEW_COMPLETE,
                 progress=70,
                 message=f"Retrying video render from failed state"
-            )
+            ):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to transition job status for retry"
+                )
             
             # Trigger render video worker
             background_tasks.add_task(worker_service.trigger_render_video_worker, job_id)
@@ -832,12 +840,16 @@ async def retry_job(
             })
             
             # Reset to a state before screens and trigger screens worker
-            job_manager.transition_to_state(
+            if not job_manager.transition_to_state(
                 job_id=job_id,
                 new_status=JobStatus.LYRICS_COMPLETE,
                 progress=45,
                 message=f"Retrying from screens generation"
-            )
+            ):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to transition job status for retry"
+                )
             
             # Trigger screens worker
             background_tasks.add_task(worker_service.trigger_screens_worker, job_id)
