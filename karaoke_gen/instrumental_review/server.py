@@ -156,6 +156,13 @@ class InstrumentalReviewServer:
         @app.get("/api/jobs/local/waveform-data")
         async def get_waveform_data(num_points: int = 600):
             """Get waveform amplitude data for client-side rendering."""
+            # Validate num_points parameter
+            if num_points <= 0 or num_points > 10000:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="num_points must be between 1 and 10000"
+                )
+            
             if not self.backing_vocals_path or not os.path.exists(self.backing_vocals_path):
                 raise HTTPException(status_code=404, detail="Backing vocals file not found")
             
@@ -164,8 +171,8 @@ class InstrumentalReviewServer:
                 amplitudes, duration = generator.generate_data_only(self.backing_vocals_path, num_points)
                 return {"amplitudes": amplitudes, "duration": duration}
             except Exception as e:
-                logger.error(f"Error generating waveform data: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.exception(f"Error generating waveform data: {e}")
+                raise HTTPException(status_code=500, detail=str(e)) from e
         
         @app.get("/api/audio/{stem_type}")
         async def stream_audio(stem_type: str):
@@ -239,8 +246,8 @@ class InstrumentalReviewServer:
                     },
                 }
             except Exception as e:
-                logger.error(f"Error creating custom instrumental: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.exception(f"Error creating custom instrumental: {e}")
+                raise HTTPException(status_code=500, detail=str(e)) from e
         
         @app.post("/api/jobs/local/select-instrumental")
         async def select_instrumental(request: SelectionRequest):

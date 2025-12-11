@@ -105,10 +105,14 @@ function InstrumentalReviewContent() {
       setAnalysisData(data)
 
       // Set initial selection based on recommendation
-      if (data.analysis.recommended_selection === "clean") {
+      const recommendation = data.analysis.recommended_selection
+      if (recommendation === "clean") {
         setSelectedOption("clean")
+      } else if (recommendation === "with_backing") {
+        setSelectedOption("with_backing")
       } else {
-        setSelectedOption("review")
+        // "review_needed" - default to with_backing but user should review
+        setSelectedOption("with_backing")
       }
 
       // Fetch waveform data for interactive display

@@ -70,12 +70,23 @@ export function AudioPlayer({
       setIsLoading(false)
     }
 
+    // Sync isPlaying state with actual audio element state
+    const handlePlay = () => {
+      setIsPlaying(true)
+    }
+
+    const handlePause = () => {
+      setIsPlaying(false)
+    }
+
     audio.addEventListener("timeupdate", handleTimeUpdate)
     audio.addEventListener("durationchange", handleDurationChange)
     audio.addEventListener("loadeddata", handleLoadedData)
     audio.addEventListener("ended", handleEnded)
     audio.addEventListener("loadstart", handleLoadStart)
     audio.addEventListener("canplay", handleCanPlay)
+    audio.addEventListener("play", handlePlay)
+    audio.addEventListener("pause", handlePause)
 
     return () => {
       audio.removeEventListener("timeupdate", handleTimeUpdate)
@@ -84,6 +95,8 @@ export function AudioPlayer({
       audio.removeEventListener("ended", handleEnded)
       audio.removeEventListener("loadstart", handleLoadStart)
       audio.removeEventListener("canplay", handleCanPlay)
+      audio.removeEventListener("play", handlePlay)
+      audio.removeEventListener("pause", handlePause)
     }
   }, [onTimeUpdate, onDurationChange])
 
@@ -94,17 +107,22 @@ export function AudioPlayer({
     }
   }, [volume, isMuted])
 
-  const togglePlay = useCallback(() => {
+  const togglePlay = useCallback(async () => {
     const audio = audioRef.current
     if (!audio) return
 
-    if (isPlaying) {
-      audio.pause()
-    } else {
-      audio.play()
+    try {
+      if (audio.paused) {
+        await audio.play()
+      } else {
+        audio.pause()
+      }
+      // State will be updated by the play/pause event listeners
+    } catch (error) {
+      // Play was prevented (e.g., user hasn't interacted with page yet)
+      console.warn("Audio playback was prevented:", error)
     }
-    setIsPlaying(!isPlaying)
-  }, [isPlaying])
+  }, [])
 
   const handleSeek = useCallback((value: number[]) => {
     const audio = audioRef.current

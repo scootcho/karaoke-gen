@@ -267,5 +267,12 @@ class AudioEditingService:
                     f"Region {i}: start_seconds ({region.start_seconds}) exceeds "
                     f"audio duration ({total_duration_seconds})"
                 )
+            
+            if region.end_seconds > total_duration_seconds:
+                # Not an error, but log a warning - the region will be clamped
+                logger.warning(
+                    f"Region {i}: end_seconds ({region.end_seconds}) exceeds "
+                    f"audio duration ({total_duration_seconds}), will be clamped"
+                )
         
         return errors

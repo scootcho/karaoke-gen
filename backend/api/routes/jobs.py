@@ -679,8 +679,8 @@ async def stream_audio(job_id: str, stem_type: str):
             }
         )
     except Exception as e:
-        logger.error(f"Error streaming audio {gcs_path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error streaming audio: {e}")
+        logger.exception(f"Error streaming audio {gcs_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error streaming audio: {e}") from e
 
 
 @router.post("/{job_id}/create-custom-instrumental")
@@ -771,8 +771,8 @@ async def create_custom_instrumental(
         }
         
     except Exception as e:
-        logger.error(f"Error creating custom instrumental for job {job_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error creating custom instrumental for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/{job_id}/waveform-data")
@@ -825,8 +825,8 @@ async def get_waveform_data(job_id: str, num_points: int = 500) -> Dict[str, Any
         }
         
     except Exception as e:
-        logger.error(f"Error getting waveform data for job {job_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"Error getting waveform data for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/{job_id}/select-instrumental")

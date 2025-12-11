@@ -140,17 +140,19 @@ class AudioEditor:
         logger.info(f"Exporting custom instrumental to: {output_path}")
         combined.export(output_path, format=self.output_format)
         
-        # Calculate statistics
+        # Calculate statistics with clamping to actual audio duration
+        output_duration_seconds = len(combined) / 1000.0
         total_muted_ms = sum(
-            (r.end_seconds - r.start_seconds) * 1000
+            (min(r.end_seconds, output_duration_seconds) - max(r.start_seconds, 0)) * 1000
             for r in normalized_regions
+            if r.start_seconds < output_duration_seconds  # Skip regions entirely outside audio
         )
         
         return CustomInstrumentalResult(
             output_path=output_path,
             mute_regions_applied=normalized_regions,
-            total_muted_duration_seconds=total_muted_ms / 1000.0,
-            output_duration_seconds=len(combined) / 1000.0,
+            total_muted_duration_seconds=max(0, total_muted_ms / 1000.0),
+            output_duration_seconds=output_duration_seconds,
         )
     
     def apply_mute_to_single_track(
