@@ -171,19 +171,17 @@ class TestReviewServerParity:
     
     def test_review_server_api_endpoints_match_backend(self):
         """Review server should serve same API endpoints as backend."""
-        from karaoke_gen.instrumental_review.server import InstrumentalReviewHandler
+        from karaoke_gen.instrumental_review.server import InstrumentalReviewServer
         
-        # The handler should handle these endpoints (matching backend)
-        assert hasattr(InstrumentalReviewHandler, 'do_GET')
-        assert hasattr(InstrumentalReviewHandler, 'do_POST')
+        # The server should have methods to create app and register routes
+        assert hasattr(InstrumentalReviewServer, '_create_app')
+        assert hasattr(InstrumentalReviewServer, '_register_routes')
+        assert hasattr(InstrumentalReviewServer, '_get_frontend_html')
         
-        # Internal API methods should exist
-        assert hasattr(InstrumentalReviewHandler, '_serve_analysis')
-        assert hasattr(InstrumentalReviewHandler, '_serve_audio')
-        assert hasattr(InstrumentalReviewHandler, '_serve_waveform')
-        assert hasattr(InstrumentalReviewHandler, '_serve_waveform_data')
-        assert hasattr(InstrumentalReviewHandler, '_handle_create_custom')
-        assert hasattr(InstrumentalReviewHandler, '_handle_select')
+        # Server should have the main interface methods
+        assert hasattr(InstrumentalReviewServer, 'start_and_open_browser')
+        assert hasattr(InstrumentalReviewServer, 'get_selection')
+        assert hasattr(InstrumentalReviewServer, 'get_custom_instrumental_path')
 
 
 class TestRemoteCLIAnalysisIntegration:
