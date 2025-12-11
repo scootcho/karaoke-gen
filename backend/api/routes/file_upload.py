@@ -44,6 +44,55 @@ class FileUploadRequest(BaseModel):
     file_type: str = Field(..., description="Type of file: 'audio', 'style_params', 'style_intro_background', 'style_karaoke_background', 'style_end_background', 'style_font', 'style_cdg_instrumental_background', 'style_cdg_title_background', 'style_cdg_outro_background', 'lyrics_file'")
 
 
+class CreateJobFromUrlRequest(BaseModel):
+    """Request to create a job from a YouTube/online URL."""
+    # Required fields
+    url: str = Field(..., description="YouTube or other video URL to download audio from")
+    
+    # Optional fields - will be auto-detected from URL if not provided
+    artist: Optional[str] = Field(None, description="Artist name (auto-detected from URL if not provided)")
+    title: Optional[str] = Field(None, description="Song title (auto-detected from URL if not provided)")
+    
+    # Processing options
+    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
+    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+    
+    # Finalisation options
+    brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
+    enable_youtube_upload: bool = Field(False, description="Upload to YouTube")
+    youtube_description: Optional[str] = Field(None, description="YouTube video description text")
+    discord_webhook_url: Optional[str] = Field(None, description="Discord webhook URL for notifications")
+    webhook_url: Optional[str] = Field(None, description="Generic webhook URL")
+    user_email: Optional[str] = Field(None, description="User email for notifications")
+    
+    # Distribution options (native API - preferred for remote CLI)
+    dropbox_path: Optional[str] = Field(None, description="Dropbox folder path for organized output")
+    gdrive_folder_id: Optional[str] = Field(None, description="Google Drive folder ID for public share uploads")
+    
+    # Legacy distribution options (rclone - deprecated)
+    organised_dir_rclone_root: Optional[str] = Field(None, description="[Deprecated] rclone remote path")
+    
+    # Lyrics configuration
+    lyrics_artist: Optional[str] = Field(None, description="Override artist name for lyrics search")
+    lyrics_title: Optional[str] = Field(None, description="Override title for lyrics search")
+    subtitle_offset_ms: int = Field(0, description="Subtitle timing offset in milliseconds")
+    
+    # Audio separation model configuration
+    clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
+    backing_vocals_models: Optional[List[str]] = Field(None, description="Models for backing vocals separation")
+    other_stems_models: Optional[List[str]] = Field(None, description="Models for other stems")
+
+
+class CreateJobFromUrlResponse(BaseModel):
+    """Response from creating a job from URL."""
+    status: str
+    job_id: str
+    message: str
+    detected_artist: Optional[str]
+    detected_title: Optional[str]
+    server_version: str
+
+
 class CreateJobWithUploadUrlsRequest(BaseModel):
     """Request to create a job and get signed upload URLs."""
     # Required fields
@@ -1001,4 +1050,196 @@ async def mark_uploads_complete(
         raise
     except Exception as e:
         logger.error(f"Error completing uploads for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ============================================================================
+# URL-based Job Creation - For YouTube and other online video URLs
+# ============================================================================
+
+def _validate_url(url: Optional[str]) -> bool:
+    """
+    Validate that a URL is a supported video/audio URL.
+    
+    Supports YouTube, Vimeo, SoundCloud, and other platforms supported by yt-dlp.
+    
+    Args:
+        url: The URL to validate. Can be None or non-string.
+        
+    Returns:
+        True if valid URL, False otherwise.
+    """
+    # Handle None and non-string inputs safely
+    if url is None or not isinstance(url, str):
+        return False
+    
+    # Handle empty string
+    if not url:
+        return False
+    
+    # Basic URL validation
+    if not url.startswith(('http://', 'https://')):
+        return False
+    
+    # List of known supported domains (subset - yt-dlp supports many more)
+    supported_domains = [
+        'youtube.com', 'youtu.be', 'www.youtube.com', 'm.youtube.com',
+        'vimeo.com', 'www.vimeo.com',
+        'soundcloud.com', 'www.soundcloud.com',
+        'dailymotion.com', 'www.dailymotion.com',
+        'twitch.tv', 'www.twitch.tv',
+        'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
+        'facebook.com', 'www.facebook.com', 'fb.watch',
+        'instagram.com', 'www.instagram.com',
+        'tiktok.com', 'www.tiktok.com',
+    ]
+    
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    
+    # Remove port if present
+    if ':' in domain:
+        domain = domain.split(':')[0]
+    
+    # Check if domain matches any supported domain
+    for supported in supported_domains:
+        if domain == supported or domain.endswith('.' + supported):
+            return True
+    
+    # For other URLs, let yt-dlp try (it supports many more sites)
+    return True
+
+
+@router.post("/jobs/create-from-url", response_model=CreateJobFromUrlResponse)
+async def create_job_from_url(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: CreateJobFromUrlRequest,
+):
+    """
+    Create a karaoke generation job from a YouTube or other online video URL.
+    
+    The backend will:
+    1. Validate the URL
+    2. Extract metadata (artist/title) from the URL if not provided
+    3. Create the job
+    4. Trigger the audio worker to download and process
+    
+    This is an alternative to file upload for cases where the audio
+    source is a YouTube video or other online content.
+    
+    Note: YouTube rate limiting may cause occasional download failures.
+    The backend will retry automatically.
+    """
+    try:
+        # Validate URL
+        if not _validate_url(body.url):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid URL. Please provide a valid YouTube, Vimeo, SoundCloud, or other supported video URL."
+            )
+        
+        # Apply default distribution settings from environment if not provided
+        settings = get_settings()
+        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
+        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
+        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
+        
+        # Validate credentials for requested distribution services
+        invalid_services = []
+        credential_manager = get_credential_manager()
+        
+        if body.enable_youtube_upload:
+            result = credential_manager.check_youtube_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"youtube ({result.message})")
+        
+        if effective_dropbox_path:
+            result = credential_manager.check_dropbox_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"dropbox ({result.message})")
+        
+        if effective_gdrive_folder_id:
+            result = credential_manager.check_gdrive_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"gdrive ({result.message})")
+        
+        if invalid_services:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "credentials_invalid",
+                    "message": f"The following distribution services need re-authorization: {', '.join(invalid_services)}",
+                    "invalid_services": invalid_services,
+                    "auth_url": "/api/auth/status"
+                }
+            )
+        
+        # Extract request metadata for tracking
+        request_metadata = extract_request_metadata(request, created_from="url")
+        
+        # Use provided artist/title or leave as None (will be auto-detected by audio worker)
+        artist = body.artist
+        title = body.title
+        
+        # Create job with URL
+        job_create = JobCreate(
+            url=body.url,
+            artist=artist,
+            title=title,
+            filename=None,  # No file uploaded
+            enable_cdg=body.enable_cdg,
+            enable_txt=body.enable_txt,
+            brand_prefix=body.brand_prefix,
+            enable_youtube_upload=body.enable_youtube_upload,
+            youtube_description=body.youtube_description,
+            discord_webhook_url=effective_discord_webhook_url,
+            webhook_url=body.webhook_url,
+            user_email=body.user_email,
+            dropbox_path=effective_dropbox_path,
+            gdrive_folder_id=effective_gdrive_folder_id,
+            organised_dir_rclone_root=body.organised_dir_rclone_root,
+            lyrics_artist=body.lyrics_artist,
+            lyrics_title=body.lyrics_title,
+            subtitle_offset_ms=body.subtitle_offset_ms,
+            clean_instrumental_model=body.clean_instrumental_model,
+            backing_vocals_models=body.backing_vocals_models,
+            other_stems_models=body.other_stems_models,
+            request_metadata=request_metadata,
+        )
+        job = job_manager.create_job(job_create)
+        job_id = job.job_id
+        
+        logger.info(f"Created URL-based job {job_id} for URL: {body.url}")
+        if artist:
+            logger.info(f"  Artist: {artist}")
+        if title:
+            logger.info(f"  Title: {title}")
+        
+        # Transition job to DOWNLOADING state
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.DOWNLOADING,
+            progress=5,
+            message="Starting audio download from URL"
+        )
+        
+        # Trigger workers in parallel
+        # The audio worker will handle downloading from URL
+        background_tasks.add_task(_trigger_workers_parallel, job_id)
+        
+        return CreateJobFromUrlResponse(
+            status="success",
+            job_id=job_id,
+            message="Job created. Audio will be downloaded from URL.",
+            detected_artist=artist,
+            detected_title=title,
+            server_version=VERSION
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating job from URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
