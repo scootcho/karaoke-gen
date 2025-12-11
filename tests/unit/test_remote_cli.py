@@ -652,6 +652,111 @@ class TestRemoteKaraokeClient:
         # Verify uploads were called for both files
         assert mock_upload.call_count == 2
     
+    @patch.object(RemoteKaraokeClient, '_upload_file_to_signed_url')
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_submit_job_with_existing_instrumental(self, mock_request, mock_upload, client, tmp_path):
+        """Test job submission with existing instrumental via signed URL flow (Batch 3)."""
+        # Create test files
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio data")
+        
+        instrumental_file = tmp_path / "instrumental.flac"
+        instrumental_file.write_bytes(b"instrumental data")
+        
+        # Mock create job response (first API call)
+        create_response = MagicMock()
+        create_response.status_code = 200
+        create_response.json.return_value = {
+            "status": "success",
+            "job_id": "job-with-instrumental-123",
+            "upload_urls": [
+                {
+                    "file_type": "audio",
+                    "gcs_path": "uploads/job-with-instrumental-123/audio/test.mp3",
+                    "upload_url": "https://storage.googleapis.com/signed-url-audio",
+                    "content_type": "audio/mpeg"
+                },
+                {
+                    "file_type": "existing_instrumental",
+                    "gcs_path": "uploads/job-with-instrumental-123/audio/existing_instrumental.flac",
+                    "upload_url": "https://storage.googleapis.com/signed-url-instrumental",
+                    "content_type": "audio/flac"
+                }
+            ]
+        }
+        
+        # Mock uploads complete response (second API call)
+        complete_response = MagicMock()
+        complete_response.status_code = 200
+        complete_response.json.return_value = {
+            "status": "success",
+            "job_id": "job-with-instrumental-123",
+            "message": "Processing started"
+        }
+        
+        mock_request.side_effect = [create_response, complete_response]
+        mock_upload.return_value = True
+        
+        result = client.submit_job(
+            str(audio_file),
+            "Test Artist",
+            "Test Title",
+            existing_instrumental=str(instrumental_file)
+        )
+        
+        assert result["status"] == "success"
+        assert result["job_id"] == "job-with-instrumental-123"
+        # Verify uploads were called for both audio and instrumental
+        assert mock_upload.call_count == 2
+    
+    @patch.object(RemoteKaraokeClient, '_upload_file_to_signed_url')
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_submit_job_existing_instrumental_nonexistent_file(self, mock_request, mock_upload, client, tmp_path):
+        """Test that nonexistent instrumental file is silently ignored."""
+        # Create test audio file
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio data")
+        
+        # Mock create job response (instrumental not included since file doesn't exist)
+        create_response = MagicMock()
+        create_response.status_code = 200
+        create_response.json.return_value = {
+            "status": "success",
+            "job_id": "job-no-instrumental-456",
+            "upload_urls": [
+                {
+                    "file_type": "audio",
+                    "gcs_path": "uploads/job-no-instrumental-456/audio/test.mp3",
+                    "upload_url": "https://storage.googleapis.com/signed-url-audio",
+                    "content_type": "audio/mpeg"
+                }
+            ]
+        }
+        
+        # Mock uploads complete response
+        complete_response = MagicMock()
+        complete_response.status_code = 200
+        complete_response.json.return_value = {
+            "status": "success",
+            "job_id": "job-no-instrumental-456",
+            "message": "Processing started"
+        }
+        
+        mock_request.side_effect = [create_response, complete_response]
+        mock_upload.return_value = True
+        
+        # Pass nonexistent instrumental path - should be silently ignored
+        result = client.submit_job(
+            str(audio_file),
+            "Test Artist",
+            "Test Title",
+            existing_instrumental="/nonexistent/instrumental.flac"
+        )
+        
+        assert result["status"] == "success"
+        # Only audio should be uploaded (instrumental file doesn't exist)
+        assert mock_upload.call_count == 1
+    
     @patch.object(RemoteKaraokeClient, '_request')
     def test_submit_job_api_error(self, mock_request, client, tmp_path):
         """Test handling API error during job creation."""

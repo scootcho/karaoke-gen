@@ -222,6 +222,9 @@ class Job(BaseModel):
     backing_vocals_models: Optional[List[str]] = None  # Models for backing vocals separation
     other_stems_models: Optional[List[str]] = None     # Models for other stems (bass, drums, etc.)
     
+    # Existing instrumental configuration (Batch 3)
+    existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
+    
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
@@ -394,6 +397,9 @@ class JobCreate(BaseModel):
     clean_instrumental_model: Optional[str] = None   # Model for clean instrumental separation
     backing_vocals_models: Optional[List[str]] = None  # Models for backing vocals separation
     other_stems_models: Optional[List[str]] = None     # Models for other stems (bass, drums, etc.)
+    
+    # Existing instrumental configuration (Batch 3)
+    existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
     
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)

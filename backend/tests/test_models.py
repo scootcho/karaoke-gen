@@ -577,6 +577,99 @@ class TestJobModelIntegration:
         assert restored_job.state_data["lyrics_metadata"]["line_count"] == 50
 
 
+class TestExistingInstrumentalModelFields:
+    """Test existing instrumental field in Job and JobCreate models (Batch 3)."""
+    
+    def test_job_has_existing_instrumental_gcs_path(self):
+        """Test that Job model has existing_instrumental_gcs_path field."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            existing_instrumental_gcs_path="uploads/test123/audio/existing_instrumental.flac"
+        )
+        
+        assert hasattr(job, 'existing_instrumental_gcs_path')
+        assert job.existing_instrumental_gcs_path == "uploads/test123/audio/existing_instrumental.flac"
+    
+    def test_job_existing_instrumental_defaults_to_none(self):
+        """Test that existing_instrumental_gcs_path defaults to None."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.existing_instrumental_gcs_path is None
+    
+    def test_job_create_has_existing_instrumental_gcs_path(self):
+        """Test that JobCreate model has existing_instrumental_gcs_path field."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title",
+            existing_instrumental_gcs_path="uploads/test/audio/existing_instrumental.mp3"
+        )
+        
+        assert job_create.existing_instrumental_gcs_path == "uploads/test/audio/existing_instrumental.mp3"
+    
+    def test_job_create_existing_instrumental_optional(self):
+        """Test that existing_instrumental_gcs_path is optional in JobCreate."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title"
+        )
+        
+        assert job_create.existing_instrumental_gcs_path is None
+    
+    def test_existing_instrumental_roundtrip_serialization(self):
+        """Test that existing_instrumental_gcs_path survives serialization/deserialization."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            existing_instrumental_gcs_path="uploads/test123/audio/existing_instrumental.wav"
+        )
+        
+        # Serialize to dict (simulates writing to Firestore)
+        job_dict = job.model_dump()
+        
+        # Convert to JSON and back (simulates Firestore storage)
+        json_str = json.dumps(job_dict, default=str)
+        restored_dict = json.loads(json_str)
+        
+        # Deserialize back to Job (simulates reading from Firestore)
+        restored_job = Job(**restored_dict)
+        
+        assert restored_job.existing_instrumental_gcs_path == "uploads/test123/audio/existing_instrumental.wav"
+    
+    def test_job_with_full_audio_config(self):
+        """Test Job with complete audio configuration including existing instrumental."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.AUDIO_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            # Audio model configuration
+            clean_instrumental_model="model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+            backing_vocals_models=["mel_band_roformer_karaoke.ckpt"],
+            other_stems_models=["htdemucs_6s.yaml"],
+            # Existing instrumental
+            existing_instrumental_gcs_path="uploads/test123/audio/my_instrumental.flac",
+        )
+        
+        assert job.clean_instrumental_model == "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        assert job.existing_instrumental_gcs_path == "uploads/test123/audio/my_instrumental.flac"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

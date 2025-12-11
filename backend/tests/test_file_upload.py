@@ -219,13 +219,13 @@ class TestJobModelFieldPresence:
     def test_input_media_gcs_path_field_exists(self):
         """Test that Job model has input_media_gcs_path field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         # This should not raise AttributeError
@@ -234,13 +234,13 @@ class TestJobModelFieldPresence:
     def test_input_media_gcs_path_can_be_set(self):
         """Test that input_media_gcs_path can be set."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             input_media_gcs_path="uploads/test123/file.flac"
         )
         
@@ -249,13 +249,13 @@ class TestJobModelFieldPresence:
     def test_pydantic_doesnt_ignore_input_media_gcs_path(self):
         """Test that Pydantic includes input_media_gcs_path in serialization."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             input_media_gcs_path="uploads/test123/file.flac"
         )
         
@@ -294,13 +294,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_artist_field(self):
         """Test that Job model has lyrics_artist field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_artist="Override Artist"
         )
         
@@ -310,13 +310,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_title_field(self):
         """Test that Job model has lyrics_title field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_title="Override Title"
         )
         
@@ -326,13 +326,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_file_gcs_path_field(self):
         """Test that Job model has lyrics_file_gcs_path field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_file_gcs_path="uploads/test123/lyrics/user_lyrics.txt"
         )
         
@@ -342,13 +342,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_subtitle_offset_ms_field(self):
         """Test that Job model has subtitle_offset_ms field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             subtitle_offset_ms=500
         )
         
@@ -358,13 +358,13 @@ class TestLyricsConfigurationFields:
     def test_subtitle_offset_default_is_zero(self):
         """Test that subtitle_offset_ms defaults to 0."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         assert job.subtitle_offset_ms == 0
@@ -433,13 +433,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_clean_instrumental_model_field(self):
         """Test that Job model has clean_instrumental_model field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             clean_instrumental_model="custom_model.ckpt"
         )
         
@@ -449,13 +449,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_backing_vocals_models_field(self):
         """Test that Job model has backing_vocals_models field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             backing_vocals_models=["model1.ckpt", "model2.ckpt"]
         )
         
@@ -465,13 +465,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_other_stems_models_field(self):
         """Test that Job model has other_stems_models field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             other_stems_models=["htdemucs_6s.yaml"]
         )
         
@@ -481,13 +481,13 @@ class TestAudioModelConfigurationFields:
     def test_audio_model_fields_are_optional(self):
         """Test that audio model fields default to None."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         assert job.clean_instrumental_model is None
@@ -526,13 +526,13 @@ class TestAudioModelConfigurationFields:
     def test_pydantic_includes_audio_model_fields_in_serialization(self):
         """Test that Pydantic includes audio model fields in serialization."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             clean_instrumental_model="custom.ckpt",
             backing_vocals_models=["bv1.ckpt", "bv2.ckpt"],
             other_stems_models=["stems.yaml"]
@@ -783,6 +783,190 @@ class TestCreateJobWithUploadUrlsValidation:
         assert 'invalid_type' not in VALID_FILE_TYPES
 
 
+# ============================================================================
+# Batch 3: Existing Instrumental Tests
+# ============================================================================
+
+class TestExistingInstrumentalSupport:
+    """Test existing instrumental support (Batch 3)."""
+    
+    def test_valid_file_types_includes_existing_instrumental(self):
+        """Test that existing_instrumental is a valid file type."""
+        from backend.api.routes.file_upload import VALID_FILE_TYPES, ALLOWED_AUDIO_EXTENSIONS
+        
+        assert 'existing_instrumental' in VALID_FILE_TYPES
+        assert VALID_FILE_TYPES['existing_instrumental'] == ALLOWED_AUDIO_EXTENSIONS
+    
+    def test_existing_instrumental_gcs_path(self):
+        """Test GCS path generation for existing instrumental file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "existing_instrumental", "instrumental.flac")
+        assert path == "uploads/test123/audio/existing_instrumental.flac"
+    
+    def test_existing_instrumental_gcs_path_mp3(self):
+        """Test GCS path generation for existing instrumental MP3 file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "existing_instrumental", "instrumental.mp3")
+        assert path == "uploads/test123/audio/existing_instrumental.mp3"
+    
+    def test_existing_instrumental_gcs_path_wav(self):
+        """Test GCS path generation for existing instrumental WAV file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "existing_instrumental", "my_instrumental.wav")
+        assert path == "uploads/test123/audio/existing_instrumental.wav"
+    
+    def test_job_has_existing_instrumental_gcs_path_field(self):
+        """Test that Job model has existing_instrumental_gcs_path field."""
+        from backend.models.job import Job
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            existing_instrumental_gcs_path="uploads/test123/audio/existing_instrumental.flac"
+        )
+        
+        assert hasattr(job, 'existing_instrumental_gcs_path')
+        assert job.existing_instrumental_gcs_path == "uploads/test123/audio/existing_instrumental.flac"
+    
+    def test_existing_instrumental_gcs_path_optional(self):
+        """Test that existing_instrumental_gcs_path is optional."""
+        from backend.models.job import Job
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.existing_instrumental_gcs_path is None
+    
+    def test_job_create_has_existing_instrumental_gcs_path_field(self):
+        """Test that JobCreate model has existing_instrumental_gcs_path field."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title",
+            existing_instrumental_gcs_path="uploads/test123/audio/existing_instrumental.flac"
+        )
+        
+        assert hasattr(job_create, 'existing_instrumental_gcs_path')
+        assert job_create.existing_instrumental_gcs_path == "uploads/test123/audio/existing_instrumental.flac"
+    
+    def test_job_create_existing_instrumental_optional(self):
+        """Test that existing_instrumental_gcs_path is optional in JobCreate."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title"
+        )
+        
+        assert job_create.existing_instrumental_gcs_path is None
+    
+    def test_pydantic_includes_existing_instrumental_in_serialization(self):
+        """Test that Pydantic includes existing_instrumental_gcs_path in serialization."""
+        from backend.models.job import Job
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            existing_instrumental_gcs_path="uploads/test123/audio/existing_instrumental.flac"
+        )
+        
+        job_dict = job.model_dump()
+        
+        assert "existing_instrumental_gcs_path" in job_dict
+        assert job_dict["existing_instrumental_gcs_path"] == "uploads/test123/audio/existing_instrumental.flac"
+    
+    @pytest.mark.parametrize("filename,expected_valid", [
+        ("instrumental.mp3", True),
+        ("instrumental.flac", True),
+        ("instrumental.wav", True),
+        ("instrumental.m4a", True),
+        ("instrumental.ogg", True),
+        ("instrumental.aac", True),
+        ("instrumental.txt", False),
+        ("instrumental.pdf", False),
+    ])
+    def test_existing_instrumental_extension_validation(self, filename, expected_valid):
+        """Test that only valid audio extensions are accepted for existing instrumental."""
+        from pathlib import Path
+        from backend.api.routes.file_upload import VALID_FILE_TYPES
+        
+        allowed_extensions = VALID_FILE_TYPES['existing_instrumental']
+        file_ext = Path(filename).suffix.lower()
+        
+        is_valid = file_ext in allowed_extensions
+        assert is_valid == expected_valid
+    
+    def test_create_job_with_upload_urls_request_has_existing_instrumental_flag(self):
+        """Test that CreateJobWithUploadUrlsRequest has existing_instrumental field."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio"),
+                FileUploadRequest(filename="instr.flac", content_type="audio/flac", file_type="existing_instrumental"),
+            ],
+            existing_instrumental=True
+        )
+        
+        assert request.existing_instrumental is True
+    
+    def test_create_job_with_upload_urls_request_existing_instrumental_default_false(self):
+        """Test that existing_instrumental defaults to False."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio"),
+            ]
+        )
+        
+        assert request.existing_instrumental is False
+
+
+class TestDurationValidation:
+    """Test audio duration validation for existing instrumental (Batch 3)."""
+    
+    def test_validate_audio_durations_function_exists(self):
+        """Test that _validate_audio_durations function exists."""
+        from backend.api.routes.file_upload import _validate_audio_durations
+        
+        assert callable(_validate_audio_durations)
+    
+    @pytest.mark.asyncio
+    async def test_duration_validation_returns_tuple(self):
+        """Test that duration validation returns correct tuple structure."""
+        # This is a structural test - actual implementation tested in integration tests
+        # The function should return (is_valid: bool, audio_duration: float, instrumental_duration: float)
+        from backend.api.routes.file_upload import _validate_audio_durations
+        import inspect
+        
+        # Verify it's an async function
+        assert inspect.iscoroutinefunction(_validate_audio_durations)
+
+
+# ============================================================================
+# Batch 4: YouTube URL Input Tests
+# ============================================================================
+
 class TestURLValidation:
     """Test URL validation for URL-based job submission."""
     
@@ -980,13 +1164,13 @@ class TestJobModelURLField:
     def test_job_has_url_field(self):
         """Test that Job model has url field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         )
         
@@ -996,13 +1180,13 @@ class TestJobModelURLField:
     def test_job_url_is_optional(self):
         """Test that url field is optional."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         assert job.url is None
@@ -1060,4 +1244,3 @@ class TestIsUrlFunction:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
