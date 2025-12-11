@@ -46,7 +46,11 @@ LYRICS_WORKER_LOGGERS = [
 ]
 
 
-def create_lyrics_processor(style_params_json: Optional[str] = None) -> LyricsProcessor:
+def create_lyrics_processor(
+    style_params_json: Optional[str] = None,
+    lyrics_file: Optional[str] = None,
+    subtitle_offset_ms: int = 0
+) -> LyricsProcessor:
     """
     Create a LyricsProcessor instance configured for Cloud Run processing.
     
@@ -58,6 +62,8 @@ def create_lyrics_processor(style_params_json: Optional[str] = None) -> LyricsPr
     
     Args:
         style_params_json: Optional path to style parameters JSON file
+        lyrics_file: Optional path to user-provided lyrics file (overrides API fetch)
+        subtitle_offset_ms: Offset for subtitle timing in milliseconds
         
     Returns:
         Configured LyricsProcessor instance
@@ -69,11 +75,11 @@ def create_lyrics_processor(style_params_json: Optional[str] = None) -> LyricsPr
     return LyricsProcessor(
         logger=lyrics_logger,
         style_params_json=style_params_json,
-        lyrics_file=None,  # Will fetch from APIs
+        lyrics_file=lyrics_file,  # Use user-provided lyrics if available
         skip_transcription=False,  # We want transcription
         skip_transcription_review=True,  # Skip interactive review (use React UI instead)
         render_video=False,  # Skip video generation for now (will be done after review)
-        subtitle_offset_ms=0  # No offset by default
+        subtitle_offset_ms=subtitle_offset_ms
     )
 
 
@@ -191,10 +197,29 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         else:
             job_log.info("No custom style params found, using defaults")
         
+        # Download user-provided lyrics file if available
+        lyrics_file_path = None
+        if hasattr(job, 'lyrics_file_gcs_path') and job.lyrics_file_gcs_path:
+            lyrics_file_path = os.path.join(temp_dir, "user_lyrics.txt")
+            job_log.info(f"Downloading user-provided lyrics file: {job.lyrics_file_gcs_path}")
+            storage.download_file(job.lyrics_file_gcs_path, lyrics_file_path)
+            job_log.info(f"User lyrics file downloaded to: {lyrics_file_path}")
+        
+        # Get lyrics configuration from job
+        subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+        if subtitle_offset != 0:
+            job_log.info(f"Subtitle offset: {subtitle_offset}ms")
+        
         # Create LyricsProcessor instance (reuses karaoke_gen code)
         job_log.info("Creating LyricsProcessor instance...")
         job_log.info(f"  style_params_json: {style_params_json_path}")
-        lyrics_processor = create_lyrics_processor(style_params_json=style_params_json_path)
+        job_log.info(f"  lyrics_file: {lyrics_file_path}")
+        job_log.info(f"  subtitle_offset_ms: {subtitle_offset}")
+        lyrics_processor = create_lyrics_processor(
+            style_params_json=style_params_json_path,
+            lyrics_file=lyrics_file_path,
+            subtitle_offset_ms=subtitle_offset
+        )
         
         # Run transcription + correction
         # This will:
@@ -203,19 +228,32 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         # 3. Run automatic correction with lyrics_transcriber
         # 4. Generate corrections JSON (no interactive review)
         # 5. Skip video generation (render_video=False)
+        
+        # Use lyrics_artist/lyrics_title overrides if provided, else fall back to job artist/title
+        lyrics_search_artist = getattr(job, 'lyrics_artist', None) or job.artist
+        lyrics_search_title = getattr(job, 'lyrics_title', None) or job.title
+        
         job_log.info("Starting LyricsTranscriber processing...")
         job_log.info(f"  Artist: {job.artist}")
         job_log.info(f"  Title: {job.title}")
+        if lyrics_search_artist != job.artist:
+            job_log.info(f"  Lyrics search artist override: {lyrics_search_artist}")
+        if lyrics_search_title != job.title:
+            job_log.info(f"  Lyrics search title override: {lyrics_search_title}")
         logger.info(f"Job {job_id}: Calling lyrics_processor.transcribe_lyrics()")
         
         # Run transcription in thread pool to avoid blocking the event loop
         # (transcribe_lyrics is synchronous and takes 1-2 minutes)
+        # Note: We pass the original artist/title for file naming, but the LyricsProcessor
+        # will use lyrics_artist/lyrics_title for the search (set via constructor args)
         result = await asyncio.to_thread(
             lyrics_processor.transcribe_lyrics,
             input_audio_wav=audio_path,
-            artist=job.artist,
-            title=job.title,
-            track_output_dir=temp_dir
+            artist=job.artist,  # Original artist for file naming
+            title=job.title,    # Original title for file naming
+            track_output_dir=temp_dir,
+            lyrics_artist=lyrics_search_artist,  # Override for lyrics search
+            lyrics_title=lyrics_search_title     # Override for lyrics search
         )
         
         job_log.info("Transcription processing complete")

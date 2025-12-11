@@ -126,6 +126,11 @@ async def upload_and_create_job(
     gdrive_folder_id: Optional[str] = Form(None, description="Google Drive folder ID for public share uploads"),
     # Legacy distribution options (rclone - deprecated)
     organised_dir_rclone_root: Optional[str] = Form(None, description="[Deprecated] rclone remote path for Dropbox upload"),
+    # Lyrics configuration (overrides for search/transcription)
+    lyrics_artist: Optional[str] = Form(None, description="Override artist name for lyrics search"),
+    lyrics_title: Optional[str] = Form(None, description="Override title for lyrics search"),
+    lyrics_file: Optional[UploadFile] = File(None, description="User-provided lyrics file (TXT, DOCX, RTF)"),
+    subtitle_offset_ms: int = Form(0, description="Subtitle timing offset in milliseconds (positive = delay)"),
 ):
     """
     Upload an audio file and create a karaoke generation job with full style configuration.
@@ -180,6 +185,16 @@ async def upload_and_create_job(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Invalid font file type '{ext}'. Allowed: {', '.join(ALLOWED_FONT_EXTENSIONS)}"
+                )
+        
+        # Validate lyrics file if provided
+        ALLOWED_LYRICS_EXTENSIONS = {'.txt', '.docx', '.rtf'}
+        if lyrics_file:
+            ext = Path(lyrics_file.filename).suffix.lower()
+            if ext not in ALLOWED_LYRICS_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid lyrics file type '{ext}'. Allowed: {', '.join(ALLOWED_LYRICS_EXTENSIONS)}"
                 )
         
         # Apply default distribution settings from environment if not provided
@@ -247,6 +262,10 @@ async def upload_and_create_job(
             gdrive_folder_id=effective_gdrive_folder_id,
             # Legacy rclone distribution (deprecated)
             organised_dir_rclone_root=organised_dir_rclone_root,
+            # Lyrics configuration (overrides for search/transcription)
+            lyrics_artist=lyrics_artist,
+            lyrics_title=lyrics_title,
+            subtitle_offset_ms=subtitle_offset_ms,
             # Request metadata for tracking and filtering
             request_metadata=request_metadata,
         )
@@ -308,6 +327,17 @@ async def upload_and_create_job(
             )
             style_assets['font'] = font_gcs_path
         
+        # Upload lyrics file if provided
+        lyrics_file_gcs_path = None
+        if lyrics_file:
+            lyrics_file_gcs_path = f"uploads/{job_id}/lyrics/user_lyrics{Path(lyrics_file.filename).suffix.lower()}"
+            logger.info(f"Uploading user lyrics file to GCS: {lyrics_file_gcs_path}")
+            storage_service.upload_fileobj(
+                lyrics_file.file,
+                lyrics_file_gcs_path,
+                content_type='text/plain'
+            )
+        
         # Update job with all GCS paths
         update_data = {
             'input_media_gcs_path': audio_gcs_path,
@@ -337,6 +367,16 @@ async def upload_and_create_job(
         # Legacy rclone distribution (deprecated)
         if organised_dir_rclone_root:
             update_data['organised_dir_rclone_root'] = organised_dir_rclone_root
+        
+        # Lyrics configuration
+        if lyrics_artist:
+            update_data['lyrics_artist'] = lyrics_artist
+        if lyrics_title:
+            update_data['lyrics_title'] = lyrics_title
+        if lyrics_file_gcs_path:
+            update_data['lyrics_file_gcs_path'] = lyrics_file_gcs_path
+        if subtitle_offset_ms != 0:
+            update_data['subtitle_offset_ms'] = subtitle_offset_ms
         
         job_manager.update_job(job_id, update_data)
         

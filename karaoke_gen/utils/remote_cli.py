@@ -199,6 +199,11 @@ class RemoteKaraokeClient:
         # Native API distribution (uses server-side credentials)
         dropbox_path: Optional[str] = None,
         gdrive_folder_id: Optional[str] = None,
+        # Lyrics configuration
+        lyrics_artist: Optional[str] = None,
+        lyrics_title: Optional[str] = None,
+        lyrics_file: Optional[str] = None,
+        subtitle_offset_ms: int = 0,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -217,6 +222,10 @@ class RemoteKaraokeClient:
             enable_youtube_upload: Enable YouTube upload
             dropbox_path: Dropbox folder path for organized output (native API)
             gdrive_folder_id: Google Drive folder ID for public share (native API)
+            lyrics_artist: Override artist name for lyrics search
+            lyrics_title: Override title for lyrics search
+            lyrics_file: Path to user-provided lyrics file
+            subtitle_offset_ms: Subtitle timing offset in milliseconds
         """
         file_path = Path(filepath)
         
@@ -270,6 +279,13 @@ class RemoteKaraokeClient:
                     files_to_upload[asset_key] = (Path(asset_path).name, asset_file, content_type)
                     self.logger.info(f"  Will upload {asset_key}: {asset_path}")
             
+            # Upload lyrics file if provided
+            if lyrics_file and os.path.isfile(lyrics_file):
+                self.logger.info(f"Uploading lyrics file: {lyrics_file}")
+                lyrics_file_handle = open(lyrics_file, 'rb')
+                files_to_close.append(lyrics_file_handle)
+                files_to_upload['lyrics_file'] = (Path(lyrics_file).name, lyrics_file_handle, 'text/plain')
+            
             # Prepare form data
             data = {
                 'artist': artist,
@@ -296,6 +312,14 @@ class RemoteKaraokeClient:
             # Legacy rclone distribution (deprecated)
             if organised_dir_rclone_root:
                 data['organised_dir_rclone_root'] = organised_dir_rclone_root
+            
+            # Lyrics configuration
+            if lyrics_artist:
+                data['lyrics_artist'] = lyrics_artist
+            if lyrics_title:
+                data['lyrics_title'] = lyrics_title
+            if subtitle_offset_ms != 0:
+                data['subtitle_offset_ms'] = str(subtitle_offset_ms)
             
             self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
             
@@ -1714,6 +1738,15 @@ def main():
         logger.info(f"Dropbox (rclone): {args.organised_dir_rclone_root}")
     if args.discord_webhook_url:
         logger.info(f"Discord: enabled")
+    # Lyrics configuration
+    if getattr(args, 'lyrics_artist', None):
+        logger.info(f"Lyrics Artist Override: {args.lyrics_artist}")
+    if getattr(args, 'lyrics_title', None):
+        logger.info(f"Lyrics Title Override: {args.lyrics_title}")
+    if getattr(args, 'lyrics_file', None):
+        logger.info(f"Lyrics File: {args.lyrics_file}")
+    if getattr(args, 'subtitle_offset_ms', 0):
+        logger.info(f"Subtitle Offset: {args.subtitle_offset_ms}ms")
     logger.info(f"Service URL: {config.service_url}")
     logger.info(f"Review UI: {config.review_ui_url}")
     if config.non_interactive:
@@ -1747,6 +1780,11 @@ def main():
             # Native API distribution (preferred for remote CLI)
             dropbox_path=getattr(args, 'dropbox_path', None),
             gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
+            # Lyrics configuration
+            lyrics_artist=getattr(args, 'lyrics_artist', None),
+            lyrics_title=getattr(args, 'lyrics_title', None),
+            lyrics_file=getattr(args, 'lyrics_file', None),
+            subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
