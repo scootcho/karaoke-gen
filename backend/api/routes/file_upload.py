@@ -13,9 +13,11 @@ Supports two upload flows:
 import asyncio
 import json
 import logging
+import tempfile
+import os
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -77,6 +79,9 @@ class CreateJobWithUploadUrlsRequest(BaseModel):
     clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
     backing_vocals_models: Optional[List[str]] = Field(None, description="Models for backing vocals separation")
     other_stems_models: Optional[List[str]] = Field(None, description="Models for other stems")
+    
+    # Existing instrumental configuration (Batch 3)
+    existing_instrumental: bool = Field(False, description="Whether an existing instrumental file is being uploaded")
 
 
 class SignedUploadUrl(BaseModel):
@@ -581,7 +586,60 @@ VALID_FILE_TYPES = {
     'style_cdg_title_background': ALLOWED_IMAGE_EXTENSIONS,
     'style_cdg_outro_background': ALLOWED_IMAGE_EXTENSIONS,
     'lyrics_file': {'.txt', '.docx', '.rtf'},
+    'existing_instrumental': ALLOWED_AUDIO_EXTENSIONS,  # Batch 3: user-provided instrumental
 }
+
+
+async def _validate_audio_durations(
+    storage: StorageService,
+    audio_gcs_path: str,
+    instrumental_gcs_path: str,
+    tolerance_seconds: float = 0.5
+) -> Tuple[bool, float, float]:
+    """
+    Validate that audio and instrumental files have matching durations.
+    
+    Downloads both files to temp directory and checks their durations using pydub.
+    
+    Args:
+        storage: StorageService instance
+        audio_gcs_path: GCS path to main audio file
+        instrumental_gcs_path: GCS path to instrumental file
+        tolerance_seconds: Maximum allowed difference in seconds (default 0.5s)
+        
+    Returns:
+        Tuple of (is_valid, audio_duration, instrumental_duration)
+    """
+    from pydub import AudioSegment
+    
+    temp_dir = tempfile.mkdtemp(prefix="duration_check_")
+    try:
+        # Download audio file
+        audio_local = os.path.join(temp_dir, "audio" + Path(audio_gcs_path).suffix)
+        storage.download_file(audio_gcs_path, audio_local)
+        
+        # Download instrumental file
+        instrumental_local = os.path.join(temp_dir, "instrumental" + Path(instrumental_gcs_path).suffix)
+        storage.download_file(instrumental_gcs_path, instrumental_local)
+        
+        # Get durations using pydub (returns milliseconds)
+        audio_segment = AudioSegment.from_file(audio_local)
+        audio_duration = len(audio_segment) / 1000.0  # Convert to seconds
+        
+        instrumental_segment = AudioSegment.from_file(instrumental_local)
+        instrumental_duration = len(instrumental_segment) / 1000.0  # Convert to seconds
+        
+        # Check if durations are within tolerance
+        difference = abs(audio_duration - instrumental_duration)
+        is_valid = difference <= tolerance_seconds
+        
+        return is_valid, audio_duration, instrumental_duration
+        
+    finally:
+        # Clean up temp files
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 
 def _get_gcs_path_for_file(job_id: str, file_type: str, filename: str) -> str:
@@ -598,6 +656,9 @@ def _get_gcs_path_for_file(job_id: str, file_type: str, filename: str) -> str:
         return f"uploads/{job_id}/style/{asset_key}{ext}"
     elif file_type == 'lyrics_file':
         return f"uploads/{job_id}/lyrics/user_lyrics{ext}"
+    elif file_type == 'existing_instrumental':
+        # Batch 3: user-provided instrumental file
+        return f"uploads/{job_id}/audio/existing_instrumental{ext}"
     else:
         return f"uploads/{job_id}/other/{filename}"
 
@@ -813,6 +874,8 @@ async def mark_uploads_complete(
                 prefix = f"uploads/{job_id}/style/{asset_key}"
             elif file_type == 'lyrics_file':
                 prefix = f"uploads/{job_id}/lyrics/user_lyrics"
+            elif file_type == 'existing_instrumental':
+                prefix = f"uploads/{job_id}/audio/existing_instrumental"
             
             # List files with this prefix to find the actual uploaded file
             files = storage_service.list_files(prefix)
@@ -837,6 +900,37 @@ async def mark_uploads_complete(
                 style_assets[asset_key] = gcs_path
             elif file_type == 'lyrics_file':
                 update_data['lyrics_file_gcs_path'] = gcs_path
+            elif file_type == 'existing_instrumental':
+                update_data['existing_instrumental_gcs_path'] = gcs_path
+        
+        # Validate existing instrumental duration if provided (Batch 3)
+        audio_gcs_path = update_data.get('input_media_gcs_path')
+        instrumental_gcs_path = update_data.get('existing_instrumental_gcs_path')
+        
+        if audio_gcs_path and instrumental_gcs_path:
+            logger.info(f"Validating instrumental duration for job {job_id}")
+            try:
+                duration_valid, audio_duration, instrumental_duration = await _validate_audio_durations(
+                    storage_service, audio_gcs_path, instrumental_gcs_path
+                )
+                if not duration_valid:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "duration_mismatch",
+                            "message": f"Instrumental duration ({instrumental_duration:.2f}s) does not match audio duration ({audio_duration:.2f}s). "
+                                      f"Difference must be within 0.5 seconds.",
+                            "audio_duration": audio_duration,
+                            "instrumental_duration": instrumental_duration,
+                            "difference": abs(audio_duration - instrumental_duration),
+                        }
+                    )
+                logger.info(f"Duration validation passed: audio={audio_duration:.2f}s, instrumental={instrumental_duration:.2f}s")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.warning(f"Duration validation failed with error: {e}. Proceeding without validation.")
+                # Don't block the job if we can't validate - the video worker will fail more gracefully
         
         # Add style assets to update if any
         if style_assets:
