@@ -8,17 +8,15 @@ to enable UI reuse.
 Similar pattern to LyricsTranscriber's ReviewServer.
 """
 
-import json
 import logging
 import os
 import threading
 import webbrowser
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 import uvicorn
 
