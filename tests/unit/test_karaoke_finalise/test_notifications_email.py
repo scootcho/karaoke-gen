@@ -47,6 +47,42 @@ def mock_gmail_service():
 
 # --- Discord Notification Tests ---
 
+def test_discord_webhook_url_strips_whitespace(mock_logger):
+    """Test that Discord webhook URL validation strips trailing whitespace/newlines."""
+    # This tests the fix for the %0A issue where webhook URLs have trailing newlines
+    config = MINIMAL_CONFIG.copy()
+    config.update({
+        # URL with trailing newline (simulating env var issue)
+        "discord_webhook_url": "https://discord.com/api/webhooks/123/abc\n",
+    })
+    with patch.object(KaraokeFinalise, 'detect_best_aac_codec', return_value='aac'):
+        finaliser = KaraokeFinalise(logger=mock_logger, **config)
+    
+    # Call validate_input_parameters_for_features to trigger the strip
+    with patch('os.getcwd', return_value='/tmp'):
+        finaliser.validate_input_parameters_for_features()
+    
+    # The URL should have been stripped
+    assert finaliser.discord_webhook_url == "https://discord.com/api/webhooks/123/abc"
+    assert finaliser.discord_notication_enabled is True
+
+
+def test_discord_webhook_url_strips_whitespace_and_validates(mock_logger):
+    """Test that invalid Discord URLs are rejected even after stripping."""
+    config = MINIMAL_CONFIG.copy()
+    config.update({
+        # Invalid URL that starts correctly but is malformed
+        "discord_webhook_url": "https://discord.com/invalid\n",
+    })
+    with patch.object(KaraokeFinalise, 'detect_best_aac_codec', return_value='aac'):
+        finaliser = KaraokeFinalise(logger=mock_logger, **config)
+    
+    # Should raise because URL doesn't start with correct prefix after strip
+    with patch('os.getcwd', return_value='/tmp'):
+        with pytest.raises(Exception, match="Discord webhook URL is not valid"):
+            finaliser.validate_input_parameters_for_features()
+
+
 @patch('requests.post')
 def test_post_discord_message_success(mock_post, finaliser_for_notify):
     """Test successful posting to Discord."""

@@ -8,6 +8,7 @@ Set KARAOKE_GEN_URL environment variable to your cloud backend URL.
 Usage:
     karaoke-gen-remote <filepath> <artist> <title>
     karaoke-gen-remote --resume <job_id>
+    karaoke-gen-remote --retry <job_id>
     karaoke-gen-remote --list
     karaoke-gen-remote --cancel <job_id>
     karaoke-gen-remote --delete <job_id>
@@ -383,7 +384,25 @@ class RemoteKaraokeClient:
         if response.status_code != 200:
             raise RuntimeError(f"Error deleting job: {response.text}")
         return response.json()
-    
+
+    def retry_job(self, job_id: str) -> Dict[str, Any]:
+        """Retry a failed job from the last successful checkpoint."""
+        response = self._request(
+            'POST',
+            f'/api/jobs/{job_id}/retry'
+        )
+        if response.status_code == 404:
+            raise ValueError(f"Job not found: {job_id}")
+        if response.status_code == 400:
+            try:
+                error_detail = response.json().get('detail', response.text)
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Cannot retry job: {error_detail}")
+        if response.status_code != 200:
+            raise RuntimeError(f"Error retrying job: {response.text}")
+        return response.json()
+
     def list_jobs(
         self,
         status: Optional[str] = None,
@@ -1388,6 +1407,7 @@ def main():
             logger.info("")
             logger.info(f"Total: {len(jobs)} jobs")
             logger.info("")
+            logger.info("To retry a failed job: karaoke-gen-remote --retry <JOB_ID>")
             logger.info("To delete a job: karaoke-gen-remote --delete <JOB_ID>")
             logger.info("To bulk delete: karaoke-gen-remote --bulk-delete --filter-environment=test")
             logger.info("To cancel a job: karaoke-gen-remote --cancel <JOB_ID>")
@@ -1403,24 +1423,24 @@ def main():
         logger.info("Karaoke Generator (Remote) - Cancel Job")
         logger.info("=" * 60)
         logger.info(f"Job ID: {args.cancel}")
-        
+
         try:
             # Get job info first
             job_data = client.get_job(args.cancel)
             artist = job_data.get('artist', 'Unknown')
             title = job_data.get('title', 'Unknown')
             status = job_data.get('status', 'unknown')
-            
+
             logger.info(f"Artist: {artist}")
             logger.info(f"Title: {title}")
             logger.info(f"Current status: {status}")
             logger.info("")
-            
+
             # Cancel the job
             result = client.cancel_job(args.cancel)
             logger.info(f"✓ Job cancelled successfully")
             return 0
-            
+
         except ValueError as e:
             logger.error(str(e))
             return 1
@@ -1430,7 +1450,54 @@ def main():
         except Exception as e:
             logger.error(f"Error cancelling job: {e}")
             return 1
-    
+
+    # Handle retry job mode
+    if args.retry:
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Retry Failed Job")
+        logger.info("=" * 60)
+        logger.info(f"Job ID: {args.retry}")
+
+        try:
+            # Get job info first
+            job_data = client.get_job(args.retry)
+            artist = job_data.get('artist', 'Unknown')
+            title = job_data.get('title', 'Unknown')
+            status = job_data.get('status', 'unknown')
+            error_message = job_data.get('error_message', 'No error message')
+
+            logger.info(f"Artist: {artist}")
+            logger.info(f"Title: {title}")
+            logger.info(f"Current status: {status}")
+            if status == 'failed':
+                logger.info(f"Error: {error_message}")
+            logger.info("")
+
+            if status != 'failed':
+                logger.error(f"Only failed jobs can be retried (current status: {status})")
+                return 1
+
+            # Retry the job
+            result = client.retry_job(args.retry)
+            retry_stage = result.get('retry_stage', 'unknown')
+            logger.info(f"✓ Job retry started from stage: {retry_stage}")
+            logger.info("")
+            logger.info(f"Monitoring job progress...")
+            logger.info("")
+
+            # Monitor the retried job
+            return monitor.monitor(args.retry)
+
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
+        except RuntimeError as e:
+            logger.error(str(e))
+            return 1
+        except Exception as e:
+            logger.error(f"Error retrying job: {e}")
+            return 1
+
     # Handle delete job mode
     if args.delete:
         logger.info("=" * 60)

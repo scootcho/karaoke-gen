@@ -426,10 +426,51 @@ class TestRemoteKaraokeClient:
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_request.return_value = mock_response
-        
+
         with pytest.raises(ValueError, match="Job not found"):
             client.delete_job("nonexistent-job")
-    
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_success(self, mock_request, client):
+        """Test retrying a failed job successfully."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "success",
+            "job_status": "instrumental_selected",
+            "retry_stage": "video_generation"
+        }
+        mock_request.return_value = mock_response
+
+        result = client.retry_job("job-123")
+
+        assert result["status"] == "success"
+        assert result["retry_stage"] == "video_generation"
+        mock_request.assert_called_once_with('POST', '/api/jobs/job-123/retry')
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_not_found(self, mock_request, client):
+        """Test retrying non-existent job."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_request.return_value = mock_response
+
+        with pytest.raises(ValueError, match="Job not found"):
+            client.retry_job("nonexistent-job")
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_not_failed(self, mock_request, client):
+        """Test retrying a job that isn't in failed state."""
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "detail": "Only failed jobs can be retried"
+        }
+        mock_request.return_value = mock_response
+
+        with pytest.raises(RuntimeError, match="Cannot retry job"):
+            client.retry_job("job-123")
+
     @patch.object(RemoteKaraokeClient, '_request')
     def test_get_instrumental_options(self, mock_request, client):
         """Test getting instrumental options."""
@@ -779,6 +820,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -788,11 +830,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -810,6 +852,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -819,11 +862,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -841,6 +884,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -850,11 +894,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -872,6 +916,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None  # Added for retry feature
         mock_args.delete = None
         mock_args.bulk_delete = False  # New attribute for bulk delete mode
         mock_args.filter_environment = None  # New attribute for filtering
@@ -880,9 +925,9 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
         mock_parser.print_help.assert_called_once()
     
@@ -952,6 +997,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = True
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False  # New attribute for bulk delete mode
         mock_args.filter_environment = None  # New attribute for filtering
@@ -960,7 +1006,7 @@ class TestMain:
         mock_args.client_id = ""  # Job tracking
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.list_jobs.return_value = [
             {"job_id": "job-1", "status": "complete", "artist": "Artist 1", "title": "Title 1", "request_metadata": {}},
@@ -993,6 +1039,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = True
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1001,7 +1048,7 @@ class TestMain:
         mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.list_jobs.return_value = []
         mock_client_class.return_value = mock_client
@@ -1052,7 +1099,187 @@ class TestMain:
         
         assert result == 0
         mock_client.cancel_job.assert_called_once_with("job-123")
-    
+
+    @patch('karaoke_gen.utils.remote_cli.JobMonitor')
+    @patch('karaoke_gen.utils.remote_cli.create_parser')
+    @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
+    @patch('karaoke_gen.utils.remote_cli.RemoteKaraokeClient')
+    def test_main_retry_job_mode(
+        self, mock_client_class, mock_check, mock_create_parser, mock_monitor_class
+    ):
+        """Test main in retry job mode with a failed job."""
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.service_url = "https://api.example.com"
+        mock_args.review_ui_url = "https://review.example.com"
+        mock_args.poll_interval = 5
+        mock_args.output_dir = "/tmp"
+        mock_args.log_level = "info"
+        mock_args.finalise_only = False
+        mock_args.edit_lyrics = False
+        mock_args.test_email_template = False
+        mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.retry = "job-123"
+        mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
+        mock_parser.parse_args.return_value = mock_args
+        mock_create_parser.return_value = mock_parser
+
+        mock_client = MagicMock()
+        mock_client.get_job.return_value = {
+            "artist": "Artist",
+            "title": "Title",
+            "status": "failed",
+            "error_message": "Discord webhook failed"
+        }
+        mock_client.retry_job.return_value = {
+            "status": "success",
+            "retry_stage": "video_generation"
+        }
+        mock_client_class.return_value = mock_client
+
+        mock_monitor = MagicMock()
+        mock_monitor.monitor.return_value = 0
+        mock_monitor_class.return_value = mock_monitor
+
+        result = main()
+
+        assert result == 0
+        mock_client.retry_job.assert_called_once_with("job-123")
+        mock_monitor.monitor.assert_called_once_with("job-123")
+
+    @patch('karaoke_gen.utils.remote_cli.create_parser')
+    @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
+    @patch('karaoke_gen.utils.remote_cli.RemoteKaraokeClient')
+    def test_main_retry_job_not_failed(
+        self, mock_client_class, mock_check, mock_create_parser
+    ):
+        """Test main retry job when job is not in failed state."""
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.service_url = "https://api.example.com"
+        mock_args.review_ui_url = "https://review.example.com"
+        mock_args.poll_interval = 5
+        mock_args.output_dir = "/tmp"
+        mock_args.log_level = "info"
+        mock_args.finalise_only = False
+        mock_args.edit_lyrics = False
+        mock_args.test_email_template = False
+        mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.retry = "job-123"
+        mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
+        mock_parser.parse_args.return_value = mock_args
+        mock_create_parser.return_value = mock_parser
+
+        mock_client = MagicMock()
+        mock_client.get_job.return_value = {
+            "artist": "Artist",
+            "title": "Title",
+            "status": "complete"  # Not failed
+        }
+        mock_client_class.return_value = mock_client
+
+        result = main()
+
+        assert result == 1  # Should fail because job is not in failed state
+        mock_client.retry_job.assert_not_called()
+
+    @patch('karaoke_gen.utils.remote_cli.create_parser')
+    @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
+    @patch('karaoke_gen.utils.remote_cli.RemoteKaraokeClient')
+    def test_main_retry_job_not_found(
+        self, mock_client_class, mock_check, mock_create_parser
+    ):
+        """Test main retry job when job not found."""
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.service_url = "https://api.example.com"
+        mock_args.review_ui_url = "https://review.example.com"
+        mock_args.poll_interval = 5
+        mock_args.output_dir = "/tmp"
+        mock_args.log_level = "info"
+        mock_args.finalise_only = False
+        mock_args.edit_lyrics = False
+        mock_args.test_email_template = False
+        mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.retry = "nonexistent-job"
+        mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
+        mock_parser.parse_args.return_value = mock_args
+        mock_create_parser.return_value = mock_parser
+
+        mock_client = MagicMock()
+        mock_client.get_job.side_effect = ValueError("Job not found")
+        mock_client_class.return_value = mock_client
+
+        result = main()
+
+        assert result == 1
+        mock_client.retry_job.assert_not_called()
+
+    @patch('karaoke_gen.utils.remote_cli.create_parser')
+    @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
+    @patch('karaoke_gen.utils.remote_cli.RemoteKaraokeClient')
+    def test_main_retry_job_api_error(
+        self, mock_client_class, mock_check, mock_create_parser
+    ):
+        """Test main retry job when API returns an error."""
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.service_url = "https://api.example.com"
+        mock_args.review_ui_url = "https://review.example.com"
+        mock_args.poll_interval = 5
+        mock_args.output_dir = "/tmp"
+        mock_args.log_level = "info"
+        mock_args.finalise_only = False
+        mock_args.edit_lyrics = False
+        mock_args.test_email_template = False
+        mock_args.resume = None
+        mock_args.list_jobs = False
+        mock_args.cancel = None
+        mock_args.retry = "job-123"
+        mock_args.delete = None
+        mock_args.bulk_delete = False
+        mock_args.filter_environment = None
+        mock_args.filter_client_id = None
+        mock_args.environment = ""
+        mock_args.client_id = ""
+        mock_parser.parse_args.return_value = mock_args
+        mock_create_parser.return_value = mock_parser
+
+        mock_client = MagicMock()
+        mock_client.get_job.return_value = {
+            "artist": "Artist",
+            "title": "Title",
+            "status": "failed",
+            "error_message": "Some error"
+        }
+        mock_client.retry_job.side_effect = RuntimeError("Cannot retry job: No safe checkpoint found")
+        mock_client_class.return_value = mock_client
+
+        result = main()
+
+        assert result == 1
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
     @patch('karaoke_gen.utils.remote_cli.RemoteKaraokeClient')
@@ -1073,6 +1300,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = "nonexistent"
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1111,6 +1339,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1156,6 +1385,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1199,6 +1429,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1208,7 +1439,7 @@ class TestMain:
         mock_args.yes = True  # Non-interactive mode
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.get_job.return_value = {
             "artist": "Artist",
@@ -1245,6 +1476,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1288,6 +1520,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1332,6 +1565,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None

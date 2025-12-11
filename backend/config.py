@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     # Default distribution settings (can be overridden per-request)
     default_dropbox_path: Optional[str] = os.getenv("DEFAULT_DROPBOX_PATH")
     default_gdrive_folder_id: Optional[str] = os.getenv("DEFAULT_GDRIVE_FOLDER_ID")
-    default_discord_webhook_url: Optional[str] = os.getenv("DEFAULT_DISCORD_WEBHOOK_URL")
+    # Strip whitespace/newlines from webhook URL - common issue when env vars are set with trailing newlines
+    default_discord_webhook_url: Optional[str] = (
+        os.getenv("DEFAULT_DISCORD_WEBHOOK_URL", "").strip() or None
+    )
     
     # Secret Manager cache
     _secret_cache: Dict[str, str] = {}
@@ -90,7 +93,8 @@ class Settings(BaseSettings):
             client = secretmanager.SecretManagerServiceClient()
             name = f"projects/{self.google_cloud_project}/secrets/{secret_id}/versions/latest"
             response = client.access_secret_version(request={"name": name})
-            secret_value = response.payload.data.decode('UTF-8')
+            # Strip whitespace/newlines - common issue when secrets are created with trailing newlines
+            secret_value = response.payload.data.decode('UTF-8').strip()
             
             # Cache it
             self._secret_cache[secret_id] = secret_value
