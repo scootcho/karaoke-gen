@@ -1,7 +1,7 @@
 # Backend Feature Parity Plan
 
 **Last Updated:** 2024-12-10  
-**Status:** ✅ Core Feature Parity Achieved (v0.71.0)
+**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 Complete ✅
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
@@ -11,7 +11,7 @@ This document tracks the progress toward complete feature parity between the loc
 |----------|-----------|--------|--------|-------|
 | Core Processing | 12 | 12 | **100%** | ✅ Complete |
 | Distribution | 5 | 5 | **100%** | ✅ Complete |
-| Lyrics Configuration | 1 | 5 | **20%** | L1-L4 are HIGH priority |
+| Lyrics Configuration | 5 | 5 | **100%** | ✅ **Batch 1 Complete** (L1-L4) |
 | Style Configuration | 1 | 4 | **25%** | S2-S4 are MEDIUM priority |
 | Workflow Control | 0 | 3 | **0%** | W1/W2 HIGH, W7 MEDIUM (skip flags deferred) |
 | Audio Processing | 0 | 4 | **0%** | AP1-3, AP5 are HIGH priority |
@@ -181,17 +181,17 @@ This section provides a comprehensive comparison of all CLI parameters between `
 
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
-| L1 | `--lyrics_artist` | ✅ | ❌ | **Override artist for lyrics search.** Use different artist name when searching Genius/Spotify/Musixmatch for lyrics. Useful for covers, remixes, or when artist name differs in lyrics databases. Example: `--lyrics_artist="The Beatles"` when your file says "Beatles, The". |
-| L2 | `--lyrics_title` | ✅ | ❌ | **Override title for lyrics search.** Use different song title when searching for lyrics. Useful for songs with alternate titles, subtitle variations, or "(Remastered)" suffixes. Example: `--lyrics_title="Hey Jude"` when file says "Hey Jude - 2009 Remaster". |
-| L3 | `--lyrics_file` | ✅ | ❌ | **Use existing lyrics file.** Path to a text file containing lyrics to use instead of fetching from online sources. Supports TXT, DOCX, RTF formats. Useful when online lyrics are wrong or unavailable. Transcription still runs to generate timestamps. |
-| L4 | `--subtitle_offset_ms` | ✅ | ❌ | **Adjust subtitle timing.** Shift all subtitle timestamps by N milliseconds. Positive values delay subtitles, negative values advance them. Useful when audio has intro padding or sync drift. Example: `--subtitle_offset_ms=500` delays by 0.5 seconds. |
+| L1 | `--lyrics_artist` | ✅ | ✅ | **Override artist for lyrics search.** Use different artist name when searching Genius/Spotify/Musixmatch for lyrics. Useful for covers, remixes, or when artist name differs in lyrics databases. Example: `--lyrics_artist="The Beatles"` when your file says "Beatles, The". |
+| L2 | `--lyrics_title` | ✅ | ✅ | **Override title for lyrics search.** Use different song title when searching for lyrics. Useful for songs with alternate titles, subtitle variations, or "(Remastered)" suffixes. Example: `--lyrics_title="Hey Jude"` when file says "Hey Jude - 2009 Remaster". |
+| L3 | `--lyrics_file` | ✅ | ✅ | **Use existing lyrics file.** Path to a text file containing lyrics to use instead of fetching from online sources. Supports TXT, DOCX, RTF formats. Useful when online lyrics are wrong or unavailable. Transcription still runs to generate timestamps. |
+| L4 | `--subtitle_offset_ms` | ✅ | ✅ | **Adjust subtitle timing.** Shift all subtitle timestamps by N milliseconds. Positive values delay subtitles, negative values advance them. Useful when audio has intro padding or sync drift. Example: `--subtitle_offset_ms=500` delays by 0.5 seconds. |
 | L5 | `--skip_transcription_review` | ✅ | ⚠️ | **Skip review UI.** Don't open the browser-based lyrics review interface after transcription. Use existing auto-corrected lyrics as-is. Remote: use `-y` flag instead for non-interactive mode. |
 
-**Remote Implementation Plan:**
-- **L1 `--lyrics_artist`**: HIGH PRIORITY. Send as form field to backend. Lyrics worker uses for Genius/Spotify/AudioShake queries instead of main artist. Use case: Covers, remixes, "The Beatles" vs "Beatles, The".
-- **L2 `--lyrics_title`**: HIGH PRIORITY. Send as form field to backend. Lyrics worker uses for search instead of main title. Use case: Alternate titles, "(Remastered)" suffixes.
-- **L3 `--lyrics_file`**: HIGH PRIORITY. Upload lyrics file with job, store in GCS. Lyrics worker reads and uses it instead of fetching online. Transcription still runs to generate timestamps. Use case: Wrong/unavailable online lyrics.
-- **L4 `--subtitle_offset_ms`**: MEDIUM PRIORITY. Send to backend, store in job. Render worker applies offset when burning subtitles. Use case: Audio has intro padding or sync drift.
+**Remote Implementation Status:** ✅ **BATCH 1 COMPLETE** (PR #8, v0.71.22)
+- **L1 `--lyrics_artist`**: ✅ IMPLEMENTED. Sent as form field to backend. Lyrics worker uses for Genius/Spotify/AudioShake queries.
+- **L2 `--lyrics_title`**: ✅ IMPLEMENTED. Sent as form field to backend. Lyrics worker uses for search instead of main title.
+- **L3 `--lyrics_file`**: ✅ IMPLEMENTED. Uploaded with job, stored in GCS. Lyrics worker reads it instead of fetching online.
+- **L4 `--subtitle_offset_ms`**: ✅ IMPLEMENTED. Sent to backend, render worker applies offset when burning subtitles.
 - **L5 `--skip_transcription_review`**: Already works via `-y` flag which auto-accepts corrections.
 
 ---
@@ -261,20 +261,60 @@ This section provides a comprehensive comparison of all CLI parameters between `
 
 The following batches are ordered by priority and grouped by similar functionality. Each batch is designed to be a self-contained unit of work that can be tackled by a single agent session.
 
-### Batch 1: Lyrics Configuration (HIGH) 
+### 📋 Instructions for Implementing a Batch
+
+**Before starting a batch, ensure you follow these steps:**
+
+#### 1. Test Coverage Requirements
+All code changes must have **>70% test coverage** on modified files. Run:
+```bash
+python -m pytest backend/tests/ --cov=backend.models.job --cov=backend.api.routes.file_upload --cov=backend.workers.<worker_name> --cov-report=term-missing
+```
+
+**Required tests for each batch:**
+- **Model changes:** Test new fields exist, have correct defaults, serialize properly
+- **API changes:** Test form validation (valid/invalid inputs), file upload handling
+- **Worker changes:** Test parameter passing, configuration, error handling
+- **CLI changes:** Test submit_job() passes parameters correctly
+
+#### 2. Documentation Updates (REQUIRED)
+As part of your PR, you MUST update this document:
+- [ ] Update the **Quick Parity Summary** table to reflect new parity percentages
+- [ ] Mark parameters as ✅ in the relevant **CLI Parameter Parity Analysis** section
+- [ ] Update **Remote Implementation Plan/Status** to show ✅ IMPLEMENTED
+- [ ] Mark the batch as **✅ COMPLETE** with PR number in the **Summary Table**
+- [ ] Add entry to **Recently Completed** table with version and PR number
+- [ ] Remove items from **Not Yet Implemented** list
+
+#### 3. Version Bump
+Bump the patch version in `pyproject.toml` before committing.
+
+#### 4. PR Requirements
+- Title: `feat: Batch N - <description>`
+- Include: Summary of changes, files modified, tests added
+- Link to this document in PR description
+
+---
+
+### Batch 1: Lyrics Configuration (HIGH) ✅ COMPLETE
 **Parameters:** L1 `--lyrics_artist`, L2 `--lyrics_title`, L3 `--lyrics_file`, L4 `--subtitle_offset_ms`
 
-**Scope:** 
-- Remote CLI: Add 4 form fields to `submit_job()`, upload lyrics file if provided
-- Backend: Add 4 Form parameters to `/api/jobs/upload` endpoint
-- Backend: Pass values to lyrics worker, store in job document
-- Backend: Render worker applies subtitle offset when burning subtitles
+**Status:** ✅ **IMPLEMENTED** - PR #8 merged (v0.71.22)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - add to submit_job()
-- `backend/api/routes/file_upload.py` - add Form fields
-- `backend/workers/lyrics_worker.py` - use override values
-- `backend/workers/render_worker.py` - apply offset
+**Implementation Summary:**
+- Remote CLI: Added 4 form fields to `submit_job()`, uploads lyrics file if provided
+- Backend: Added 4 Form parameters to `/api/jobs/upload` endpoint
+- Backend: Lyrics worker downloads user lyrics file, passes overrides to LyricsProcessor
+- Backend: Render worker applies subtitle offset via OutputConfig
+
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - submit_job() with lyrics params
+- `backend/api/routes/file_upload.py` - Form fields + lyrics file upload
+- `backend/models/job.py` - lyrics_artist, lyrics_title, lyrics_file_gcs_path, subtitle_offset_ms fields
+- `backend/workers/lyrics_worker.py` - override values passed to LyricsProcessor
+- `backend/workers/render_video_worker.py` - subtitle_offset_ms applied
+
+**Tests added:** 25+ unit tests covering lyrics file validation, Job model fields, worker configuration
 
 **Complexity:** Low-Medium (straightforward form fields + file upload)
 
@@ -453,20 +493,20 @@ The following batches are ordered by priority and grouped by similar functionali
 
 ### Summary Table
 
-| Batch | Parameters | Priority | Complexity | Est. Effort |
-|-------|------------|----------|------------|-------------|
-| 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | 1-2 sessions |
-| 2 | AP1-AP3 (model selection) | HIGH | Low | 1 session |
-| 3 | AP5 (existing instrumental) | HIGH | Medium | 1-2 sessions |
-| 4 | P2 (YouTube URLs) | HIGH | Medium-High | 2-3 sessions |
-| 5 | P3, A1 (flacfetch search) | HIGH | High | 3-4 sessions |
-| 6 | W1, W2, F15 (two-phase) | HIGH | High | 3-4 sessions |
-| 7 | S2 (style overrides) | MEDIUM | Medium | 1-2 sessions |
-| 8 | S3, S4 (video background) | MEDIUM | Medium | 2 sessions |
-| 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | 2-3 sessions |
-| 10 | F14, D2, D3, removals | LOW | Mixed | 2-3 sessions |
+| Batch | Parameters | Priority | Complexity | Status |
+|-------|------------|----------|------------|--------|
+| 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | ✅ **COMPLETE** (PR #8) |
+| 2 | AP1-AP3 (model selection) | HIGH | Low | ⏳ Pending |
+| 3 | AP5 (existing instrumental) | HIGH | Medium | ⏳ Pending |
+| 4 | P2 (YouTube URLs) | HIGH | Medium-High | ⏳ Pending |
+| 5 | P3, A1 (flacfetch search) | HIGH | High | ⏳ Pending |
+| 6 | W1, W2, F15 (two-phase) | HIGH | High | ⏳ Pending |
+| 7 | S2 (style overrides) | MEDIUM | Medium | ⏳ Pending |
+| 8 | S3, S4 (video background) | MEDIUM | Medium | ⏳ Pending |
+| 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | ⏳ Pending |
+| 10 | F14, D2, D3, removals | LOW | Mixed | ⏳ Pending |
 
-**Recommended Order:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+**Recommended Order:** ~~1~~ → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 Batches 1-3 are quick wins that add significant value. Batches 4-6 are larger but high priority. Batches 7-10 can be done as time permits.
 
@@ -571,19 +611,25 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | Google Drive upload | ✅ | Service account credentials |
 | Discord notification | ✅ | Webhook URL from job or default |
 
+### ✅ Recently Completed
+
+| Feature | Version | PR | Notes |
+|---------|---------|-----|-------|
+| Lyrics override params | v0.71.22 | #8 | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms` |
+
 ### ⏳ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **Lyrics override params** | **HIGH** | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file` |
-| Subtitle offset | MEDIUM | `--subtitle_offset_ms` for timing adjustments |
+| Audio model selection | HIGH | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
+| Existing instrumental | HIGH | `--existing_instrumental` for re-processing |
 | Style override | MEDIUM | `--style_override` for quick tweaks |
-| Existing instrumental | MEDIUM | `--existing_instrumental` for re-processing |
 | Skip separation/transcription | MEDIUM | Workflow control for re-processing |
 | Edit lyrics mode | MEDIUM | `--edit-lyrics` for fixing existing tracks |
 | Background video | MEDIUM | `--background_video` requires video upload |
-| YouTube URL input | LOW | Requires yt-dlp in container |
-| Audio search (flacfetch) | LOW | Artist+title search, auto-download |
+| YouTube URL input | HIGH | Requires yt-dlp in container |
+| Audio search (flacfetch) | HIGH | Artist+title search, auto-download |
+| Two-phase workflow | HIGH | `--prep-only`, `--finalise-only` |
 | Batch folder processing | LOW | Process multiple files at once |
 | Gmail draft creation | LOW | Nice-to-have, not blocking |
 
@@ -828,6 +874,17 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 
 ## Recent Changes Log
 
+### 2024-12-10: v0.71.22 - Batch 1 Complete (Lyrics Configuration)
+
+**PR #8: Lyrics Configuration for Remote CLI**
+
+- ✅ `--lyrics_artist` - Override artist name for lyrics search
+- ✅ `--lyrics_title` - Override title for lyrics search
+- ✅ `--lyrics_file` - Upload custom lyrics file (TXT, DOCX, RTF)
+- ✅ `--subtitle_offset_ms` - Adjust subtitle timing offset
+- Added 25+ unit tests for new functionality
+- Files: `remote_cli.py`, `file_upload.py`, `job.py`, `lyrics_worker.py`, `render_video_worker.py`
+
 ### 2024-12-10: v0.71.0 - Core Feature Parity Complete
 
 **First successful end-to-end remote run!**
@@ -875,36 +932,41 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 
 ### Short-Term: Feature Parity (Priority Order)
 
-1. **Lyrics Override Parameters** (HIGH)
-   - Add `--lyrics_artist`, `--lyrics_title`, `--lyrics_file` support
-   - Files: `remote_cli.py`, `file_upload.py`, `lyrics_worker.py`
-   - Enables: Using correct lyrics for covers, remixes, alternate titles
+1. ✅ **Lyrics Configuration** (Batch 1 - COMPLETE)
+   - `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms`
+   - PR #8, v0.71.22
 
-2. **Subtitle Offset** (MEDIUM)
-   - Add `--subtitle_offset_ms` support
-   - Files: `remote_cli.py`, `file_upload.py`, `render_video_worker.py`
-   - Enables: Timing adjustments for sync issues
-
-3. **Style Override** (MEDIUM)
-   - Add `--style_override` support
-   - Files: `remote_cli.py`, `file_upload.py`, `style_helper.py`
-   - Enables: Quick style tweaks without editing JSON
-
-4. **Existing Instrumental** (MEDIUM)
-   - Add `--existing_instrumental` upload support
+2. **Audio Model Selection** (Batch 2 - NEXT)
+   - Add `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` support
    - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`
+   - Enables: A/B testing models, using newer models as they release
+
+3. **Existing Instrumental** (Batch 3)
+   - Add `--existing_instrumental` upload support
+   - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`, `render_worker.py`
    - Enables: Re-processing with better instrumentals
+
+4. **YouTube URL Input** (Batch 4)
+   - Accept YouTube URLs as input
+   - Requires: yt-dlp in container
+   - Enables: Processing niche live versions only on YouTube
 
 ### Medium-Term: Workflow Features
 
-1. **Skip Separation/Transcription flags**
-   - Enable re-processing workflows
+1. **Flacfetch Audio Search** (Batch 5)
+   - Interactive audio source selection via API
    
-2. **Edit Lyrics Mode**
-   - Allow fixing lyrics on completed jobs
+2. **Two-Phase Workflow** (Batch 6)
+   - `--prep-only` and `--finalise-only` modes
 
-3. **Background Video Support**
+3. **Style Override** (Batch 7)
+   - Quick style tweaks without editing JSON
+
+4. **Background Video Support** (Batch 8)
    - Upload and use video backgrounds
+
+5. **Edit Lyrics Mode** (Batch 9)
+   - Allow fixing lyrics on completed jobs
 
 ### Long-Term (Shared Pipeline Refactor)
 1. Create new branch for shared pipeline architecture
