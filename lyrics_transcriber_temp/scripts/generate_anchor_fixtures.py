@@ -258,8 +258,9 @@ def generate_fixture(mapping: SongMapping, cache_dir: Path, output_dir: Path) ->
     
     print(f"  Loaded {len(references)} reference sources: {list(references.keys())}")
     
-    # Get transcribed words
+    # Get transcribed words and text
     transcribed_words = extract_words_from_segments(transcription_result.result.segments)
+    transcribed_text = " ".join(transcribed_words)
     print(f"  Transcription word count: {len(transcribed_words)}")
     
     # Run AnchorSequenceFinder
@@ -271,7 +272,7 @@ def generate_fixture(mapping: SongMapping, cache_dir: Path, output_dir: Path) ->
         )
         
         anchors = finder.find_anchors(
-            transcribed=transcribed_words,
+            transcribed=transcribed_text,
             references=references,
             transcription_result=transcription_result,
         )

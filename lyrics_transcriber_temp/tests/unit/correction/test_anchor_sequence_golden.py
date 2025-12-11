@@ -122,13 +122,13 @@ def fixture_to_references(fixture: Dict[str, Any]) -> Dict[str, LyricsData]:
     return references
 
 
-def get_transcribed_words(transcription_result: TranscriptionResult) -> List[str]:
-    """Extract word texts from transcription result."""
+def get_transcribed_text(transcription_result: TranscriptionResult) -> str:
+    """Extract full text from transcription result."""
     words = []
     for segment in transcription_result.result.segments:
         for word in segment.words:
             words.append(word.text)
-    return words
+    return " ".join(words)
 
 
 def calculate_coverage(anchors: List[ScoredAnchor], word_count: int) -> float:
@@ -167,7 +167,7 @@ def get_anchors_for_fixture(fixture_path: Path, tmp_path: Path) -> Tuple[Dict[st
     fixture = load_fixture(fixture_path)
     transcription_result = fixture_to_transcription_result(fixture)
     references = fixture_to_references(fixture)
-    transcribed = get_transcribed_words(transcription_result)
+    transcribed = get_transcribed_text(transcription_result)
     
     # Use tmp_path to avoid using cached results from user's actual cache
     finder = AnchorSequenceFinder(
@@ -327,7 +327,7 @@ class TestAnchorSequencePerformance:
         fixture = load_fixture(fixture_path)
         transcription_result = fixture_to_transcription_result(fixture)
         references = fixture_to_references(fixture)
-        transcribed = get_transcribed_words(transcription_result)
+        transcribed = get_transcribed_text(transcription_result)
         
         # Create finder with 30 second timeout
         finder = AnchorSequenceFinder(
@@ -367,31 +367,3 @@ class TestAnchorSequencePerformance:
             f"Coverage {actual_coverage:.1f}% differs from expected {expected_coverage:.1f}% "
             f"by more than {tolerance:.1f}%"
         )
-
-
-def pytest_configure(config):
-    """Register the 'slow' marker."""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (run with --run-slow)"
-    )
-
-
-def pytest_collection_modifyitems(config, items):
-    """Skip slow tests unless --run-slow is specified."""
-    if config.getoption("--run-slow", default=False):
-        return
-    
-    skip_slow = pytest.mark.skip(reason="need --run-slow option to run")
-    for item in items:
-        if "slow" in item.keywords:
-            item.add_marker(skip_slow)
-
-
-def pytest_addoption(parser):
-    """Add --run-slow option to pytest."""
-    parser.addoption(
-        "--run-slow",
-        action="store_true",
-        default=False,
-        help="run slow tests that execute the anchor finding algorithm"
-    )

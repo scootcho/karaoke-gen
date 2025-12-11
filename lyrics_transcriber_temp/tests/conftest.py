@@ -11,9 +11,35 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # All tests are now working! No more skip patterns needed.
 SKIP_PATTERNS = []
 
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (run with --run-slow)"
+    )
+
+
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--run-slow",
+        action="store_true",
+        default=False,
+        help="run slow tests that execute expensive algorithms"
+    )
+
+
 def pytest_collection_modifyitems(config, items):
+    """Modify test collection to skip slow tests unless --run-slow is specified."""
+    # Skip slow tests unless --run-slow is specified
+    if not config.getoption("--run-slow", default=False):
+        skip_slow = pytest.mark.skip(reason="need --run-slow option to run")
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
+    
+    # Legacy skip patterns
     for item in items:
-        # Check if any test path pattern matches the current test
         for pattern in SKIP_PATTERNS:
             if pattern in item.nodeid:
                 item.add_marker(pytest.mark.skip(reason="Skipped due to codebase changes"))
