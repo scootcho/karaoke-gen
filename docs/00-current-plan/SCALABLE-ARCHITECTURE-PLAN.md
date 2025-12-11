@@ -1,7 +1,7 @@
 # Scalable Architecture Plan
 
 **Last Updated:** 2025-12-11
-**Status:** Analysis Complete - Ready for Implementation
+**Status:** Phase 1 Complete - Cloud Tasks Enabled
 
 This document outlines the plan for evolving karaoke-gen's cloud backend to support **100+ concurrent jobs** with no performance degradation, while also achieving a clean, maintainable codebase with proper separation of concerns.
 
@@ -756,7 +756,11 @@ wait
 ## Success Criteria
 
 ### Phase 1 (Cloud Tasks)
-- [ ] 50 concurrent jobs complete without failures
+- [x] Cloud Tasks queues created and configured via Pulumi
+- [x] WorkerService updated to support Cloud Tasks mode
+- [x] Deployment configured with ENABLE_CLOUD_TASKS=true
+- [x] Container concurrency set to 1 for true isolation
+- [ ] 50 concurrent jobs complete without failures (to be validated)
 - [ ] Processing time per job unchanged (same as 1 job)
 - [ ] No resource contention (CPU/memory per job consistent)
 - [ ] Automatic retry on transient failures works
