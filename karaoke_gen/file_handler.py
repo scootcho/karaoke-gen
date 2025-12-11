@@ -5,6 +5,12 @@ import shutil
 import tempfile
 from .utils import sanitize_filename
 
+try:
+    import yt_dlp
+    YT_DLP_AVAILABLE = True
+except ImportError:
+    YT_DLP_AVAILABLE = False
+
 
 # Placeholder class or functions for file handling
 class FileHandler:
@@ -70,6 +76,190 @@ class FileHandler:
         shutil.copy2(filepath, target_path)
         
         return target_path
+
+    def download_video(self, url, output_filename_no_extension, cookies_str=None):
+        """
+        Download audio from a URL (YouTube, etc.) using yt-dlp.
+        
+        This method downloads the best quality audio from a URL and saves it
+        to the specified output path. It handles YouTube and other video platforms
+        supported by yt-dlp.
+        
+        Args:
+            url: URL to download from (YouTube, Vimeo, etc.)
+            output_filename_no_extension: Output filename without extension
+            cookies_str: Optional cookies string for authenticated downloads
+            
+        Returns:
+            Path to downloaded audio file, or None if failed
+        """
+        if not YT_DLP_AVAILABLE:
+            self.logger.error("yt-dlp is not installed. Install with: pip install yt-dlp")
+            return None
+        
+        self.logger.info(f"Downloading audio from URL: {url}")
+        
+        # Configure yt-dlp options
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': output_filename_no_extension + '.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'best',
+                'preferredquality': '0',  # Best quality
+            }],
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            # Anti-detection options
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'retries': 3,
+            'fragment_retries': 3,
+            'http_headers': {
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+        }
+        
+        # Handle cookies if provided
+        if cookies_str:
+            # Write cookies to a temporary file
+            cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+            try:
+                cookie_file.write(cookies_str)
+                cookie_file.close()
+                ydl_opts['cookiefile'] = cookie_file.name
+            except Exception as e:
+                self.logger.warning(f"Failed to write cookies file: {e}")
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Extract info first to get actual filename
+                info = ydl.extract_info(url, download=True)
+                
+                if info is None:
+                    self.logger.error("Failed to extract info from URL")
+                    return None
+                
+                # Find the downloaded file
+                # The actual filename might differ from template due to post-processing
+                downloaded_file = None
+                
+                # Check common extensions
+                for ext in ['m4a', 'opus', 'webm', 'mp3', 'flac', 'wav', 'ogg', 'aac']:
+                    candidate = f"{output_filename_no_extension}.{ext}"
+                    if os.path.exists(candidate):
+                        downloaded_file = candidate
+                        break
+                
+                if downloaded_file is None:
+                    # Try to find any audio file with matching prefix
+                    import glob
+                    matches = glob.glob(f"{output_filename_no_extension}.*")
+                    audio_extensions = ['.m4a', '.opus', '.webm', '.mp3', '.flac', '.wav', '.ogg', '.aac']
+                    for match in matches:
+                        if any(match.endswith(ext) for ext in audio_extensions):
+                            downloaded_file = match
+                            break
+                
+                if downloaded_file and os.path.exists(downloaded_file):
+                    self.logger.info(f"Successfully downloaded: {downloaded_file}")
+                    return downloaded_file
+                else:
+                    self.logger.error("Downloaded file not found after yt-dlp completed")
+                    return None
+                    
+        except yt_dlp.DownloadError as e:
+            self.logger.error(f"yt-dlp download error: {e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to download from URL: {e}")
+            return None
+        finally:
+            # Clean up cookie file if we created one
+            if cookies_str and 'cookie_file' in locals():
+                try:
+                    os.unlink(cookie_file.name)
+                except Exception:
+                    pass
+
+    def extract_metadata_from_url(self, url):
+        """
+        Extract metadata (artist, title) from a URL without downloading.
+        
+        Uses yt-dlp to fetch video metadata including title, uploader/artist,
+        and other information that can be used for the karaoke generation.
+        
+        Args:
+            url: URL to extract metadata from
+            
+        Returns:
+            Dict with 'artist', 'title', 'duration', and 'raw_info', or None if failed
+        """
+        if not YT_DLP_AVAILABLE:
+            self.logger.error("yt-dlp is not installed. Install with: pip install yt-dlp")
+            return None
+        
+        self.logger.info(f"Extracting metadata from URL: {url}")
+        
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'skip_download': True,
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                if info is None:
+                    self.logger.error("Failed to extract metadata from URL")
+                    return None
+                
+                # Try to extract artist and title from various fields
+                raw_title = info.get('title', '')
+                uploader = info.get('uploader', '') or info.get('channel', '') or info.get('artist', '')
+                duration = info.get('duration', 0)
+                
+                # Attempt to parse "Artist - Title" format from title
+                artist = None
+                title = raw_title
+                
+                if ' - ' in raw_title:
+                    parts = raw_title.split(' - ', 1)
+                    if len(parts) == 2:
+                        artist = parts[0].strip()
+                        title = parts[1].strip()
+                
+                # Fall back to uploader as artist if not found in title
+                if not artist:
+                    artist = uploader
+                
+                # Clean up title (remove common suffixes like "(Official Video)")
+                title_cleanup_patterns = [
+                    '(official video)', '(official music video)', '(official audio)',
+                    '(lyric video)', '(lyrics)', '(visualizer)', '(music video)',
+                    '[official video]', '[official music video]', '[official audio]',
+                    '(hd)', '(4k)', '(remastered)', '| official video', '| official audio',
+                ]
+                title_lower = title.lower()
+                for pattern in title_cleanup_patterns:
+                    if pattern in title_lower:
+                        idx = title_lower.find(pattern)
+                        title = title[:idx].strip()
+                        title_lower = title.lower()
+                
+                return {
+                    'artist': artist,
+                    'title': title,
+                    'duration': duration,
+                    'raw_info': info,
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to extract metadata from URL: {e}")
+            return None
 
     def extract_still_image_from_video(self, input_filename, output_filename_no_extension):
         output_filename = output_filename_no_extension + ".png"

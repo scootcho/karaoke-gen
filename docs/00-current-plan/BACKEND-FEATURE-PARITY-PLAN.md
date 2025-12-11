@@ -1,7 +1,7 @@
 # Backend Feature Parity Plan
 
 **Last Updated:** 2024-12-11  
-**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅
+**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅ | Batch 4 ✅
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
@@ -15,7 +15,7 @@ This document tracks the progress toward complete feature parity between the loc
 | Style Configuration | 1 | 4 | **25%** | S2-S4 are MEDIUM priority |
 | Workflow Control | 0 | 3 | **0%** | W1/W2 HIGH, W7 MEDIUM (skip flags deferred) |
 | Audio Processing | 3 | 4 | **75%** | ✅ **Batch 2 Complete** (AP1-AP3), AP5 remaining |
-| Input Modes | 1 | 3 | **33%** | P2, P3 are HIGH priority |
+| Input Modes | 2 | 3 | **67%** | ✅ **Batch 4 Complete** (P2), P3 remaining |
 | Audio Fetching | 0 | 1 | **0%** | A1 is HIGH priority |
 | Flags to Remove | - | - | - | I3-I6, AP6 (simplify codebase) |
 
@@ -79,12 +79,12 @@ This section provides a comprehensive comparison of all CLI parameters between `
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
 | P1 | `<file>` | ✅ | ✅ | **Local audio file path.** Copies file to output directory, converts to WAV for processing. Supports MP3, FLAC, WAV, M4A, OGG, AAC. |
-| P2 | `<url>` (YouTube) | ✅ | ❌ | **YouTube/online URL.** Uses yt-dlp to download audio and extract metadata (artist/title from video title). |
+| P2 | `<url>` (YouTube) | ✅ | ✅ | **YouTube/online URL.** Uses yt-dlp to download audio and extract metadata (artist/title from video title). |
 | P3 | `<artist> <title>` | ✅ | ❌ | **Audio search mode.** When no file is provided, uses flacfetch to search Deezer/Tidal/etc for high-quality audio and downloads it. |
 | P4 | `<folder>` | ✅ | ❌ | **Batch folder processing.** Process all audio files in a folder, using `--filename_pattern` to extract track titles from filenames. |
 
-**Remote Implementation Plan:**
-- **P2 YouTube URLs**: HIGH PRIORITY. Install yt-dlp in Docker container. Backend downloads audio to GCS, extracts metadata, then processes. Use case: Niche live versions only on YouTube.
+**Remote Implementation Status:** ✅ **BATCH 4 COMPLETE** (v0.71.26)
+- **P2 YouTube URLs**: ✅ IMPLEMENTED. Backend accepts URL via `/api/jobs/create-from-url` endpoint. Uses yt-dlp to download audio and extract metadata (artist/title). Remote CLI detects URLs and routes to URL endpoint.
 - **P3 Flacfetch search**: HIGH PRIORITY. Backend integrates flacfetch to search Deezer/Tidal/etc. IMPORTANT: Must support interactive mode via API - return search results to client, let user select, then proceed. Default should be interactive (not auto-select). Use case: Eventually expose audio source selection in web UI.
 - **P4 Folder batch**: LOW PRIORITY. Could accept ZIP upload, process each as separate job. Defer for now.
 
@@ -365,22 +365,28 @@ Bump the patch version in `pyproject.toml` before committing.
 
 ---
 
-### Batch 4: YouTube URL Input (HIGH)
+### Batch 4: YouTube URL Input (HIGH) ✅ COMPLETE
 **Parameters:** P2 `<url>` (YouTube/online URL)
 
-**Scope:**
-- Remote CLI: Detect URL input, send URL instead of file
-- Backend: Accept URL as alternative to file upload
-- Backend: Download audio using yt-dlp, extract metadata
-- Docker: Add yt-dlp to container image
+**Status:** ✅ **IMPLEMENTED** (v0.71.26)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - detect URL, change submission flow
-- `backend/api/routes/file_upload.py` - accept URL parameter
-- `backend/workers/audio_worker.py` or new `download_worker.py` - yt-dlp download
-- `backend/Dockerfile` - add yt-dlp
+**Implementation Summary:**
+- Remote CLI: Detects URLs via `is_url()`, routes to `submit_job_from_url()` method
+- Backend: New `/api/jobs/create-from-url` endpoint accepts URL and optional artist/title
+- Backend: Audio worker downloads from URL using yt-dlp, auto-detects artist/title from metadata
+- FileHandler: Added `download_video()` and `extract_metadata_from_url()` methods
+- Dependencies: yt-dlp added to pyproject.toml
 
-**Complexity:** Medium-High (new input mode, container changes, rate limiting considerations)
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - URL detection, new `submit_job_from_url()` method
+- `karaoke_gen/file_handler.py` - `download_video()` and `extract_metadata_from_url()` methods
+- `backend/api/routes/file_upload.py` - `CreateJobFromUrlRequest`, `CreateJobFromUrlResponse`, `/api/jobs/create-from-url` endpoint
+- `backend/workers/audio_worker.py` - Enhanced `download_from_url()` with metadata extraction
+- `pyproject.toml` - Added yt-dlp dependency
+
+**Tests added:** 20+ unit tests covering URL validation, request/response models, Job URL field
+
+**Complexity:** Medium-High (new input mode, yt-dlp integration)
 
 ---
 
@@ -505,7 +511,7 @@ Bump the patch version in `pyproject.toml` before committing.
 | 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | ✅ **COMPLETE** (PR #8) |
 | 2 | AP1-AP3 (model selection) | HIGH | Low | ✅ **COMPLETE** (PR #9) |
 | 3 | AP5 (existing instrumental) | HIGH | Medium | ⏳ Pending |
-| 4 | P2 (YouTube URLs) | HIGH | Medium-High | ⏳ Pending |
+| 4 | P2 (YouTube URLs) | HIGH | Medium-High | ✅ **COMPLETE** |
 | 5 | P3, A1 (flacfetch search) | HIGH | High | ⏳ Pending |
 | 6 | W1, W2, F15 (two-phase) | HIGH | High | ⏳ Pending |
 | 7 | S2 (style overrides) | MEDIUM | Medium | ⏳ Pending |
@@ -513,7 +519,7 @@ Bump the patch version in `pyproject.toml` before committing.
 | 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | ⏳ Pending |
 | 10 | F14, D2, D3, removals | LOW | Mixed | ⏳ Pending |
 
-**Recommended Order:** ~~1~~ → ~~2~~ → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+**Recommended Order:** ~~1~~ → ~~2~~ → 3 → ~~4~~ → 5 → 6 → 7 → 8 → 9 → 10
 
 Batches 1-3 are quick wins that add significant value. Batches 4-6 are larger but high priority. Batches 7-10 can be done as time permits.
 
@@ -622,7 +628,8 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 | Feature | Version | PR | Notes |
 |---------|---------|-----|-------|
-|| Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
+| YouTube URL input | v0.71.26 | - | `<url>` positional argument for YouTube/online URLs |
+| Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
 | Lyrics override params | v0.71.22 | #8 | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms` |
 
 ### ⏳ Not Yet Implemented
@@ -634,7 +641,6 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | Skip separation/transcription | MEDIUM | Workflow control for re-processing |
 | Edit lyrics mode | MEDIUM | `--edit-lyrics` for fixing existing tracks |
 | Background video | MEDIUM | `--background_video` requires video upload |
-| YouTube URL input | HIGH | Requires yt-dlp in container |
 | Audio search (flacfetch) | HIGH | Artist+title search, auto-download |
 | Two-phase workflow | HIGH | `--prep-only`, `--finalise-only` |
 | Batch folder processing | LOW | Process multiple files at once |

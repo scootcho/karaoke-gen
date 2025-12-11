@@ -783,6 +783,281 @@ class TestCreateJobWithUploadUrlsValidation:
         assert 'invalid_type' not in VALID_FILE_TYPES
 
 
+class TestURLValidation:
+    """Test URL validation for URL-based job submission."""
+    
+    def test_valid_youtube_urls(self):
+        """Test that YouTube URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_valid_vimeo_urls(self):
+        """Test that Vimeo URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://vimeo.com/123456789",
+            "https://www.vimeo.com/123456789",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_valid_soundcloud_urls(self):
+        """Test that SoundCloud URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://soundcloud.com/artist/track",
+            "https://www.soundcloud.com/artist/track",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_invalid_urls(self):
+        """Test that invalid URLs are rejected."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        invalid_urls = [
+            "",
+            None,
+            "not-a-url",
+            "ftp://example.com/file.mp3",
+        ]
+        
+        for url in invalid_urls:
+            assert not _validate_url(url), f"URL should be invalid: {url}"
+    
+    def test_other_supported_platforms(self):
+        """Test other supported video platforms."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://twitter.com/user/status/123",
+            "https://x.com/user/status/123",
+            "https://www.facebook.com/video.php?v=123",
+            "https://www.instagram.com/reel/abc123/",
+            "https://www.tiktok.com/@user/video/123",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+
+
+class TestCreateJobFromUrlRequest:
+    """Test CreateJobFromUrlRequest Pydantic model."""
+    
+    def test_create_with_url_only(self):
+        """Test creating request with just URL (artist/title auto-detected)."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert request.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert request.artist is None
+        assert request.title is None
+        assert request.enable_cdg is True
+        assert request.enable_txt is True
+    
+    def test_create_with_artist_and_title(self):
+        """Test creating request with URL, artist, and title."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up"
+        )
+        
+        assert request.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert request.artist == "Rick Astley"
+        assert request.title == "Never Gonna Give You Up"
+    
+    def test_create_with_all_options(self):
+        """Test creating request with all options."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up",
+            enable_cdg=True,
+            enable_txt=True,
+            brand_prefix="NOMAD",
+            enable_youtube_upload=True,
+            dropbox_path="/Karaoke/Test",
+            gdrive_folder_id="abc123",
+            lyrics_artist="Rick A.",
+            lyrics_title="Never Gonna",
+            subtitle_offset_ms=500,
+        )
+        
+        assert request.brand_prefix == "NOMAD"
+        assert request.enable_youtube_upload is True
+        assert request.dropbox_path == "/Karaoke/Test"
+        assert request.gdrive_folder_id == "abc123"
+        assert request.lyrics_artist == "Rick A."
+        assert request.subtitle_offset_ms == 500
+
+
+class TestCreateJobFromUrlResponse:
+    """Test CreateJobFromUrlResponse Pydantic model."""
+    
+    def test_response_model(self):
+        """Test response model fields."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Job created. Audio will be downloaded from URL.",
+            detected_artist="Rick Astley",
+            detected_title="Never Gonna Give You Up",
+            server_version="0.71.26"
+        )
+        
+        assert response.status == "success"
+        assert response.job_id == "test123"
+        assert response.detected_artist == "Rick Astley"
+        assert response.detected_title == "Never Gonna Give You Up"
+    
+    def test_response_with_none_artist_title(self):
+        """Test response when artist/title are not provided (auto-detection)."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Job created. Audio will be downloaded from URL.",
+            detected_artist=None,
+            detected_title=None,
+            server_version="0.71.26"
+        )
+        
+        assert response.detected_artist is None
+        assert response.detected_title is None
+
+
+class TestFileHandlerDownloadVideo:
+    """Test FileHandler.download_video method."""
+    
+    def test_download_video_method_exists(self):
+        """Test that download_video method exists in FileHandler."""
+        from karaoke_gen.file_handler import FileHandler
+        
+        assert hasattr(FileHandler, 'download_video')
+    
+    def test_extract_metadata_from_url_method_exists(self):
+        """Test that extract_metadata_from_url method exists in FileHandler."""
+        from karaoke_gen.file_handler import FileHandler
+        
+        assert hasattr(FileHandler, 'extract_metadata_from_url')
+    
+    def test_yt_dlp_import_check(self):
+        """Test that YT_DLP_AVAILABLE flag is set correctly."""
+        from karaoke_gen.file_handler import YT_DLP_AVAILABLE
+        
+        # Should be True if yt-dlp is installed
+        # Test just checks the flag exists
+        assert isinstance(YT_DLP_AVAILABLE, bool)
+
+
+class TestJobModelURLField:
+    """Test that Job model supports URL field correctly."""
+    
+    def test_job_has_url_field(self):
+        """Test that Job model has url field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert hasattr(job, 'url')
+        assert job.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    
+    def test_job_url_is_optional(self):
+        """Test that url field is optional."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        assert job.url is None
+    
+    def test_job_create_with_url(self):
+        """Test creating job via JobCreate with URL."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert job_create.artist == "Rick Astley"
+        assert job_create.title == "Never Gonna Give You Up"
+    
+    def test_job_create_url_only(self):
+        """Test creating job via JobCreate with URL only (no artist/title)."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert job_create.artist is None
+        assert job_create.title is None
+
+
+class TestIsUrlFunction:
+    """Test the is_url function from cli_args."""
+    
+    def test_is_url_http(self):
+        """Test that http URLs are detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("http://example.com") is True
+    
+    def test_is_url_https(self):
+        """Test that https URLs are detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("https://www.youtube.com/watch?v=abc") is True
+    
+    def test_is_url_not_url(self):
+        """Test that non-URLs are not detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("/path/to/file.mp3") is False
+        assert is_url("file.mp3") is False
+        assert is_url("") is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
