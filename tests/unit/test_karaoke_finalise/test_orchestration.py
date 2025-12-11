@@ -171,6 +171,40 @@ def test_execute_optional_features_youtube_fails(mock_input, mock_discord, mock_
     assert finaliser_for_process.youtube_url == f"https://www.youtube.com/watch?v=manual_video_id"
     mock_discord.assert_called_once() # Discord should still be called after manual ID entry
 
+
+@patch.object(KaraokeFinalise, 'upload_final_mp4_to_youtube_with_title_thumbnail')
+@patch.object(KaraokeFinalise, 'post_discord_notification')
+@patch.object(KaraokeFinalise, 'get_next_brand_code', return_value=f"{BRAND_PREFIX}-0001")
+@patch.object(KaraokeFinalise, 'move_files_to_brand_code_folder')
+@patch.object(KaraokeFinalise, 'copy_final_files_to_public_share_dirs')
+@patch.object(KaraokeFinalise, 'sync_public_share_dir_to_rclone_destination')
+@patch.object(KaraokeFinalise, 'generate_organised_folder_sharing_link')
+def test_execute_optional_features_discord_failure_continues(
+    mock_gen_link, mock_sync, mock_copy, mock_move, mock_get_next,
+    mock_discord, mock_youtube, finaliser_for_process):
+    """Test that Discord notification failure doesn't crash the job."""
+    # Simulate Discord notification failure
+    mock_discord.side_effect = Exception("401 Unauthorized: Invalid webhook URL")
+    finaliser_for_process.keep_brand_code = False
+    finaliser_for_process.new_brand_code_dir_path = os.path.join(ORGANISED_DIR, f"{BRAND_PREFIX}-0001 - {ARTIST} - {TITLE}")
+
+    # Should not raise an exception - should continue with other features
+    finaliser_for_process.execute_optional_features(ARTIST, TITLE, BASE_NAME, ALL_INPUT_FILES, ALL_OUTPUT_FILES, False)
+
+    # Discord was called (and failed)
+    mock_discord.assert_called_once()
+    # But other features should still run
+    mock_youtube.assert_called_once()
+    mock_get_next.assert_called_once()
+    mock_move.assert_called_once()
+    mock_copy.assert_called_once()
+    mock_sync.assert_called_once()
+    mock_gen_link.assert_called_once()
+    # Logger should have logged the error (warning)
+    finaliser_for_process.logger.error.assert_called()
+    finaliser_for_process.logger.warning.assert_called()
+
+
 # --- process Method Tests ---
 
 @patch.object(KaraokeFinalise, 'validate_input_parameters_for_features')

@@ -91,6 +91,11 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         help="Cancel a running job (remote mode only). Stops processing but keeps the job record. Example: --cancel abc12345",
     )
     workflow_group.add_argument(
+        "--retry",
+        metavar="JOB_ID",
+        help="Retry a failed job from the last successful checkpoint (remote mode only). Example: --retry abc12345",
+    )
+    workflow_group.add_argument(
         "--delete",
         metavar="JOB_ID",
         help="Delete a job and all its files (remote mode only). Permanent removal. Example: --delete abc12345",

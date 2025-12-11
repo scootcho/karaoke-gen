@@ -722,6 +722,147 @@ async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
     }
 
 
+@router.post("/{job_id}/retry")
+async def retry_job(
+    job_id: str,
+    background_tasks: BackgroundTasks
+) -> dict:
+    """
+    Retry a failed job from the last successful checkpoint.
+    
+    This endpoint allows resuming jobs that failed during:
+    - Video generation (re-runs video worker)
+    - Encoding (re-runs video worker)
+    - Packaging (re-runs video worker)
+    
+    The retry logic determines the appropriate stage to resume from
+    based on what files/state already exist.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.FAILED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only failed jobs can be retried (current status: {job.status})"
+        )
+    
+    try:
+        # Determine retry point based on what's already complete
+        error_details = job.error_details or {}
+        error_stage = error_details.get('stage', 'unknown')
+        
+        logger.info(f"Job {job_id}: Retrying from failed stage '{error_stage}'")
+        
+        # Check what state exists to determine retry point
+        file_urls = job.file_urls or {}
+        state_data = job.state_data or {}
+        
+        # If we have a video with vocals and instrumental selection, retry video generation
+        if (file_urls.get('videos', {}).get('with_vocals') and 
+            state_data.get('instrumental_selection')):
+            
+            logger.info(f"Job {job_id}: Has rendered video and instrumental selection, retrying video generation")
+            
+            # Clear error state
+            job_manager.update_job(job_id, {
+                'error_message': None,
+                'error_details': None,
+            })
+            
+            # Reset to INSTRUMENTAL_SELECTED and trigger video worker
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.INSTRUMENTAL_SELECTED,
+                progress=65,
+                message=f"Retrying video generation from failed state"
+            )
+            
+            # Trigger video generation worker
+            background_tasks.add_task(worker_service.trigger_video_worker, job_id)
+            
+            return {
+                "status": "success",
+                "job_status": "instrumental_selected",
+                "message": "Job retry started from video generation stage",
+                "retry_stage": "video_generation"
+            }
+        
+        # If we have corrections and screens but no video, retry render
+        elif (file_urls.get('lyrics', {}).get('corrections') and 
+              file_urls.get('screens', {}).get('title')):
+            
+            logger.info(f"Job {job_id}: Has corrections and screens, retrying from render stage")
+            
+            # Clear error state
+            job_manager.update_job(job_id, {
+                'error_message': None,
+                'error_details': None,
+            })
+            
+            # Reset to REVIEW_COMPLETE and trigger render worker
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.REVIEW_COMPLETE,
+                progress=70,
+                message=f"Retrying video render from failed state"
+            )
+            
+            # Trigger render video worker
+            background_tasks.add_task(worker_service.trigger_render_video_worker, job_id)
+            
+            return {
+                "status": "success",
+                "job_status": "review_complete",
+                "message": "Job retry started from render stage",
+                "retry_stage": "render_video"
+            }
+        
+        # If we have stems and corrections, retry from screens generation
+        elif (file_urls.get('stems', {}).get('instrumental_clean') and 
+              file_urls.get('lyrics', {}).get('corrections')):
+            
+            logger.info(f"Job {job_id}: Has stems and corrections, retrying from screens stage")
+            
+            # Clear error state
+            job_manager.update_job(job_id, {
+                'error_message': None,
+                'error_details': None,
+            })
+            
+            # Reset to a state before screens and trigger screens worker
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.LYRICS_COMPLETE,
+                progress=45,
+                message=f"Retrying from screens generation"
+            )
+            
+            # Trigger screens worker
+            background_tasks.add_task(worker_service.trigger_screens_worker, job_id)
+            
+            return {
+                "status": "success",
+                "job_status": "lyrics_complete",
+                "message": "Job retry started from screens generation",
+                "retry_stage": "screens_generation"
+            }
+        
+        else:
+            # Can't determine a safe retry point, need to restart from beginning
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot determine safe retry point. Job may need to be resubmitted."
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrying job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{job_id}/logs")
 async def get_worker_logs(
     job_id: str,

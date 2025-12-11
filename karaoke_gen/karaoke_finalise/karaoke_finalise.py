@@ -268,6 +268,8 @@ class KaraokeFinalise:
 
         # Enable discord notifications if webhook URL is provided and is valid URL
         if self.discord_webhook_url is not None:
+            # Strip whitespace/newlines that may have been introduced from environment variables or secrets
+            self.discord_webhook_url = self.discord_webhook_url.strip()
             if not self.discord_webhook_url.startswith("https://discord.com/api/webhooks/"):
                 raise Exception(f"Discord webhook URL is not valid: {self.discord_webhook_url}")
 
@@ -1298,8 +1300,13 @@ class KaraokeFinalise:
                     self.logger.error("YouTube upload failed in non-interactive mode, skipping")
 
         # Discord notification - runs independently of YouTube upload
+        # Wrapped in try/except so failures don't crash the entire job
         if self.discord_notication_enabled:
-            self.post_discord_notification()
+            try:
+                self.post_discord_notification()
+            except Exception as e:
+                self.logger.error(f"Failed to send Discord notification: {e}")
+                self.logger.warning("Continuing without Discord notification - this is non-fatal")
 
         # Handle folder organization - different logic for server-side vs local mode
         if self.server_side_mode and self.brand_prefix and self.organised_dir_rclone_root:

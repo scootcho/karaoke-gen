@@ -426,10 +426,51 @@ class TestRemoteKaraokeClient:
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_request.return_value = mock_response
-        
+
         with pytest.raises(ValueError, match="Job not found"):
             client.delete_job("nonexistent-job")
-    
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_success(self, mock_request, client):
+        """Test retrying a failed job successfully."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "success",
+            "job_status": "instrumental_selected",
+            "retry_stage": "video_generation"
+        }
+        mock_request.return_value = mock_response
+
+        result = client.retry_job("job-123")
+
+        assert result["status"] == "success"
+        assert result["retry_stage"] == "video_generation"
+        mock_request.assert_called_once_with('POST', '/api/jobs/job-123/retry')
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_not_found(self, mock_request, client):
+        """Test retrying non-existent job."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_request.return_value = mock_response
+
+        with pytest.raises(ValueError, match="Job not found"):
+            client.retry_job("nonexistent-job")
+
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_retry_job_not_failed(self, mock_request, client):
+        """Test retrying a job that isn't in failed state."""
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "detail": "Only failed jobs can be retried"
+        }
+        mock_request.return_value = mock_response
+
+        with pytest.raises(RuntimeError, match="Cannot retry job"):
+            client.retry_job("job-123")
+
     @patch.object(RemoteKaraokeClient, '_request')
     def test_get_instrumental_options(self, mock_request, client):
         """Test getting instrumental options."""
@@ -779,6 +820,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -788,11 +830,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -810,6 +852,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -819,11 +862,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -841,6 +884,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -850,11 +894,11 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
-    
+
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
@@ -872,6 +916,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None  # Added for retry feature
         mock_args.delete = None
         mock_args.bulk_delete = False  # New attribute for bulk delete mode
         mock_args.filter_environment = None  # New attribute for filtering
@@ -880,9 +925,9 @@ class TestMain:
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
-        
+
         result = main()
-        
+
         assert result == 1
         mock_parser.print_help.assert_called_once()
     
@@ -952,6 +997,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = True
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False  # New attribute for bulk delete mode
         mock_args.filter_environment = None  # New attribute for filtering
@@ -960,7 +1006,7 @@ class TestMain:
         mock_args.client_id = ""  # Job tracking
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.list_jobs.return_value = [
             {"job_id": "job-1", "status": "complete", "artist": "Artist 1", "title": "Title 1", "request_metadata": {}},
@@ -993,6 +1039,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = True
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1001,7 +1048,7 @@ class TestMain:
         mock_args.client_id = ""
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.list_jobs.return_value = []
         mock_client_class.return_value = mock_client
@@ -1111,6 +1158,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1156,6 +1204,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1199,6 +1248,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = "job-123"
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1208,7 +1258,7 @@ class TestMain:
         mock_args.yes = True  # Non-interactive mode
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
-        
+
         mock_client = MagicMock()
         mock_client.get_job.return_value = {
             "artist": "Artist",
@@ -1245,6 +1295,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1288,6 +1339,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
@@ -1332,6 +1384,7 @@ class TestMain:
         mock_args.resume = None
         mock_args.list_jobs = False
         mock_args.cancel = None
+        mock_args.retry = None
         mock_args.delete = None
         mock_args.bulk_delete = False
         mock_args.filter_environment = None
