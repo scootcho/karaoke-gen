@@ -306,6 +306,51 @@ class TestAnchorSequenceAlgorithm:
             f"Anchor count {actual_count} differs from expected {expected_count} "
             f"by more than {tolerance:.0f} (30% tolerance)"
         )
+
+
+@pytest.mark.slow
+class TestAnchorSequencePerformance:
+    """
+    Performance benchmark tests for the AnchorSequenceFinder.
+    
+    These tests verify that the algorithm completes within acceptable time limits
+    for real-world song data of varying complexity.
+    
+    Run with: pytest -v -m slow --run-slow
+    """
+    
+    @pytest.mark.parametrize("fixture_path", FIXTURE_FILES, ids=lambda f: f.stem)
+    def test_algorithm_completes_within_30_seconds(self, fixture_path, tmp_path):
+        """Each fixture should complete anchor finding in under 30 seconds."""
+        import time
+        
+        fixture = load_fixture(fixture_path)
+        transcription_result = fixture_to_transcription_result(fixture)
+        references = fixture_to_references(fixture)
+        transcribed = get_transcribed_words(transcription_result)
+        
+        # Create finder with 30 second timeout
+        finder = AnchorSequenceFinder(
+            cache_dir=str(tmp_path),
+            timeout_seconds=30,
+        )
+        
+        start_time = time.time()
+        anchors = finder.find_anchors(
+            transcribed=transcribed,
+            references=references,
+            transcription_result=transcription_result,
+        )
+        elapsed = time.time() - start_time
+        
+        # Assert it completed in under 30 seconds
+        assert elapsed < 30, (
+            f"Fixture {fixture_path.stem} took {elapsed:.1f}s, exceeding 30s limit. "
+            f"Found {len(anchors)} anchors."
+        )
+        
+        # Also verify we got some anchors (sanity check)
+        assert len(anchors) > 0, f"No anchors found for {fixture_path.stem}"
     
     @pytest.mark.parametrize("fixture_path", FIXTURE_FILES[:3], ids=lambda f: f.stem)
     def test_algorithm_produces_similar_coverage(self, fixture_path, tmp_path):

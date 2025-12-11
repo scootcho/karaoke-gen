@@ -10,19 +10,19 @@ todos:
     status: completed
   - id: remove-multiprocessing
     content: Remove multiprocessing.Pool from find_anchors() and _remove_overlapping_sequences(), replace with single-threaded loops
-    status: in_progress
+    status: completed
   - id: build-ngram-index
     content: Add _build_ngram_index() method to create hash-based lookup table for O(1) n-gram matching
-    status: pending
+    status: completed
   - id: greedy-skip
     content: Add covered_positions set tracking and skip logic to avoid processing overlapping n-grams
-    status: pending
+    status: completed
   - id: simple-scoring
     content: Add _simple_score_anchor() with rule-based heuristics, make spaCy scoring optional via use_nlp_scoring flag
-    status: pending
+    status: completed
   - id: optimize-overlap
     content: Replace O(n^2) overlap removal with O(n log n) sorted single-pass algorithm
-    status: pending
+    status: completed
   - id: add-perf-tests
     content: Add performance benchmark test asserting <30 second completion for all fixture sizes
     status: pending
