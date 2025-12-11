@@ -65,6 +65,26 @@ class StorageService:
         a private key available. Requires the service account to have
         roles/iam.serviceAccountTokenCreator on itself.
         """
+        return self._generate_signed_url_internal(blob_path, "GET", expiration_minutes)
+    
+    def generate_signed_upload_url(self, blob_path: str, content_type: str = "application/octet-stream", expiration_minutes: int = 60) -> str:
+        """Generate a signed URL for uploading a file directly to GCS.
+        
+        This allows clients to upload files directly to GCS without going through
+        the backend, bypassing any request body size limits.
+        
+        Args:
+            blob_path: The destination path in GCS
+            content_type: The expected content type of the upload
+            expiration_minutes: How long the URL is valid for
+            
+        Returns:
+            A signed URL that accepts PUT requests with the file content
+        """
+        return self._generate_signed_url_internal(blob_path, "PUT", expiration_minutes, content_type)
+    
+    def _generate_signed_url_internal(self, blob_path: str, method: str, expiration_minutes: int = 60, content_type: Optional[str] = None) -> str:
+        """Internal method to generate signed URLs for GET or PUT operations."""
         import google.auth
         from google.auth.transport import requests
         
@@ -74,6 +94,17 @@ class StorageService:
             # Get default credentials and refresh to ensure we have a valid token
             credentials, project = google.auth.default()
             
+            # Common kwargs for signed URL generation
+            kwargs = {
+                "version": "v4",
+                "expiration": timedelta(minutes=expiration_minutes),
+                "method": method,
+            }
+            
+            # For PUT requests, we need to specify the content type in headers
+            if method == "PUT" and content_type:
+                kwargs["headers"] = {"Content-Type": content_type}
+            
             # Check if we're using compute credentials (Cloud Run/GCE)
             # These need to use IAM signBlob via service_account_email + access_token
             if hasattr(credentials, 'service_account_email'):
@@ -81,25 +112,15 @@ class StorageService:
                 auth_request = requests.Request()
                 credentials.refresh(auth_request)
                 
-                url = blob.generate_signed_url(
-                    version="v4",
-                    expiration=timedelta(minutes=expiration_minutes),
-                    method="GET",
-                    service_account_email=credentials.service_account_email,
-                    access_token=credentials.token
-                )
-            else:
-                # Local development with service account key or user credentials
-                url = blob.generate_signed_url(
-                    version="v4",
-                    expiration=timedelta(minutes=expiration_minutes),
-                    method="GET"
-                )
+                kwargs["service_account_email"] = credentials.service_account_email
+                kwargs["access_token"] = credentials.token
             
-            logger.info(f"Generated signed URL for {blob_path}")
+            url = blob.generate_signed_url(**kwargs)
+            
+            logger.info(f"Generated signed {method} URL for {blob_path}")
             return url
         except Exception as e:
-            logger.error(f"Error generating signed URL for {blob_path}: {e}")
+            logger.error(f"Error generating signed {method} URL for {blob_path}: {e}")
             raise
     
     def delete_file(self, blob_path: str) -> None:

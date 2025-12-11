@@ -1,12 +1,23 @@
 """
 File upload route for local file submission with style configuration support.
+
+Supports two upload flows:
+1. Direct upload (original): All files sent as multipart form data to /api/jobs/upload
+   - Simple but limited by Cloud Run's 32MB request body size
+
+2. Signed URL upload (recommended for large files):
+   - POST /api/jobs/create-with-upload-urls - Creates job, returns signed GCS upload URLs
+   - Client uploads files directly to GCS using signed URLs (no size limit)
+   - POST /api/jobs/{job_id}/uploads-complete - Validates uploads, triggers workers
 """
 import asyncio
 import json
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+from pydantic import BaseModel, Field
 
 from backend.models.job import JobCreate, JobStatus
 from backend.services.job_manager import JobManager
@@ -18,6 +29,76 @@ from backend.version import VERSION
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
+
+
+# ============================================================================
+# Pydantic models for signed URL upload flow
+# ============================================================================
+
+class FileUploadRequest(BaseModel):
+    """Information about a file to be uploaded."""
+    filename: str = Field(..., description="Original filename with extension")
+    content_type: str = Field(..., description="MIME type of the file")
+    file_type: str = Field(..., description="Type of file: 'audio', 'style_params', 'style_intro_background', 'style_karaoke_background', 'style_end_background', 'style_font', 'style_cdg_instrumental_background', 'style_cdg_title_background', 'style_cdg_outro_background', 'lyrics_file'")
+
+
+class CreateJobWithUploadUrlsRequest(BaseModel):
+    """Request to create a job and get signed upload URLs."""
+    # Required fields
+    artist: str = Field(..., description="Artist name")
+    title: str = Field(..., description="Song title")
+    files: List[FileUploadRequest] = Field(..., description="List of files to upload")
+    
+    # Processing options
+    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
+    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+    
+    # Finalisation options
+    brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
+    enable_youtube_upload: bool = Field(False, description="Upload to YouTube")
+    youtube_description: Optional[str] = Field(None, description="YouTube video description text")
+    discord_webhook_url: Optional[str] = Field(None, description="Discord webhook URL for notifications")
+    webhook_url: Optional[str] = Field(None, description="Generic webhook URL")
+    user_email: Optional[str] = Field(None, description="User email for notifications")
+    
+    # Distribution options (native API - preferred for remote CLI)
+    dropbox_path: Optional[str] = Field(None, description="Dropbox folder path for organized output")
+    gdrive_folder_id: Optional[str] = Field(None, description="Google Drive folder ID for public share uploads")
+    
+    # Legacy distribution options (rclone - deprecated)
+    organised_dir_rclone_root: Optional[str] = Field(None, description="[Deprecated] rclone remote path")
+    
+    # Lyrics configuration
+    lyrics_artist: Optional[str] = Field(None, description="Override artist name for lyrics search")
+    lyrics_title: Optional[str] = Field(None, description="Override title for lyrics search")
+    subtitle_offset_ms: int = Field(0, description="Subtitle timing offset in milliseconds")
+    
+    # Audio separation model configuration
+    clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
+    backing_vocals_models: Optional[List[str]] = Field(None, description="Models for backing vocals separation")
+    other_stems_models: Optional[List[str]] = Field(None, description="Models for other stems")
+
+
+class SignedUploadUrl(BaseModel):
+    """Signed URL for uploading a file."""
+    file_type: str = Field(..., description="Type of file this URL is for")
+    gcs_path: str = Field(..., description="The GCS path where file will be stored")
+    upload_url: str = Field(..., description="Signed URL to PUT the file to")
+    content_type: str = Field(..., description="Content-Type header to use when uploading")
+
+
+class CreateJobWithUploadUrlsResponse(BaseModel):
+    """Response from creating a job with upload URLs."""
+    status: str
+    job_id: str
+    message: str
+    upload_urls: List[SignedUploadUrl]
+    server_version: str
+
+
+class UploadsCompleteRequest(BaseModel):
+    """Request to mark uploads as complete and start processing."""
+    uploaded_files: List[str] = Field(..., description="List of file_types that were successfully uploaded")
 
 # Initialize services
 job_manager = JobManager()
@@ -481,4 +562,350 @@ async def upload_and_create_job(
         raise
     except Exception as e:
         logger.error(f"Error uploading files: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ============================================================================
+# Signed URL Upload Flow - For large files that exceed Cloud Run's 32MB limit
+# ============================================================================
+
+# Valid file types and their expected extensions
+VALID_FILE_TYPES = {
+    'audio': ALLOWED_AUDIO_EXTENSIONS,
+    'style_params': {'.json'},
+    'style_intro_background': ALLOWED_IMAGE_EXTENSIONS,
+    'style_karaoke_background': ALLOWED_IMAGE_EXTENSIONS,
+    'style_end_background': ALLOWED_IMAGE_EXTENSIONS,
+    'style_font': ALLOWED_FONT_EXTENSIONS,
+    'style_cdg_instrumental_background': ALLOWED_IMAGE_EXTENSIONS,
+    'style_cdg_title_background': ALLOWED_IMAGE_EXTENSIONS,
+    'style_cdg_outro_background': ALLOWED_IMAGE_EXTENSIONS,
+    'lyrics_file': {'.txt', '.docx', '.rtf'},
+}
+
+
+def _get_gcs_path_for_file(job_id: str, file_type: str, filename: str) -> str:
+    """Generate the GCS path for a file based on its type."""
+    ext = Path(filename).suffix.lower()
+    
+    if file_type == 'audio':
+        return f"uploads/{job_id}/audio/{filename}"
+    elif file_type == 'style_params':
+        return f"uploads/{job_id}/style/style_params.json"
+    elif file_type.startswith('style_'):
+        # Map style_intro_background -> intro_background, etc.
+        asset_key = file_type.replace('style_', '')
+        return f"uploads/{job_id}/style/{asset_key}{ext}"
+    elif file_type == 'lyrics_file':
+        return f"uploads/{job_id}/lyrics/user_lyrics{ext}"
+    else:
+        return f"uploads/{job_id}/other/{filename}"
+
+
+@router.post("/jobs/create-with-upload-urls", response_model=CreateJobWithUploadUrlsResponse)
+async def create_job_with_upload_urls(
+    request: Request,
+    body: CreateJobWithUploadUrlsRequest,
+):
+    """
+    Create a karaoke generation job and return signed URLs for direct file upload to GCS.
+    
+    This is the first step of the two-step upload flow for large files:
+    1. Call this endpoint with job metadata and list of files to upload
+    2. Upload each file directly to GCS using the returned signed URLs
+    3. Call POST /api/jobs/{job_id}/uploads-complete to start processing
+    
+    Benefits of this flow:
+    - No file size limits (GCS supports up to 5TB)
+    - Faster uploads (direct to storage, no proxy)
+    - Works with any HTTP client (no HTTP/2 required)
+    - Resumable uploads possible with GCS
+    """
+    try:
+        # Validate files list
+        if not body.files:
+            raise HTTPException(status_code=400, detail="At least one file is required")
+        
+        # Check that audio file is included
+        audio_files = [f for f in body.files if f.file_type == 'audio']
+        if not audio_files:
+            raise HTTPException(status_code=400, detail="An audio file is required")
+        if len(audio_files) > 1:
+            raise HTTPException(status_code=400, detail="Only one audio file is allowed")
+        
+        # Validate file types and extensions
+        for file_info in body.files:
+            if file_info.file_type not in VALID_FILE_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file_type: '{file_info.file_type}'. Valid types: {list(VALID_FILE_TYPES.keys())}"
+                )
+            
+            ext = Path(file_info.filename).suffix.lower()
+            allowed_extensions = VALID_FILE_TYPES[file_info.file_type]
+            if ext not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file extension '{ext}' for file_type '{file_info.file_type}'. Allowed: {allowed_extensions}"
+                )
+        
+        # Apply default distribution settings from environment if not provided
+        settings = get_settings()
+        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
+        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
+        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
+        
+        # Validate credentials for requested distribution services
+        invalid_services = []
+        credential_manager = get_credential_manager()
+        
+        if body.enable_youtube_upload:
+            result = credential_manager.check_youtube_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"youtube ({result.message})")
+        
+        if effective_dropbox_path:
+            result = credential_manager.check_dropbox_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"dropbox ({result.message})")
+        
+        if effective_gdrive_folder_id:
+            result = credential_manager.check_gdrive_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"gdrive ({result.message})")
+        
+        if invalid_services:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "credentials_invalid",
+                    "message": f"The following distribution services need re-authorization: {', '.join(invalid_services)}",
+                    "invalid_services": invalid_services,
+                    "auth_url": "/api/auth/status"
+                }
+            )
+        
+        # Extract request metadata for tracking
+        request_metadata = extract_request_metadata(request, created_from="signed_url_upload")
+        
+        # Get original audio filename
+        audio_file = audio_files[0]
+        
+        # Create job
+        job_create = JobCreate(
+            artist=body.artist,
+            title=body.title,
+            filename=audio_file.filename,
+            enable_cdg=body.enable_cdg,
+            enable_txt=body.enable_txt,
+            brand_prefix=body.brand_prefix,
+            enable_youtube_upload=body.enable_youtube_upload,
+            youtube_description=body.youtube_description,
+            discord_webhook_url=effective_discord_webhook_url,
+            webhook_url=body.webhook_url,
+            user_email=body.user_email,
+            dropbox_path=effective_dropbox_path,
+            gdrive_folder_id=effective_gdrive_folder_id,
+            organised_dir_rclone_root=body.organised_dir_rclone_root,
+            lyrics_artist=body.lyrics_artist,
+            lyrics_title=body.lyrics_title,
+            subtitle_offset_ms=body.subtitle_offset_ms,
+            clean_instrumental_model=body.clean_instrumental_model,
+            backing_vocals_models=body.backing_vocals_models,
+            other_stems_models=body.other_stems_models,
+            request_metadata=request_metadata,
+        )
+        job = job_manager.create_job(job_create)
+        job_id = job.job_id
+        
+        logger.info(f"Created job {job_id} for {body.artist} - {body.title} (signed URL upload flow)")
+        
+        # Generate signed upload URLs for each file
+        upload_urls = []
+        for file_info in body.files:
+            gcs_path = _get_gcs_path_for_file(job_id, file_info.file_type, file_info.filename)
+            
+            # Generate signed upload URL (valid for 60 minutes)
+            signed_url = storage_service.generate_signed_upload_url(
+                gcs_path,
+                content_type=file_info.content_type,
+                expiration_minutes=60
+            )
+            
+            upload_urls.append(SignedUploadUrl(
+                file_type=file_info.file_type,
+                gcs_path=gcs_path,
+                upload_url=signed_url,
+                content_type=file_info.content_type
+            ))
+            
+            logger.info(f"Generated signed upload URL for {file_info.file_type}: {gcs_path}")
+        
+        return CreateJobWithUploadUrlsResponse(
+            status="success",
+            job_id=job_id,
+            message="Job created. Upload files to the provided URLs, then call /api/jobs/{job_id}/uploads-complete",
+            upload_urls=upload_urls,
+            server_version=VERSION
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating job with upload URLs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/jobs/{job_id}/uploads-complete")
+async def mark_uploads_complete(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    body: UploadsCompleteRequest,
+):
+    """
+    Mark file uploads as complete and start job processing.
+    
+    This is the second step of the signed URL upload flow:
+    1. Create job with POST /api/jobs/create-with-upload-urls
+    2. Upload files directly to GCS using signed URLs
+    3. Call this endpoint to validate uploads and start processing
+    
+    The endpoint will:
+    - Verify the job exists and is in PENDING state
+    - Validate that required files (audio) were uploaded
+    - Update job with GCS paths
+    - Trigger audio and lyrics workers
+    """
+    try:
+        # Get job and verify it exists
+        job = job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        # Verify job is in pending state
+        if job.status != JobStatus.PENDING:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job_id} is not in pending state (current: {job.status}). Cannot complete uploads."
+            )
+        
+        # Validate required files
+        if 'audio' not in body.uploaded_files:
+            raise HTTPException(status_code=400, detail="Audio file upload is required")
+        
+        # Build GCS paths for uploaded files and validate they exist
+        update_data = {}
+        style_assets = {}
+        
+        for file_type in body.uploaded_files:
+            if file_type not in VALID_FILE_TYPES:
+                logger.warning(f"Unknown file_type in uploaded_files: {file_type}")
+                continue
+            
+            # Determine the GCS path - we need to find the actual file
+            prefix = f"uploads/{job_id}/"
+            if file_type == 'audio':
+                prefix = f"uploads/{job_id}/audio/"
+            elif file_type == 'style_params':
+                prefix = f"uploads/{job_id}/style/style_params"
+            elif file_type.startswith('style_'):
+                asset_key = file_type.replace('style_', '')
+                prefix = f"uploads/{job_id}/style/{asset_key}"
+            elif file_type == 'lyrics_file':
+                prefix = f"uploads/{job_id}/lyrics/user_lyrics"
+            
+            # List files with this prefix to find the actual uploaded file
+            files = storage_service.list_files(prefix)
+            if not files:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File for '{file_type}' was not uploaded to GCS. Expected prefix: {prefix}"
+                )
+            
+            # Use the first (and should be only) file found
+            gcs_path = files[0]
+            
+            # Update appropriate field based on file type
+            if file_type == 'audio':
+                update_data['input_media_gcs_path'] = gcs_path
+                update_data['filename'] = Path(gcs_path).name
+            elif file_type == 'style_params':
+                update_data['style_params_gcs_path'] = gcs_path
+                style_assets['style_params'] = gcs_path
+            elif file_type.startswith('style_'):
+                asset_key = file_type.replace('style_', '')
+                style_assets[asset_key] = gcs_path
+            elif file_type == 'lyrics_file':
+                update_data['lyrics_file_gcs_path'] = gcs_path
+        
+        # Add style assets to update if any
+        if style_assets:
+            update_data['style_assets'] = style_assets
+        
+        # Update job with GCS paths
+        job_manager.update_job(job_id, update_data)
+        
+        logger.info(f"Validated uploads for job {job_id}: {body.uploaded_files}")
+        
+        # Transition job to DOWNLOADING state
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.DOWNLOADING,
+            progress=5,
+            message="Files uploaded, preparing to process"
+        )
+        
+        # Trigger workers in parallel
+        background_tasks.add_task(_trigger_workers_parallel, job_id)
+        
+        # Get distribution services info for response
+        settings = get_settings()
+        credential_manager = get_credential_manager()
+        distribution_services: Dict[str, Any] = {}
+        
+        # Get fresh job data
+        updated_job = job_manager.get_job(job_id)
+        
+        if updated_job.dropbox_path:
+            dropbox_result = credential_manager.check_dropbox_credentials()
+            distribution_services["dropbox"] = {
+                "enabled": True,
+                "path": updated_job.dropbox_path,
+                "credentials_valid": dropbox_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.gdrive_folder_id:
+            gdrive_result = credential_manager.check_gdrive_credentials()
+            distribution_services["gdrive"] = {
+                "enabled": True,
+                "folder_id": updated_job.gdrive_folder_id,
+                "credentials_valid": gdrive_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.enable_youtube_upload:
+            youtube_result = credential_manager.check_youtube_credentials()
+            distribution_services["youtube"] = {
+                "enabled": True,
+                "credentials_valid": youtube_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.discord_webhook_url:
+            distribution_services["discord"] = {
+                "enabled": True,
+            }
+        
+        return {
+            "status": "success",
+            "job_id": job_id,
+            "message": "Uploads validated. Processing started.",
+            "files_validated": body.uploaded_files,
+            "style_assets": list(style_assets.keys()) if style_assets else [],
+            "server_version": VERSION,
+            "distribution_services": distribution_services,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing uploads for job {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
