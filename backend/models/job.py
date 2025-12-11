@@ -217,6 +217,11 @@ class Job(BaseModel):
     lyrics_file_gcs_path: Optional[str] = None   # GCS path to user-provided lyrics file
     subtitle_offset_ms: int = 0                  # Offset for subtitle timing (positive = delay)
     
+    # Audio separation model configuration
+    clean_instrumental_model: Optional[str] = None   # Model for clean instrumental separation
+    backing_vocals_models: Optional[List[str]] = None  # Models for backing vocals separation
+    other_stems_models: Optional[List[str]] = None     # Models for other stems (bass, drums, etc.)
+    
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
@@ -384,6 +389,11 @@ class JobCreate(BaseModel):
     lyrics_title: Optional[str] = None           # Override title for lyrics search
     lyrics_file_gcs_path: Optional[str] = None   # GCS path to user-provided lyrics file
     subtitle_offset_ms: int = 0                  # Offset for subtitle timing (positive = delay)
+    
+    # Audio separation model configuration
+    clean_instrumental_model: Optional[str] = None   # Model for clean instrumental separation
+    backing_vocals_models: Optional[List[str]] = None  # Models for backing vocals separation
+    other_stems_models: Optional[List[str]] = None     # Models for other stems (bass, drums, etc.)
     
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)

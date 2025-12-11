@@ -131,6 +131,10 @@ async def upload_and_create_job(
     lyrics_title: Optional[str] = Form(None, description="Override title for lyrics search"),
     lyrics_file: Optional[UploadFile] = File(None, description="User-provided lyrics file (TXT, DOCX, RTF)"),
     subtitle_offset_ms: int = Form(0, description="Subtitle timing offset in milliseconds (positive = delay)"),
+    # Audio separation model configuration
+    clean_instrumental_model: Optional[str] = Form(None, description="Model for clean instrumental separation (e.g., model_bs_roformer_ep_317_sdr_12.9755.ckpt)"),
+    backing_vocals_models: Optional[str] = Form(None, description="Comma-separated list of models for backing vocals separation"),
+    other_stems_models: Optional[str] = Form(None, description="Comma-separated list of models for other stems (bass, drums, guitar, etc.)"),
 ):
     """
     Upload an audio file and create a karaoke generation job with full style configuration.
@@ -244,6 +248,15 @@ async def upload_and_create_job(
         # Extract request metadata for tracking and filtering
         request_metadata = extract_request_metadata(request, created_from="upload")
         
+        # Parse comma-separated model lists into arrays
+        parsed_backing_vocals_models = None
+        if backing_vocals_models:
+            parsed_backing_vocals_models = [m.strip() for m in backing_vocals_models.split(',') if m.strip()]
+        
+        parsed_other_stems_models = None
+        if other_stems_models:
+            parsed_other_stems_models = [m.strip() for m in other_stems_models.split(',') if m.strip()]
+        
         # Create job first to get job_id
         job_create = JobCreate(
             artist=artist,
@@ -266,6 +279,10 @@ async def upload_and_create_job(
             lyrics_artist=lyrics_artist,
             lyrics_title=lyrics_title,
             subtitle_offset_ms=subtitle_offset_ms,
+            # Audio separation model configuration
+            clean_instrumental_model=clean_instrumental_model,
+            backing_vocals_models=parsed_backing_vocals_models,
+            other_stems_models=parsed_other_stems_models,
             # Request metadata for tracking and filtering
             request_metadata=request_metadata,
         )
@@ -377,6 +394,14 @@ async def upload_and_create_job(
             update_data['lyrics_file_gcs_path'] = lyrics_file_gcs_path
         if subtitle_offset_ms != 0:
             update_data['subtitle_offset_ms'] = subtitle_offset_ms
+        
+        # Audio separation model configuration
+        if clean_instrumental_model:
+            update_data['clean_instrumental_model'] = clean_instrumental_model
+        if parsed_backing_vocals_models:
+            update_data['backing_vocals_models'] = parsed_backing_vocals_models
+        if parsed_other_stems_models:
+            update_data['other_stems_models'] = parsed_other_stems_models
         
         job_manager.update_job(job_id, update_data)
         

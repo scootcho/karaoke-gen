@@ -573,3 +573,164 @@ class TestDownloadHelpers:
             # Should have downloaded from GCS
             mock_storage.download_file.assert_called()
 
+
+class TestAudioWorkerModelConfiguration:
+    """Tests for audio worker model configuration parameters."""
+    
+    def test_create_audio_processor_with_defaults(self):
+        """Test creating AudioProcessor with default models."""
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(temp_dir)
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Should use default models
+                assert call_kwargs['clean_instrumental_model'] == "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+                assert call_kwargs['backing_vocals_models'] == ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+                assert call_kwargs['other_stems_models'] == ["htdemucs_6s.yaml"]
+    
+    def test_create_audio_processor_with_custom_clean_model(self):
+        """Test creating AudioProcessor with custom clean instrumental model."""
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(
+                    temp_dir,
+                    clean_instrumental_model="custom_clean_model.ckpt"
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Should use custom clean model
+                assert call_kwargs['clean_instrumental_model'] == "custom_clean_model.ckpt"
+                # Other models should still be defaults
+                assert call_kwargs['backing_vocals_models'] == ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+    
+    def test_create_audio_processor_with_custom_backing_models(self):
+        """Test creating AudioProcessor with custom backing vocals models."""
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(
+                    temp_dir,
+                    backing_vocals_models=["custom_bv1.ckpt", "custom_bv2.ckpt"]
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Should use custom backing vocals models
+                assert call_kwargs['backing_vocals_models'] == ["custom_bv1.ckpt", "custom_bv2.ckpt"]
+    
+    def test_create_audio_processor_with_custom_other_stems_models(self):
+        """Test creating AudioProcessor with custom other stems models."""
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(
+                    temp_dir,
+                    other_stems_models=["custom_demucs.yaml"]
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Should use custom other stems models
+                assert call_kwargs['other_stems_models'] == ["custom_demucs.yaml"]
+    
+    def test_create_audio_processor_with_all_custom_models(self):
+        """Test creating AudioProcessor with all custom models."""
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(
+                    temp_dir,
+                    clean_instrumental_model="custom_clean.ckpt",
+                    backing_vocals_models=["custom_bv.ckpt"],
+                    other_stems_models=["custom_stems.yaml"]
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # All models should be custom
+                assert call_kwargs['clean_instrumental_model'] == "custom_clean.ckpt"
+                assert call_kwargs['backing_vocals_models'] == ["custom_bv.ckpt"]
+                assert call_kwargs['other_stems_models'] == ["custom_stems.yaml"]
+    
+    def test_job_model_fields_are_passed_to_processor(self):
+        """Test that job model fields can be passed to create_audio_processor."""
+        mock_job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test",
+            title="Test",
+            clean_instrumental_model="job_clean.ckpt",
+            backing_vocals_models=["job_bv.ckpt"],
+            other_stems_models=["job_stems.yaml"]
+        )
+        
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Simulate passing job model fields to create_audio_processor
+                result = create_audio_processor(
+                    temp_dir,
+                    clean_instrumental_model=mock_job.clean_instrumental_model,
+                    backing_vocals_models=mock_job.backing_vocals_models,
+                    other_stems_models=mock_job.other_stems_models
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Models from job should be used
+                assert call_kwargs['clean_instrumental_model'] == "job_clean.ckpt"
+                assert call_kwargs['backing_vocals_models'] == ["job_bv.ckpt"]
+                assert call_kwargs['other_stems_models'] == ["job_stems.yaml"]
+    
+    def test_none_model_values_use_defaults(self):
+        """Test that None model values fall back to defaults."""
+        mock_job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test",
+            title="Test",
+            clean_instrumental_model=None,  # Not specified
+            backing_vocals_models=None,     # Not specified
+            other_stems_models=None         # Not specified
+        )
+        
+        with patch('backend.workers.audio_worker.AudioProcessor') as mock_processor:
+            from backend.workers.audio_worker import create_audio_processor
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = create_audio_processor(
+                    temp_dir,
+                    clean_instrumental_model=mock_job.clean_instrumental_model,
+                    backing_vocals_models=mock_job.backing_vocals_models,
+                    other_stems_models=mock_job.other_stems_models
+                )
+                
+                mock_processor.assert_called_once()
+                call_kwargs = mock_processor.call_args[1]
+                
+                # Should fall back to defaults
+                assert call_kwargs['clean_instrumental_model'] == "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+                assert call_kwargs['backing_vocals_models'] == ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+                assert call_kwargs['other_stems_models'] == ["htdemucs_6s.yaml"]
+
