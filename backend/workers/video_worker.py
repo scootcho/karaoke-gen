@@ -135,9 +135,20 @@ async def generate_video(job_id: str) -> bool:
         os.chdir(temp_dir)
         
         # Get the selected instrumental file path
+        # Batch 3: If user provided existing instrumental, use that; otherwise use AI-separated
         instrumental_selection = job.state_data['instrumental_selection']
-        instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
-        instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
+        existing_instrumental_path = getattr(job, 'existing_instrumental_gcs_path', None)
+        
+        if existing_instrumental_path:
+            # User provided existing instrumental
+            ext = Path(existing_instrumental_path).suffix.lower()
+            instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental User){ext}")
+            instrumental_source = "user-provided"
+        else:
+            # Use AI-separated instrumental
+            instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
+            instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
+            instrumental_source = instrumental_selection
         
         # Transition to encoding state
         job_manager.transition_to_state(
@@ -153,7 +164,9 @@ async def generate_video(job_id: str) -> bool:
         job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
         job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
         job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
-        job_log.info(f"  instrumental: {instrumental_selection}")
+        job_log.info(f"  instrumental source: {instrumental_source}")
+        if existing_instrumental_path:
+            job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
         
         # Create KaraokeFinalise with ALL the parameters from the job
         # This reuses all existing functionality!
@@ -487,15 +500,26 @@ async def _setup_working_directory(
     storage.download_file(lyrics_video_url, lyrics_video_path)
     log_progress("Downloaded karaoke video")
     
-    # Download selected instrumental
+    # Download instrumental - either user-provided existing instrumental or AI-separated
+    existing_instrumental_path = getattr(job, 'existing_instrumental_gcs_path', None)
     instrumental_selection = job.state_data['instrumental_selection']
-    instrumental_key = 'instrumental_clean' if instrumental_selection == 'clean' else 'instrumental_with_backing'
-    instrumental_url = job.file_urls['stems'][instrumental_key]
-    instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
-    instrumental_path = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
-    log_progress(f"Downloading {instrumental_selection} instrumental audio...")
-    storage.download_file(instrumental_url, instrumental_path)
-    log_progress(f"Downloaded instrumental ({instrumental_selection})")
+    
+    if existing_instrumental_path:
+        # Batch 3: Use user-provided existing instrumental
+        ext = Path(existing_instrumental_path).suffix.lower()
+        instrumental_path = os.path.join(temp_dir, f"{base_name} (Instrumental User){ext}")
+        log_progress(f"Downloading user-provided existing instrumental...")
+        storage.download_file(existing_instrumental_path, instrumental_path)
+        log_progress("Downloaded user-provided instrumental")
+    else:
+        # Use AI-separated instrumental based on selection
+        instrumental_key = 'instrumental_clean' if instrumental_selection == 'clean' else 'instrumental_with_backing'
+        instrumental_url = job.file_urls['stems'][instrumental_key]
+        instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
+        instrumental_path = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
+        log_progress(f"Downloading {instrumental_selection} instrumental audio...")
+        storage.download_file(instrumental_url, instrumental_path)
+        log_progress(f"Downloaded instrumental ({instrumental_selection})")
     
     # Download LRC file if available (needed for CDG/TXT)
     lyrics_urls = job.file_urls.get('lyrics', {})

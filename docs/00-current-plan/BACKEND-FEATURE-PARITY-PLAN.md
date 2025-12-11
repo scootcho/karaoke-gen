@@ -1,7 +1,7 @@
 # Backend Feature Parity Plan
 
 **Last Updated:** 2024-12-11  
-**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅
+**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅ | Batch 3 ✅
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
@@ -14,7 +14,7 @@ This document tracks the progress toward complete feature parity between the loc
 | Lyrics Configuration | 5 | 5 | **100%** | ✅ **Batch 1 Complete** (L1-L4) |
 | Style Configuration | 1 | 4 | **25%** | S2-S4 are MEDIUM priority |
 | Workflow Control | 0 | 3 | **0%** | W1/W2 HIGH, W7 MEDIUM (skip flags deferred) |
-| Audio Processing | 3 | 4 | **75%** | ✅ **Batch 2 Complete** (AP1-AP3), AP5 remaining |
+| Audio Processing | 4 | 4 | **100%** | ✅ **Batch 2 & 3 Complete** (AP1-AP3, AP5) |
 | Input Modes | 1 | 3 | **33%** | P2, P3 are HIGH priority |
 | Audio Fetching | 0 | 1 | **0%** | A1 is HIGH priority |
 | Flags to Remove | - | - | - | I3-I6, AP6 (simplify codebase) |
@@ -166,15 +166,15 @@ This section provides a comprehensive comparison of all CLI parameters between `
 | AP2 | `--backing_vocals_models` | ✅ | ✅ | **Stage 2 separation model(s).** AI model(s) for separating lead vocals from backing vocals. Default: `mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt`. |
 | AP3 | `--other_stems_models` | ✅ | ✅ | **Multi-stem separation model.** AI model for separating drums, bass, guitar, piano, other. Default: `htdemucs_6s.yaml`. |
 | AP4 | `--model_file_dir` | ✅ | N/A | **Model cache directory.** Where to store/load AI model files. Default: `/tmp/audio-separator-models/`. |
-| AP5 | `--existing_instrumental` | ✅ | ❌ | **Use pre-made instrumental.** Path to an existing instrumental file to use instead of running AI separation. Useful when you have a better instrumental from another source (official instrumental release, manual editing, etc.). Skips audio separation entirely. |
+| AP5 | `--existing_instrumental` | ✅ | ✅ | **Use pre-made instrumental.** Path to an existing instrumental file to use instead of running AI separation. Useful when you have a better instrumental from another source (official instrumental release, manual editing, etc.). Backend still runs separation for stems, but uses provided instrumental for final video. |
 | AP6 | `--instrumental_format` | 🗑️ | N/A | **REMOVE FROM LOCAL CLI.** FLAC is always fine, no need for format option. |
 
-**Remote Implementation Status:** ✅ **BATCH 2 COMPLETE** (PR #9, v0.71.24)
+**Remote Implementation Status:** ✅ **BATCH 2 & 3 COMPLETE** (PR #9 v0.71.24, PR #10 v0.71.26)
 - **AP1 `--clean_instrumental_model`**: ✅ IMPLEMENTED. Sent as form field to backend. Audio worker passes to Modal API.
 - **AP2 `--backing_vocals_models`**: ✅ IMPLEMENTED. Sent as comma-separated list, parsed and passed to Modal API.
 - **AP3 `--other_stems_models`**: ✅ IMPLEMENTED. Sent as comma-separated list, parsed and passed to Modal API.
 - **AP4 `--model_file_dir`**: N/A for remote - Modal API handles model caching internally.
-- **AP5 `--existing_instrumental`**: HIGH PRIORITY (Batch 3). User uploads instrumental file with job. Backend STILL runs separation (for consistent stem outputs in download folder), but uses provided instrumental for karaoke remux and final video. **VALIDATION REQUIRED**: At job start, validate provided instrumental duration matches input audio duration (within 0.5 seconds tolerance) to ensure sync before proceeding.
+- **AP5 `--existing_instrumental`**: ✅ IMPLEMENTED (Batch 3). User uploads instrumental file with job. Backend validates duration match (±0.5s), still runs separation for stems, but uses provided instrumental for final video encoding.
 - **AP6**: REMOVE from local CLI - FLAC is always fine.
 
 ---
@@ -345,21 +345,25 @@ Bump the patch version in `pyproject.toml` before committing.
 
 ---
 
-### Batch 3: Existing Instrumental Support (HIGH)
+### Batch 3: Existing Instrumental Support (HIGH) ✅ COMPLETE
 **Parameters:** AP5 `--existing_instrumental`
 
-**Scope:**
-- Remote CLI: Upload instrumental file alongside audio file
-- Backend: Accept instrumental file upload
-- Backend: Validate duration matches input audio (±0.5s) at job start
-- Backend: Still run separation for stems, but use provided instrumental for final video
-- Backend: Store instrumental path, render worker uses it instead of separated instrumental
+**Status:** ✅ **IMPLEMENTED** - PR #10 merged (v0.71.26)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - upload instrumental file
-- `backend/api/routes/file_upload.py` - accept instrumental upload, add validation
-- `backend/workers/audio_worker.py` - mark instrumental source in outputs
-- `backend/workers/render_worker.py` - use provided instrumental if present
+**Implementation Summary:**
+- Remote CLI: Added `--existing_instrumental` parameter, uploads file as `existing_instrumental` type
+- Backend: Added `existing_instrumental` to VALID_FILE_TYPES with audio extension validation
+- Backend: Duration validation (±0.5s tolerance) at uploads-complete endpoint using pydub
+- Backend: Job model has `existing_instrumental_gcs_path` field
+- Backend: Video worker downloads user-provided instrumental if present, uses it for final encoding
+
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - submit_job() with existing_instrumental param
+- `backend/api/routes/file_upload.py` - VALID_FILE_TYPES, GCS path generation, duration validation
+- `backend/models/job.py` - existing_instrumental_gcs_path field
+- `backend/workers/video_worker.py` - downloads and uses user-provided instrumental
+
+**Tests added:** 20+ unit tests covering model fields, file type validation, GCS path generation, duration validation
 
 **Complexity:** Medium (file upload + validation + conditional logic)
 
@@ -504,7 +508,7 @@ Bump the patch version in `pyproject.toml` before committing.
 |-------|------------|----------|------------|--------|
 | 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | ✅ **COMPLETE** (PR #8) |
 | 2 | AP1-AP3 (model selection) | HIGH | Low | ✅ **COMPLETE** (PR #9) |
-| 3 | AP5 (existing instrumental) | HIGH | Medium | ⏳ Pending |
+| 3 | AP5 (existing instrumental) | HIGH | Medium | ✅ **COMPLETE** (PR #10) |
 | 4 | P2 (YouTube URLs) | HIGH | Medium-High | ⏳ Pending |
 | 5 | P3, A1 (flacfetch search) | HIGH | High | ⏳ Pending |
 | 6 | W1, W2, F15 (two-phase) | HIGH | High | ⏳ Pending |
@@ -513,7 +517,7 @@ Bump the patch version in `pyproject.toml` before committing.
 | 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | ⏳ Pending |
 | 10 | F14, D2, D3, removals | LOW | Mixed | ⏳ Pending |
 
-**Recommended Order:** ~~1~~ → ~~2~~ → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+**Recommended Order:** ~~1~~ → ~~2~~ → ~~3~~ → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
 Batches 1-3 are quick wins that add significant value. Batches 4-6 are larger but high priority. Batches 7-10 can be done as time permits.
 
@@ -622,14 +626,14 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 | Feature | Version | PR | Notes |
 |---------|---------|-----|-------|
-|| Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
+| Existing instrumental | v0.71.26 | #10 | `--existing_instrumental` - upload and use user-provided instrumental |
+| Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
 | Lyrics override params | v0.71.22 | #8 | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms` |
 
 ### ⏳ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Existing instrumental | HIGH | `--existing_instrumental` for re-processing |
 | Style override | MEDIUM | `--style_override` for quick tweaks |
 | Skip separation/transcription | MEDIUM | Workflow control for re-processing |
 | Edit lyrics mode | MEDIUM | `--edit-lyrics` for fixing existing tracks |
@@ -881,6 +885,16 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 
 ## Recent Changes Log
 
+### 2024-12-11: v0.71.26 - Batch 3 Complete (Existing Instrumental Support)
+
+**PR #10: Existing Instrumental Support for Remote CLI**
+
+- ✅ `--existing_instrumental` - Upload and use user-provided instrumental file
+- Duration validation (±0.5s tolerance) before processing starts
+- Backend still runs AI separation for stem downloads, but uses provided instrumental for final video
+- Added 20+ unit tests for new functionality
+- Files: `remote_cli.py`, `file_upload.py`, `job.py`, `video_worker.py`
+
 ### 2024-12-11: v0.71.24 - Batch 2 Complete (Audio Model Selection)
 
 **PR #9: Audio Model Selection for Remote CLI**
@@ -957,12 +971,11 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
    - `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models`
    - PR #9, v0.71.24
 
-3. **Existing Instrumental** (Batch 3 - NEXT)
-   - Add `--existing_instrumental` upload support
-   - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`, `render_worker.py`
-   - Enables: Re-processing with better instrumentals
+3. ✅ **Existing Instrumental** (Batch 3 - COMPLETE)
+   - Added `--existing_instrumental` upload support
+   - PR #10, v0.71.26
 
-4. **YouTube URL Input** (Batch 4)
+4. **YouTube URL Input** (Batch 4 - NEXT)
    - Accept YouTube URLs as input
    - Requires: yt-dlp in container
    - Enables: Processing niche live versions only on YouTube

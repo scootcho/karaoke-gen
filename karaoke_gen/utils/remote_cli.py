@@ -272,6 +272,8 @@ class RemoteKaraokeClient:
         clean_instrumental_model: Optional[str] = None,
         backing_vocals_models: Optional[list] = None,
         other_stems_models: Optional[list] = None,
+        # Existing instrumental (Batch 3)
+        existing_instrumental: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -302,6 +304,7 @@ class RemoteKaraokeClient:
             clean_instrumental_model: Model for clean instrumental separation
             backing_vocals_models: List of models for backing vocals separation
             other_stems_models: List of models for other stems (bass, drums, etc.)
+            existing_instrumental: Path to existing instrumental file to use instead of AI separation
         """
         file_path = Path(filepath)
         
@@ -366,6 +369,17 @@ class RemoteKaraokeClient:
             })
             local_files['lyrics_file'] = lyrics_file
             self.logger.info(f"Will upload lyrics file: {lyrics_file}")
+        
+        # Add existing instrumental file if provided (Batch 3)
+        if existing_instrumental and os.path.isfile(existing_instrumental):
+            content_type = self._get_content_type(existing_instrumental)
+            files_info.append({
+                'filename': Path(existing_instrumental).name,
+                'content_type': content_type,
+                'file_type': 'existing_instrumental'
+            })
+            local_files['existing_instrumental'] = existing_instrumental
+            self.logger.info(f"Will upload existing instrumental: {existing_instrumental}")
         
         # Step 2: Create job and get signed upload URLs
         self.logger.info(f"Creating job at {self.config.service_url}/api/jobs/create-with-upload-urls")
@@ -1765,8 +1779,6 @@ def main():
         ignored_features.append("--skip-transcription")
     if args.lyrics_only:
         ignored_features.append("--lyrics-only")
-    if args.existing_instrumental:
-        ignored_features.append("--existing_instrumental")
     if args.background_video:
         ignored_features.append("--background_video")
     if getattr(args, 'auto_download', False):
@@ -1877,6 +1889,8 @@ def main():
         logger.info(f"Backing Vocals Models: {args.backing_vocals_models}")
     if getattr(args, 'other_stems_models', None):
         logger.info(f"Other Stems Models: {args.other_stems_models}")
+    if getattr(args, 'existing_instrumental', None):
+        logger.info(f"Existing Instrumental: {args.existing_instrumental}")
     logger.info(f"Service URL: {config.service_url}")
     logger.info(f"Review UI: {config.review_ui_url}")
     if config.non_interactive:
@@ -1919,6 +1933,8 @@ def main():
             clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
             backing_vocals_models=getattr(args, 'backing_vocals_models', None),
             other_stems_models=getattr(args, 'other_stems_models', None),
+            # Existing instrumental (Batch 3)
+            existing_instrumental=getattr(args, 'existing_instrumental', None),
         )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
