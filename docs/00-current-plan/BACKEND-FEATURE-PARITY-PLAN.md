@@ -698,96 +698,17 @@ karaoke-gen-remote \
 
 ---
 
-## Future Architecture: Shared Pipeline
+## Future Architecture
 
-Once feature parity is achieved, the codebase should be refactored toward a **shared pipeline architecture** where both local and remote execution use the same abstractions.
+For the comprehensive architecture plan covering both **horizontal scalability** (Cloud Tasks, Cloud Run Jobs) and **software architecture** (shared pipeline, SOLID, DRY), see:
 
-### Current State (Divergent Paths)
+**[SCALABLE-ARCHITECTURE-PLAN.md](./SCALABLE-ARCHITECTURE-PLAN.md)**
 
-```
-LOCAL CLI                               CLOUD BACKEND
-─────────                               ─────────────
-KaraokeGen.process()                    API Routes
-    │                                       │
-    ├─► AudioProcessor                      ├─► audio_worker.py
-    │   └── Modal API or local              │   └── Modal API
-    │                                       │
-    ├─► LyricsProcessor                     ├─► lyrics_worker.py
-    │   └── Orchestrates everything         │   └── Transcription only
-    │       including video generation      │
-    │                                       ├─► screens_worker.py
-    │                                       │
-    │                                       ├─► render_video_worker.py
-    │                                       │   └── OutputGenerator directly
-    │                                       │
-    └─► KaraokeFinalise                     └─► video_worker.py
-        └── Encoding, distribution              └── KaraokeFinalise
-```
-
-**Problems:**
-- Video generation called differently (via LyricsProcessor vs OutputGenerator directly)
-- LyricsProcessor does too many things (fetching, transcription, video, file management)
-- Testing requires mocking different things for local vs remote
-- Bug fixes may need to be applied in multiple places
-
-### Target State (Shared Pipeline)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         SHARED PIPELINE ARCHITECTURE                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   AudioInput → Separation → Transcription → Review → Render → Finalize     │
-│       │            │             │            │         │          │        │
-│       ▼            ▼             ▼            ▼         ▼          ▼        │
-│   ┌────────┐  ┌────────┐   ┌────────┐   ┌────────┐ ┌────────┐ ┌────────┐  │
-│   │ Stage  │  │ Stage  │   │ Stage  │   │ Stage  │ │ Stage  │ │ Stage  │  │
-│   │  API   │  │  API   │   │  API   │   │  API   │ │  API   │ │  API   │  │
-│   └────┬───┘  └────┬───┘   └────┬───┘   └────┬───┘ └────┬───┘ └────┬───┘  │
-│        │           │            │            │          │          │       │
-│   ┌────┴───────────┴────────────┴────────────┴──────────┴──────────┴────┐  │
-│   │                         EXECUTION LAYER                              │  │
-│   │                                                                      │  │
-│   │   Local Mode:        │    Remote Mode:                              │  │
-│   │   - Direct calls     │    - HTTP to backend                         │  │
-│   │   - Local GPU/CPU    │    - Workers + Modal                         │  │
-│   │   - Blocking         │    - Async + polling                         │  │
-│   └──────────────────────┴───────────────────────────────────────────────┘  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Benefits:**
-- Single source of truth for each pipeline stage
-- Each stage independently testable
-- Same business logic regardless of execution mode
-- Easier to add new stages or modify existing ones
-- DRY - fix bugs once, works everywhere
-
-### Implementation Plan for Shared Pipeline
-
-This refactor should be done in a separate branch after the v0.71.0 release:
-
-1. **Extract stage interfaces**
-   ```python
-   class PipelineStage(Protocol):
-       async def execute(self, context: PipelineContext) -> StageResult:
-           ...
-   ```
-
-2. **Create execution adapters**
-   ```python
-   class LocalExecutor:
-       """Runs stages directly in-process"""
-       
-   class RemoteExecutor:
-       """Runs stages via backend API/workers"""
-   ```
-
-3. **Refactor incrementally**
-   - Start with one stage (e.g., Separation)
-   - Prove the pattern works
-   - Migrate other stages
+Key goals:
+- **100+ concurrent jobs** with no performance degradation
+- **Dedicated resources per job** (no CPU/memory contention)
+- **Shared pipeline architecture** - single source of truth for business logic
+- **DRY codebase** - bug fixes apply to both local and remote execution
 
 ---
 
@@ -997,9 +918,10 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 5. **Edit Lyrics Mode** (Batch 9)
    - Allow fixing lyrics on completed jobs
 
-### Long-Term (Shared Pipeline Refactor)
-1. Create new branch for shared pipeline architecture
-2. Extract stage interfaces
-3. Implement execution adapters
-4. Migrate stages incrementally
-5. Achieve true code sharing between local and remote
+### Long-Term (Scalable Architecture)
+
+See **[SCALABLE-ARCHITECTURE-PLAN.md](./SCALABLE-ARCHITECTURE-PLAN.md)** for the comprehensive plan covering:
+1. Cloud Tasks integration for horizontal scalability
+2. Cloud Run Jobs for long-running video encoding
+3. Shared pipeline architecture for code reuse
+4. Implementation roadmap and migration strategy
