@@ -35,7 +35,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config, StyleConfig
-from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 
 # Import from karaoke_gen package
 from karaoke_gen.video_generator import VideoGenerator
@@ -88,94 +88,98 @@ async def generate_screens(job_id: str) -> bool:
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_screens_{job_id}_")
     
     try:
-        job_log.info(f"Starting screen generation for {job.artist} - {job.title}")
-        logger.info(f"Starting screen generation for job {job_id}")
-        
-        # Transition to GENERATING_SCREENS state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.GENERATING_SCREENS,
-            progress=50,
-            message="Generating title and end screens"
-        )
-        
-        # Log style assets info
-        style_assets = getattr(job, 'style_assets', {}) or {}
-        job_log.info(f"Style assets from job: {list(style_assets.keys()) if style_assets else 'None'}")
-        if style_assets:
-            for key, path in style_assets.items():
-                job_log.info(f"  {key}: {path}")
-        
-        # Load style configuration (downloads assets from GCS if available)
-        job_log.info("Loading style configuration from GCS...")
-        style_config = await load_style_config(job, storage, temp_dir)
-        if style_config.has_custom_styles():
-            job_log.info("Using CUSTOM style configuration")
-            logger.info(f"Job {job_id}: Using custom style configuration")
-        else:
-            job_log.warning("Using DEFAULT style configuration (no custom styles found)")
-            logger.info(f"Job {job_id}: Using default style configuration")
-        
-        # Initialize video generator
-        video_generator = _create_video_generator(temp_dir)
-        
-        # Generate title screen with style config
-        job_log.info("Generating title screen...")
-        title_screen_path = await _generate_title_screen(
-            job_id=job_id,
-            job=job,
-            video_generator=video_generator,
-            style_config=style_config,
-            temp_dir=temp_dir,
-            job_log=job_log
-        )
-        
-        if not title_screen_path:
-            raise Exception("Title screen generation failed")
-        job_log.info(f"Title screen generated: {title_screen_path}")
-        
-        # Generate end screen with style config
-        job_log.info("Generating end screen...")
-        end_screen_path = await _generate_end_screen(
-            job_id=job_id,
-            job=job,
-            video_generator=video_generator,
-            style_config=style_config,
-            temp_dir=temp_dir,
-            job_log=job_log
-        )
-        
-        if not end_screen_path:
-            raise Exception("End screen generation failed")
-        job_log.info(f"End screen generated: {end_screen_path}")
-        
-        # Upload screens to GCS
-        await _upload_screens(
-            job_id=job_id,
-            job_manager=job_manager,
-            storage=storage,
-            title_screen_path=title_screen_path,
-            end_screen_path=end_screen_path
-        )
-        
-        # Apply countdown padding if needed
-        # (This is handled automatically by checking lyrics metadata)
-        await _apply_countdown_padding_if_needed(job_id, job_manager, job)
-        
-        # Transition to AWAITING_REVIEW
-        # Human must review lyrics before video can be rendered
-        logger.info(f"Job {job_id}: Screens generated, awaiting lyrics review")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.AWAITING_REVIEW,
-            progress=55,
-            message="Ready for lyrics review. Please review and correct lyrics."
-        )
-        
-        # TODO: Send notification to user that selection is needed
-        # await notify_user(job_id, "instrumental_selection_ready")
-        
-        return True
+        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+        # This ensures logs from third-party libraries (karaoke_gen.video_generator) are only
+        # captured by this job's handler, not handlers from other concurrent jobs
+        with job_logging_context(job_id):
+            job_log.info(f"Starting screen generation for {job.artist} - {job.title}")
+            logger.info(f"Starting screen generation for job {job_id}")
+            
+            # Transition to GENERATING_SCREENS state
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.GENERATING_SCREENS,
+                progress=50,
+                message="Generating title and end screens"
+            )
+            
+            # Log style assets info
+            style_assets = getattr(job, 'style_assets', {}) or {}
+            job_log.info(f"Style assets from job: {list(style_assets.keys()) if style_assets else 'None'}")
+            if style_assets:
+                for key, path in style_assets.items():
+                    job_log.info(f"  {key}: {path}")
+            
+            # Load style configuration (downloads assets from GCS if available)
+            job_log.info("Loading style configuration from GCS...")
+            style_config = await load_style_config(job, storage, temp_dir)
+            if style_config.has_custom_styles():
+                job_log.info("Using CUSTOM style configuration")
+                logger.info(f"Job {job_id}: Using custom style configuration")
+            else:
+                job_log.warning("Using DEFAULT style configuration (no custom styles found)")
+                logger.info(f"Job {job_id}: Using default style configuration")
+            
+            # Initialize video generator
+            video_generator = _create_video_generator(temp_dir)
+            
+            # Generate title screen with style config
+            job_log.info("Generating title screen...")
+            title_screen_path = await _generate_title_screen(
+                job_id=job_id,
+                job=job,
+                video_generator=video_generator,
+                style_config=style_config,
+                temp_dir=temp_dir,
+                job_log=job_log
+            )
+            
+            if not title_screen_path:
+                raise Exception("Title screen generation failed")
+            job_log.info(f"Title screen generated: {title_screen_path}")
+            
+            # Generate end screen with style config
+            job_log.info("Generating end screen...")
+            end_screen_path = await _generate_end_screen(
+                job_id=job_id,
+                job=job,
+                video_generator=video_generator,
+                style_config=style_config,
+                temp_dir=temp_dir,
+                job_log=job_log
+            )
+            
+            if not end_screen_path:
+                raise Exception("End screen generation failed")
+            job_log.info(f"End screen generated: {end_screen_path}")
+            
+            # Upload screens to GCS
+            await _upload_screens(
+                job_id=job_id,
+                job_manager=job_manager,
+                storage=storage,
+                title_screen_path=title_screen_path,
+                end_screen_path=end_screen_path
+            )
+            
+            # Apply countdown padding if needed
+            # (This is handled automatically by checking lyrics metadata)
+            await _apply_countdown_padding_if_needed(job_id, job_manager, job)
+            
+            # Transition to AWAITING_REVIEW
+            # Human must review lyrics before video can be rendered
+            logger.info(f"Job {job_id}: Screens generated, awaiting lyrics review")
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.AWAITING_REVIEW,
+                progress=55,
+                message="Ready for lyrics review. Please review and correct lyrics."
+            )
+            
+            # TODO: Send notification to user that selection is needed
+            # await notify_user(job_id, "instrumental_selection_ready")
+            
+            return True
         
     except Exception as e:
         logger.error(f"Job {job_id}: Screen generation failed: {e}", exc_info=True)
