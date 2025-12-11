@@ -202,3 +202,437 @@ class TestFileOperations:
         """Test setting up output paths with no inputs."""
         with pytest.raises(ValueError, match="Error: At least title or artist must be provided"):
             basic_karaoke_gen.file_handler.setup_output_paths(basic_karaoke_gen.output_dir, None, None)
+
+    def test_download_audio_from_fetcher_result_file_not_found(self, basic_karaoke_gen, temp_dir):
+        """Test download_audio_from_fetcher_result when file doesn't exist."""
+        fake_path = os.path.join(temp_dir, "nonexistent.flac")
+        output_filename = os.path.join(temp_dir, "output")
+        
+        result = basic_karaoke_gen.file_handler.download_audio_from_fetcher_result(
+            fake_path, output_filename
+        )
+        
+        assert result is None
+
+
+class TestDownloadVideo:
+    """Tests for download_video method."""
+
+    def test_download_video_yt_dlp_not_available(self, basic_karaoke_gen):
+        """Test download_video when yt-dlp is not available."""
+        with patch.dict('karaoke_gen.file_handler.__dict__', {'YT_DLP_AVAILABLE': False}):
+            # Re-import to apply patch
+            from karaoke_gen.file_handler import FileHandler
+            handler = FileHandler(
+                logger=basic_karaoke_gen.logger,
+                ffmpeg_base_command="ffmpeg",
+                create_track_subfolders=False,
+                dry_run=False,
+            )
+            
+            # Mock the YT_DLP_AVAILABLE at module level
+            with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', False):
+                result = handler.download_video("https://youtube.com/watch?v=test", "/output/file")
+                assert result is None
+
+    def test_download_video_success(self, basic_karaoke_gen, temp_dir):
+        """Test successful video download."""
+        output_filename = os.path.join(temp_dir, "output")
+        
+        # Create a mock downloaded file
+        downloaded_file = f"{output_filename}.m4a"
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {"title": "Test Video"}
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                # Create the file that would be downloaded
+                with open(downloaded_file, 'w') as f:
+                    f.write("audio content")
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename
+                )
+                
+                assert result == downloaded_file
+
+    def test_download_video_extract_info_returns_none(self, basic_karaoke_gen, temp_dir):
+        """Test download_video when extract_info returns None."""
+        output_filename = os.path.join(temp_dir, "output")
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = None
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename
+                )
+                
+                assert result is None
+
+    def test_download_video_with_cookies(self, basic_karaoke_gen, temp_dir):
+        """Test download_video with cookies string."""
+        output_filename = os.path.join(temp_dir, "output")
+        downloaded_file = f"{output_filename}.m4a"
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {"title": "Test Video"}
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                # Create the file
+                with open(downloaded_file, 'w') as f:
+                    f.write("audio content")
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename,
+                    cookies_str="cookie_data_here"
+                )
+                
+                assert result == downloaded_file
+
+    def test_download_video_download_error(self, basic_karaoke_gen, temp_dir):
+        """Test download_video when yt-dlp raises DownloadError."""
+        output_filename = os.path.join(temp_dir, "output")
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.DownloadError = Exception
+                mock_ydl_instance.extract_info.side_effect = mock_yt_dlp.DownloadError("Download failed")
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename
+                )
+                
+                assert result is None
+
+    def test_download_video_generic_exception(self, basic_karaoke_gen, temp_dir):
+        """Test download_video when generic exception occurs."""
+        output_filename = os.path.join(temp_dir, "output")
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.side_effect = Exception("Generic error")
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.DownloadError = type('DownloadError', (Exception,), {})
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename
+                )
+                
+                assert result is None
+
+    def test_download_video_file_not_found_after_download(self, basic_karaoke_gen, temp_dir):
+        """Test download_video when downloaded file is not found."""
+        output_filename = os.path.join(temp_dir, "output")
+        
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {"title": "Test Video"}
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                # Don't create the file - simulate download failure
+                
+                result = basic_karaoke_gen.file_handler.download_video(
+                    "https://youtube.com/watch?v=test",
+                    output_filename
+                )
+                
+                assert result is None
+
+
+class TestExtractMetadataFromUrl:
+    """Tests for extract_metadata_from_url method."""
+
+    def test_extract_metadata_yt_dlp_not_available(self, basic_karaoke_gen):
+        """Test extract_metadata_from_url when yt-dlp is not available."""
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', False):
+            result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                "https://youtube.com/watch?v=test"
+            )
+            assert result is None
+
+    def test_extract_metadata_success_with_dash_format(self, basic_karaoke_gen):
+        """Test extracting metadata with 'Artist - Title' format."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {
+            "title": "Test Artist - Test Song",
+            "uploader": "Test Channel",
+            "duration": 240,
+        }
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result is not None
+                assert result['artist'] == "Test Artist"
+                assert result['title'] == "Test Song"
+                assert result['duration'] == 240
+
+    def test_extract_metadata_success_without_dash(self, basic_karaoke_gen):
+        """Test extracting metadata without 'Artist - Title' format."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {
+            "title": "Just A Song Title",
+            "uploader": "The Artist",
+            "duration": 180,
+        }
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result is not None
+                assert result['artist'] == "The Artist"
+                assert result['title'] == "Just A Song Title"
+
+    def test_extract_metadata_cleans_title_suffixes(self, basic_karaoke_gen):
+        """Test that common suffixes are cleaned from title."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {
+            "title": "Artist - Song Title (Official Video)",
+            "uploader": "VEVO",
+            "duration": 200,
+        }
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result is not None
+                assert result['title'] == "Song Title"
+
+    def test_extract_metadata_cleans_multiple_suffixes(self, basic_karaoke_gen):
+        """Test cleaning multiple suffixes from title."""
+        test_titles = [
+            ("Song (Official Music Video)", "Song"),
+            ("Song (Official Audio)", "Song"),
+            ("Song (Lyric Video)", "Song"),
+            ("Song (HD)", "Song"),
+            ("Song (4K)", "Song"),
+            ("Song (Remastered)", "Song"),
+            ("Song | Official Video", "Song"),
+            ("Song [Official Video]", "Song"),
+        ]
+        
+        for input_title, expected_title in test_titles:
+            mock_ydl_instance = MagicMock()
+            mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+            mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+            mock_ydl_instance.extract_info.return_value = {
+                "title": f"Artist - {input_title}",
+                "uploader": "Channel",
+                "duration": 200,
+            }
+            
+            with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+                with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                    mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                    
+                    result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                        "https://youtube.com/watch?v=test"
+                    )
+                    
+                    assert result['title'] == expected_title, f"Failed for input: {input_title}"
+
+    def test_extract_metadata_returns_none_on_error(self, basic_karaoke_gen):
+        """Test that None is returned on extraction error."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.side_effect = Exception("Network error")
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result is None
+
+    def test_extract_metadata_returns_none_when_info_is_none(self, basic_karaoke_gen):
+        """Test that None is returned when extract_info returns None."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = None
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result is None
+
+    def test_extract_metadata_uses_channel_as_fallback(self, basic_karaoke_gen):
+        """Test that channel is used as artist when uploader is not available."""
+        mock_ydl_instance = MagicMock()
+        mock_ydl_instance.__enter__ = MagicMock(return_value=mock_ydl_instance)
+        mock_ydl_instance.__exit__ = MagicMock(return_value=False)
+        mock_ydl_instance.extract_info.return_value = {
+            "title": "Song Title",
+            "channel": "The Channel",
+            "duration": 200,
+        }
+        
+        with patch('karaoke_gen.file_handler.YT_DLP_AVAILABLE', True):
+            with patch('karaoke_gen.file_handler.yt_dlp') as mock_yt_dlp:
+                mock_yt_dlp.YoutubeDL.return_value = mock_ydl_instance
+                
+                result = basic_karaoke_gen.file_handler.extract_metadata_from_url(
+                    "https://youtube.com/watch?v=test"
+                )
+                
+                assert result['artist'] == "The Channel"
+
+
+class TestBackupExistingOutputs:
+    """Tests for backup_existing_outputs method."""
+
+    def test_backup_existing_outputs_creates_version_dir(self, basic_karaoke_gen, temp_dir):
+        """Test that backup creates a versioned directory."""
+        # Setup artist and title
+        artist = "Test Artist"
+        title = "Test Song"
+        
+        # Create the necessary files
+        base_name = f"{artist} - {title}"
+        wav_file = os.path.join(temp_dir, f"{base_name}.wav")
+        with open(wav_file, 'w') as f:
+            f.write("audio content")
+        
+        # Create a file to be moved
+        karaoke_file = os.path.join(temp_dir, f"{base_name} (Karaoke).mp4")
+        with open(karaoke_file, 'w') as f:
+            f.write("video content")
+        
+        result = basic_karaoke_gen.file_handler.backup_existing_outputs(
+            temp_dir, artist, title
+        )
+        
+        # Check that version directory was created
+        version_dir = os.path.join(temp_dir, "version-1")
+        assert os.path.exists(version_dir)
+        
+        # Check that the file was moved
+        moved_file = os.path.join(version_dir, f"{base_name} (Karaoke).mp4")
+        assert os.path.exists(moved_file)
+        assert not os.path.exists(karaoke_file)
+        
+        # Check that the WAV file path was returned
+        assert result == wav_file
+
+    def test_backup_existing_outputs_increments_version(self, basic_karaoke_gen, temp_dir):
+        """Test that backup increments version number."""
+        artist = "Test Artist"
+        title = "Test Song"
+        
+        # Create existing version directories
+        os.makedirs(os.path.join(temp_dir, "version-1"))
+        os.makedirs(os.path.join(temp_dir, "version-2"))
+        
+        # Create the WAV file
+        base_name = f"{artist} - {title}"
+        wav_file = os.path.join(temp_dir, f"{base_name}.wav")
+        with open(wav_file, 'w') as f:
+            f.write("audio content")
+        
+        basic_karaoke_gen.file_handler.backup_existing_outputs(
+            temp_dir, artist, title
+        )
+        
+        # Check that version-3 was created
+        assert os.path.exists(os.path.join(temp_dir, "version-3"))
+
+    def test_backup_existing_outputs_raises_on_missing_wav(self, basic_karaoke_gen, temp_dir):
+        """Test that exception is raised when no WAV file is found."""
+        artist = "Test Artist"
+        title = "Test Song"
+        
+        with pytest.raises(Exception, match="No input audio file found"):
+            basic_karaoke_gen.file_handler.backup_existing_outputs(
+                temp_dir, artist, title
+            )
+
+    def test_backup_existing_outputs_backs_up_lyrics_dir(self, basic_karaoke_gen, temp_dir):
+        """Test that lyrics directory is backed up."""
+        artist = "Test Artist"
+        title = "Test Song"
+        
+        # Create WAV file
+        base_name = f"{artist} - {title}"
+        wav_file = os.path.join(temp_dir, f"{base_name}.wav")
+        with open(wav_file, 'w') as f:
+            f.write("audio content")
+        
+        # Create lyrics directory with a file
+        lyrics_dir = os.path.join(temp_dir, "lyrics")
+        os.makedirs(lyrics_dir)
+        lyrics_file = os.path.join(lyrics_dir, "lyrics.txt")
+        with open(lyrics_file, 'w') as f:
+            f.write("lyrics content")
+        
+        basic_karaoke_gen.file_handler.backup_existing_outputs(
+            temp_dir, artist, title
+        )
+        
+        # Check that lyrics were backed up
+        version_dir = os.path.join(temp_dir, "version-1")
+        backed_up_lyrics = os.path.join(version_dir, "lyrics", "lyrics.txt")
+        assert os.path.exists(backed_up_lyrics)
+        
+        # Original lyrics directory should be removed
+        assert not os.path.exists(lyrics_dir)
