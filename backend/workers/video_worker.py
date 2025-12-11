@@ -320,6 +320,13 @@ async def _handle_native_distribution(
     brand_code = result.get('brand_code')
     base_name = f"{job.artist} - {job.title}"
     
+    # Check if we should preserve existing brand code (Batch 6: --keep-brand-code)
+    keep_brand_code = getattr(job, 'keep_brand_code', None)
+    if keep_brand_code:
+        brand_code = keep_brand_code
+        result['brand_code'] = brand_code
+        job_log.info(f"Using preserved brand code: {brand_code}")
+    
     # Upload to Dropbox using native SDK
     dropbox_path = getattr(job, 'dropbox_path', None)
     brand_prefix = getattr(job, 'brand_prefix', None)

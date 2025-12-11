@@ -82,6 +82,10 @@ class CreateJobWithUploadUrlsRequest(BaseModel):
     
     # Existing instrumental configuration (Batch 3)
     existing_instrumental: bool = Field(False, description="Whether an existing instrumental file is being uploaded")
+    
+    # Two-phase workflow configuration (Batch 6)
+    prep_only: bool = Field(False, description="Stop after review phase, don't run finalisation")
+    keep_brand_code: Optional[str] = Field(None, description="Preserve existing brand code instead of generating new one")
 
 
 class SignedUploadUrl(BaseModel):
@@ -104,6 +108,40 @@ class CreateJobWithUploadUrlsResponse(BaseModel):
 class UploadsCompleteRequest(BaseModel):
     """Request to mark uploads as complete and start processing."""
     uploaded_files: List[str] = Field(..., description="List of file_types that were successfully uploaded")
+
+
+# ============================================================================
+# Finalise-Only Upload Models (Batch 6)
+# ============================================================================
+
+class FinaliseOnlyFileRequest(BaseModel):
+    """Information about a file to be uploaded for finalise-only mode."""
+    filename: str = Field(..., description="Original filename with extension")
+    content_type: str = Field(..., description="MIME type of the file")
+    file_type: str = Field(..., description="Type of file: 'audio', 'with_vocals', 'title_screen', 'end_screen', 'instrumental_clean', 'instrumental_backing', 'lrc', 'ass', 'corrections', etc.")
+
+
+class CreateFinaliseOnlyJobRequest(BaseModel):
+    """Request to create a finalise-only job with signed upload URLs."""
+    # Required fields
+    artist: str = Field(..., description="Artist name")
+    title: str = Field(..., description="Song title")
+    files: List[FinaliseOnlyFileRequest] = Field(..., description="List of files to upload from prep output")
+    
+    # Processing options
+    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
+    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+    
+    # Finalisation options
+    brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
+    keep_brand_code: Optional[str] = Field(None, description="Preserve existing brand code from folder name")
+    enable_youtube_upload: bool = Field(False, description="Upload to YouTube")
+    youtube_description: Optional[str] = Field(None, description="YouTube video description text")
+    discord_webhook_url: Optional[str] = Field(None, description="Discord webhook URL for notifications")
+    
+    # Distribution options
+    dropbox_path: Optional[str] = Field(None, description="Dropbox folder path for organized output")
+    gdrive_folder_id: Optional[str] = Field(None, description="Google Drive folder ID for public share uploads")
 
 # Initialize services
 job_manager = JobManager()
@@ -589,6 +627,25 @@ VALID_FILE_TYPES = {
     'existing_instrumental': ALLOWED_AUDIO_EXTENSIONS,  # Batch 3: user-provided instrumental
 }
 
+# Valid file types for finalise-only mode (Batch 6)
+ALLOWED_VIDEO_EXTENSIONS = {'.mkv', '.mov', '.mp4'}
+FINALISE_ONLY_FILE_TYPES = {
+    'audio': ALLOWED_AUDIO_EXTENSIONS,  # Original audio
+    'with_vocals': ALLOWED_VIDEO_EXTENSIONS,  # Karaoke video from prep
+    'title_screen': ALLOWED_VIDEO_EXTENSIONS,  # Title screen video
+    'end_screen': ALLOWED_VIDEO_EXTENSIONS,  # End screen video
+    'title_jpg': ALLOWED_IMAGE_EXTENSIONS,  # Title screen JPG
+    'title_png': ALLOWED_IMAGE_EXTENSIONS,  # Title screen PNG
+    'end_jpg': ALLOWED_IMAGE_EXTENSIONS,  # End screen JPG
+    'end_png': ALLOWED_IMAGE_EXTENSIONS,  # End screen PNG
+    'instrumental_clean': ALLOWED_AUDIO_EXTENSIONS,  # Clean instrumental
+    'instrumental_backing': ALLOWED_AUDIO_EXTENSIONS,  # Instrumental with backing vocals
+    'lrc': {'.lrc'},  # LRC lyrics
+    'ass': {'.ass'},  # ASS subtitles
+    'corrections': {'.json'},  # Corrections JSON
+    'style_params': {'.json'},  # Style params
+}
+
 
 async def _validate_audio_durations(
     storage: StorageService,
@@ -775,6 +832,9 @@ async def create_job_with_upload_urls(
             backing_vocals_models=body.backing_vocals_models,
             other_stems_models=body.other_stems_models,
             request_metadata=request_metadata,
+            # Two-phase workflow configuration (Batch 6)
+            prep_only=body.prep_only,
+            keep_brand_code=body.keep_brand_code,
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
@@ -1001,4 +1061,426 @@ async def mark_uploads_complete(
         raise
     except Exception as e:
         logger.error(f"Error completing uploads for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ============================================================================
+# Finalise-Only Upload Flow (Batch 6)
+# ============================================================================
+
+def _get_gcs_path_for_finalise_file(job_id: str, file_type: str, filename: str) -> str:
+    """Generate the GCS path for a finalise-only file based on its type."""
+    ext = Path(filename).suffix.lower()
+    
+    # Map file types to appropriate GCS paths
+    if file_type == 'audio':
+        return f"uploads/{job_id}/audio/{filename}"
+    elif file_type == 'with_vocals':
+        return f"jobs/{job_id}/videos/with_vocals{ext}"
+    elif file_type == 'title_screen':
+        return f"jobs/{job_id}/screens/title{ext}"
+    elif file_type == 'end_screen':
+        return f"jobs/{job_id}/screens/end{ext}"
+    elif file_type == 'title_jpg':
+        return f"jobs/{job_id}/screens/title.jpg"
+    elif file_type == 'title_png':
+        return f"jobs/{job_id}/screens/title.png"
+    elif file_type == 'end_jpg':
+        return f"jobs/{job_id}/screens/end.jpg"
+    elif file_type == 'end_png':
+        return f"jobs/{job_id}/screens/end.png"
+    elif file_type == 'instrumental_clean':
+        return f"jobs/{job_id}/stems/instrumental_clean{ext}"
+    elif file_type == 'instrumental_backing':
+        return f"jobs/{job_id}/stems/instrumental_with_backing{ext}"
+    elif file_type == 'lrc':
+        return f"jobs/{job_id}/lyrics/karaoke.lrc"
+    elif file_type == 'ass':
+        return f"jobs/{job_id}/lyrics/karaoke.ass"
+    elif file_type == 'corrections':
+        return f"jobs/{job_id}/lyrics/corrections.json"
+    elif file_type == 'style_params':
+        return f"uploads/{job_id}/style/style_params.json"
+    else:
+        return f"uploads/{job_id}/other/{filename}"
+
+
+@router.post("/jobs/create-finalise-only")
+async def create_finalise_only_job(
+    request: Request,
+    body: CreateFinaliseOnlyJobRequest,
+):
+    """
+    Create a finalise-only job for continuing from a local prep phase.
+    
+    This endpoint is used when:
+    1. User previously ran --prep-only which created local prep outputs
+    2. User optionally made manual edits to stems, lyrics, etc.
+    3. User now wants cloud to handle finalisation (encoding, distribution)
+    
+    Required files:
+    - with_vocals: The karaoke video from prep (*.mkv or *.mov)
+    - title_screen: Title screen video
+    - end_screen: End screen video
+    - instrumental_clean or instrumental_backing: At least one instrumental
+    
+    The endpoint returns signed URLs for uploading all the prep files.
+    """
+    try:
+        # Validate files list
+        if not body.files:
+            raise HTTPException(status_code=400, detail="At least one file is required")
+        
+        # Validate file types
+        file_types = {f.file_type for f in body.files}
+        
+        # Check required files for finalise-only
+        if 'with_vocals' not in file_types:
+            raise HTTPException(
+                status_code=400,
+                detail="with_vocals video is required for finalise-only mode"
+            )
+        if 'title_screen' not in file_types:
+            raise HTTPException(
+                status_code=400,
+                detail="title_screen video is required for finalise-only mode"
+            )
+        if 'end_screen' not in file_types:
+            raise HTTPException(
+                status_code=400,
+                detail="end_screen video is required for finalise-only mode"
+            )
+        if 'instrumental_clean' not in file_types and 'instrumental_backing' not in file_types:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one instrumental (clean or backing) is required"
+            )
+        
+        # Validate file extensions
+        for file_info in body.files:
+            if file_info.file_type not in FINALISE_ONLY_FILE_TYPES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file_type: '{file_info.file_type}'. Valid types: {list(FINALISE_ONLY_FILE_TYPES.keys())}"
+                )
+            
+            ext = Path(file_info.filename).suffix.lower()
+            allowed_extensions = FINALISE_ONLY_FILE_TYPES[file_info.file_type]
+            if ext not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file extension '{ext}' for file_type '{file_info.file_type}'. Allowed: {allowed_extensions}"
+                )
+        
+        # Apply default distribution settings
+        settings = get_settings()
+        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
+        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
+        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
+        
+        # Validate distribution credentials if services are requested
+        invalid_services = []
+        credential_manager = get_credential_manager()
+        
+        if body.enable_youtube_upload:
+            result = credential_manager.check_youtube_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"youtube ({result.message})")
+        
+        if effective_dropbox_path:
+            result = credential_manager.check_dropbox_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"dropbox ({result.message})")
+        
+        if effective_gdrive_folder_id:
+            result = credential_manager.check_gdrive_credentials()
+            if result.status != CredentialStatus.VALID:
+                invalid_services.append(f"gdrive ({result.message})")
+        
+        if invalid_services:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "credentials_invalid",
+                    "message": f"The following distribution services need re-authorization: {', '.join(invalid_services)}",
+                    "invalid_services": invalid_services,
+                    "auth_url": "/api/auth/status"
+                }
+            )
+        
+        # Extract request metadata
+        request_metadata = extract_request_metadata(request, created_from="finalise_only_upload")
+        
+        # Create job with finalise_only=True
+        job_create = JobCreate(
+            artist=body.artist,
+            title=body.title,
+            filename="finalise_only",  # No single audio file - using prep outputs
+            enable_cdg=body.enable_cdg,
+            enable_txt=body.enable_txt,
+            brand_prefix=body.brand_prefix,
+            enable_youtube_upload=body.enable_youtube_upload,
+            youtube_description=body.youtube_description,
+            discord_webhook_url=effective_discord_webhook_url,
+            dropbox_path=effective_dropbox_path,
+            gdrive_folder_id=effective_gdrive_folder_id,
+            finalise_only=True,
+            keep_brand_code=body.keep_brand_code,
+            request_metadata=request_metadata,
+        )
+        job = job_manager.create_job(job_create)
+        job_id = job.job_id
+        
+        logger.info(f"Created finalise-only job {job_id} for {body.artist} - {body.title}")
+        
+        # Generate signed upload URLs for each file
+        upload_urls = []
+        for file_info in body.files:
+            gcs_path = _get_gcs_path_for_finalise_file(job_id, file_info.file_type, file_info.filename)
+            
+            # Generate signed upload URL (valid for 60 minutes)
+            signed_url = storage_service.generate_signed_upload_url(
+                gcs_path,
+                content_type=file_info.content_type,
+                expiration_minutes=60
+            )
+            
+            upload_urls.append(SignedUploadUrl(
+                file_type=file_info.file_type,
+                gcs_path=gcs_path,
+                upload_url=signed_url,
+                content_type=file_info.content_type
+            ))
+            
+            logger.info(f"Generated signed upload URL for {file_info.file_type}: {gcs_path}")
+        
+        return CreateJobWithUploadUrlsResponse(
+            status="success",
+            job_id=job_id,
+            message="Finalise-only job created. Upload files to the provided URLs, then call /api/jobs/{job_id}/finalise-uploads-complete",
+            upload_urls=upload_urls,
+            server_version=VERSION
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating finalise-only job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/jobs/{job_id}/finalise-uploads-complete")
+async def mark_finalise_uploads_complete(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    body: UploadsCompleteRequest,
+):
+    """
+    Mark finalise-only file uploads as complete and start video generation.
+    
+    This is called after uploading prep outputs for a finalise-only job.
+    The job will transition directly to AWAITING_INSTRUMENTAL_SELECTION.
+    """
+    try:
+        # Get job and verify it exists
+        job = job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        # Verify job is in pending state and is finalise-only
+        if job.status != JobStatus.PENDING:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job_id} is not in pending state (current: {job.status}). Cannot complete uploads."
+            )
+        
+        if not job.finalise_only:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Job {job_id} is not a finalise-only job. Use /api/jobs/{job_id}/uploads-complete instead."
+            )
+        
+        # Validate required files were uploaded
+        required_files = {'with_vocals', 'title_screen', 'end_screen'}
+        uploaded_set = set(body.uploaded_files)
+        
+        missing_files = required_files - uploaded_set
+        if missing_files:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required files: {missing_files}"
+            )
+        
+        # Require at least one instrumental
+        if 'instrumental_clean' not in uploaded_set and 'instrumental_backing' not in uploaded_set:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one instrumental (clean or backing) is required"
+            )
+        
+        # Build file_urls structure from uploaded files
+        file_urls: Dict[str, Dict[str, str]] = {
+            'videos': {},
+            'screens': {},
+            'stems': {},
+            'lyrics': {},
+        }
+        
+        for file_type in body.uploaded_files:
+            if file_type not in FINALISE_ONLY_FILE_TYPES:
+                logger.warning(f"Unknown file_type in uploaded_files: {file_type}")
+                continue
+            
+            # Determine the GCS path - we need to find the actual file
+            if file_type == 'audio':
+                prefix = f"uploads/{job_id}/audio/"
+            elif file_type == 'with_vocals':
+                prefix = f"jobs/{job_id}/videos/with_vocals"
+            elif file_type == 'title_screen':
+                prefix = f"jobs/{job_id}/screens/title"
+            elif file_type == 'end_screen':
+                prefix = f"jobs/{job_id}/screens/end"
+            elif file_type == 'title_jpg':
+                prefix = f"jobs/{job_id}/screens/title.jpg"
+            elif file_type == 'title_png':
+                prefix = f"jobs/{job_id}/screens/title.png"
+            elif file_type == 'end_jpg':
+                prefix = f"jobs/{job_id}/screens/end.jpg"
+            elif file_type == 'end_png':
+                prefix = f"jobs/{job_id}/screens/end.png"
+            elif file_type == 'instrumental_clean':
+                prefix = f"jobs/{job_id}/stems/instrumental_clean"
+            elif file_type == 'instrumental_backing':
+                prefix = f"jobs/{job_id}/stems/instrumental_with_backing"
+            elif file_type == 'lrc':
+                prefix = f"jobs/{job_id}/lyrics/karaoke.lrc"
+            elif file_type == 'ass':
+                prefix = f"jobs/{job_id}/lyrics/karaoke.ass"
+            elif file_type == 'corrections':
+                prefix = f"jobs/{job_id}/lyrics/corrections"
+            elif file_type == 'style_params':
+                prefix = f"uploads/{job_id}/style/style_params"
+            else:
+                continue
+            
+            # List files with this prefix to find the actual uploaded file
+            files = storage_service.list_files(prefix)
+            if not files:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File for '{file_type}' was not uploaded to GCS. Expected prefix: {prefix}"
+                )
+            
+            gcs_path = files[0]
+            
+            # Map to file_urls structure
+            if file_type == 'audio':
+                pass  # Handled separately
+            elif file_type == 'with_vocals':
+                file_urls['videos']['with_vocals'] = gcs_path
+            elif file_type == 'title_screen':
+                file_urls['screens']['title'] = gcs_path
+            elif file_type == 'end_screen':
+                file_urls['screens']['end'] = gcs_path
+            elif file_type == 'title_jpg':
+                file_urls['screens']['title_jpg'] = gcs_path
+            elif file_type == 'title_png':
+                file_urls['screens']['title_png'] = gcs_path
+            elif file_type == 'end_jpg':
+                file_urls['screens']['end_jpg'] = gcs_path
+            elif file_type == 'end_png':
+                file_urls['screens']['end_png'] = gcs_path
+            elif file_type == 'instrumental_clean':
+                file_urls['stems']['instrumental_clean'] = gcs_path
+            elif file_type == 'instrumental_backing':
+                file_urls['stems']['instrumental_with_backing'] = gcs_path
+            elif file_type == 'lrc':
+                file_urls['lyrics']['lrc'] = gcs_path
+            elif file_type == 'ass':
+                file_urls['lyrics']['ass'] = gcs_path
+            elif file_type == 'corrections':
+                file_urls['lyrics']['corrections'] = gcs_path
+        
+        # Get audio path if uploaded
+        audio_gcs_path = None
+        if 'audio' in body.uploaded_files:
+            audio_files = storage_service.list_files(f"uploads/{job_id}/audio/")
+            if audio_files:
+                audio_gcs_path = audio_files[0]
+        
+        # Update job with file paths
+        update_data = {
+            'file_urls': file_urls,
+            'finalise_only': True,
+        }
+        
+        if audio_gcs_path:
+            update_data['input_media_gcs_path'] = audio_gcs_path
+        
+        # Mark parallel processing as complete (we're skipping it)
+        update_data['state_data'] = {
+            'audio_complete': True,
+            'lyrics_complete': True,
+            'finalise_only': True,
+        }
+        
+        job_manager.update_job(job_id, update_data)
+        
+        logger.info(f"Validated finalise-only uploads for job {job_id}: {body.uploaded_files}")
+        
+        # Transition directly to AWAITING_INSTRUMENTAL_SELECTION
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+            progress=80,
+            message="Prep files uploaded - select your instrumental"
+        )
+        
+        # Get distribution services info for response
+        credential_manager = get_credential_manager()
+        distribution_services: Dict[str, Any] = {}
+        
+        updated_job = job_manager.get_job(job_id)
+        
+        if updated_job.dropbox_path:
+            dropbox_result = credential_manager.check_dropbox_credentials()
+            distribution_services["dropbox"] = {
+                "enabled": True,
+                "path": updated_job.dropbox_path,
+                "credentials_valid": dropbox_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.gdrive_folder_id:
+            gdrive_result = credential_manager.check_gdrive_credentials()
+            distribution_services["gdrive"] = {
+                "enabled": True,
+                "folder_id": updated_job.gdrive_folder_id,
+                "credentials_valid": gdrive_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.enable_youtube_upload:
+            youtube_result = credential_manager.check_youtube_credentials()
+            distribution_services["youtube"] = {
+                "enabled": True,
+                "credentials_valid": youtube_result.status == CredentialStatus.VALID,
+            }
+        
+        if updated_job.discord_webhook_url:
+            distribution_services["discord"] = {
+                "enabled": True,
+            }
+        
+        return {
+            "status": "success",
+            "job_id": job_id,
+            "message": "Finalise-only uploads validated. Select instrumental to continue.",
+            "files_validated": body.uploaded_files,
+            "server_version": VERSION,
+            "distribution_services": distribution_services,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing finalise-only uploads for job {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e

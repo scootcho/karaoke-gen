@@ -55,6 +55,10 @@ class JobManager:
             youtube_description=job_create.youtube_description,
             webhook_url=job_create.webhook_url,
             user_email=job_create.user_email,
+            # Two-phase workflow (Batch 6)
+            prep_only=job_create.prep_only,
+            finalise_only=job_create.finalise_only,
+            keep_brand_code=job_create.keep_brand_code,
             # Request metadata (for tracking and filtering)
             request_metadata=job_create.request_metadata,
         )

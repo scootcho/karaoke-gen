@@ -670,6 +670,249 @@ class TestExistingInstrumentalModelFields:
         assert job.existing_instrumental_gcs_path == "uploads/test123/audio/my_instrumental.flac"
 
 
+class TestTwoPhaseWorkflowFields:
+    """Test two-phase workflow fields in Job and JobCreate models (Batch 6)."""
+    
+    def test_job_has_prep_only_field(self):
+        """Test that Job model has prep_only field."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            prep_only=True
+        )
+        
+        assert hasattr(job, 'prep_only')
+        assert job.prep_only is True
+    
+    def test_job_prep_only_defaults_to_false(self):
+        """Test that prep_only defaults to False."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.prep_only is False
+    
+    def test_job_has_finalise_only_field(self):
+        """Test that Job model has finalise_only field."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            finalise_only=True
+        )
+        
+        assert hasattr(job, 'finalise_only')
+        assert job.finalise_only is True
+    
+    def test_job_finalise_only_defaults_to_false(self):
+        """Test that finalise_only defaults to False."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.finalise_only is False
+    
+    def test_job_has_keep_brand_code_field(self):
+        """Test that Job model has keep_brand_code field."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            keep_brand_code="NOMAD-1234"
+        )
+        
+        assert hasattr(job, 'keep_brand_code')
+        assert job.keep_brand_code == "NOMAD-1234"
+    
+    def test_job_keep_brand_code_defaults_to_none(self):
+        """Test that keep_brand_code defaults to None."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.keep_brand_code is None
+    
+    def test_job_create_has_two_phase_workflow_fields(self):
+        """Test that JobCreate model has two-phase workflow fields."""
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title",
+            prep_only=True,
+            finalise_only=False,
+            keep_brand_code="BRAND-0001"
+        )
+        
+        assert job_create.prep_only is True
+        assert job_create.finalise_only is False
+        assert job_create.keep_brand_code == "BRAND-0001"
+    
+    def test_two_phase_workflow_roundtrip_serialization(self):
+        """Test that two-phase workflow fields survive serialization/deserialization."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            prep_only=True,
+            finalise_only=False,
+            keep_brand_code="NOMAD-5678"
+        )
+        
+        # Serialize to dict (simulates writing to Firestore)
+        job_dict = job.model_dump()
+        
+        # Convert to JSON and back (simulates Firestore storage)
+        json_str = json.dumps(job_dict, default=str)
+        restored_dict = json.loads(json_str)
+        
+        # Deserialize back to Job (simulates reading from Firestore)
+        restored_job = Job(**restored_dict)
+        
+        assert restored_job.prep_only is True
+        assert restored_job.finalise_only is False
+        assert restored_job.keep_brand_code == "NOMAD-5678"
+
+
+class TestPrepCompleteStatus:
+    """Test PREP_COMPLETE status and state transitions (Batch 6)."""
+    
+    def test_prep_complete_status_exists(self):
+        """Test that PREP_COMPLETE status exists in JobStatus enum."""
+        assert hasattr(JobStatus, 'PREP_COMPLETE')
+        assert JobStatus.PREP_COMPLETE.value == "prep_complete"
+    
+    def test_job_can_have_prep_complete_status(self):
+        """Test that Job can be created with PREP_COMPLETE status."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PREP_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.status == JobStatus.PREP_COMPLETE
+    
+    def test_state_transitions_review_complete_to_prep_complete(self):
+        """Test that REVIEW_COMPLETE can transition to PREP_COMPLETE."""
+        from backend.models.job import STATE_TRANSITIONS
+        
+        valid_transitions = STATE_TRANSITIONS.get(JobStatus.REVIEW_COMPLETE, [])
+        assert JobStatus.PREP_COMPLETE in valid_transitions
+    
+    def test_state_transitions_prep_complete_to_awaiting_instrumental(self):
+        """Test that PREP_COMPLETE can transition to AWAITING_INSTRUMENTAL_SELECTION."""
+        from backend.models.job import STATE_TRANSITIONS
+        
+        valid_transitions = STATE_TRANSITIONS.get(JobStatus.PREP_COMPLETE, [])
+        assert JobStatus.AWAITING_INSTRUMENTAL_SELECTION in valid_transitions
+    
+    def test_state_transitions_pending_to_awaiting_instrumental(self):
+        """Test that PENDING can transition to AWAITING_INSTRUMENTAL_SELECTION (for finalise-only)."""
+        from backend.models.job import STATE_TRANSITIONS
+        
+        valid_transitions = STATE_TRANSITIONS.get(JobStatus.PENDING, [])
+        assert JobStatus.AWAITING_INSTRUMENTAL_SELECTION in valid_transitions
+    
+    def test_critical_statuses_include_prep_complete(self):
+        """Test that PREP_COMPLETE is in the list of job statuses."""
+        all_statuses = [status.value for status in JobStatus]
+        assert "prep_complete" in all_statuses
+
+
+class TestJobWithFullTwoPhaseConfig:
+    """Integration tests for two-phase workflow job configuration."""
+    
+    def test_prep_only_job_full_config(self):
+        """Test creating a prep-only job with full configuration."""
+        job = Job(
+            job_id="prep123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            prep_only=True,
+            enable_cdg=True,
+            enable_txt=True,
+            brand_prefix="NOMAD",
+        )
+        
+        assert job.prep_only is True
+        assert job.finalise_only is False
+        assert job.brand_prefix == "NOMAD"
+    
+    def test_finalise_only_job_full_config(self):
+        """Test creating a finalise-only job with full configuration."""
+        job = Job(
+            job_id="final123",
+            status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            finalise_only=True,
+            keep_brand_code="NOMAD-1234",
+            enable_youtube_upload=True,
+            dropbox_path="/Karaoke/Tracks",
+            state_data={
+                "audio_complete": True,
+                "lyrics_complete": True,
+                "finalise_only": True,
+            }
+        )
+        
+        assert job.finalise_only is True
+        assert job.keep_brand_code == "NOMAD-1234"
+        assert job.state_data["finalise_only"] is True
+    
+    def test_prep_complete_job_with_file_urls(self):
+        """Test a job that has reached PREP_COMPLETE status with all prep outputs."""
+        job = Job(
+            job_id="prepcomp123",
+            status=JobStatus.PREP_COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="ABBA",
+            title="Waterloo",
+            prep_only=True,
+            file_urls={
+                "stems": {
+                    "instrumental_clean": "gs://bucket/jobs/prepcomp123/stems/instrumental_clean.flac",
+                    "instrumental_with_backing": "gs://bucket/jobs/prepcomp123/stems/instrumental_with_backing.flac",
+                },
+                "videos": {
+                    "with_vocals": "gs://bucket/jobs/prepcomp123/videos/with_vocals.mkv",
+                },
+                "screens": {
+                    "title": "gs://bucket/jobs/prepcomp123/screens/title.mov",
+                    "end": "gs://bucket/jobs/prepcomp123/screens/end.mov",
+                },
+                "lyrics": {
+                    "lrc": "gs://bucket/jobs/prepcomp123/lyrics/karaoke.lrc",
+                    "ass": "gs://bucket/jobs/prepcomp123/lyrics/karaoke.ass",
+                },
+            }
+        )
+        
+        assert job.status == JobStatus.PREP_COMPLETE
+        assert job.prep_only is True
+        assert "with_vocals" in job.file_urls["videos"]
+        assert "title" in job.file_urls["screens"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

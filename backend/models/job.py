@@ -67,6 +67,7 @@ class JobStatus(str, Enum):
     
     # Terminal states
     COMPLETE = "complete"                        # All processing finished successfully
+    PREP_COMPLETE = "prep_complete"             # Prep-only job completed (stops after review)
     FAILED = "failed"                           # Unrecoverable error occurred
     CANCELLED = "cancelled"                      # User cancelled the job
     
@@ -80,7 +81,8 @@ class JobStatus(str, Enum):
 
 # Valid state transitions
 STATE_TRANSITIONS = {
-    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.FAILED, JobStatus.CANCELLED],
+    # PENDING allows AWAITING_INSTRUMENTAL_SELECTION for finalise-only jobs
+    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED, JobStatus.CANCELLED],
     # DOWNLOADING allows parallel processing (audio + lyrics) and then screens when both complete
     JobStatus.DOWNLOADING: [JobStatus.SEPARATING_STAGE1, JobStatus.TRANSCRIBING, JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
     
@@ -102,7 +104,7 @@ STATE_TRANSITIONS = {
     # AWAITING_REVIEW can go directly to REVIEW_COMPLETE (quick review) or to IN_REVIEW (editing)
     JobStatus.AWAITING_REVIEW: [JobStatus.IN_REVIEW, JobStatus.REVIEW_COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED],
     JobStatus.IN_REVIEW: [JobStatus.REVIEW_COMPLETE, JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
-    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.FAILED],
+    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.PREP_COMPLETE, JobStatus.FAILED],  # PREP_COMPLETE for prep-only jobs
     
     # Video rendering (post-review)
     JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
@@ -120,9 +122,11 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
     
-    # Terminal states - COMPLETE and CANCELLED have no transitions
+    # Terminal states - COMPLETE, PREP_COMPLETE, and CANCELLED have no transitions
     # FAILED allows retry transitions to resume from checkpoints
+    # PREP_COMPLETE allows finalise-only continuation
     JobStatus.COMPLETE: [],
+    JobStatus.PREP_COMPLETE: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],  # Finalise-only continues from here
     JobStatus.FAILED: [
         JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
         JobStatus.REVIEW_COMPLETE,        # Retry from render stage
@@ -224,6 +228,11 @@ class Job(BaseModel):
     
     # Existing instrumental configuration (Batch 3)
     existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
+    
+    # Two-phase workflow configuration (Batch 6)
+    prep_only: bool = False                      # Stop after review, don't run finalisation
+    finalise_only: bool = False                  # Skip prep, run only finalisation (requires uploaded prep outputs)
+    keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
@@ -400,6 +409,11 @@ class JobCreate(BaseModel):
     
     # Existing instrumental configuration (Batch 3)
     existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
+    
+    # Two-phase workflow configuration (Batch 6)
+    prep_only: bool = False                      # Stop after review, don't run finalisation
+    finalise_only: bool = False                  # Skip prep, run only finalisation
+    keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)

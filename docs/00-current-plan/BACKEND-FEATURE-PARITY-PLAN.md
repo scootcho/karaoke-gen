@@ -409,19 +409,27 @@ Bump the patch version in `pyproject.toml` before committing.
 
 ---
 
-### Batch 6: Two-Phase Workflow (HIGH)
+### Batch 6: Two-Phase Workflow (HIGH) ✅ COMPLETE
 **Parameters:** W1 `--prep-only`, W2 `--finalise-only`, F15 `--keep-brand-code`
 
-**Scope:**
-- **prep-only:** Remote CLI submits with `prep_only=true`. Backend runs through review, then stops. CLI downloads all outputs and exits.
-- **finalise-only:** Remote CLI checks local folder for prep outputs, uploads ALL files, sends `finalise_only=true`. Backend runs finalisation only.
-- **keep-brand-code:** Remote CLI extracts brand code from local folder name, sends to backend to preserve.
+**Status:** ✅ Complete (2025-12-11)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - prep-only flow, finalise-only upload flow, brand code extraction
-- `backend/api/routes/file_upload.py` - accept prep_only, finalise_only flags
-- `backend/api/routes/` - new endpoint for finalise-only upload (multiple files)
-- `backend/workers/orchestrator.py` or job state machine - conditional worker execution
+**Implementation Summary:**
+- **prep-only:** Added `prep_only` field to Job model. When set, backend transitions to new `PREP_COMPLETE` status after review and video rendering (with_vocals.mkv). CLI downloads all prep outputs.
+- **finalise-only:** Added new endpoint `/api/jobs/create-finalise-only` for uploading prep outputs. Remote CLI detects files in prep folder, uploads them via signed URLs, and monitors finalisation.
+- **keep-brand-code:** Remote CLI extracts brand code from folder name (e.g., "NOMAD-1234 - Artist - Title"), sends to backend. Video worker uses preserved brand code for distribution.
+
+**Files modified:**
+- `backend/models/job.py` - Added `PREP_COMPLETE` status, `prep_only`, `finalise_only`, `keep_brand_code` fields, updated state transitions
+- `backend/api/routes/file_upload.py` - Added `prep_only`, `keep_brand_code` to job creation, new finalise-only endpoints
+- `backend/workers/render_video_worker.py` - Conditional transition to PREP_COMPLETE for prep-only jobs
+- `backend/workers/video_worker.py` - Use preserved brand code when set
+- `backend/services/job_manager.py` - Pass new fields through job creation
+- `karaoke_gen/utils/remote_cli.py` - Full implementation of prep-only, finalise-only, and keep-brand-code flows
+
+**Tests added:**
+- `backend/tests/test_models.py` - Tests for new fields and PREP_COMPLETE status
+- `backend/tests/test_file_upload.py` - Tests for finalise-only models and endpoints
 
 **Complexity:** High (significant workflow changes, new upload flow)
 
@@ -985,7 +993,7 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 1. **Flacfetch Audio Search** (Batch 5)
    - Interactive audio source selection via API
    
-2. **Two-Phase Workflow** (Batch 6)
+2. **Two-Phase Workflow** (Batch 6) ✅ COMPLETE
    - `--prep-only` and `--finalise-only` modes
 
 3. **Style Override** (Batch 7)

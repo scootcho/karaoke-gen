@@ -959,6 +959,228 @@ class TestDurationValidation:
         assert inspect.iscoroutinefunction(_validate_audio_durations)
 
 
+class TestTwoPhaseWorkflowModels:
+    """Test Pydantic models for two-phase workflow (Batch 6)."""
+    
+    def test_create_job_with_upload_urls_request_has_prep_only(self):
+        """Test that CreateJobWithUploadUrlsRequest has prep_only field."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio")
+            ],
+            prep_only=True
+        )
+        
+        assert request.prep_only is True
+    
+    def test_create_job_with_upload_urls_request_prep_only_default_false(self):
+        """Test that prep_only defaults to False."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio")
+            ]
+        )
+        
+        assert request.prep_only is False
+    
+    def test_create_job_with_upload_urls_request_has_keep_brand_code(self):
+        """Test that CreateJobWithUploadUrlsRequest has keep_brand_code field."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio")
+            ],
+            keep_brand_code="NOMAD-1234"
+        )
+        
+        assert request.keep_brand_code == "NOMAD-1234"
+    
+    def test_create_job_with_upload_urls_request_keep_brand_code_default_none(self):
+        """Test that keep_brand_code defaults to None."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio")
+            ]
+        )
+        
+        assert request.keep_brand_code is None
+
+
+class TestFinaliseOnlyFileTypes:
+    """Test finalise-only file types (Batch 6)."""
+    
+    def test_finalise_only_file_types_exists(self):
+        """Test that FINALISE_ONLY_FILE_TYPES is defined."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert FINALISE_ONLY_FILE_TYPES is not None
+        assert isinstance(FINALISE_ONLY_FILE_TYPES, dict)
+    
+    def test_finalise_only_file_types_has_with_vocals(self):
+        """Test that with_vocals is a valid finalise-only file type."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert 'with_vocals' in FINALISE_ONLY_FILE_TYPES
+        assert '.mkv' in FINALISE_ONLY_FILE_TYPES['with_vocals']
+        assert '.mov' in FINALISE_ONLY_FILE_TYPES['with_vocals']
+    
+    def test_finalise_only_file_types_has_title_screen(self):
+        """Test that title_screen is a valid finalise-only file type."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert 'title_screen' in FINALISE_ONLY_FILE_TYPES
+    
+    def test_finalise_only_file_types_has_end_screen(self):
+        """Test that end_screen is a valid finalise-only file type."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert 'end_screen' in FINALISE_ONLY_FILE_TYPES
+    
+    def test_finalise_only_file_types_has_instrumentals(self):
+        """Test that instrumental types are valid finalise-only file types."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert 'instrumental_clean' in FINALISE_ONLY_FILE_TYPES
+        assert 'instrumental_backing' in FINALISE_ONLY_FILE_TYPES
+    
+    def test_finalise_only_file_types_has_lrc(self):
+        """Test that lrc is a valid finalise-only file type."""
+        from backend.api.routes.file_upload import FINALISE_ONLY_FILE_TYPES
+        
+        assert 'lrc' in FINALISE_ONLY_FILE_TYPES
+        assert '.lrc' in FINALISE_ONLY_FILE_TYPES['lrc']
+
+
+class TestFinaliseOnlyModels:
+    """Test Pydantic models for finalise-only flow (Batch 6)."""
+    
+    def test_finalise_only_file_request_model(self):
+        """Test FinaliseOnlyFileRequest model."""
+        from backend.api.routes.file_upload import FinaliseOnlyFileRequest
+        
+        file_req = FinaliseOnlyFileRequest(
+            filename="with_vocals.mkv",
+            content_type="video/mkv",
+            file_type="with_vocals"
+        )
+        
+        assert file_req.filename == "with_vocals.mkv"
+        assert file_req.content_type == "video/mkv"
+        assert file_req.file_type == "with_vocals"
+    
+    def test_create_finalise_only_job_request_model(self):
+        """Test CreateFinaliseOnlyJobRequest model."""
+        from backend.api.routes.file_upload import CreateFinaliseOnlyJobRequest, FinaliseOnlyFileRequest
+        
+        request = CreateFinaliseOnlyJobRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FinaliseOnlyFileRequest(filename="with_vocals.mkv", content_type="video/mkv", file_type="with_vocals"),
+                FinaliseOnlyFileRequest(filename="title.mov", content_type="video/quicktime", file_type="title_screen"),
+                FinaliseOnlyFileRequest(filename="end.mov", content_type="video/quicktime", file_type="end_screen"),
+                FinaliseOnlyFileRequest(filename="instrumental.flac", content_type="audio/flac", file_type="instrumental_clean"),
+            ],
+            enable_cdg=True,
+            enable_txt=True,
+            brand_prefix="NOMAD",
+            keep_brand_code="NOMAD-1234"
+        )
+        
+        assert request.artist == "Test Artist"
+        assert request.title == "Test Song"
+        assert len(request.files) == 4
+        assert request.keep_brand_code == "NOMAD-1234"
+    
+    def test_create_finalise_only_job_request_optional_fields(self):
+        """Test CreateFinaliseOnlyJobRequest optional fields default correctly."""
+        from backend.api.routes.file_upload import CreateFinaliseOnlyJobRequest, FinaliseOnlyFileRequest
+        
+        request = CreateFinaliseOnlyJobRequest(
+            artist="Artist",
+            title="Title",
+            files=[
+                FinaliseOnlyFileRequest(filename="with_vocals.mkv", content_type="video/mkv", file_type="with_vocals"),
+            ]
+        )
+        
+        assert request.enable_cdg is True
+        assert request.enable_txt is True
+        assert request.brand_prefix is None
+        assert request.keep_brand_code is None
+        assert request.enable_youtube_upload is False
+        assert request.dropbox_path is None
+        assert request.gdrive_folder_id is None
+
+
+class TestFinaliseOnlyGCSPaths:
+    """Test GCS path generation for finalise-only files (Batch 6)."""
+    
+    def test_with_vocals_gcs_path(self):
+        """Test GCS path generation for with_vocals file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "with_vocals", "video.mkv")
+        assert path == "jobs/test123/videos/with_vocals.mkv"
+    
+    def test_title_screen_gcs_path(self):
+        """Test GCS path generation for title_screen file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "title_screen", "title.mov")
+        assert path == "jobs/test123/screens/title.mov"
+    
+    def test_end_screen_gcs_path(self):
+        """Test GCS path generation for end_screen file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "end_screen", "end.mov")
+        assert path == "jobs/test123/screens/end.mov"
+    
+    def test_instrumental_clean_gcs_path(self):
+        """Test GCS path generation for instrumental_clean file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "instrumental_clean", "clean.flac")
+        assert path == "jobs/test123/stems/instrumental_clean.flac"
+    
+    def test_instrumental_backing_gcs_path(self):
+        """Test GCS path generation for instrumental_backing file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "instrumental_backing", "backing.flac")
+        assert path == "jobs/test123/stems/instrumental_with_backing.flac"
+    
+    def test_lrc_gcs_path(self):
+        """Test GCS path generation for lrc file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "lrc", "karaoke.lrc")
+        assert path == "jobs/test123/lyrics/karaoke.lrc"
+    
+    def test_title_jpg_gcs_path(self):
+        """Test GCS path generation for title_jpg file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_finalise_file
+        
+        path = _get_gcs_path_for_finalise_file("test123", "title_jpg", "title.jpg")
+        assert path == "jobs/test123/screens/title.jpg"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
