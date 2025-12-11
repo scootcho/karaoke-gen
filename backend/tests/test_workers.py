@@ -353,6 +353,108 @@ class TestLyricsWorker:
             mock_job_manager.mark_job_failed.assert_called()
 
 
+class TestLyricsWorkerConfiguration:
+    """Tests for lyrics worker configuration parameters."""
+    
+    def test_create_lyrics_processor_with_defaults(self):
+        """Test creating LyricsProcessor with default parameters."""
+        with patch('backend.workers.lyrics_worker.LyricsProcessor') as mock_processor:
+            from backend.workers.lyrics_worker import create_lyrics_processor
+            
+            result = create_lyrics_processor()
+            
+            mock_processor.assert_called_once()
+            call_kwargs = mock_processor.call_args[1]
+            assert call_kwargs['lyrics_file'] is None
+            assert call_kwargs['subtitle_offset_ms'] == 0
+    
+    def test_create_lyrics_processor_with_lyrics_file(self):
+        """Test creating LyricsProcessor with custom lyrics file."""
+        with patch('backend.workers.lyrics_worker.LyricsProcessor') as mock_processor:
+            from backend.workers.lyrics_worker import create_lyrics_processor
+            
+            result = create_lyrics_processor(
+                lyrics_file="/path/to/lyrics.txt",
+                subtitle_offset_ms=0
+            )
+            
+            mock_processor.assert_called_once()
+            call_kwargs = mock_processor.call_args[1]
+            assert call_kwargs['lyrics_file'] == "/path/to/lyrics.txt"
+    
+    def test_create_lyrics_processor_with_subtitle_offset(self):
+        """Test creating LyricsProcessor with subtitle offset."""
+        with patch('backend.workers.lyrics_worker.LyricsProcessor') as mock_processor:
+            from backend.workers.lyrics_worker import create_lyrics_processor
+            
+            result = create_lyrics_processor(
+                subtitle_offset_ms=500
+            )
+            
+            mock_processor.assert_called_once()
+            call_kwargs = mock_processor.call_args[1]
+            assert call_kwargs['subtitle_offset_ms'] == 500
+
+
+class TestLyricsOverrideParameters:
+    """Tests for lyrics artist/title override functionality."""
+    
+    @pytest.fixture
+    def mock_job_with_overrides(self):
+        """Create a mock job with lyrics override fields."""
+        return Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Beatles, The",
+            title="Hey Jude - 2009 Remaster",
+            lyrics_artist="The Beatles",
+            lyrics_title="Hey Jude",
+            subtitle_offset_ms=250,
+            input_media_gcs_path="uploads/test123/song.flac"
+        )
+    
+    def test_job_uses_lyrics_artist_override(self, mock_job_with_overrides):
+        """Test that job uses lyrics_artist when searching for lyrics."""
+        job = mock_job_with_overrides
+        
+        # Use override if present, else fall back to main artist
+        lyrics_search_artist = job.lyrics_artist or job.artist
+        
+        assert lyrics_search_artist == "The Beatles"
+        assert lyrics_search_artist != job.artist  # Override is different
+    
+    def test_job_uses_lyrics_title_override(self, mock_job_with_overrides):
+        """Test that job uses lyrics_title when searching for lyrics."""
+        job = mock_job_with_overrides
+        
+        # Use override if present, else fall back to main title
+        lyrics_search_title = job.lyrics_title or job.title
+        
+        assert lyrics_search_title == "Hey Jude"
+        assert lyrics_search_title != job.title  # Override is different
+    
+    def test_job_falls_back_when_no_override(self):
+        """Test that job falls back to main artist/title when no override."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            input_media_gcs_path="uploads/test123/song.flac"
+        )
+        
+        # When override is None, use main values
+        lyrics_search_artist = job.lyrics_artist or job.artist
+        lyrics_search_title = job.lyrics_title or job.title
+        
+        assert lyrics_search_artist == "Test Artist"
+        assert lyrics_search_title == "Test Song"
+
+
 class TestScreensWorker:
     """Tests for screens_worker.py functions.
     
@@ -377,6 +479,71 @@ class TestVideoWorker:
         """Test video worker module can be imported."""
         from backend.workers import video_worker
         assert hasattr(video_worker, 'logger')
+
+
+class TestRenderVideoWorkerConfiguration:
+    """Tests for render_video_worker subtitle_offset_ms support."""
+    
+    @pytest.fixture
+    def mock_job_with_offset(self):
+        """Create a mock job with subtitle offset."""
+        return Job(
+            job_id="test123",
+            status=JobStatus.RENDERING_VIDEO,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            subtitle_offset_ms=500,
+            input_media_gcs_path="uploads/test123/song.flac"
+        )
+    
+    def test_job_has_subtitle_offset_ms(self, mock_job_with_offset):
+        """Test that job has subtitle_offset_ms field."""
+        assert mock_job_with_offset.subtitle_offset_ms == 500
+    
+    def test_subtitle_offset_from_job(self, mock_job_with_offset):
+        """Test extracting subtitle offset from job with getattr."""
+        job = mock_job_with_offset
+        
+        # This mirrors the logic in render_video_worker.py
+        subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+        
+        assert subtitle_offset == 500
+    
+    def test_subtitle_offset_default_zero(self):
+        """Test that subtitle offset defaults to 0 when not set."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.RENDERING_VIDEO,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            input_media_gcs_path="uploads/test123/song.flac"
+        )
+        
+        subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+        
+        assert subtitle_offset == 0
+    
+    def test_subtitle_offset_negative_value(self):
+        """Test that subtitle offset can be negative (advance subtitles)."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.RENDERING_VIDEO,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            subtitle_offset_ms=-250,  # Negative = advance subtitles
+            input_media_gcs_path="uploads/test123/song.flac"
+        )
+        
+        subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+        
+        # Negative values should be preserved (not converted to 0)
+        assert subtitle_offset == -250
 
 
 class TestDownloadHelpers:

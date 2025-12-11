@@ -190,6 +190,11 @@ async def process_render_video(job_id: str) -> bool:
             
             job_log.info(f"Using styles from: {styles_path}")
             
+            # Get subtitle offset from job (user-specified timing adjustment)
+            subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+            if subtitle_offset != 0:
+                job_log.info(f"Applying subtitle offset: {subtitle_offset}ms")
+            
             config = OutputConfig(
                 output_dir=output_dir,
                 cache_dir=cache_dir,
@@ -199,7 +204,7 @@ async def process_render_video(job_id: str) -> bool:
                 generate_plain_text=True,
                 generate_lrc=True,
                 video_resolution="4k",
-                subtitle_offset_ms=0
+                subtitle_offset_ms=subtitle_offset
             )
             
             job_log.info(f"OutputConfig: output_styles_json={config.output_styles_json}, render_video={config.render_video}")

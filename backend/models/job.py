@@ -211,6 +211,12 @@ class Job(BaseModel):
     # Legacy distribution configuration (rclone - for local CLI backward compat)
     organised_dir_rclone_root: Optional[str] = None  # Deprecated: use dropbox_path instead
     
+    # Lyrics configuration (overrides for search/transcription)
+    lyrics_artist: Optional[str] = None          # Override artist name for lyrics search
+    lyrics_title: Optional[str] = None           # Override title for lyrics search
+    lyrics_file_gcs_path: Optional[str] = None   # GCS path to user-provided lyrics file
+    subtitle_offset_ms: int = 0                  # Offset for subtitle timing (positive = delay)
+    
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
@@ -372,6 +378,12 @@ class JobCreate(BaseModel):
     
     # Legacy (rclone - deprecated, use dropbox_path instead)
     organised_dir_rclone_root: Optional[str] = None
+    
+    # Lyrics configuration (overrides for search/transcription)
+    lyrics_artist: Optional[str] = None          # Override artist name for lyrics search
+    lyrics_title: Optional[str] = None           # Override title for lyrics search
+    lyrics_file_gcs_path: Optional[str] = None   # GCS path to user-provided lyrics file
+    subtitle_offset_ms: int = 0                  # Offset for subtitle timing (positive = delay)
     
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)

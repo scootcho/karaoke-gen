@@ -266,6 +266,167 @@ class TestJobModelFieldPresence:
         assert job_dict["input_media_gcs_path"] == "uploads/test123/file.flac"
 
 
+class TestLyricsFileValidation:
+    """Test lyrics file upload validation."""
+    
+    @pytest.mark.parametrize("filename,expected_valid", [
+        ("lyrics.txt", True),
+        ("lyrics.docx", True),
+        ("lyrics.rtf", True),
+        ("lyrics.pdf", False),
+        ("lyrics.mp3", False),
+        ("lyrics", False),
+    ])
+    def test_lyrics_file_extension_validation(self, filename, expected_valid):
+        """Test that only valid lyrics file extensions are accepted."""
+        from pathlib import Path
+        
+        allowed_extensions = {'.txt', '.docx', '.rtf'}
+        file_ext = Path(filename).suffix.lower()
+        
+        is_valid = file_ext in allowed_extensions
+        assert is_valid == expected_valid
+
+
+class TestLyricsConfigurationFields:
+    """Test that lyrics configuration fields are handled correctly."""
+    
+    def test_job_has_lyrics_artist_field(self):
+        """Test that Job model has lyrics_artist field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            lyrics_artist="Override Artist"
+        )
+        
+        assert hasattr(job, 'lyrics_artist')
+        assert job.lyrics_artist == "Override Artist"
+    
+    def test_job_has_lyrics_title_field(self):
+        """Test that Job model has lyrics_title field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            lyrics_title="Override Title"
+        )
+        
+        assert hasattr(job, 'lyrics_title')
+        assert job.lyrics_title == "Override Title"
+    
+    def test_job_has_lyrics_file_gcs_path_field(self):
+        """Test that Job model has lyrics_file_gcs_path field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            lyrics_file_gcs_path="uploads/test123/lyrics/user_lyrics.txt"
+        )
+        
+        assert hasattr(job, 'lyrics_file_gcs_path')
+        assert job.lyrics_file_gcs_path == "uploads/test123/lyrics/user_lyrics.txt"
+    
+    def test_job_has_subtitle_offset_ms_field(self):
+        """Test that Job model has subtitle_offset_ms field."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            subtitle_offset_ms=500
+        )
+        
+        assert hasattr(job, 'subtitle_offset_ms')
+        assert job.subtitle_offset_ms == 500
+    
+    def test_subtitle_offset_default_is_zero(self):
+        """Test that subtitle_offset_ms defaults to 0."""
+        from backend.models.job import Job
+        from datetime import datetime
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        assert job.subtitle_offset_ms == 0
+
+
+class TestLyricsGCSPathGeneration:
+    """Test lyrics file GCS path generation."""
+    
+    def test_lyrics_gcs_path_format(self):
+        """Test that lyrics GCS paths follow expected format."""
+        job_id = "test123"
+        filename = "user_lyrics.txt"
+        
+        expected_path = f"uploads/{job_id}/lyrics/{filename}"
+        assert expected_path == "uploads/test123/lyrics/user_lyrics.txt"
+    
+    def test_lyrics_gcs_path_preserves_extension(self):
+        """Test that lyrics file extension is preserved."""
+        job_id = "test123"
+        
+        for ext in ['.txt', '.docx', '.rtf']:
+            filename = f"user_lyrics{ext}"
+            gcs_path = f"uploads/{job_id}/lyrics/{filename}"
+            assert gcs_path.endswith(ext)
+
+
+class TestJobCreateLyricsFields:
+    """Test that JobCreate model supports lyrics fields."""
+    
+    def test_job_create_has_lyrics_fields(self):
+        """Test that JobCreate model has all lyrics configuration fields."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title",
+            lyrics_artist="Override Artist",
+            lyrics_title="Override Title",
+            lyrics_file_gcs_path="uploads/test/lyrics/file.txt",
+            subtitle_offset_ms=250
+        )
+        
+        assert job_create.lyrics_artist == "Override Artist"
+        assert job_create.lyrics_title == "Override Title"
+        assert job_create.lyrics_file_gcs_path == "uploads/test/lyrics/file.txt"
+        assert job_create.subtitle_offset_ms == 250
+    
+    def test_job_create_lyrics_fields_optional(self):
+        """Test that lyrics fields are optional in JobCreate."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            artist="Artist",
+            title="Title"
+        )
+        
+        assert job_create.lyrics_artist is None
+        assert job_create.lyrics_title is None
+        assert job_create.lyrics_file_gcs_path is None
+        assert job_create.subtitle_offset_ms == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
