@@ -26,7 +26,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 
 # Import from lyrics_transcriber (submodule)
 from lyrics_transcriber.output.generator import OutputGenerator
@@ -85,194 +85,198 @@ async def process_render_video(job_id: str) -> bool:
     logger.info(f"Job {job_id}: Starting video render (post-review)")
     
     try:
-        # Transition to RENDERING_VIDEO
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.RENDERING_VIDEO,
-            progress=75,
-            message="Rendering karaoke video with corrected lyrics"
-        )
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            job_log.info(f"Created temp directory: {temp_dir}")
-            # 1. Download corrected corrections data
-            corrections_path = os.path.join(temp_dir, "corrections.json")
-            
-            # Try updated corrections first (from human review), fall back to original
-            corrections_gcs_updated = f"jobs/{job_id}/lyrics/corrections_updated.json"
-            corrections_gcs_original = f"jobs/{job_id}/lyrics/corrections.json"
-            
-            # Get GCS path from file_urls
-            corrections_url = job.file_urls.get('lyrics', {}).get('corrections_updated')
-            if not corrections_url:
-                corrections_url = job.file_urls.get('lyrics', {}).get('corrections')
-            
-            if not corrections_url:
-                # Try direct GCS paths
-                if storage.file_exists(corrections_gcs_updated):
-                    corrections_gcs = corrections_gcs_updated
-                elif storage.file_exists(corrections_gcs_original):
-                    corrections_gcs = corrections_gcs_original
-                else:
-                    raise FileNotFoundError(f"No corrections file found for job {job_id}")
-            else:
-                # Extract GCS path from URL
-                corrections_gcs = _extract_gcs_path(corrections_url)
-            
-            # 2. Load the ORIGINAL corrections (has full structure)
-            original_corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
-            original_corrections_path = os.path.join(temp_dir, "corrections_original.json")
-            
-            job_log.info(f"Downloading original corrections from {original_corrections_gcs}")
-            logger.info(f"Job {job_id}: Downloading original corrections from {original_corrections_gcs}")
-            storage.download_file(original_corrections_gcs, original_corrections_path)
-            
-            with open(original_corrections_path, 'r', encoding='utf-8') as f:
-                original_data = json.load(f)
-            
-            # 3. Check if there are updated corrections (from review UI)
-            # The frontend sends only partial data: {corrections, corrected_segments}
-            updated_corrections_gcs = f"jobs/{job_id}/lyrics/corrections_updated.json"
-            
-            if storage.file_exists(updated_corrections_gcs):
-                job_log.info("Found updated corrections from review, merging")
-                logger.info(f"Job {job_id}: Found updated corrections, merging")
-                updated_path = os.path.join(temp_dir, "corrections_updated.json")
-                storage.download_file(updated_corrections_gcs, updated_path)
-                
-                with open(updated_path, 'r', encoding='utf-8') as f:
-                    updated_data = json.load(f)
-                
-                # Merge: update the original with the user's corrections
-                if 'corrections' in updated_data:
-                    original_data['corrections'] = updated_data['corrections']
-                if 'corrected_segments' in updated_data:
-                    original_data['corrected_segments'] = updated_data['corrected_segments']
-                
-                job_log.info("Merged user corrections into original data")
-                logger.info(f"Job {job_id}: Merged user corrections into original data")
-            
-            # 4. Convert to CorrectionResult
-            correction_result = CorrectionResult.from_dict(original_data)
-            job_log.info(f"Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
-            logger.info(f"Job {job_id}: Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
-            
-            # 3. Download audio file
-            audio_path = os.path.join(temp_dir, "audio.flac")
-            audio_gcs_path = job.input_media_gcs_path
-            
-            if not audio_gcs_path:
-                raise FileNotFoundError(f"No input audio path for job {job_id}")
-            
-            job_log.info(f"Downloading audio from {audio_gcs_path}")
-            logger.info(f"Job {job_id}: Downloading audio from {audio_gcs_path}")
-            storage.download_file(audio_gcs_path, audio_path)
-            job_log.info(f"Audio downloaded: {os.path.getsize(audio_path)} bytes")
-            
-            # 4. Get or create styles using the unified style loader
-            job_log.info("Loading style configuration...")
-            job_log.info(f"  job.style_params_gcs_path: {job.style_params_gcs_path}")
-            job_log.info(f"  job.style_assets: {list(job.style_assets.keys()) if job.style_assets else 'None'}")
-            
-            styles_path, style_data = load_styles_from_gcs(
-                style_params_gcs_path=job.style_params_gcs_path,
-                style_assets=job.style_assets,
-                temp_dir=temp_dir,
-                download_func=storage.download_file,
-                logger=job_log,
-            )
-            
-            # 5. Configure OutputGenerator
-            output_dir = os.path.join(temp_dir, "output")
-            cache_dir = os.path.join(temp_dir, "cache")
-            os.makedirs(output_dir, exist_ok=True)
-            os.makedirs(cache_dir, exist_ok=True)
-            
-            job_log.info(f"Using styles from: {styles_path}")
-            
-            # Get subtitle offset from job (user-specified timing adjustment)
-            subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
-            if subtitle_offset != 0:
-                job_log.info(f"Applying subtitle offset: {subtitle_offset}ms")
-            
-            config = OutputConfig(
-                output_dir=output_dir,
-                cache_dir=cache_dir,
-                output_styles_json=styles_path,
-                render_video=True,
-                generate_cdg=False,  # CDG optional, generated separately
-                generate_plain_text=True,
-                generate_lrc=True,
-                video_resolution="4k",
-                subtitle_offset_ms=subtitle_offset
-            )
-            
-            job_log.info(f"OutputConfig: output_styles_json={config.output_styles_json}, render_video={config.render_video}")
-            
-            output_generator = OutputGenerator(config, logger)
-            
-            # 6. Generate outputs (video, LRC, ASS, etc.)
-            output_prefix = f"{job.artist or 'Unknown'} - {job.title or 'Unknown'}"
-            job_log.info(f"Generating outputs with prefix '{output_prefix}'")
-            logger.info(f"Job {job_id}: Generating outputs with prefix '{output_prefix}'")
-            
-            outputs = output_generator.generate_outputs(
-                transcription_corrected=correction_result,
-                lyrics_results={},  # Reference lyrics already in correction_result
-                output_prefix=output_prefix,
-                audio_filepath=audio_path,
-                artist=job.artist,
-                title=job.title
-            )
-            
-            # 7. Upload video to GCS
-            if outputs.video and os.path.exists(outputs.video):
-                video_size = os.path.getsize(outputs.video)
-                job_log.info(f"Video generated: {video_size} bytes")
-                video_gcs_path = f"jobs/{job_id}/videos/with_vocals.mkv"
-                video_url = storage.upload_file(outputs.video, video_gcs_path)
-                job_manager.update_file_url(job_id, 'videos', 'with_vocals', video_url)
-                job_log.info(f"Uploaded with_vocals.mkv to GCS")
-                logger.info(f"Job {job_id}: Uploaded with_vocals.mkv ({video_size} bytes)")
-            else:
-                job_log.error("Video generation failed - no output file produced!")
-                raise Exception("Video generation failed - no output file produced")
-            
-            # 8. Upload LRC file
-            if outputs.lrc and os.path.exists(outputs.lrc):
-                lrc_gcs_path = f"jobs/{job_id}/lyrics/karaoke.lrc"
-                lrc_url = storage.upload_file(outputs.lrc, lrc_gcs_path)
-                job_manager.update_file_url(job_id, 'lyrics', 'lrc', lrc_url)
-                job_log.info("Uploaded karaoke.lrc")
-                logger.info(f"Job {job_id}: Uploaded karaoke.lrc")
-            
-            # 9. Upload ASS subtitle file
-            if outputs.ass and os.path.exists(outputs.ass):
-                ass_gcs_path = f"jobs/{job_id}/lyrics/karaoke.ass"
-                ass_url = storage.upload_file(outputs.ass, ass_gcs_path)
-                job_manager.update_file_url(job_id, 'lyrics', 'ass', ass_url)
-                job_log.info("Uploaded karaoke.ass")
-                logger.info(f"Job {job_id}: Uploaded karaoke.ass")
-            
-            # 10. Upload corrected text files
-            if outputs.corrected_txt and os.path.exists(outputs.corrected_txt):
-                txt_gcs_path = f"jobs/{job_id}/lyrics/corrected.txt"
-                txt_url = storage.upload_file(outputs.corrected_txt, txt_gcs_path)
-                job_manager.update_file_url(job_id, 'lyrics', 'corrected_txt', txt_url)
-                job_log.info("Uploaded corrected.txt")
-                logger.info(f"Job {job_id}: Uploaded corrected.txt")
-            
-            # 11. Transition to awaiting instrumental selection
+        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+        # This ensures logs from third-party libraries (lyrics_transcriber.output) are only
+        # captured by this job's handler, not handlers from other concurrent jobs
+        with job_logging_context(job_id):
+            # Transition to RENDERING_VIDEO
             job_manager.transition_to_state(
                 job_id=job_id,
-                new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
-                progress=80,
-                message="Video rendered - select your instrumental"
+                new_status=JobStatus.RENDERING_VIDEO,
+                progress=75,
+                message="Rendering karaoke video with corrected lyrics"
             )
             
-            job_log.info("=== RENDER VIDEO WORKER COMPLETE ===")
-            logger.info(f"Job {job_id}: Video render complete, awaiting instrumental selection")
-            return True
+            with tempfile.TemporaryDirectory() as temp_dir:
+                job_log.info(f"Created temp directory: {temp_dir}")
+                # 1. Download corrected corrections data
+                corrections_path = os.path.join(temp_dir, "corrections.json")
+                
+                # Try updated corrections first (from human review), fall back to original
+                corrections_gcs_updated = f"jobs/{job_id}/lyrics/corrections_updated.json"
+                corrections_gcs_original = f"jobs/{job_id}/lyrics/corrections.json"
+                
+                # Get GCS path from file_urls
+                corrections_url = job.file_urls.get('lyrics', {}).get('corrections_updated')
+                if not corrections_url:
+                    corrections_url = job.file_urls.get('lyrics', {}).get('corrections')
+                
+                if not corrections_url:
+                    # Try direct GCS paths
+                    if storage.file_exists(corrections_gcs_updated):
+                        corrections_gcs = corrections_gcs_updated
+                    elif storage.file_exists(corrections_gcs_original):
+                        corrections_gcs = corrections_gcs_original
+                    else:
+                        raise FileNotFoundError(f"No corrections file found for job {job_id}")
+                else:
+                    # Extract GCS path from URL
+                    corrections_gcs = _extract_gcs_path(corrections_url)
+                
+                # 2. Load the ORIGINAL corrections (has full structure)
+                original_corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
+                original_corrections_path = os.path.join(temp_dir, "corrections_original.json")
+                
+                job_log.info(f"Downloading original corrections from {original_corrections_gcs}")
+                logger.info(f"Job {job_id}: Downloading original corrections from {original_corrections_gcs}")
+                storage.download_file(original_corrections_gcs, original_corrections_path)
+                
+                with open(original_corrections_path, 'r', encoding='utf-8') as f:
+                    original_data = json.load(f)
+                
+                # 3. Check if there are updated corrections (from review UI)
+                # The frontend sends only partial data: {corrections, corrected_segments}
+                updated_corrections_gcs = f"jobs/{job_id}/lyrics/corrections_updated.json"
+                
+                if storage.file_exists(updated_corrections_gcs):
+                    job_log.info("Found updated corrections from review, merging")
+                    logger.info(f"Job {job_id}: Found updated corrections, merging")
+                    updated_path = os.path.join(temp_dir, "corrections_updated.json")
+                    storage.download_file(updated_corrections_gcs, updated_path)
+                    
+                    with open(updated_path, 'r', encoding='utf-8') as f:
+                        updated_data = json.load(f)
+                    
+                    # Merge: update the original with the user's corrections
+                    if 'corrections' in updated_data:
+                        original_data['corrections'] = updated_data['corrections']
+                    if 'corrected_segments' in updated_data:
+                        original_data['corrected_segments'] = updated_data['corrected_segments']
+                    
+                    job_log.info("Merged user corrections into original data")
+                    logger.info(f"Job {job_id}: Merged user corrections into original data")
+                
+                # 4. Convert to CorrectionResult
+                correction_result = CorrectionResult.from_dict(original_data)
+                job_log.info(f"Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
+                logger.info(f"Job {job_id}: Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
+                
+                # 3. Download audio file
+                audio_path = os.path.join(temp_dir, "audio.flac")
+                audio_gcs_path = job.input_media_gcs_path
+                
+                if not audio_gcs_path:
+                    raise FileNotFoundError(f"No input audio path for job {job_id}")
+                
+                job_log.info(f"Downloading audio from {audio_gcs_path}")
+                logger.info(f"Job {job_id}: Downloading audio from {audio_gcs_path}")
+                storage.download_file(audio_gcs_path, audio_path)
+                job_log.info(f"Audio downloaded: {os.path.getsize(audio_path)} bytes")
+                
+                # 4. Get or create styles using the unified style loader
+                job_log.info("Loading style configuration...")
+                job_log.info(f"  job.style_params_gcs_path: {job.style_params_gcs_path}")
+                job_log.info(f"  job.style_assets: {list(job.style_assets.keys()) if job.style_assets else 'None'}")
+                
+                styles_path, style_data = load_styles_from_gcs(
+                    style_params_gcs_path=job.style_params_gcs_path,
+                    style_assets=job.style_assets,
+                    temp_dir=temp_dir,
+                    download_func=storage.download_file,
+                    logger=job_log,
+                )
+                
+                # 5. Configure OutputGenerator
+                output_dir = os.path.join(temp_dir, "output")
+                cache_dir = os.path.join(temp_dir, "cache")
+                os.makedirs(output_dir, exist_ok=True)
+                os.makedirs(cache_dir, exist_ok=True)
+                
+                job_log.info(f"Using styles from: {styles_path}")
+                
+                # Get subtitle offset from job (user-specified timing adjustment)
+                subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+                if subtitle_offset != 0:
+                    job_log.info(f"Applying subtitle offset: {subtitle_offset}ms")
+                
+                config = OutputConfig(
+                    output_dir=output_dir,
+                    cache_dir=cache_dir,
+                    output_styles_json=styles_path,
+                    render_video=True,
+                    generate_cdg=False,  # CDG optional, generated separately
+                    generate_plain_text=True,
+                    generate_lrc=True,
+                    video_resolution="4k",
+                    subtitle_offset_ms=subtitle_offset
+                )
+                
+                job_log.info(f"OutputConfig: output_styles_json={config.output_styles_json}, render_video={config.render_video}")
+                
+                output_generator = OutputGenerator(config, logger)
+                
+                # 6. Generate outputs (video, LRC, ASS, etc.)
+                output_prefix = f"{job.artist or 'Unknown'} - {job.title or 'Unknown'}"
+                job_log.info(f"Generating outputs with prefix '{output_prefix}'")
+                logger.info(f"Job {job_id}: Generating outputs with prefix '{output_prefix}'")
+                
+                outputs = output_generator.generate_outputs(
+                    transcription_corrected=correction_result,
+                    lyrics_results={},  # Reference lyrics already in correction_result
+                    output_prefix=output_prefix,
+                    audio_filepath=audio_path,
+                    artist=job.artist,
+                    title=job.title
+                )
+                
+                # 7. Upload video to GCS
+                if outputs.video and os.path.exists(outputs.video):
+                    video_size = os.path.getsize(outputs.video)
+                    job_log.info(f"Video generated: {video_size} bytes")
+                    video_gcs_path = f"jobs/{job_id}/videos/with_vocals.mkv"
+                    video_url = storage.upload_file(outputs.video, video_gcs_path)
+                    job_manager.update_file_url(job_id, 'videos', 'with_vocals', video_url)
+                    job_log.info(f"Uploaded with_vocals.mkv to GCS")
+                    logger.info(f"Job {job_id}: Uploaded with_vocals.mkv ({video_size} bytes)")
+                else:
+                    job_log.error("Video generation failed - no output file produced!")
+                    raise Exception("Video generation failed - no output file produced")
+                
+                # 8. Upload LRC file
+                if outputs.lrc and os.path.exists(outputs.lrc):
+                    lrc_gcs_path = f"jobs/{job_id}/lyrics/karaoke.lrc"
+                    lrc_url = storage.upload_file(outputs.lrc, lrc_gcs_path)
+                    job_manager.update_file_url(job_id, 'lyrics', 'lrc', lrc_url)
+                    job_log.info("Uploaded karaoke.lrc")
+                    logger.info(f"Job {job_id}: Uploaded karaoke.lrc")
+                
+                # 9. Upload ASS subtitle file
+                if outputs.ass and os.path.exists(outputs.ass):
+                    ass_gcs_path = f"jobs/{job_id}/lyrics/karaoke.ass"
+                    ass_url = storage.upload_file(outputs.ass, ass_gcs_path)
+                    job_manager.update_file_url(job_id, 'lyrics', 'ass', ass_url)
+                    job_log.info("Uploaded karaoke.ass")
+                    logger.info(f"Job {job_id}: Uploaded karaoke.ass")
+                
+                # 10. Upload corrected text files
+                if outputs.corrected_txt and os.path.exists(outputs.corrected_txt):
+                    txt_gcs_path = f"jobs/{job_id}/lyrics/corrected.txt"
+                    txt_url = storage.upload_file(outputs.corrected_txt, txt_gcs_path)
+                    job_manager.update_file_url(job_id, 'lyrics', 'corrected_txt', txt_url)
+                    job_log.info("Uploaded corrected.txt")
+                    logger.info(f"Job {job_id}: Uploaded corrected.txt")
+                
+                # 11. Transition to awaiting instrumental selection
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+                    progress=80,
+                    message="Video rendered - select your instrumental"
+                )
+                
+                job_log.info("=== RENDER VIDEO WORKER COMPLETE ===")
+                logger.info(f"Job {job_id}: Video render complete, awaiting instrumental selection")
+                return True
             
     except Exception as e:
         job_log.error(f"Video render failed: {e}")

@@ -252,7 +252,6 @@ class RemoteKaraokeClient:
         url: str,
         artist: Optional[str] = None,
         title: Optional[str] = None,
-        style_params_path: Optional[str] = None,
         enable_cdg: bool = True,
         enable_txt: bool = True,
         brand_prefix: Optional[str] = None,
@@ -275,11 +274,14 @@ class RemoteKaraokeClient:
         The backend will download the audio from the URL and process it.
         Artist and title will be auto-detected from the URL if not provided.
         
+        Note: Custom style configuration is not supported for URL-based jobs.
+        If you need custom styles, download the audio locally first and use
+        the regular file upload flow with submit_job().
+        
         Args:
             url: YouTube or other video URL to download audio from
             artist: Artist name (optional - auto-detected if not provided)
             title: Song title (optional - auto-detected if not provided)
-            style_params_path: Path to style_params.json (optional)
             enable_cdg: Generate CDG+MP3 package
             enable_txt: Generate TXT+MP3 package
             brand_prefix: Brand code prefix (e.g., "NOMAD")
@@ -2045,11 +2047,16 @@ def main():
         # Submit job - different endpoint for URL vs file
         if is_url_input:
             # URL-based job submission
+            # Note: style_params_path is not supported for URL-based jobs
+            # If custom styles are needed, download the audio locally first
+            if args.style_params_json:
+                logger.warning("Custom styles (--style_params_json) are not supported for URL-based jobs. "
+                             "Download the audio locally first and use file upload for custom styles.")
+            
             result = client.submit_job_from_url(
                 url=input_media,
                 artist=artist,
                 title=title,
-                style_params_path=args.style_params_json,
                 enable_cdg=args.enable_cdg,
                 enable_txt=args.enable_txt,
                 brand_prefix=args.brand_prefix,

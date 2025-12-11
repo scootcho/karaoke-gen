@@ -121,16 +121,18 @@ class FileHandler:
             },
         }
         
-        # Handle cookies if provided
+        # Handle cookies if provided - use safe tempfile pattern to avoid leaks
+        cookie_file_path = None
         if cookies_str:
-            # Write cookies to a temporary file
-            cookie_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
             try:
-                cookie_file.write(cookies_str)
-                cookie_file.close()
-                ydl_opts['cookiefile'] = cookie_file.name
+                # Use context manager to safely write cookies file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as cookie_file:
+                    cookie_file.write(cookies_str)
+                    cookie_file_path = cookie_file.name
+                ydl_opts['cookiefile'] = cookie_file_path
             except Exception as e:
                 self.logger.warning(f"Failed to write cookies file: {e}")
+                cookie_file_path = None
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -177,9 +179,9 @@ class FileHandler:
             return None
         finally:
             # Clean up cookie file if we created one
-            if cookies_str and 'cookie_file' in locals():
+            if cookie_file_path is not None:
                 try:
-                    os.unlink(cookie_file.name)
+                    os.unlink(cookie_file_path)
                 except Exception:
                     pass
 

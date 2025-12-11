@@ -1057,12 +1057,23 @@ async def mark_uploads_complete(
 # URL-based Job Creation - For YouTube and other online video URLs
 # ============================================================================
 
-def _validate_url(url: str) -> bool:
+def _validate_url(url: Optional[str]) -> bool:
     """
     Validate that a URL is a supported video/audio URL.
     
     Supports YouTube, Vimeo, SoundCloud, and other platforms supported by yt-dlp.
+    
+    Args:
+        url: The URL to validate. Can be None or non-string.
+        
+    Returns:
+        True if valid URL, False otherwise.
     """
+    # Handle None and non-string inputs safely
+    if url is None or not isinstance(url, str):
+        return False
+    
+    # Handle empty string
     if not url:
         return False
     

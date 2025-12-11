@@ -19,7 +19,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 
 # Import from karaoke_gen package
 from karaoke_gen.audio_processor import AudioProcessor
@@ -241,84 +241,88 @@ async def process_audio_separation(job_id: str) -> bool:
     job_log.info(f"Created temp directory: {temp_dir}")
     
     try:
-        job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
-        logger.info(f"Starting audio separation for job {job_id}")
-        
-        # Ensure AUDIO_SEPARATOR_API_URL is set
-        api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
-        if not api_url:
-            raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
-                          "Cannot perform audio separation without remote API access.")
-        job_log.info(f"Audio separator API: {api_url}")
-        
-        # Download audio file from GCS or URL
-        job_log.info("Downloading audio file...")
-        audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager_instance=job_manager)
-        if not audio_path:
-            raise Exception("Failed to download audio file")
-        job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
-        
-        # Update progress using state_data (don't change status during parallel processing)
-        # The status is managed at a higher level - workers just track their progress
-        job_manager.update_state_data(job_id, 'audio_progress', {
-            'stage': 'separating_stage1',
-            'progress': 10,
-            'message': 'Starting audio separation (Stage 1: Clean instrumental)'
-        })
-        
-        # Create AudioProcessor instance (reuses karaoke_gen code)
-        # Use model configuration from job if provided, otherwise use defaults
-        job_log.info("Creating AudioProcessor instance...")
-        if job.clean_instrumental_model:
-            job_log.info(f"  Using clean instrumental model: {job.clean_instrumental_model}")
-        if job.backing_vocals_models:
-            job_log.info(f"  Using backing vocals models: {job.backing_vocals_models}")
-        if job.other_stems_models:
-            job_log.info(f"  Using other stems models: {job.other_stems_models}")
-        
-        audio_processor = create_audio_processor(
-            temp_dir,
-            clean_instrumental_model=job.clean_instrumental_model,
-            backing_vocals_models=job.backing_vocals_models,
-            other_stems_models=job.other_stems_models
-        )
-        
-        # Format artist-title for file naming (matches CLI behavior)
-        artist_title = f"{job.artist} - {job.title}"
-        
-        # Run audio separation (calls Modal API internally)
-        # This returns a dict with paths to all separated stems
-        job_log.info("Starting audio separation (this may take 5-10 minutes)...")
-        job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
-        job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
-        logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
-        separation_result = audio_processor.process_audio_separation(
-            audio_file=audio_path,
-            artist_title=artist_title,
-            track_output_dir=temp_dir
-        )
-        
-        job_log.info("Audio separation complete!")
-        job_log.info(f"  Generated {len(separation_result)} stem files")
-        logger.info(f"Job {job_id}: Audio separation complete, organizing results")
-        
-        # Update progress using state_data (don't change status during parallel processing)
-        job_manager.update_state_data(job_id, 'audio_progress', {
-            'stage': 'audio_complete',
-            'progress': 45,
-            'message': 'Audio separation complete, uploading stems'
-        })
-        
-        # Upload all stems to GCS
-        await upload_separation_results(job_id, separation_result, storage, job_manager)
-        
-        logger.info(f"Job {job_id}: All stems uploaded successfully")
-        
-        # Mark audio processing complete
-        # This will check if lyrics are also complete and transition to next stage if so
-        job_manager.mark_audio_complete(job_id)
-        
-        return True
+        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+        # This ensures logs from third-party libraries (karaoke_gen.audio_processor) are
+        # only captured by this job's handler, not handlers from other concurrent jobs
+        with job_logging_context(job_id):
+            job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
+            logger.info(f"Starting audio separation for job {job_id}")
+            
+            # Ensure AUDIO_SEPARATOR_API_URL is set
+            api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
+            if not api_url:
+                raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
+                              "Cannot perform audio separation without remote API access.")
+            job_log.info(f"Audio separator API: {api_url}")
+            
+            # Download audio file from GCS or URL
+            job_log.info("Downloading audio file...")
+            audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager_instance=job_manager)
+            if not audio_path:
+                raise Exception("Failed to download audio file")
+            job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
+            
+            # Update progress using state_data (don't change status during parallel processing)
+            # The status is managed at a higher level - workers just track their progress
+            job_manager.update_state_data(job_id, 'audio_progress', {
+                'stage': 'separating_stage1',
+                'progress': 10,
+                'message': 'Starting audio separation (Stage 1: Clean instrumental)'
+            })
+            
+            # Create AudioProcessor instance (reuses karaoke_gen code)
+            # Use model configuration from job if provided, otherwise use defaults
+            job_log.info("Creating AudioProcessor instance...")
+            if job.clean_instrumental_model:
+                job_log.info(f"  Using clean instrumental model: {job.clean_instrumental_model}")
+            if job.backing_vocals_models:
+                job_log.info(f"  Using backing vocals models: {job.backing_vocals_models}")
+            if job.other_stems_models:
+                job_log.info(f"  Using other stems models: {job.other_stems_models}")
+            
+            audio_processor = create_audio_processor(
+                temp_dir,
+                clean_instrumental_model=job.clean_instrumental_model,
+                backing_vocals_models=job.backing_vocals_models,
+                other_stems_models=job.other_stems_models
+            )
+            
+            # Format artist-title for file naming (matches CLI behavior)
+            artist_title = f"{job.artist} - {job.title}"
+            
+            # Run audio separation (calls Modal API internally)
+            # This returns a dict with paths to all separated stems
+            job_log.info("Starting audio separation (this may take 5-10 minutes)...")
+            job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
+            job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
+            logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
+            separation_result = audio_processor.process_audio_separation(
+                audio_file=audio_path,
+                artist_title=artist_title,
+                track_output_dir=temp_dir
+            )
+            
+            job_log.info("Audio separation complete!")
+            job_log.info(f"  Generated {len(separation_result)} stem files")
+            logger.info(f"Job {job_id}: Audio separation complete, organizing results")
+            
+            # Update progress using state_data (don't change status during parallel processing)
+            job_manager.update_state_data(job_id, 'audio_progress', {
+                'stage': 'audio_complete',
+                'progress': 45,
+                'message': 'Audio separation complete, uploading stems'
+            })
+            
+            # Upload all stems to GCS
+            await upload_separation_results(job_id, separation_result, storage, job_manager)
+            
+            logger.info(f"Job {job_id}: All stems uploaded successfully")
+            
+            # Mark audio processing complete
+            # This will check if lyrics are also complete and transition to next stage if so
+            job_manager.mark_audio_complete(job_id)
+            
+            return True
         
     except Exception as e:
         logger.error(f"Job {job_id}: Audio separation failed: {e}", exc_info=True)
