@@ -248,35 +248,37 @@ class TestWorkerServiceCloudTasks:
         from backend.services.worker_service import WorkerService, reset_worker_service
         reset_worker_service()
         
-        with patch.dict('os.environ', {}, clear=True):
-            # Remove ENABLE_CLOUD_TASKS from environment
-            with patch('backend.services.worker_service.os.getenv') as mock_getenv:
-                mock_getenv.side_effect = lambda k, d=None: {
-                    'ENABLE_CLOUD_TASKS': 'false',
-                    'PORT': '8000',
-                }.get(k, d)
-                
-                with patch('backend.services.worker_service.get_settings') as mock_settings:
-                    mock_settings.return_value.admin_tokens = None
-                    mock_settings.return_value.google_cloud_project = "test-project"
-                    
-                    service = WorkerService()
-                    assert service._use_cloud_tasks is False
-    
-    def test_should_use_cloud_tasks_enabled(self):
-        """Test that Cloud Tasks can be enabled via environment variable."""
-        from backend.services.worker_service import WorkerService, reset_worker_service
-        reset_worker_service()
-        
         with patch('backend.services.worker_service.os.getenv') as mock_getenv:
             mock_getenv.side_effect = lambda k, d=None: {
-                'ENABLE_CLOUD_TASKS': 'true',
                 'PORT': '8000',
             }.get(k, d)
             
             with patch('backend.services.worker_service.get_settings') as mock_settings:
                 mock_settings.return_value.admin_tokens = None
                 mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = False
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                service = WorkerService()
+                assert service._use_cloud_tasks is False
+    
+    def test_should_use_cloud_tasks_enabled(self):
+        """Test that Cloud Tasks can be enabled via settings."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'PORT': '8000',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = None
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
                 
                 service = WorkerService()
                 assert service._use_cloud_tasks is True
@@ -307,13 +309,15 @@ class TestWorkerServiceCloudTasks:
         
         with patch('backend.services.worker_service.os.getenv') as mock_getenv:
             mock_getenv.side_effect = lambda k, d=None: {
-                'ENABLE_CLOUD_TASKS': 'false',
                 'PORT': '8000',
             }.get(k, d)
             
             with patch('backend.services.worker_service.get_settings') as mock_settings:
                 mock_settings.return_value.admin_tokens = "test-token"
                 mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = False
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
                 
                 with patch('backend.services.worker_service.httpx.AsyncClient') as mock_client_cls:
                     mock_client = AsyncMock()
@@ -340,13 +344,15 @@ class TestWorkerServiceCloudTasks:
         
         with patch('backend.services.worker_service.os.getenv') as mock_getenv:
             mock_getenv.side_effect = lambda k, d=None: {
-                'ENABLE_CLOUD_TASKS': 'true',
                 'CLOUD_RUN_SERVICE_URL': 'https://api.example.com',
             }.get(k, d)
             
             with patch('backend.services.worker_service.get_settings') as mock_settings:
                 mock_settings.return_value.admin_tokens = "test-token"
                 mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
                 
                 # Mock Cloud Tasks client
                 mock_tasks_client = MagicMock()
@@ -383,13 +389,15 @@ class TestWorkerServiceCloudTasks:
         
         with patch('backend.services.worker_service.os.getenv') as mock_getenv:
             mock_getenv.side_effect = lambda k, d=None: {
-                'ENABLE_CLOUD_TASKS': 'true',
                 'CLOUD_RUN_SERVICE_URL': 'https://api.example.com',
             }.get(k, d)
             
             with patch('backend.services.worker_service.get_settings') as mock_settings:
                 mock_settings.return_value.admin_tokens = "test-token"
                 mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
                 
                 service = WorkerService()
                 
@@ -404,6 +412,9 @@ class TestWorkerServiceCloudTasks:
         with patch('backend.services.worker_service.get_settings') as mock_settings:
             mock_settings.return_value.admin_tokens = None
             mock_settings.return_value.google_cloud_project = "test-project"
+            mock_settings.return_value.enable_cloud_tasks = False
+            mock_settings.return_value.gcp_region = "us-central1"
+            mock_settings.return_value.use_cloud_run_jobs_for_video = False
             
             service1 = get_worker_service()
             reset_worker_service()

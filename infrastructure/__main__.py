@@ -348,6 +348,55 @@ cloud_tasks_enqueuer = gcp.projects.IAMMember(
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# ==================== Cloud Run Job for Video Encoding (Phase 2 Scalability) ====================
+# Cloud Run Jobs provide up to 24-hour execution time for long-running video encoding.
+# This is used when video encoding might exceed the 30-minute Cloud Tasks timeout.
+# Triggered programmatically via WorkerService when ENABLE_CLOUD_TASKS=true and
+# USE_CLOUD_RUN_JOBS_FOR_VIDEO=true
+
+video_encoding_job = gcp.cloudrunv2.Job(
+    "video-encoding-job",
+    name="video-encoding-job",
+    location="us-central1",
+    template=gcp.cloudrunv2.JobTemplateArgs(
+        template=gcp.cloudrunv2.JobTemplateTemplateArgs(
+            # Use the same container as the backend service
+            # The job runs with --job-id argument to process a specific job
+            containers=[gcp.cloudrunv2.JobTemplateTemplateContainerArgs(
+                image=f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo/karaoke-backend:latest",
+                args=["python", "-m", "backend.workers.video_worker"],
+                resources=gcp.cloudrunv2.JobTemplateTemplateContainerResourcesArgs(
+                    limits={
+                        "cpu": "4",      # 4 vCPUs for encoding
+                        "memory": "8Gi",  # 8GB RAM
+                    },
+                ),
+                envs=[
+                    gcp.cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                        name="GOOGLE_CLOUD_PROJECT",
+                        value=project_id,
+                    ),
+                    gcp.cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                        name="GCS_BUCKET_NAME",
+                        value=bucket.name,
+                    ),
+                ],
+            )],
+            service_account=service_account.email,
+            timeout="3600s",  # 1 hour max per task
+            max_retries=2,
+        ),
+    ),
+)
+
+# Grant backend service account permission to run Cloud Run Jobs
+cloud_run_jobs_developer = gcp.projects.IAMMember(
+    "karaoke-backend-run-jobs-developer",
+    project=project_id,
+    role="roles/run.developer",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # ==================== Secrets ====================
 # Create secrets (you'll need to add the actual secret values manually or via pulumi config)
 config = pulumi.Config()
@@ -414,6 +463,9 @@ pulumi.export("lyrics_worker_queue", lyrics_worker_queue.name)
 pulumi.export("screens_worker_queue", screens_worker_queue.name)
 pulumi.export("render_worker_queue", render_worker_queue.name)
 pulumi.export("video_worker_queue", video_worker_queue.name)
+
+# Cloud Run Job export (Phase 2 scalability)
+pulumi.export("video_encoding_job", video_encoding_job.name)
 
 # Export DNS configuration needed for Cloudflare
 # These are the records to add to your Cloudflare DNS

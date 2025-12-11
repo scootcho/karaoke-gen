@@ -577,3 +577,64 @@ async def _upload_results(
                     logger.info(f"Job {job_id}: Uploaded {file_key}")
                 except Exception as e:
                     logger.error(f"Job {job_id}: Failed to upload {file_key}: {e}")
+
+
+# ==================== CLI Entry Point for Cloud Run Jobs ====================
+# This allows the video worker to be run as a standalone Cloud Run Job.
+# Usage: python -m backend.workers.video_worker --job-id <job_id>
+
+def main():
+    """
+    CLI entry point for running video worker as a Cloud Run Job.
+    
+    This is used when video encoding needs more than 30 minutes
+    (the Cloud Tasks timeout limit). Cloud Run Jobs support up to 24 hours.
+    
+    Usage:
+        python -m backend.workers.video_worker --job-id abc123
+    
+    Environment Variables:
+        GOOGLE_CLOUD_PROJECT: GCP project ID (required)
+        GCS_BUCKET_NAME: Storage bucket name (required)
+    """
+    import argparse
+    import asyncio
+    import sys
+    
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Video encoding worker for karaoke generation"
+    )
+    parser.add_argument(
+        "--job-id",
+        required=True,
+        help="Job ID to process"
+    )
+    
+    args = parser.parse_args()
+    job_id = args.job_id
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    logger.info(f"Starting video worker CLI for job {job_id}")
+    
+    # Run the async worker function
+    try:
+        success = asyncio.run(generate_video(job_id))
+        if success:
+            logger.info(f"Video generation completed successfully for job {job_id}")
+            sys.exit(0)
+        else:
+            logger.error(f"Video generation failed for job {job_id}")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"Video worker crashed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

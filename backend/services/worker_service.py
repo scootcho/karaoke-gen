@@ -70,14 +70,13 @@ class WorkerService:
         """
         Check if Cloud Tasks should be used for worker coordination.
         
-        Controlled by ENABLE_CLOUD_TASKS environment variable.
+        Controlled by ENABLE_CLOUD_TASKS setting (from environment variable).
         Default is false (direct HTTP mode) for backward compatibility.
         
         Returns:
             True if Cloud Tasks should be used, False for direct HTTP
         """
-        enable_flag = os.getenv("ENABLE_CLOUD_TASKS", "false").lower()
-        return enable_flag in ("true", "1", "yes")
+        return self.settings.enable_cloud_tasks
     
     @property
     def tasks_client(self):
@@ -201,7 +200,7 @@ class WorkerService:
                 logger.error("GOOGLE_CLOUD_PROJECT not set, cannot enqueue Cloud Task")
                 return False
                 
-            location = "us-central1"  # Must match queue location
+            location = self.settings.gcp_region  # Must match queue location
             
             # Build queue path
             parent = self.tasks_client.queue_path(project, location, queue_name)
@@ -316,8 +315,67 @@ class WorkerService:
         return await self.trigger_worker("screens", job_id)
     
     async def trigger_video_worker(self, job_id: str) -> bool:
-        """Trigger video generation worker."""
+        """
+        Trigger video generation worker.
+        
+        When USE_CLOUD_RUN_JOBS_FOR_VIDEO=true and ENABLE_CLOUD_TASKS=true,
+        uses Cloud Run Jobs for execution (supports >30 min encoding).
+        Otherwise, uses Cloud Tasks or direct HTTP.
+        """
+        if self._use_cloud_tasks and self.settings.use_cloud_run_jobs_for_video:
+            return await self._trigger_cloud_run_job(job_id)
         return await self.trigger_worker("video", job_id)
+    
+    async def _trigger_cloud_run_job(self, job_id: str) -> bool:
+        """
+        Trigger video encoding as a Cloud Run Job.
+        
+        Cloud Run Jobs support up to 24 hours of execution time,
+        making them suitable for very long video encoding tasks.
+        
+        Args:
+            job_id: Job ID to process
+            
+        Returns:
+            True if job was triggered successfully, False otherwise
+        """
+        try:
+            from google.cloud import run_v2
+            
+            project = self.settings.google_cloud_project
+            if not project:
+                logger.error("GOOGLE_CLOUD_PROJECT not set, cannot trigger Cloud Run Job")
+                return False
+            
+            location = self.settings.gcp_region
+            job_name = f"projects/{project}/locations/{location}/jobs/video-encoding-job"
+            
+            # Create Cloud Run Jobs client
+            client = run_v2.JobsClient()
+            
+            # Run the job with overrides for the specific job_id
+            request = run_v2.RunJobRequest(
+                name=job_name,
+                overrides=run_v2.RunJobRequest.Overrides(
+                    container_overrides=[
+                        run_v2.RunJobRequest.Overrides.ContainerOverride(
+                            args=["python", "-m", "backend.workers.video_worker", "--job-id", job_id],
+                        )
+                    ]
+                )
+            )
+            
+            # Run the job (async operation)
+            operation = client.run_job(request=request)
+            logger.info(f"Started Cloud Run Job for video encoding, job {job_id}: {operation.metadata}")
+            return True
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to trigger Cloud Run Job for video/{job_id}: {e}",
+                exc_info=True
+            )
+            return False
     
     async def trigger_render_video_worker(self, job_id: str) -> bool:
         """Trigger render video worker (post-review)."""
