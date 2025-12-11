@@ -219,13 +219,13 @@ class TestJobModelFieldPresence:
     def test_input_media_gcs_path_field_exists(self):
         """Test that Job model has input_media_gcs_path field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         # This should not raise AttributeError
@@ -234,13 +234,13 @@ class TestJobModelFieldPresence:
     def test_input_media_gcs_path_can_be_set(self):
         """Test that input_media_gcs_path can be set."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             input_media_gcs_path="uploads/test123/file.flac"
         )
         
@@ -249,13 +249,13 @@ class TestJobModelFieldPresence:
     def test_pydantic_doesnt_ignore_input_media_gcs_path(self):
         """Test that Pydantic includes input_media_gcs_path in serialization."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             input_media_gcs_path="uploads/test123/file.flac"
         )
         
@@ -294,13 +294,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_artist_field(self):
         """Test that Job model has lyrics_artist field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_artist="Override Artist"
         )
         
@@ -310,13 +310,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_title_field(self):
         """Test that Job model has lyrics_title field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_title="Override Title"
         )
         
@@ -326,13 +326,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_lyrics_file_gcs_path_field(self):
         """Test that Job model has lyrics_file_gcs_path field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             lyrics_file_gcs_path="uploads/test123/lyrics/user_lyrics.txt"
         )
         
@@ -342,13 +342,13 @@ class TestLyricsConfigurationFields:
     def test_job_has_subtitle_offset_ms_field(self):
         """Test that Job model has subtitle_offset_ms field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             subtitle_offset_ms=500
         )
         
@@ -358,13 +358,13 @@ class TestLyricsConfigurationFields:
     def test_subtitle_offset_default_is_zero(self):
         """Test that subtitle_offset_ms defaults to 0."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         assert job.subtitle_offset_ms == 0
@@ -433,13 +433,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_clean_instrumental_model_field(self):
         """Test that Job model has clean_instrumental_model field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             clean_instrumental_model="custom_model.ckpt"
         )
         
@@ -449,13 +449,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_backing_vocals_models_field(self):
         """Test that Job model has backing_vocals_models field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             backing_vocals_models=["model1.ckpt", "model2.ckpt"]
         )
         
@@ -465,13 +465,13 @@ class TestAudioModelConfigurationFields:
     def test_job_has_other_stems_models_field(self):
         """Test that Job model has other_stems_models field."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             other_stems_models=["htdemucs_6s.yaml"]
         )
         
@@ -481,13 +481,13 @@ class TestAudioModelConfigurationFields:
     def test_audio_model_fields_are_optional(self):
         """Test that audio model fields default to None."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
         )
         
         assert job.clean_instrumental_model is None
@@ -526,13 +526,13 @@ class TestAudioModelConfigurationFields:
     def test_pydantic_includes_audio_model_fields_in_serialization(self):
         """Test that Pydantic includes audio model fields in serialization."""
         from backend.models.job import Job
-        from datetime import datetime
+        from datetime import datetime, UTC
         
         job = Job(
             job_id="test123",
             status=JobStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             clean_instrumental_model="custom.ckpt",
             backing_vocals_models=["bv1.ckpt", "bv2.ckpt"],
             other_stems_models=["stems.yaml"]
@@ -783,6 +783,10 @@ class TestCreateJobWithUploadUrlsValidation:
         assert 'invalid_type' not in VALID_FILE_TYPES
 
 
+# ============================================================================
+# Batch 3: Existing Instrumental Tests
+# ============================================================================
+
 class TestExistingInstrumentalSupport:
     """Test existing instrumental support (Batch 3)."""
     
@@ -959,6 +963,424 @@ class TestDurationValidation:
         assert inspect.iscoroutinefunction(_validate_audio_durations)
 
 
+# ============================================================================
+# Batch 4: YouTube URL Input Tests
+# ============================================================================
+
+class TestURLValidation:
+    """Test URL validation for URL-based job submission."""
+    
+    def test_valid_youtube_urls(self):
+        """Test that YouTube URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_valid_vimeo_urls(self):
+        """Test that Vimeo URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://vimeo.com/123456789",
+            "https://www.vimeo.com/123456789",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_valid_soundcloud_urls(self):
+        """Test that SoundCloud URLs are validated correctly."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://soundcloud.com/artist/track",
+            "https://www.soundcloud.com/artist/track",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+    
+    def test_invalid_urls(self):
+        """Test that invalid URLs are rejected."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        invalid_urls = [
+            "",
+            None,
+            "not-a-url",
+            "ftp://example.com/file.mp3",
+        ]
+        
+        for url in invalid_urls:
+            assert not _validate_url(url), f"URL should be invalid: {url}"
+    
+    def test_other_supported_platforms(self):
+        """Test other supported video platforms."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        valid_urls = [
+            "https://twitter.com/user/status/123",
+            "https://x.com/user/status/123",
+            "https://www.facebook.com/video.php?v=123",
+            "https://www.instagram.com/reel/abc123/",
+            "https://www.tiktok.com/@user/video/123",
+        ]
+        
+        for url in valid_urls:
+            assert _validate_url(url), f"URL should be valid: {url}"
+
+
+class TestCreateJobFromUrlRequest:
+    """Test CreateJobFromUrlRequest Pydantic model."""
+    
+    def test_create_with_url_only(self):
+        """Test creating request with just URL (artist/title auto-detected)."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert request.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert request.artist is None
+        assert request.title is None
+        assert request.enable_cdg is True
+        assert request.enable_txt is True
+    
+    def test_create_with_artist_and_title(self):
+        """Test creating request with URL, artist, and title."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up"
+        )
+        
+        assert request.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert request.artist == "Rick Astley"
+        assert request.title == "Never Gonna Give You Up"
+    
+    def test_create_with_all_options(self):
+        """Test creating request with all options."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        
+        request = CreateJobFromUrlRequest(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up",
+            enable_cdg=True,
+            enable_txt=True,
+            brand_prefix="NOMAD",
+            enable_youtube_upload=True,
+            dropbox_path="/Karaoke/Test",
+            gdrive_folder_id="abc123",
+            lyrics_artist="Rick A.",
+            lyrics_title="Never Gonna",
+            subtitle_offset_ms=500,
+        )
+        
+        assert request.brand_prefix == "NOMAD"
+        assert request.enable_youtube_upload is True
+        assert request.dropbox_path == "/Karaoke/Test"
+        assert request.gdrive_folder_id == "abc123"
+        assert request.lyrics_artist == "Rick A."
+        assert request.subtitle_offset_ms == 500
+
+
+class TestCreateJobFromUrlResponse:
+    """Test CreateJobFromUrlResponse Pydantic model."""
+    
+    def test_response_model(self):
+        """Test response model fields."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Job created. Audio will be downloaded from URL.",
+            detected_artist="Rick Astley",
+            detected_title="Never Gonna Give You Up",
+            server_version="0.71.26"
+        )
+        
+        assert response.status == "success"
+        assert response.job_id == "test123"
+        assert response.detected_artist == "Rick Astley"
+        assert response.detected_title == "Never Gonna Give You Up"
+    
+    def test_response_with_none_artist_title(self):
+        """Test response when artist/title are not provided (auto-detection)."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Job created. Audio will be downloaded from URL.",
+            detected_artist=None,
+            detected_title=None,
+            server_version="0.71.26"
+        )
+        
+        assert response.detected_artist is None
+        assert response.detected_title is None
+
+
+class TestFileHandlerDownloadVideo:
+    """Test FileHandler.download_video method."""
+    
+    def test_download_video_method_exists(self):
+        """Test that download_video method exists in FileHandler."""
+        from karaoke_gen.file_handler import FileHandler
+        
+        assert hasattr(FileHandler, 'download_video')
+    
+    def test_extract_metadata_from_url_method_exists(self):
+        """Test that extract_metadata_from_url method exists in FileHandler."""
+        from karaoke_gen.file_handler import FileHandler
+        
+        assert hasattr(FileHandler, 'extract_metadata_from_url')
+    
+    def test_yt_dlp_import_check(self):
+        """Test that YT_DLP_AVAILABLE flag is set correctly."""
+        from karaoke_gen.file_handler import YT_DLP_AVAILABLE
+        
+        # Should be True if yt-dlp is installed
+        # Test just checks the flag exists
+        assert isinstance(YT_DLP_AVAILABLE, bool)
+
+
+class TestJobModelURLField:
+    """Test that Job model supports URL field correctly."""
+    
+    def test_job_has_url_field(self):
+        """Test that Job model has url field."""
+        from backend.models.job import Job
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert hasattr(job, 'url')
+        assert job.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    
+    def test_job_url_is_optional(self):
+        """Test that url field is optional."""
+        from backend.models.job import Job
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+        
+        assert job.url is None
+    
+    def test_job_create_with_url(self):
+        """Test creating job via JobCreate with URL."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert job_create.artist == "Rick Astley"
+        assert job_create.title == "Never Gonna Give You Up"
+    
+    def test_job_create_url_only(self):
+        """Test creating job via JobCreate with URL only (no artist/title)."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        assert job_create.artist is None
+        assert job_create.title is None
+
+
+class TestCreateJobFromUrlEndpoint:
+    """Test the /api/jobs/create-from-url endpoint."""
+    
+    def test_endpoint_exists(self):
+        """Test that the create-from-url endpoint exists on the router."""
+        from backend.api.routes.file_upload import router
+        
+        # Check if the route exists
+        paths = [route.path for route in router.routes if hasattr(route, 'path')]
+        assert "/jobs/create-from-url" in paths
+    
+    def test_create_job_from_url_response_model_has_expected_fields(self):
+        """Test that CreateJobFromUrlResponse has the expected fields."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        # Create instance with all required fields
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Test message",
+            detected_artist=None,
+            detected_title=None,
+            server_version="1.0.0"
+        )
+        
+        assert response.status == "success"
+        assert response.job_id == "test123"
+        assert response.message == "Test message"
+        assert response.detected_artist is None
+        assert response.detected_title is None
+    
+    def test_create_job_from_url_response_with_all_fields(self):
+        """Test CreateJobFromUrlResponse with all fields populated."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Test message",
+            detected_artist="Test Artist",
+            detected_title="Test Song",
+            server_version="1.0.0"
+        )
+        
+        assert response.detected_artist == "Test Artist"
+        assert response.detected_title == "Test Song"
+        assert response.server_version == "1.0.0"
+    
+    def test_create_job_from_url_request_validation(self):
+        """Test CreateJobFromUrlRequest validates URL is required."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        import pydantic
+        
+        # URL is required
+        with pytest.raises(pydantic.ValidationError):
+            CreateJobFromUrlRequest()
+        
+        # Valid with just URL
+        request = CreateJobFromUrlRequest(url="https://www.youtube.com/watch?v=abc")
+        assert request.url == "https://www.youtube.com/watch?v=abc"
+    
+    def test_validate_url_returns_true_for_all_supported_domains(self):
+        """Test _validate_url returns True for all supported domains."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        # Test various supported domains
+        test_urls = [
+            "https://www.youtube.com/watch?v=abc",
+            "https://youtu.be/abc",
+            "https://music.youtube.com/watch?v=abc",
+            "https://vimeo.com/12345",
+            "https://player.vimeo.com/video/12345",
+            "https://soundcloud.com/artist/track",
+            "https://m.soundcloud.com/artist/track",
+            "https://dailymotion.com/video/abc",
+            "https://facebook.com/video",
+            "https://www.twitch.tv/clips/abc",
+        ]
+        
+        for url in test_urls:
+            assert _validate_url(url) is True, f"Should accept {url}"
+    
+    def test_validate_url_handles_domain_with_port(self):
+        """Test _validate_url handles URLs with port numbers."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        # URL with port should work
+        assert _validate_url("https://youtube.com:443/watch?v=abc") is True
+        assert _validate_url("http://localhost:8080/video") is True
+
+
+class TestUrlBasedJobWorkflow:
+    """Test the complete URL-based job workflow."""
+    
+    def test_job_model_accepts_url(self):
+        """Test that Job model accepts url field."""
+        from backend.models.job import Job, JobStatus, JobCreate
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            url="https://www.youtube.com/watch?v=abc",
+            artist="Test",
+            title="Test"
+        )
+        
+        assert job.url == "https://www.youtube.com/watch?v=abc"
+    
+    def test_job_create_accepts_url(self):
+        """Test that JobCreate model accepts url field."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=abc",
+            artist="Test Artist",
+            title="Test Song"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=abc"
+        assert job_create.artist == "Test Artist"
+        assert job_create.title == "Test Song"
+    
+    def test_job_create_url_and_file_mutually_exclusive_behavior(self):
+        """Test that JobCreate allows either URL or filename."""
+        from backend.models.job import JobCreate
+        
+        # URL only - valid
+        job1 = JobCreate(url="https://youtube.com/watch?v=abc")
+        assert job1.url is not None
+        assert job1.filename is None
+        
+        # Filename only - valid
+        job2 = JobCreate(filename="test.mp3", artist="Test", title="Test")
+        assert job2.filename == "test.mp3"
+        assert job2.url is None
+
+
+class TestIsUrlFunction:
+    """Test the is_url function from cli_args."""
+    
+    def test_is_url_http(self):
+        """Test that http URLs are detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("http://example.com") is True
+    
+    def test_is_url_https(self):
+        """Test that https URLs are detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("https://www.youtube.com/watch?v=abc") is True
+    
+    def test_is_url_not_url(self):
+        """Test that non-URLs are not detected."""
+        from karaoke_gen.utils.cli_args import is_url
+        
+        assert is_url("/path/to/file.mp3") is False
+        assert is_url("file.mp3") is False
+        assert is_url("") is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

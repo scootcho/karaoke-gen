@@ -75,6 +75,7 @@ pyperclip = "*"
 pytest-asyncio = "*"
 ffmpeg-python = "^0.2.0"
 python-multipart = "^0.0.20"
+yt-dlp = ">=2024.0.0"
 matplotlib = ">=3"
 # Backend API dependencies
 fastapi = ">=0.104.0"

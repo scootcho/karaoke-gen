@@ -34,7 +34,7 @@ AUDIO_WORKER_LOGGERS = [
 ]
 
 
-async def download_from_url(url: str, temp_dir: str, artist: str, title: str) -> Optional[str]:
+async def download_from_url(url: str, temp_dir: str, artist: str, title: str, job_manager: JobManager = None, job_id: str = None) -> Optional[str]:
     """
     Download audio from a URL (YouTube, etc.) using karaoke_gen.FileHandler.
     
@@ -43,11 +43,16 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
     - Cookie support for authenticated downloads
     - Retry logic
     
+    If artist and/or title are not provided, attempts to extract them from 
+    the URL metadata.
+    
     Args:
         url: URL to download from
         temp_dir: Temporary directory to save to
-        artist: Artist name for filename
-        title: Song title for filename
+        artist: Artist name for filename (can be None for auto-detection)
+        title: Song title for filename (can be None for auto-detection)
+        job_manager: Optional JobManager to update job with detected metadata
+        job_id: Optional job ID to update
         
     Returns:
         Path to downloaded audio file, or None if failed
@@ -63,6 +68,34 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
             create_track_subfolders=False,
             dry_run=False
         )
+        
+        # Try to extract metadata if artist or title not provided
+        if not artist or not title:
+            logger.info(f"Extracting metadata from URL: {url}")
+            metadata = file_handler.extract_metadata_from_url(url)
+            
+            if metadata:
+                if not artist:
+                    artist = metadata.get('artist', 'Unknown')
+                    logger.info(f"Auto-detected artist: {artist}")
+                if not title:
+                    title = metadata.get('title', 'Unknown')
+                    logger.info(f"Auto-detected title: {title}")
+                
+                # Update job with detected metadata if job_manager provided
+                if job_manager and job_id:
+                    update_data = {}
+                    if artist:
+                        update_data['artist'] = artist
+                    if title:
+                        update_data['title'] = title
+                    if update_data:
+                        job_manager.update_job(job_id, update_data)
+                        logger.info(f"Updated job {job_id} with detected metadata")
+            else:
+                logger.warning("Could not extract metadata from URL, using defaults")
+                artist = artist or "Unknown"
+                title = title or "Unknown"
         
         # Create output filename (without extension)
         safe_artist = sanitize_filename(artist) if artist else "Unknown"
@@ -222,9 +255,9 @@ async def process_audio_separation(job_id: str) -> bool:
                               "Cannot perform audio separation without remote API access.")
             job_log.info(f"Audio separator API: {api_url}")
             
-            # Download audio file from GCS
-            job_log.info("Downloading audio file from GCS...")
-            audio_path = await download_audio(job_id, temp_dir, storage, job)
+            # Download audio file from GCS or URL
+            job_log.info("Downloading audio file...")
+            audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager_instance=job_manager)
             if not audio_path:
                 raise Exception("Failed to download audio file")
             job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
@@ -318,7 +351,8 @@ async def download_audio(
     job_id: str,
     temp_dir: str,
     storage: StorageService,
-    job
+    job,
+    job_manager_instance: JobManager = None
 ) -> Optional[str]:
     """
     Download or fetch audio file to local temp directory.
@@ -326,6 +360,13 @@ async def download_audio(
     Handles two cases:
     1. Uploaded file: Download from GCS using input_media_gcs_path
     2. URL (YouTube, etc.): Download using yt-dlp or other tools
+    
+    Args:
+        job_id: Job ID
+        temp_dir: Temporary directory to save to
+        storage: StorageService instance
+        job: Job object with URL or GCS path
+        job_manager_instance: Optional JobManager instance for updating job metadata
     
     Returns:
         Path to downloaded audio file, or None if failed
@@ -351,7 +392,18 @@ async def download_audio(
         # Case 3: Fresh URL that needs downloading
         if job.url:
             logger.info(f"Job {job_id}: Downloading from URL: {job.url}")
-            local_path = await download_from_url(job.url, temp_dir, job.artist, job.title)
+            
+            # Use provided job_manager or create new one
+            jm = job_manager_instance or JobManager()
+            
+            local_path = await download_from_url(
+                job.url, 
+                temp_dir, 
+                job.artist, 
+                job.title,
+                job_manager=jm,
+                job_id=job_id
+            )
             
             if local_path and os.path.exists(local_path):
                 # Upload to GCS and update job
@@ -359,9 +411,8 @@ async def download_audio(
                 url = storage.upload_file(local_path, gcs_path)
                 
                 # Update job with GCS path for lyrics worker
-                job_manager = JobManager()
-                job_manager.firestore.update_job(job_id, {'input_media_gcs_path': gcs_path})
-                job_manager.update_file_url(job_id, 'input', 'audio', url)
+                jm.update_job(job_id, {'input_media_gcs_path': gcs_path})
+                jm.update_file_url(job_id, 'input', 'audio', url)
                 
                 logger.info(f"Job {job_id}: Downloaded and uploaded audio to GCS: {gcs_path}")
                 return local_path
