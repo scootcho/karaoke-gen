@@ -1218,6 +1218,146 @@ class TestJobModelURLField:
         assert job_create.title is None
 
 
+class TestCreateJobFromUrlEndpoint:
+    """Test the /api/jobs/create-from-url endpoint."""
+    
+    def test_endpoint_exists(self):
+        """Test that the create-from-url endpoint exists on the router."""
+        from backend.api.routes.file_upload import router
+        
+        # Check if the route exists
+        paths = [route.path for route in router.routes if hasattr(route, 'path')]
+        assert "/jobs/create-from-url" in paths
+    
+    def test_create_job_from_url_response_model_has_expected_fields(self):
+        """Test that CreateJobFromUrlResponse has the expected fields."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        # Create instance with all required fields
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Test message",
+            detected_artist=None,
+            detected_title=None,
+            server_version="1.0.0"
+        )
+        
+        assert response.status == "success"
+        assert response.job_id == "test123"
+        assert response.message == "Test message"
+        assert response.detected_artist is None
+        assert response.detected_title is None
+    
+    def test_create_job_from_url_response_with_all_fields(self):
+        """Test CreateJobFromUrlResponse with all fields populated."""
+        from backend.api.routes.file_upload import CreateJobFromUrlResponse
+        
+        response = CreateJobFromUrlResponse(
+            status="success",
+            job_id="test123",
+            message="Test message",
+            detected_artist="Test Artist",
+            detected_title="Test Song",
+            server_version="1.0.0"
+        )
+        
+        assert response.detected_artist == "Test Artist"
+        assert response.detected_title == "Test Song"
+        assert response.server_version == "1.0.0"
+    
+    def test_create_job_from_url_request_validation(self):
+        """Test CreateJobFromUrlRequest validates URL is required."""
+        from backend.api.routes.file_upload import CreateJobFromUrlRequest
+        import pydantic
+        
+        # URL is required
+        with pytest.raises(pydantic.ValidationError):
+            CreateJobFromUrlRequest()
+        
+        # Valid with just URL
+        request = CreateJobFromUrlRequest(url="https://www.youtube.com/watch?v=abc")
+        assert request.url == "https://www.youtube.com/watch?v=abc"
+    
+    def test_validate_url_returns_true_for_all_supported_domains(self):
+        """Test _validate_url returns True for all supported domains."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        # Test various supported domains
+        test_urls = [
+            "https://www.youtube.com/watch?v=abc",
+            "https://youtu.be/abc",
+            "https://music.youtube.com/watch?v=abc",
+            "https://vimeo.com/12345",
+            "https://player.vimeo.com/video/12345",
+            "https://soundcloud.com/artist/track",
+            "https://m.soundcloud.com/artist/track",
+            "https://dailymotion.com/video/abc",
+            "https://facebook.com/video",
+            "https://www.twitch.tv/clips/abc",
+        ]
+        
+        for url in test_urls:
+            assert _validate_url(url) is True, f"Should accept {url}"
+    
+    def test_validate_url_handles_domain_with_port(self):
+        """Test _validate_url handles URLs with port numbers."""
+        from backend.api.routes.file_upload import _validate_url
+        
+        # URL with port should work
+        assert _validate_url("https://youtube.com:443/watch?v=abc") is True
+        assert _validate_url("http://localhost:8080/video") is True
+
+
+class TestUrlBasedJobWorkflow:
+    """Test the complete URL-based job workflow."""
+    
+    def test_job_model_accepts_url(self):
+        """Test that Job model accepts url field."""
+        from backend.models.job import Job, JobStatus, JobCreate
+        from datetime import datetime, UTC
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            url="https://www.youtube.com/watch?v=abc",
+            artist="Test",
+            title="Test"
+        )
+        
+        assert job.url == "https://www.youtube.com/watch?v=abc"
+    
+    def test_job_create_accepts_url(self):
+        """Test that JobCreate model accepts url field."""
+        from backend.models.job import JobCreate
+        
+        job_create = JobCreate(
+            url="https://www.youtube.com/watch?v=abc",
+            artist="Test Artist",
+            title="Test Song"
+        )
+        
+        assert job_create.url == "https://www.youtube.com/watch?v=abc"
+        assert job_create.artist == "Test Artist"
+        assert job_create.title == "Test Song"
+    
+    def test_job_create_url_and_file_mutually_exclusive_behavior(self):
+        """Test that JobCreate allows either URL or filename."""
+        from backend.models.job import JobCreate
+        
+        # URL only - valid
+        job1 = JobCreate(url="https://youtube.com/watch?v=abc")
+        assert job1.url is not None
+        assert job1.filename is None
+        
+        # Filename only - valid
+        job2 = JobCreate(filename="test.mp3", artist="Test", title="Test")
+        assert job2.filename == "test.mp3"
+        assert job2.url is None
+
+
 class TestIsUrlFunction:
     """Test the is_url function from cli_args."""
     
