@@ -138,7 +138,7 @@ def job_log_context(
     Args:
         job_id: Job ID to associate logs with
         worker: Worker name for log categorization
-        logger_names: List of logger names to capture (None = capture root + common loggers)
+        logger_names: List of logger names to capture (None = capture common loggers)
         min_level: Minimum log level to capture
         
     Usage:
@@ -147,14 +147,13 @@ def job_log_context(
             correction_operations.add_lyrics_source(...)
     """
     # Default loggers to capture - these cover most of our processing
+    # Note: We intentionally DON'T include the root logger ('') to avoid
+    # duplicate log entries since logs propagate up the logger hierarchy.
+    # Only capture at the top-level package loggers.
     if logger_names is None:
         logger_names = [
-            '',  # Root logger
             'backend.api.routes.review',
             'lyrics_transcriber',
-            'lyrics_transcriber.correction',
-            'lyrics_transcriber.correction.anchor_sequence',
-            'lyrics_transcriber.correction.corrector',
             'karaoke_gen',
         ]
     

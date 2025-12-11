@@ -36,23 +36,13 @@ from karaoke_gen.lyrics_processor import LyricsProcessor
 logger = logging.getLogger(__name__)
 
 
-# Loggers to capture for lyrics worker (includes LyricsTranscriber internals)
+# Loggers to capture for lyrics worker (top-level package loggers only)
+# Note: We only capture at top-level package loggers to avoid duplicate log entries.
+# Logs from sub-modules (e.g., lyrics_transcriber.correction.anchor_sequence) will
+# propagate up to their parent logger (lyrics_transcriber) where they get captured.
 LYRICS_WORKER_LOGGERS = [
     "karaoke_gen.lyrics_processor",
     "lyrics_transcriber",
-    "lyrics_transcriber.core",
-    "lyrics_transcriber.core.controller",
-    "lyrics_transcriber.lyrics",
-    "lyrics_transcriber.lyrics.genius",
-    "lyrics_transcriber.lyrics.spotify",
-    "lyrics_transcriber.lyrics.musixmatch",
-    "lyrics_transcriber.lyrics.lrclib",
-    "lyrics_transcriber.correction",
-    "lyrics_transcriber.correction.corrector",
-    "lyrics_transcriber.correction.anchor_sequence",
-    "lyrics_transcriber.transcribers",
-    "lyrics_transcriber.transcribers.audioshake",
-    "lyrics_transcriber.output",
 ]
 
 

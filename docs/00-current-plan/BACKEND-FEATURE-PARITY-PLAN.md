@@ -5,6 +5,20 @@
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
+### Quick Parity Summary
+
+| Category | Supported | Total | Parity |
+|----------|-----------|-------|--------|
+| Core Processing | 12 | 12 | **100%** |
+| Distribution | 5 | 5 | **100%** |
+| Lyrics Configuration | 1 | 5 | **20%** |
+| Style Configuration | 1 | 4 | **25%** |
+| Workflow Control | 0 | 7 | **0%** |
+| Audio Processing | 0 | 6 | **0%** |
+| Input Modes | 1 | 4 | **25%** |
+
+**Overall:** Core workflow complete, but many optional parameters not yet supported. See [CLI Parameter Parity Analysis](#-cli-parameter-parity-analysis) for details.
+
 ---
 
 ## 🎉 Milestone: First Successful End-to-End Run
@@ -36,6 +50,186 @@ karaoke-gen-remote \
 - ✅ Google Drive upload
 - ✅ Discord notification
 - ✅ All files downloaded locally
+
+---
+
+## 📊 CLI Parameter Parity Analysis
+
+This section provides a comprehensive comparison of all CLI parameters between `karaoke-gen` (local) and `karaoke-gen-remote`.
+
+**Legend:**
+- ✅ Fully supported
+- ⚠️ Partially supported (limited functionality)
+- ❌ Not supported (ignored or errors)
+- 🔹 Remote-only (not applicable to local CLI)
+- N/A Not applicable to this mode
+
+### Positional Arguments
+
+| Parameter | Local | Remote | Notes |
+|-----------|-------|--------|-------|
+| `<file>` | ✅ | ✅ | Local file path |
+| `<url>` (YouTube) | ✅ | ❌ | YouTube URL input not yet supported |
+| `<artist> <title>` (search) | ✅ | ❌ | Audio search via flacfetch not yet supported |
+| Folder input | ✅ | ❌ | Batch folder processing not yet supported |
+
+### Workflow Control
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--prep-only` | ✅ | ❌ | LOW | Ignored - remote always runs full pipeline |
+| `--finalise-only` | ✅ | ❌ | LOW | Errors - not applicable to remote |
+| `--skip-transcription` | ✅ | ❌ | MEDIUM | Ignored - could be useful for re-processing |
+| `--skip-separation` | ✅ | ❌ | MEDIUM | Ignored - could be useful for re-processing |
+| `--skip-lyrics` | ✅ | ❌ | LOW | Ignored |
+| `--lyrics-only` | ✅ | ❌ | LOW | Ignored |
+| `--edit-lyrics` | ✅ | ❌ | MEDIUM | Errors - useful for fixing existing tracks |
+| `--resume` | N/A | 🔹 | - | Resume monitoring existing job |
+| `--cancel` | N/A | 🔹 | - | Cancel running job |
+| `--retry` | N/A | 🔹 | - | Retry failed job |
+| `--delete` | N/A | 🔹 | - | Delete job and files |
+| `--list` | N/A | 🔹 | - | List all jobs |
+
+### Logging & Debugging
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--log_level` | ✅ | ✅ | - | Fully supported |
+| `--dry_run` | ✅ | ❌ | LOW | Ignored |
+| `--render_bounding_boxes` | ✅ | ❌ | LOW | Ignored - debugging only |
+
+### Input/Output Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--filename_pattern` | ✅ | N/A | - | Only for folder processing |
+| `--output_dir` | ✅ | ✅ | - | Download location for remote |
+| `--no_track_subfolders` | ✅ | ❌ | LOW | Ignored - remote always creates subfolders |
+| `--lossless_output_format` | ✅ | ❌ | LOW | Ignored - backend uses FLAC |
+| `--output_png` | ✅ | ❌ | LOW | Ignored - backend outputs both |
+| `--output_jpg` | ✅ | ❌ | LOW | Ignored - backend outputs both |
+
+### Audio Fetching Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--auto-download` | ✅ | ❌ | LOW | Warned - audio search not yet supported |
+
+### Audio Processing Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--clean_instrumental_model` | ✅ | ❌ | LOW | Ignored - backend uses fixed models |
+| `--backing_vocals_models` | ✅ | ❌ | LOW | Ignored - backend uses fixed models |
+| `--other_stems_models` | ✅ | ❌ | LOW | Ignored - backend uses fixed models |
+| `--model_file_dir` | ✅ | N/A | - | Not applicable - backend has own models |
+| `--existing_instrumental` | ✅ | ❌ | MEDIUM | Warned - useful for re-processing |
+| `--instrumental_format` | ✅ | ❌ | LOW | Ignored - backend uses FLAC |
+
+### Lyrics Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--lyrics_artist` | ✅ | ❌ | **HIGH** | Not sent to backend - **NEEDED** |
+| `--lyrics_title` | ✅ | ❌ | **HIGH** | Not sent to backend - **NEEDED** |
+| `--lyrics_file` | ✅ | ❌ | **HIGH** | Not sent to backend - **NEEDED** |
+| `--subtitle_offset_ms` | ✅ | ❌ | MEDIUM | Not sent to backend |
+| `--skip_transcription_review` | ✅ | ⚠️ | LOW | Use `-y` flag for non-interactive mode |
+
+### Style Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--style_params_json` | ✅ | ✅ | - | Fully supported with asset uploads |
+| `--style_override` | ✅ | ❌ | MEDIUM | Not sent to backend |
+| `--background_video` | ✅ | ❌ | MEDIUM | Warned - would need video upload support |
+| `--background_video_darkness` | ✅ | ❌ | LOW | Depends on --background_video |
+
+### Finalisation Configuration
+
+| Parameter | Local | Remote | Priority | Notes |
+|-----------|-------|--------|----------|-------|
+| `--enable_cdg` | ✅ | ✅ | - | Fully supported |
+| `--enable_txt` | ✅ | ✅ | - | Fully supported |
+| `--brand_prefix` | ✅ | ✅ | - | Fully supported |
+| `--organised_dir` | ✅ | N/A | - | Local-only (local filesystem) |
+| `--organised_dir_rclone_root` | ✅ | ✅ | - | Legacy rclone support |
+| `--public_share_dir` | ✅ | N/A | - | Local-only (local filesystem) |
+| `--enable_youtube_upload` | ✅ | ✅ | - | Fully supported (server-side credentials) |
+| `--youtube_client_secrets_file` | ✅ | N/A | - | Server uses stored credentials |
+| `--youtube_description_file` | ✅ | ✅ | - | Fully supported |
+| `--rclone_destination` | ✅ | N/A | - | Local-only (use `--gdrive_folder_id`) |
+| `--dropbox_path` | N/A | 🔹 | - | Remote-only (native API) |
+| `--gdrive_folder_id` | N/A | 🔹 | - | Remote-only (native API) |
+| `--discord_webhook_url` | ✅ | ✅ | - | Fully supported |
+| `--email_template_file` | ✅ | ❌ | LOW | Warned - not implemented |
+| `--keep-brand-code` | ✅ | ❌ | LOW | Not sent to backend |
+| `-y` / `--yes` | ✅ | ✅ | - | Non-interactive mode |
+| `--test_email_template` | ✅ | N/A | - | Local testing only |
+
+### Remote CLI Specific Options
+
+| Parameter | Local | Remote | Notes |
+|-----------|-------|--------|-------|
+| `--service-url` | N/A | 🔹 | Backend service URL |
+| `--review-ui-url` | N/A | 🔹 | Lyrics review UI URL |
+| `--poll-interval` | N/A | 🔹 | Status polling interval |
+| `--environment` | N/A | 🔹 | Job tagging for filtering |
+| `--client-id` | N/A | 🔹 | Job tagging for filtering |
+| `--filter-environment` | N/A | 🔹 | Filter jobs in --list |
+| `--filter-client-id` | N/A | 🔹 | Filter jobs in --list |
+| `--bulk-delete` | N/A | 🔹 | Bulk delete matching jobs |
+
+---
+
+## 🎯 High Priority Parity Gaps
+
+These parameters are commonly used and should be prioritized for remote CLI support:
+
+### 1. Lyrics Override Parameters (HIGH)
+
+**Parameters:** `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`
+
+**Use Case:** Override lyrics search or provide custom lyrics file when:
+- Song has a different name in lyrics databases
+- Artist name differs (feat. artists, etc.)
+- User has manually corrected lyrics file
+
+**Implementation Required:**
+1. Remote CLI: Add to `submit_job()` method
+2. Remote CLI: Upload lyrics file if provided
+3. Backend: Add Form parameters to upload endpoint
+4. Backend: Pass to lyrics worker
+
+### 2. Subtitle Offset (MEDIUM)
+
+**Parameter:** `--subtitle_offset_ms`
+
+**Use Case:** Adjust timing when audio has intro padding or sync issues.
+
+**Implementation Required:**
+1. Remote CLI: Send to backend
+2. Backend: Store in job and pass to render worker
+
+### 3. Style Override (MEDIUM)
+
+**Parameter:** `--style_override`
+
+**Use Case:** Quick style tweaks without modifying JSON file.
+
+**Implementation Required:**
+1. Remote CLI: Send overrides to backend
+2. Backend: Merge with style_params before processing
+
+### 4. Existing Instrumental (MEDIUM)
+
+**Parameter:** `--existing_instrumental`
+
+**Use Case:** Re-process a track with better instrumental, skip separation.
+
+**Implementation Required:**
+1. Remote CLI: Upload instrumental file
+2. Backend: Skip audio worker, use provided file
 
 ---
 
@@ -105,14 +299,21 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | Google Drive upload | ✅ | Service account credentials |
 | Discord notification | ✅ | Webhook URL from job or default |
 
-### ⏳ Not Yet Implemented (Lower Priority)
+### ⏳ Not Yet Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Gmail draft creation | LOW | Nice-to-have, not blocking |
+| **Lyrics override params** | **HIGH** | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file` |
+| Subtitle offset | MEDIUM | `--subtitle_offset_ms` for timing adjustments |
+| Style override | MEDIUM | `--style_override` for quick tweaks |
+| Existing instrumental | MEDIUM | `--existing_instrumental` for re-processing |
+| Skip separation/transcription | MEDIUM | Workflow control for re-processing |
+| Edit lyrics mode | MEDIUM | `--edit-lyrics` for fixing existing tracks |
+| Background video | MEDIUM | `--background_video` requires video upload |
 | YouTube URL input | LOW | Requires yt-dlp in container |
-| Batch processing | LOW | Queue management needed |
-| Existing instrumental support | LOW | For re-processing existing tracks |
+| Audio search (flacfetch) | LOW | Artist+title search, auto-download |
+| Batch folder processing | LOW | Process multiple files at once |
+| Gmail draft creation | LOW | Nice-to-have, not blocking |
 
 ---
 
@@ -400,10 +601,38 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 2. ✅ Tag v0.71.0 release
 3. Update PyPI package
 
-### Short-Term
-1. Monitor production usage
-2. Address any edge cases found
-3. Improve error messages and logging
+### Short-Term: Feature Parity (Priority Order)
+
+1. **Lyrics Override Parameters** (HIGH)
+   - Add `--lyrics_artist`, `--lyrics_title`, `--lyrics_file` support
+   - Files: `remote_cli.py`, `file_upload.py`, `lyrics_worker.py`
+   - Enables: Using correct lyrics for covers, remixes, alternate titles
+
+2. **Subtitle Offset** (MEDIUM)
+   - Add `--subtitle_offset_ms` support
+   - Files: `remote_cli.py`, `file_upload.py`, `render_video_worker.py`
+   - Enables: Timing adjustments for sync issues
+
+3. **Style Override** (MEDIUM)
+   - Add `--style_override` support
+   - Files: `remote_cli.py`, `file_upload.py`, `style_helper.py`
+   - Enables: Quick style tweaks without editing JSON
+
+4. **Existing Instrumental** (MEDIUM)
+   - Add `--existing_instrumental` upload support
+   - Files: `remote_cli.py`, `file_upload.py`, `audio_worker.py`
+   - Enables: Re-processing with better instrumentals
+
+### Medium-Term: Workflow Features
+
+1. **Skip Separation/Transcription flags**
+   - Enable re-processing workflows
+   
+2. **Edit Lyrics Mode**
+   - Allow fixing lyrics on completed jobs
+
+3. **Background Video Support**
+   - Upload and use video backgrounds
 
 ### Long-Term (Shared Pipeline Refactor)
 1. Create new branch for shared pipeline architecture
