@@ -1,0 +1,5179 @@
+{
+  "name": "bright_eyes",
+  "description": "Bright Eyes, medium (164 words)",
+  "source_hashes": {
+    "audioshake": "6cfe3e59cb5c0a10d935396ff8b96752",
+    "references": "748e5a24b339ab66e8bbb55e42e67770"
+  },
+  "transcription": {
+    "segments": [
+      {
+        "id": "kpsau9",
+        "text": "Your bright eyes render all discussion pointless\n",
+        "words": [
+          {
+            "id": "umoir8",
+            "text": "Your",
+            "start_time": 18.580719853048425,
+            "end_time": 18.74072605199825,
+            "created_during_correction": false
+          },
+          {
+            "id": "27o21z",
+            "text": "bright",
+            "start_time": 18.820729151473163,
+            "end_time": 19.100739999635355,
+            "created_during_correction": false
+          },
+          {
+            "id": "lmcogt",
+            "text": "eyes",
+            "start_time": 19.120740774504085,
+            "end_time": 19.48075472214119,
+            "created_during_correction": false
+          },
+          {
+            "id": "jj1xla",
+            "text": "render",
+            "start_time": 19.540757046747373,
+            "end_time": 19.90077099438448,
+            "created_during_correction": false
+          },
+          {
+            "id": "938ksi",
+            "text": "all",
+            "start_time": 19.940772544121938,
+            "end_time": 20.140780292809218,
+            "created_during_correction": false
+          },
+          {
+            "id": "75a4yd",
+            "text": "discussion",
+            "start_time": 20.180781842546676,
+            "end_time": 20.800805863477247,
+            "created_during_correction": false
+          },
+          {
+            "id": "tjw01n",
+            "text": "pointless\n",
+            "start_time": 20.8408074132147,
+            "end_time": 21.560835308488915,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 18.580719853048425,
+        "end_time": 21.560835308488915
+      },
+      {
+        "id": "w2m9gw",
+        "text": "Your bright eyes are gonna kill me for sure\n",
+        "words": [
+          {
+            "id": "t7obgd",
+            "text": "Your",
+            "start_time": 22.080855455075845,
+            "end_time": 22.220860879156945,
+            "created_during_correction": false
+          },
+          {
+            "id": "y9l6aw",
+            "text": "bright",
+            "start_time": 22.300863978631856,
+            "end_time": 22.56087405192532,
+            "created_during_correction": false
+          },
+          {
+            "id": "wsd20f",
+            "text": "eyes",
+            "start_time": 22.580874826794048,
+            "end_time": 22.980890324168612,
+            "created_during_correction": false
+          },
+          {
+            "id": "bp3jcv",
+            "text": "are",
+            "start_time": 23.040892648774797,
+            "end_time": 23.160897297987166,
+            "created_during_correction": false
+          },
+          {
+            "id": "4p9lma",
+            "text": "gonna",
+            "start_time": 23.20089884772462,
+            "end_time": 23.500910470755542,
+            "created_during_correction": false
+          },
+          {
+            "id": "xvw23q",
+            "text": "kill",
+            "start_time": 23.800922093786465,
+            "end_time": 24.020930617342476,
+            "created_during_correction": false
+          },
+          {
+            "id": "8ouxny",
+            "text": "me",
+            "start_time": 24.06093216707993,
+            "end_time": 24.200937591161026,
+            "created_during_correction": false
+          },
+          {
+            "id": "n6arhs",
+            "text": "for",
+            "start_time": 24.240939140898483,
+            "end_time": 24.420946114717037,
+            "created_during_correction": false
+          },
+          {
+            "id": "bhi6zn",
+            "text": "sure\n",
+            "start_time": 24.500949214191948,
+            "end_time": 24.70095696287923,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 22.080855455075845,
+        "end_time": 24.70095696287923
+      },
+      {
+        "id": "cthjuv",
+        "text": "I look at you and I know that the house will come down\n",
+        "words": [
+          {
+            "id": "ln4tr2",
+            "text": "I",
+            "start_time": 24.740958512616686,
+            "end_time": 24.860963161829055,
+            "created_during_correction": false
+          },
+          {
+            "id": "ewdm6e",
+            "text": "look",
+            "start_time": 24.880963936697782,
+            "end_time": 25.02096936077888,
+            "created_during_correction": false
+          },
+          {
+            "id": "1hmpwz",
+            "text": "at",
+            "start_time": 25.04097013564761,
+            "end_time": 25.100972460253793,
+            "created_during_correction": false
+          },
+          {
+            "id": "421jaq",
+            "text": "you",
+            "start_time": 25.14097400999125,
+            "end_time": 25.520988732497084,
+            "created_during_correction": false
+          },
+          {
+            "id": "y5mp2f",
+            "text": "and",
+            "start_time": 25.56099028223454,
+            "end_time": 25.74099725605309,
+            "created_during_correction": false
+          },
+          {
+            "id": "qw10w4",
+            "text": "I",
+            "start_time": 25.78099880579055,
+            "end_time": 25.941005004740372,
+            "created_during_correction": false
+          },
+          {
+            "id": "0dwg85",
+            "text": "know",
+            "start_time": 25.961005779609103,
+            "end_time": 26.361021276983664,
+            "created_during_correction": false
+          },
+          {
+            "id": "wd0hu5",
+            "text": "that",
+            "start_time": 26.40102282672112,
+            "end_time": 26.62103135027713,
+            "created_during_correction": false
+          },
+          {
+            "id": "tfllad",
+            "text": "the",
+            "start_time": 26.64103212514586,
+            "end_time": 26.801038324095682,
+            "created_during_correction": false
+          },
+          {
+            "id": "mipwo0",
+            "text": "house",
+            "start_time": 26.84103987383314,
+            "end_time": 27.201053821470246,
+            "created_during_correction": false
+          },
+          {
+            "id": "i3jjr5",
+            "text": "will",
+            "start_time": 27.2410553712077,
+            "end_time": 27.48106466963244,
+            "created_during_correction": false
+          },
+          {
+            "id": "ruvja6",
+            "text": "come",
+            "start_time": 27.561067769107353,
+            "end_time": 27.841078617269545,
+            "created_during_correction": false
+          },
+          {
+            "id": "v1hr4t",
+            "text": "down\n",
+            "start_time": 27.881080167007003,
+            "end_time": 28.18109179003792,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 24.740958512616686,
+        "end_time": 28.18109179003792
+      },
+      {
+        "id": "qgnly3",
+        "text": "Because your burning eyes are bright and pure\n\n",
+        "words": [
+          {
+            "id": "cidgbl",
+            "text": "Because",
+            "start_time": 28.201092564906652,
+            "end_time": 28.5211049628063,
+            "created_during_correction": false
+          },
+          {
+            "id": "8qcwnh",
+            "text": "your",
+            "start_time": 28.54110573767503,
+            "end_time": 28.741113486362313,
+            "created_during_correction": false
+          },
+          {
+            "id": "5dgicj",
+            "text": "burning",
+            "start_time": 29.021124334524504,
+            "end_time": 29.661149130323803,
+            "created_during_correction": false
+          },
+          {
+            "id": "w5k7m3",
+            "text": "eyes",
+            "start_time": 29.70115068006126,
+            "end_time": 30.081165402567095,
+            "created_during_correction": false
+          },
+          {
+            "id": "a7h5nr",
+            "text": "are",
+            "start_time": 30.14116772717328,
+            "end_time": 30.281173151254375,
+            "created_during_correction": false
+          },
+          {
+            "id": "0oc2bz",
+            "text": "bright",
+            "start_time": 30.68118864862894,
+            "end_time": 30.96119949679113,
+            "created_during_correction": false
+          },
+          {
+            "id": "ow6ayq",
+            "text": "and",
+            "start_time": 30.981200271659862,
+            "end_time": 31.121205695740958,
+            "created_during_correction": false
+          },
+          {
+            "id": "ymkiln",
+            "text": "pure\n\n",
+            "start_time": 31.161207245478412,
+            "end_time": 31.561222742852976,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 28.201092564906652,
+        "end_time": 31.561222742852976
+      },
+      {
+        "id": "ljm280",
+        "text": "But there's a room for us in a red brick building\n",
+        "words": [
+          {
+            "id": "1kq5jf",
+            "text": "But",
+            "start_time": 31.601224292590434,
+            "end_time": 31.74122971667153,
+            "created_during_correction": false
+          },
+          {
+            "id": "gave7b",
+            "text": "there's",
+            "start_time": 31.781231266408984,
+            "end_time": 32.06124211457118,
+            "created_during_correction": false
+          },
+          {
+            "id": "zs97ea",
+            "text": "a",
+            "start_time": 32.12124443917736,
+            "end_time": 32.201247538652275,
+            "created_during_correction": false
+          },
+          {
+            "id": "xdleuf",
+            "text": "room",
+            "start_time": 32.46125761194574,
+            "end_time": 32.82127155958285,
+            "created_during_correction": false
+          },
+          {
+            "id": "b41wun",
+            "text": "for",
+            "start_time": 32.90127465905776,
+            "end_time": 33.121283182613766,
+            "created_during_correction": false
+          },
+          {
+            "id": "jkvbpr",
+            "text": "us",
+            "start_time": 33.16128473235123,
+            "end_time": 33.54129945485706,
+            "created_during_correction": false
+          },
+          {
+            "id": "pxehma",
+            "text": "in",
+            "start_time": 35.121360669486585,
+            "end_time": 35.32136841817386,
+            "created_during_correction": false
+          },
+          {
+            "id": "nbyrfb",
+            "text": "a",
+            "start_time": 35.36136996791132,
+            "end_time": 35.46137384225496,
+            "created_during_correction": false
+          },
+          {
+            "id": "qoms6s",
+            "text": "red",
+            "start_time": 35.521376166861145,
+            "end_time": 35.84138856476079,
+            "created_during_correction": false
+          },
+          {
+            "id": "b66qc1",
+            "text": "brick",
+            "start_time": 35.921391664235706,
+            "end_time": 36.261404837004086,
+            "created_during_correction": false
+          },
+          {
+            "id": "wvedkq",
+            "text": "building\n",
+            "start_time": 36.381409486216455,
+            "end_time": 37.241442805571765,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 31.601224292590434,
+        "end_time": 37.241442805571765
+      },
+      {
+        "id": "4kiy59",
+        "text": "By a bright green field in Denmark\n\n",
+        "words": [
+          {
+            "id": "gw36yk",
+            "text": "By",
+            "start_time": 38.56149394690782,
+            "end_time": 38.801503245332555,
+            "created_during_correction": false
+          },
+          {
+            "id": "alc1nu",
+            "text": "a",
+            "start_time": 38.841504795070016,
+            "end_time": 38.92150789454492,
+            "created_during_correction": false
+          },
+          {
+            "id": "pyb66c",
+            "text": "bright",
+            "start_time": 38.98151021915111,
+            "end_time": 39.361524941656945,
+            "created_during_correction": false
+          },
+          {
+            "id": "t4g3qy",
+            "text": "green",
+            "start_time": 39.421527266263126,
+            "end_time": 39.82154276363769,
+            "created_during_correction": false
+          },
+          {
+            "id": "4cvai5",
+            "text": "field",
+            "start_time": 39.9015458631126,
+            "end_time": 40.42156600969953,
+            "created_during_correction": false
+          },
+          {
+            "id": "22spl8",
+            "text": "in",
+            "start_time": 42.121631873541425,
+            "end_time": 42.44164427144107,
+            "created_during_correction": false
+          },
+          {
+            "id": "y50kd0",
+            "text": "Denmark\n\n",
+            "start_time": 42.521647370915986,
+            "end_time": 43.56168766408985,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 38.56149394690782,
+        "end_time": 43.56168766408985
+      },
+      {
+        "id": "iy8qdz",
+        "text": "I've got a twitch in my leg and it makes me nervous\n",
+        "words": [
+          {
+            "id": "r68kgt",
+            "text": "I've",
+            "start_time": 45.64176825043757,
+            "end_time": 45.841775999124856,
+            "created_during_correction": false
+          },
+          {
+            "id": "iz8wrh",
+            "text": "got",
+            "start_time": 45.86177677399358,
+            "end_time": 46.06178452268087,
+            "created_during_correction": false
+          },
+          {
+            "id": "z55wr7",
+            "text": "a",
+            "start_time": 46.081785297549594,
+            "end_time": 46.181789171893236,
+            "created_during_correction": false
+          },
+          {
+            "id": "5fraz3",
+            "text": "twitch",
+            "start_time": 46.46180002005543,
+            "end_time": 46.72181009334889,
+            "created_during_correction": false
+          },
+          {
+            "id": "7g5taa",
+            "text": "in",
+            "start_time": 46.76181164308635,
+            "end_time": 46.881816292298716,
+            "created_during_correction": false
+          },
+          {
+            "id": "cy9ca0",
+            "text": "my",
+            "start_time": 46.90181706716744,
+            "end_time": 47.10182481585473,
+            "created_during_correction": false
+          },
+          {
+            "id": "p9jsum",
+            "text": "leg",
+            "start_time": 47.16182714046091,
+            "end_time": 47.5818434127042,
+            "created_during_correction": false
+          },
+          {
+            "id": "p1pf9b",
+            "text": "and",
+            "start_time": 47.621844962441656,
+            "end_time": 47.76185038652275,
+            "created_during_correction": false
+          },
+          {
+            "id": "lqz3k4",
+            "text": "it",
+            "start_time": 47.82185271112894,
+            "end_time": 47.92185658547258,
+            "created_during_correction": false
+          },
+          {
+            "id": "x1dh62",
+            "text": "makes",
+            "start_time": 48.201867433634774,
+            "end_time": 48.50187905666569,
+            "created_during_correction": false
+          },
+          {
+            "id": "irv9vx",
+            "text": "me",
+            "start_time": 48.56188138127188,
+            "end_time": 48.68188603048425,
+            "created_during_correction": false
+          },
+          {
+            "id": "bsyws4",
+            "text": "nervous\n",
+            "start_time": 48.721887580221704,
+            "end_time": 49.121903077596265,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 45.64176825043757,
+        "end_time": 49.121903077596265
+      },
+      {
+        "id": "pdo3zq",
+        "text": "And I've got fifty cents in my watch pocket\n",
+        "words": [
+          {
+            "id": "xn50rh",
+            "text": "And",
+            "start_time": 49.14190385246499,
+            "end_time": 49.22190695193991,
+            "created_during_correction": false
+          },
+          {
+            "id": "n9g2d8",
+            "text": "I've",
+            "start_time": 49.26190850167736,
+            "end_time": 49.48191702523337,
+            "created_during_correction": false
+          },
+          {
+            "id": "1ceiky",
+            "text": "got",
+            "start_time": 49.5019178001021,
+            "end_time": 49.681924773920656,
+            "created_during_correction": false
+          },
+          {
+            "id": "gvalm2",
+            "text": "fifty",
+            "start_time": 49.96193562208285,
+            "end_time": 50.46195499380105,
+            "created_during_correction": false
+          },
+          {
+            "id": "y6dvn4",
+            "text": "cents",
+            "start_time": 50.621961192750874,
+            "end_time": 51.061978239862896,
+            "created_during_correction": false
+          },
+          {
+            "id": "a3a5t3",
+            "text": "in",
+            "start_time": 51.12198056446908,
+            "end_time": 51.26198598855017,
+            "created_during_correction": false
+          },
+          {
+            "id": "4n0wzv",
+            "text": "my",
+            "start_time": 51.301987538287634,
+            "end_time": 51.702003035662194,
+            "created_during_correction": false
+          },
+          {
+            "id": "qyx1kn",
+            "text": "watch",
+            "start_time": 51.74200458539965,
+            "end_time": 52.102018533036755,
+            "created_during_correction": false
+          },
+          {
+            "id": "w9lkrp",
+            "text": "pocket\n",
+            "start_time": 52.16202085764294,
+            "end_time": 52.64203945449242,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 49.14190385246499,
+        "end_time": 52.64203945449242
+      },
+      {
+        "id": "4go6ob",
+        "text": "And your name beating march time in my blood\n",
+        "words": [
+          {
+            "id": "j5xvd2",
+            "text": "And",
+            "start_time": 52.68204100422987,
+            "end_time": 52.82204642831097,
+            "created_during_correction": false
+          },
+          {
+            "id": "vmagki",
+            "text": "your",
+            "start_time": 52.842047203179696,
+            "end_time": 53.02205417699825,
+            "created_during_correction": false
+          },
+          {
+            "id": "k2tnfp",
+            "text": "name",
+            "start_time": 53.06205572673571,
+            "end_time": 53.44207044924154,
+            "created_during_correction": false
+          },
+          {
+            "id": "g5780o",
+            "text": "beating",
+            "start_time": 53.482071998978995,
+            "end_time": 54.042093695303386,
+            "created_during_correction": false
+          },
+          {
+            "id": "mpky4j",
+            "text": "march",
+            "start_time": 54.122096794778294,
+            "end_time": 54.54211306702159,
+            "created_during_correction": false
+          },
+          {
+            "id": "19xirb",
+            "text": "time",
+            "start_time": 54.58211461675904,
+            "end_time": 54.96212933926488,
+            "created_during_correction": false
+          },
+          {
+            "id": "zbo0jy",
+            "text": "in",
+            "start_time": 55.202138637689615,
+            "end_time": 55.36214483663944,
+            "created_during_correction": false
+          },
+          {
+            "id": "zdvvqg",
+            "text": "my",
+            "start_time": 55.4021463863769,
+            "end_time": 55.722158784276544,
+            "created_during_correction": false
+          },
+          {
+            "id": "ke0bir",
+            "text": "blood\n",
+            "start_time": 55.82216265862019,
+            "end_time": 56.20217738112602,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 52.68204100422987,
+        "end_time": 56.20217738112602
+      },
+      {
+        "id": "8bhr5s",
+        "text": "Is putting pressure on the hollows of my eye sockets\n\n",
+        "words": [
+          {
+            "id": "inniwp",
+            "text": "Is",
+            "start_time": 56.22217815599475,
+            "end_time": 56.26217970573221,
+            "created_during_correction": false
+          },
+          {
+            "id": "73kfjp",
+            "text": "putting",
+            "start_time": 56.282180480600935,
+            "end_time": 56.622193653369315,
+            "created_during_correction": false
+          },
+          {
+            "id": "rops0j",
+            "text": "pressure",
+            "start_time": 56.682195977975496,
+            "end_time": 57.142213799956245,
+            "created_during_correction": false
+          },
+          {
+            "id": "5owx9f",
+            "text": "on",
+            "start_time": 57.1822153496937,
+            "end_time": 57.34222154864352,
+            "created_during_correction": false
+          },
+          {
+            "id": "mn61az",
+            "text": "the",
+            "start_time": 57.38222309838098,
+            "end_time": 57.52222852246208,
+            "created_during_correction": false
+          },
+          {
+            "id": "t1c0d4",
+            "text": "hollows",
+            "start_time": 57.56223007219953,
+            "end_time": 58.002247119311555,
+            "created_during_correction": false
+          },
+          {
+            "id": "jssq3d",
+            "text": "of",
+            "start_time": 58.062249443917736,
+            "end_time": 58.16225331826138,
+            "created_during_correction": false
+          },
+          {
+            "id": "dlgk92",
+            "text": "my",
+            "start_time": 58.20225486799883,
+            "end_time": 58.42226339155484,
+            "created_during_correction": false
+          },
+          {
+            "id": "tptqvc",
+            "text": "eye",
+            "start_time": 58.66227268997958,
+            "end_time": 58.9622843130105,
+            "created_during_correction": false
+          },
+          {
+            "id": "z7394w",
+            "text": "sockets\n\n",
+            "start_time": 59.042287412485415,
+            "end_time": 59.64231065854726,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 56.22217815599475,
+        "end_time": 59.64231065854726
+      },
+      {
+        "id": "xjciat",
+        "text": "There's a room for us in a red brick building\n",
+        "words": [
+          {
+            "id": "4w6wfh",
+            "text": "There's",
+            "start_time": 59.70231298315344,
+            "end_time": 60.00232460618437,
+            "created_during_correction": false
+          },
+          {
+            "id": "flkamg",
+            "text": "a",
+            "start_time": 60.04232615592182,
+            "end_time": 60.122329255396735,
+            "created_during_correction": false
+          },
+          {
+            "id": "sbm92n",
+            "text": "room",
+            "start_time": 60.36233855382147,
+            "end_time": 60.74235327632731,
+            "created_during_correction": false
+          },
+          {
+            "id": "2zesh7",
+            "text": "for",
+            "start_time": 60.822356375802215,
+            "end_time": 61.0223641244895,
+            "created_during_correction": false
+          },
+          {
+            "id": "s16axa",
+            "text": "us",
+            "start_time": 61.06236567422695,
+            "end_time": 61.48238194647025,
+            "created_during_correction": false
+          },
+          {
+            "id": "dny0x2",
+            "text": "in",
+            "start_time": 63.02244161136231,
+            "end_time": 63.222449360049595,
+            "created_during_correction": false
+          },
+          {
+            "id": "fnajod",
+            "text": "a",
+            "start_time": 63.26245090978705,
+            "end_time": 63.38245555899942,
+            "created_during_correction": false
+          },
+          {
+            "id": "7nwgll",
+            "text": "red",
+            "start_time": 63.4424578836056,
+            "end_time": 63.742469506636525,
+            "created_during_correction": false
+          },
+          {
+            "id": "0gwne6",
+            "text": "brick",
+            "start_time": 63.84247338098017,
+            "end_time": 64.18248655374855,
+            "created_during_correction": false
+          },
+          {
+            "id": "t15zha",
+            "text": "building\n",
+            "start_time": 64.30249120296091,
+            "end_time": 65.08252142284131,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 59.70231298315344,
+        "end_time": 65.08252142284131
+      },
+      {
+        "id": "q8htvd",
+        "text": "By a bright green field in a very old country\n\n",
+        "words": [
+          {
+            "id": "z4jti1",
+            "text": "By",
+            "start_time": 66.48257566365227,
+            "end_time": 66.72258496207701,
+            "created_during_correction": false
+          },
+          {
+            "id": "7n53a8",
+            "text": "a",
+            "start_time": 66.76258651181448,
+            "end_time": 66.8625903861581,
+            "created_during_correction": false
+          },
+          {
+            "id": "qxa92p",
+            "text": "bright",
+            "start_time": 66.92259271076429,
+            "end_time": 67.26260588353267,
+            "created_during_correction": false
+          },
+          {
+            "id": "owr5y7",
+            "text": "green",
+            "start_time": 67.32260820813886,
+            "end_time": 67.7026229306447,
+            "created_during_correction": false
+          },
+          {
+            "id": "tgwing",
+            "text": "field",
+            "start_time": 67.7826260301196,
+            "end_time": 68.34264772644399,
+            "created_during_correction": false
+          },
+          {
+            "id": "topnza",
+            "text": "in",
+            "start_time": 70.3427252133168,
+            "end_time": 70.42272831279172,
+            "created_during_correction": false
+          },
+          {
+            "id": "mgk7n6",
+            "text": "a",
+            "start_time": 70.46272986252917,
+            "end_time": 70.52273218713536,
+            "created_during_correction": false
+          },
+          {
+            "id": "eyybdc",
+            "text": "very",
+            "start_time": 70.58273451174153,
+            "end_time": 70.86274535990374,
+            "created_during_correction": false
+          },
+          {
+            "id": "pjuqdh",
+            "text": "old",
+            "start_time": 70.9027469096412,
+            "end_time": 71.14275620806593,
+            "created_during_correction": false
+          },
+          {
+            "id": "1balol",
+            "text": "country\n\n",
+            "start_time": 71.2027585326721,
+            "end_time": 71.74277945412777,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 66.48257566365227,
+        "end_time": 71.74277945412777
+      },
+      {
+        "id": "tvv59g",
+        "text": "And my mouth is open so you can stuff the bright red roses in\n",
+        "words": [
+          {
+            "id": "cs3qu0",
+            "text": "And",
+            "start_time": 74.44288406140606,
+            "end_time": 74.56288871061844,
+            "created_during_correction": false
+          },
+          {
+            "id": "qo815t",
+            "text": "my",
+            "start_time": 74.60289026035589,
+            "end_time": 74.80289800904318,
+            "created_during_correction": false
+          },
+          {
+            "id": "w159lp",
+            "text": "mouth",
+            "start_time": 74.86290033364936,
+            "end_time": 75.30291738076137,
+            "created_during_correction": false
+          },
+          {
+            "id": "u60y6e",
+            "text": "is",
+            "start_time": 75.34291893049884,
+            "end_time": 75.50292512944866,
+            "created_during_correction": false
+          },
+          {
+            "id": "xhc8gv",
+            "text": "open",
+            "start_time": 75.54292667918611,
+            "end_time": 75.92294140169194,
+            "created_during_correction": false
+          },
+          {
+            "id": "nv6l21",
+            "text": "so",
+            "start_time": 76.72297239644108,
+            "end_time": 76.84297704565344,
+            "created_during_correction": false
+          },
+          {
+            "id": "newlwx",
+            "text": "you",
+            "start_time": 76.8829785953909,
+            "end_time": 77.10298711894691,
+            "created_during_correction": false
+          },
+          {
+            "id": "py31g9",
+            "text": "can",
+            "start_time": 77.16298944355309,
+            "end_time": 77.5230033911902,
+            "created_during_correction": false
+          },
+          {
+            "id": "ipb603",
+            "text": "stuff",
+            "start_time": 77.60300649066511,
+            "end_time": 78.0230227629084,
+            "created_during_correction": false
+          },
+          {
+            "id": "f6amei",
+            "text": "the",
+            "start_time": 78.10302586238332,
+            "end_time": 78.28303283620187,
+            "created_during_correction": false
+          },
+          {
+            "id": "3zoprb",
+            "text": "bright",
+            "start_time": 78.34303516080806,
+            "end_time": 78.70304910844516,
+            "created_during_correction": false
+          },
+          {
+            "id": "3iuqmv",
+            "text": "red",
+            "start_time": 78.78305220792006,
+            "end_time": 79.06306305608227,
+            "created_during_correction": false
+          },
+          {
+            "id": "yn6woa",
+            "text": "roses",
+            "start_time": 79.38307545398192,
+            "end_time": 80.0831025743874,
+            "created_during_correction": false
+          },
+          {
+            "id": "u379xk",
+            "text": "in\n",
+            "start_time": 80.14310489899358,
+            "end_time": 80.48311807176196,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 74.44288406140606,
+        "end_time": 80.48311807176196
+      },
+      {
+        "id": "h4dib6",
+        "text": "'Cause I feel the California sky closing in\n\n",
+        "words": [
+          {
+            "id": "uz0sch",
+            "text": "'Cause",
+            "start_time": 81.44315526546092,
+            "end_time": 81.58316068954201,
+            "created_during_correction": false
+          },
+          {
+            "id": "nz2043",
+            "text": "I",
+            "start_time": 81.62316223927947,
+            "end_time": 81.80316921309802,
+            "created_during_correction": false
+          },
+          {
+            "id": "150cz9",
+            "text": "feel",
+            "start_time": 81.88317231257292,
+            "end_time": 82.2231854853413,
+            "created_during_correction": false
+          },
+          {
+            "id": "t44nno",
+            "text": "the",
+            "start_time": 82.26318703507876,
+            "end_time": 82.38319168429113,
+            "created_during_correction": false
+          },
+          {
+            "id": "erakm0",
+            "text": "California",
+            "start_time": 82.46319478376604,
+            "end_time": 83.40323120259627,
+            "created_during_correction": false
+          },
+          {
+            "id": "d7e1vs",
+            "text": "sky",
+            "start_time": 83.48323430207118,
+            "end_time": 84.02325522352685,
+            "created_during_correction": false
+          },
+          {
+            "id": "swqblo",
+            "text": "closing",
+            "start_time": 85.32330558999416,
+            "end_time": 85.98333116066219,
+            "created_during_correction": false
+          },
+          {
+            "id": "vra8wn",
+            "text": "in\n\n",
+            "start_time": 86.04333348526838,
+            "end_time": 87.28338152712952,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 81.44315526546092,
+        "end_time": 87.28338152712952
+      },
+      {
+        "id": "7pht12",
+        "text": "There's a room for us on the third floor of a red brick building\n",
+        "words": [
+          {
+            "id": "653bb0",
+            "text": "There's",
+            "start_time": 87.32338307686697,
+            "end_time": 87.72339857424154,
+            "created_during_correction": false
+          },
+          {
+            "id": "uzhr13",
+            "text": "a",
+            "start_time": 87.78340089884773,
+            "end_time": 87.88340477319137,
+            "created_during_correction": false
+          },
+          {
+            "id": "us9cwt",
+            "text": "room",
+            "start_time": 88.16341562135356,
+            "end_time": 88.5434303438594,
+            "created_during_correction": false
+          },
+          {
+            "id": "el2nwq",
+            "text": "for",
+            "start_time": 88.60343266846557,
+            "end_time": 88.78343964228414,
+            "created_during_correction": false
+          },
+          {
+            "id": "jelqw5",
+            "text": "us",
+            "start_time": 88.88344351662778,
+            "end_time": 89.34346133860852,
+            "created_during_correction": false
+          },
+          {
+            "id": "07ytrp",
+            "text": "on",
+            "start_time": 91.56354734903734,
+            "end_time": 91.64355044851226,
+            "created_during_correction": false
+          },
+          {
+            "id": "yn4z8q",
+            "text": "the",
+            "start_time": 91.66355122338098,
+            "end_time": 91.78355587259335,
+            "created_during_correction": false
+          },
+          {
+            "id": "iq1d1j",
+            "text": "third",
+            "start_time": 91.84355819719953,
+            "end_time": 92.26357446944283,
+            "created_during_correction": false
+          },
+          {
+            "id": "ila9af",
+            "text": "floor",
+            "start_time": 92.30357601918028,
+            "end_time": 92.7435930662923,
+            "created_during_correction": false
+          },
+          {
+            "id": "m44t4v",
+            "text": "of",
+            "start_time": 92.76359384116103,
+            "end_time": 92.84359694063595,
+            "created_during_correction": false
+          },
+          {
+            "id": "hfqahn",
+            "text": "a",
+            "start_time": 92.8835984903734,
+            "end_time": 92.96360158984831,
+            "created_during_correction": false
+          },
+          {
+            "id": "pldapg",
+            "text": "red",
+            "start_time": 93.00360313958576,
+            "end_time": 93.30361476261669,
+            "created_during_correction": false
+          },
+          {
+            "id": "j6uenw",
+            "text": "brick",
+            "start_time": 93.3836178620916,
+            "end_time": 93.72363103485998,
+            "created_during_correction": false
+          },
+          {
+            "id": "ax58il",
+            "text": "building\n",
+            "start_time": 93.78363335946617,
+            "end_time": 94.40365738039674,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 87.32338307686697,
+        "end_time": 94.40365738039674
+      },
+      {
+        "id": "fwo9l0",
+        "text": "By a green field with a stream running through it in Denmark\n\n",
+        "words": [
+          {
+            "id": "c6kr5i",
+            "text": "By",
+            "start_time": 94.44365893013419,
+            "end_time": 94.68366822855893,
+            "created_during_correction": false
+          },
+          {
+            "id": "5nr1r5",
+            "text": "a",
+            "start_time": 94.72366977829638,
+            "end_time": 94.82367365264003,
+            "created_during_correction": false
+          },
+          {
+            "id": "x541b4",
+            "text": "green",
+            "start_time": 95.04368217619603,
+            "end_time": 95.60370387252043,
+            "created_during_correction": false
+          },
+          {
+            "id": "uidvfu",
+            "text": "field",
+            "start_time": 95.72370852173279,
+            "end_time": 96.02372014476371,
+            "created_during_correction": false
+          },
+          {
+            "id": "rpmig4",
+            "text": "with",
+            "start_time": 96.04372091963243,
+            "end_time": 96.16372556884481,
+            "created_during_correction": false
+          },
+          {
+            "id": "aqxsy5",
+            "text": "a",
+            "start_time": 96.20372711858226,
+            "end_time": 96.28373021805717,
+            "created_during_correction": false
+          },
+          {
+            "id": "fdhzso",
+            "text": "stream",
+            "start_time": 96.34373254266336,
+            "end_time": 96.76374881490665,
+            "created_during_correction": false
+          },
+          {
+            "id": "8umkfs",
+            "text": "running",
+            "start_time": 96.8037503646441,
+            "end_time": 97.34377128609977,
+            "created_during_correction": false
+          },
+          {
+            "id": "as9y8t",
+            "text": "through",
+            "start_time": 97.3637720609685,
+            "end_time": 97.62378213426196,
+            "created_during_correction": false
+          },
+          {
+            "id": "przsgj",
+            "text": "it",
+            "start_time": 97.66378368399941,
+            "end_time": 97.80378910808051,
+            "created_during_correction": false
+          },
+          {
+            "id": "1l5ef0",
+            "text": "in",
+            "start_time": 97.8637914326867,
+            "end_time": 98.02379763163653,
+            "created_during_correction": false
+          },
+          {
+            "id": "m3yt8i",
+            "text": "Denmark\n\n",
+            "start_time": 98.08379995624271,
+            "end_time": 100.68390068917736,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 94.44365893013419,
+        "end_time": 100.68390068917736
+      },
+      {
+        "id": "1bk8b8",
+        "text": "Yeah!\n",
+        "words": [
+          {
+            "id": "6u02x1",
+            "text": "Yeah!\n",
+            "start_time": 101.24392238550175,
+            "end_time": 101.56393478340141,
+            "created_during_correction": false
+          }
+        ],
+        "start_time": 101.24392238550175,
+        "end_time": 101.56393478340141
+      }
+    ],
+    "word_count": 164,
+    "text": "Your bright eyes render all discussion pointless\n Your bright eyes are gonna kill me for sure\n I look at you and I know that the house will come down\n Because your burning eyes are bright and pure\n\n But there's a room for us in a red brick building\n By a bright green field in Denmark\n\n I've got a twitch in my leg and it makes me nervous\n And I've got fifty cents in my watch pocket\n And your name beating march time in my blood\n Is putting pressure on the hollows of my eye sockets\n\n There's a room for us in a red brick building\n By a bright green field in a very old country\n\n And my mouth is open so you can stuff the bright red roses in\n 'Cause I feel the California sky closing in\n\n There's a room for us on the third floor of a red brick building\n By a green field with a stream running through it in Denmark\n\n Yeah!\n"
+  },
+  "references": {
+    "spotify": {
+      "segments": [
+        {
+          "id": "kk0z62",
+          "text": "your bright eyes render all discussion pointless",
+          "words": [
+            {
+              "id": "wuvja1",
+              "text": "your",
+              "start_time": 19.04,
+              "end_time": 19.425714285714285,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ab2eei",
+              "text": "bright",
+              "start_time": 19.425714285714285,
+              "end_time": 19.81142857142857,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "54ovue",
+              "text": "eyes",
+              "start_time": 19.81142857142857,
+              "end_time": 20.197142857142858,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4w9cm7",
+              "text": "render",
+              "start_time": 20.197142857142858,
+              "end_time": 20.582857142857144,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "29bq81",
+              "text": "all",
+              "start_time": 20.582857142857144,
+              "end_time": 20.968571428571426,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "edxfsh",
+              "text": "discussion",
+              "start_time": 20.968571428571426,
+              "end_time": 21.354285714285712,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "go4zuw",
+              "text": "pointless",
+              "start_time": 21.354285714285712,
+              "end_time": 21.74,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 19.04,
+          "end_time": 21.74
+        },
+        {
+          "id": "fkpmdp",
+          "text": "your bright eyes are gonna kill me for sure",
+          "words": [
+            {
+              "id": "utzl6z",
+              "text": "your",
+              "start_time": 21.74,
+              "end_time": 22.04222222222222,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "lm3gb1",
+              "text": "bright",
+              "start_time": 22.04222222222222,
+              "end_time": 22.34444444444444,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "k7h5b4",
+              "text": "eyes",
+              "start_time": 22.34444444444444,
+              "end_time": 22.646666666666665,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8fuk6r",
+              "text": "are",
+              "start_time": 22.646666666666665,
+              "end_time": 22.948888888888888,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "haqxpc",
+              "text": "gonna",
+              "start_time": 22.948888888888888,
+              "end_time": 23.251111111111108,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1sh07y",
+              "text": "kill",
+              "start_time": 23.251111111111108,
+              "end_time": 23.55333333333333,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5qiboz",
+              "text": "me",
+              "start_time": 23.55333333333333,
+              "end_time": 23.855555555555554,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "fi1nk7",
+              "text": "for",
+              "start_time": 23.855555555555554,
+              "end_time": 24.157777777777778,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "89wopj",
+              "text": "sure",
+              "start_time": 24.157777777777778,
+              "end_time": 24.459999999999997,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 21.74,
+          "end_time": 24.459999999999997
+        },
+        {
+          "id": "h4km3l",
+          "text": "i look at you and i know that the house will come down",
+          "words": [
+            {
+              "id": "o8p9s6",
+              "text": "i",
+              "start_time": 24.46,
+              "end_time": 24.736153846153847,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nda9dr",
+              "text": "look",
+              "start_time": 24.736153846153847,
+              "end_time": 25.012307692307694,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "i5fwrz",
+              "text": "at",
+              "start_time": 25.012307692307694,
+              "end_time": 25.28846153846154,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "x635o8",
+              "text": "you",
+              "start_time": 25.28846153846154,
+              "end_time": 25.564615384615387,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "hpaspv",
+              "text": "and",
+              "start_time": 25.564615384615387,
+              "end_time": 25.840769230769233,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "mocpmn",
+              "text": "i",
+              "start_time": 25.840769230769233,
+              "end_time": 26.11692307692308,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6awkoa",
+              "text": "know",
+              "start_time": 26.11692307692308,
+              "end_time": 26.393076923076922,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "56ji2z",
+              "text": "that",
+              "start_time": 26.393076923076922,
+              "end_time": 26.66923076923077,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "c02rif",
+              "text": "the",
+              "start_time": 26.66923076923077,
+              "end_time": 26.945384615384615,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "qqdxf8",
+              "text": "house",
+              "start_time": 26.945384615384615,
+              "end_time": 27.22153846153846,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "a4qn08",
+              "text": "will",
+              "start_time": 27.22153846153846,
+              "end_time": 27.497692307692308,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1ft9hz",
+              "text": "come",
+              "start_time": 27.497692307692308,
+              "end_time": 27.773846153846154,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "tbfry9",
+              "text": "down",
+              "start_time": 27.773846153846154,
+              "end_time": 28.05,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 24.46,
+          "end_time": 28.05
+        },
+        {
+          "id": "9e4hj4",
+          "text": "because your burning eyes are bright and pure",
+          "words": [
+            {
+              "id": "ok9si5",
+              "text": "because",
+              "start_time": 28.05,
+              "end_time": 28.400000000000002,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nee0py",
+              "text": "your",
+              "start_time": 28.400000000000002,
+              "end_time": 28.75,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kq3b1s",
+              "text": "burning",
+              "start_time": 28.75,
+              "end_time": 29.1,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xm5n8k",
+              "text": "eyes",
+              "start_time": 29.1,
+              "end_time": 29.45,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "p7mc74",
+              "text": "are",
+              "start_time": 29.45,
+              "end_time": 29.8,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4vn994",
+              "text": "bright",
+              "start_time": 29.8,
+              "end_time": 30.15,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "d0zqdw",
+              "text": "and",
+              "start_time": 30.15,
+              "end_time": 30.5,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "q8x228",
+              "text": "pure",
+              "start_time": 30.5,
+              "end_time": 30.85,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 28.05,
+          "end_time": 30.85
+        },
+        {
+          "id": "9eupv1",
+          "text": "but there's a room for us in a red brick building",
+          "words": [
+            {
+              "id": "9pywor",
+              "text": "but",
+              "start_time": 30.85,
+              "end_time": 31.504545454545458,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "fc1mfa",
+              "text": "there's",
+              "start_time": 31.504545454545458,
+              "end_time": 32.159090909090914,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "rtaj2k",
+              "text": "a",
+              "start_time": 32.159090909090914,
+              "end_time": 32.81363636363636,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "obyykz",
+              "text": "room",
+              "start_time": 32.81363636363636,
+              "end_time": 33.46818181818182,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kdpk4e",
+              "text": "for",
+              "start_time": 33.46818181818182,
+              "end_time": 34.122727272727275,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "rme1ko",
+              "text": "us",
+              "start_time": 34.122727272727275,
+              "end_time": 34.77727272727273,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wy0d7y",
+              "text": "in",
+              "start_time": 34.77727272727273,
+              "end_time": 35.43181818181819,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "74dtum",
+              "text": "a",
+              "start_time": 35.43181818181819,
+              "end_time": 36.086363636363636,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ns34s4",
+              "text": "red",
+              "start_time": 36.086363636363636,
+              "end_time": 36.74090909090909,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "40vygo",
+              "text": "brick",
+              "start_time": 36.74090909090909,
+              "end_time": 37.39545454545455,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "tgurqb",
+              "text": "building",
+              "start_time": 37.39545454545455,
+              "end_time": 38.050000000000004,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 30.85,
+          "end_time": 38.050000000000004
+        },
+        {
+          "id": "lwnrsu",
+          "text": "by a bright green field in denmark",
+          "words": [
+            {
+              "id": "cofylo",
+              "text": "by",
+              "start_time": 38.05,
+              "end_time": 39.08285714285714,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "f8sdu9",
+              "text": "a",
+              "start_time": 39.08285714285714,
+              "end_time": 40.11571428571428,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "rsakc7",
+              "text": "bright",
+              "start_time": 40.11571428571428,
+              "end_time": 41.14857142857143,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "timnrq",
+              "text": "green",
+              "start_time": 41.14857142857143,
+              "end_time": 42.18142857142857,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xmq4h3",
+              "text": "field",
+              "start_time": 42.18142857142857,
+              "end_time": 43.21428571428571,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "auqspz",
+              "text": "in",
+              "start_time": 43.21428571428571,
+              "end_time": 44.247142857142855,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9gji0h",
+              "text": "denmark",
+              "start_time": 44.247142857142855,
+              "end_time": 45.28,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 38.05,
+          "end_time": 45.28
+        },
+        {
+          "id": "ei46bd",
+          "text": "i've got a twitch in my leg and it makes me nervous",
+          "words": [
+            {
+              "id": "4gi2uq",
+              "text": "i've",
+              "start_time": 45.28,
+              "end_time": 45.58416666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jz1m0l",
+              "text": "got",
+              "start_time": 45.58416666666667,
+              "end_time": 45.888333333333335,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "7pi82o",
+              "text": "a",
+              "start_time": 45.888333333333335,
+              "end_time": 46.1925,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9ll49q",
+              "text": "twitch",
+              "start_time": 46.1925,
+              "end_time": 46.49666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "syyxee",
+              "text": "in",
+              "start_time": 46.49666666666667,
+              "end_time": 46.80083333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "tgrgeh",
+              "text": "my",
+              "start_time": 46.80083333333334,
+              "end_time": 47.105000000000004,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "zo6g4q",
+              "text": "leg",
+              "start_time": 47.105000000000004,
+              "end_time": 47.409166666666664,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "83bt8m",
+              "text": "and",
+              "start_time": 47.409166666666664,
+              "end_time": 47.71333333333333,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "i2kuzi",
+              "text": "it",
+              "start_time": 47.71333333333333,
+              "end_time": 48.0175,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "sav8c3",
+              "text": "makes",
+              "start_time": 48.0175,
+              "end_time": 48.321666666666665,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nratc6",
+              "text": "me",
+              "start_time": 48.321666666666665,
+              "end_time": 48.62583333333333,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xz3owb",
+              "text": "nervous",
+              "start_time": 48.62583333333333,
+              "end_time": 48.93,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 45.28,
+          "end_time": 48.93
+        },
+        {
+          "id": "zuh8ku",
+          "text": "and i've got fifty cents in my watch pocket",
+          "words": [
+            {
+              "id": "tlgml0",
+              "text": "and",
+              "start_time": 48.93,
+              "end_time": 49.333333333333336,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "koczf9",
+              "text": "i've",
+              "start_time": 49.333333333333336,
+              "end_time": 49.736666666666665,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kv8cm4",
+              "text": "got",
+              "start_time": 49.736666666666665,
+              "end_time": 50.14,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8jwpk3",
+              "text": "fifty",
+              "start_time": 50.14,
+              "end_time": 50.54333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "o0jcek",
+              "text": "cents",
+              "start_time": 50.54333333333334,
+              "end_time": 50.946666666666665,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9ealdf",
+              "text": "in",
+              "start_time": 50.946666666666665,
+              "end_time": 51.35,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xv70o5",
+              "text": "my",
+              "start_time": 51.35,
+              "end_time": 51.75333333333333,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xcziw6",
+              "text": "watch",
+              "start_time": 51.75333333333333,
+              "end_time": 52.156666666666666,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "lo5yj4",
+              "text": "pocket",
+              "start_time": 52.156666666666666,
+              "end_time": 52.56,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 48.93,
+          "end_time": 52.56
+        },
+        {
+          "id": "zv46vr",
+          "text": "and your name beating march time in my blood",
+          "words": [
+            {
+              "id": "b3xyen",
+              "text": "and",
+              "start_time": 52.56,
+              "end_time": 52.95666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "o1izke",
+              "text": "your",
+              "start_time": 52.95666666666667,
+              "end_time": 53.35333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "gsakub",
+              "text": "name",
+              "start_time": 53.35333333333334,
+              "end_time": 53.75,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6av1ys",
+              "text": "beating",
+              "start_time": 53.75,
+              "end_time": 54.14666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wna2b1",
+              "text": "march",
+              "start_time": 54.14666666666667,
+              "end_time": 54.54333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "udo2za",
+              "text": "time",
+              "start_time": 54.54333333333334,
+              "end_time": 54.940000000000005,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jnp58x",
+              "text": "in",
+              "start_time": 54.940000000000005,
+              "end_time": 55.336666666666666,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "usxvbv",
+              "text": "my",
+              "start_time": 55.336666666666666,
+              "end_time": 55.733333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "b4vdli",
+              "text": "blood",
+              "start_time": 55.733333333333334,
+              "end_time": 56.13,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 52.56,
+          "end_time": 56.13
+        },
+        {
+          "id": "7cp0jy",
+          "text": "putting pressure on the hollows of my eye sockets",
+          "words": [
+            {
+              "id": "fvm8gc",
+              "text": "putting",
+              "start_time": 56.13,
+              "end_time": 56.43333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "pjpdyw",
+              "text": "pressure",
+              "start_time": 56.43333333333334,
+              "end_time": 56.73666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "l4i6y6",
+              "text": "on",
+              "start_time": 56.73666666666667,
+              "end_time": 57.04,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "akov2l",
+              "text": "the",
+              "start_time": 57.04,
+              "end_time": 57.343333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "l6f2rk",
+              "text": "hollows",
+              "start_time": 57.343333333333334,
+              "end_time": 57.64666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "y0xyo4",
+              "text": "of",
+              "start_time": 57.64666666666667,
+              "end_time": 57.95,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "hf6fe1",
+              "text": "my",
+              "start_time": 57.95,
+              "end_time": 58.25333333333334,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wyfma6",
+              "text": "eye",
+              "start_time": 58.25333333333334,
+              "end_time": 58.55666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5wtlnh",
+              "text": "sockets",
+              "start_time": 58.55666666666667,
+              "end_time": 58.86,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 56.13,
+          "end_time": 58.86
+        },
+        {
+          "id": "ii8bio",
+          "text": "there's a room for us in a red brick building",
+          "words": [
+            {
+              "id": "i84vwo",
+              "text": "there's",
+              "start_time": 58.86,
+              "end_time": 59.582,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5mh5jh",
+              "text": "a",
+              "start_time": 59.582,
+              "end_time": 60.304,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "94d4p7",
+              "text": "room",
+              "start_time": 60.304,
+              "end_time": 61.025999999999996,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "fgbe1b",
+              "text": "for",
+              "start_time": 61.025999999999996,
+              "end_time": 61.748,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "n8rvdh",
+              "text": "us",
+              "start_time": 61.748,
+              "end_time": 62.47,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "zpx3jw",
+              "text": "in",
+              "start_time": 62.47,
+              "end_time": 63.192,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "53jxuj",
+              "text": "a",
+              "start_time": 63.192,
+              "end_time": 63.914,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "yf1fen",
+              "text": "red",
+              "start_time": 63.914,
+              "end_time": 64.636,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "v7y0ei",
+              "text": "brick",
+              "start_time": 64.636,
+              "end_time": 65.358,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "cr9g9e",
+              "text": "building",
+              "start_time": 65.358,
+              "end_time": 66.08,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 58.86,
+          "end_time": 66.08
+        },
+        {
+          "id": "mqtm5l",
+          "text": "by a bright green field in a very old country",
+          "words": [
+            {
+              "id": "t9gx5n",
+              "text": "by",
+              "start_time": 66.08,
+              "end_time": 66.895,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "vgt6zc",
+              "text": "a",
+              "start_time": 66.895,
+              "end_time": 67.71,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wcivf5",
+              "text": "bright",
+              "start_time": 67.71,
+              "end_time": 68.525,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "svpnvi",
+              "text": "green",
+              "start_time": 68.525,
+              "end_time": 69.34,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1v7hd1",
+              "text": "field",
+              "start_time": 69.34,
+              "end_time": 70.155,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jcjcov",
+              "text": "in",
+              "start_time": 70.155,
+              "end_time": 70.97,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xb4xy5",
+              "text": "a",
+              "start_time": 70.97,
+              "end_time": 71.785,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "t6ffk0",
+              "text": "very",
+              "start_time": 71.785,
+              "end_time": 72.6,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "qnmcet",
+              "text": "old",
+              "start_time": 72.6,
+              "end_time": 73.41499999999999,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "w0pypy",
+              "text": "country",
+              "start_time": 73.41499999999999,
+              "end_time": 74.23,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 66.08,
+          "end_time": 74.23
+        },
+        {
+          "id": "4fwgju",
+          "text": "my mouth is open",
+          "words": [
+            {
+              "id": "iicspu",
+              "text": "my",
+              "start_time": 74.23,
+              "end_time": 74.685,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kikzkk",
+              "text": "mouth",
+              "start_time": 74.685,
+              "end_time": 75.14,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "3j5kux",
+              "text": "is",
+              "start_time": 75.14,
+              "end_time": 75.595,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "amkpli",
+              "text": "open",
+              "start_time": 75.595,
+              "end_time": 76.05,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 74.23,
+          "end_time": 76.05
+        },
+        {
+          "id": "3ntm0x",
+          "text": "so you can stuff the bright red roses in.",
+          "words": [
+            {
+              "id": "r3ddg5",
+              "text": "so",
+              "start_time": 76.05,
+              "end_time": 76.65222222222222,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "r5r8og",
+              "text": "you",
+              "start_time": 76.65222222222222,
+              "end_time": 77.25444444444445,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "qeh4us",
+              "text": "can",
+              "start_time": 77.25444444444445,
+              "end_time": 77.85666666666667,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uyvoqd",
+              "text": "stuff",
+              "start_time": 77.85666666666667,
+              "end_time": 78.45888888888888,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8rbb14",
+              "text": "the",
+              "start_time": 78.45888888888888,
+              "end_time": 79.0611111111111,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "svpiww",
+              "text": "bright",
+              "start_time": 79.0611111111111,
+              "end_time": 79.66333333333333,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "o7qfd5",
+              "text": "red",
+              "start_time": 79.66333333333333,
+              "end_time": 80.26555555555555,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wcchz6",
+              "text": "roses",
+              "start_time": 80.26555555555555,
+              "end_time": 80.86777777777777,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "gnxv9p",
+              "text": "in.",
+              "start_time": 80.86777777777777,
+              "end_time": 81.47,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 76.05,
+          "end_time": 81.47
+        },
+        {
+          "id": "hiaub2",
+          "text": "'cause i feel the california sky closing in.",
+          "words": [
+            {
+              "id": "urk48t",
+              "text": "'cause",
+              "start_time": 81.47,
+              "end_time": 82.15125,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wvg1sv",
+              "text": "i",
+              "start_time": 82.15125,
+              "end_time": 82.8325,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ha086f",
+              "text": "feel",
+              "start_time": 82.8325,
+              "end_time": 83.51375,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xsi9sj",
+              "text": "the",
+              "start_time": 83.51375,
+              "end_time": 84.195,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "phuewu",
+              "text": "california",
+              "start_time": 84.195,
+              "end_time": 84.87625,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "fv1vz4",
+              "text": "sky",
+              "start_time": 84.87625,
+              "end_time": 85.5575,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "y19uh3",
+              "text": "closing",
+              "start_time": 85.5575,
+              "end_time": 86.23875,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kd6wwf",
+              "text": "in.",
+              "start_time": 86.23875,
+              "end_time": 86.92,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 81.47,
+          "end_time": 86.92
+        },
+        {
+          "id": "f1tvme",
+          "text": "there's a room for us on the third floor of a red brick building",
+          "words": [
+            {
+              "id": "dxfxe8",
+              "text": "there's",
+              "start_time": 86.92,
+              "end_time": 87.43785714285714,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "z8qj28",
+              "text": "a",
+              "start_time": 87.43785714285714,
+              "end_time": 87.9557142857143,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "o0d77p",
+              "text": "room",
+              "start_time": 87.9557142857143,
+              "end_time": 88.47357142857143,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8s67bg",
+              "text": "for",
+              "start_time": 88.47357142857143,
+              "end_time": 88.99142857142857,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "qprybg",
+              "text": "us",
+              "start_time": 88.99142857142857,
+              "end_time": 89.50928571428571,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "oes0jx",
+              "text": "on",
+              "start_time": 89.50928571428571,
+              "end_time": 90.02714285714286,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "r2nfb7",
+              "text": "the",
+              "start_time": 90.02714285714286,
+              "end_time": 90.545,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1gs4n7",
+              "text": "third",
+              "start_time": 90.545,
+              "end_time": 91.06285714285714,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4szxbm",
+              "text": "floor",
+              "start_time": 91.06285714285714,
+              "end_time": 91.5807142857143,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "7ne2q7",
+              "text": "of",
+              "start_time": 91.5807142857143,
+              "end_time": 92.09857142857143,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "30acgc",
+              "text": "a",
+              "start_time": 92.09857142857143,
+              "end_time": 92.61642857142857,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "sloy0b",
+              "text": "red",
+              "start_time": 92.61642857142857,
+              "end_time": 93.13428571428571,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6f8ful",
+              "text": "brick",
+              "start_time": 93.13428571428571,
+              "end_time": 93.65214285714286,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "pec47a",
+              "text": "building",
+              "start_time": 93.65214285714286,
+              "end_time": 94.17,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 86.92,
+          "end_time": 94.17
+        },
+        {
+          "id": "mvuow7",
+          "text": "by a green field with a stream running through it in denmark.",
+          "words": [
+            {
+              "id": "qp88td",
+              "text": "by",
+              "start_time": 94.17,
+              "end_time": 94.69500000000001,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5skjtt",
+              "text": "a",
+              "start_time": 94.69500000000001,
+              "end_time": 95.22,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6vjy3p",
+              "text": "green",
+              "start_time": 95.22,
+              "end_time": 95.745,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "yqtwke",
+              "text": "field",
+              "start_time": 95.745,
+              "end_time": 96.27,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "v25ru7",
+              "text": "with",
+              "start_time": 96.27,
+              "end_time": 96.795,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "i2p4mf",
+              "text": "a",
+              "start_time": 96.795,
+              "end_time": 97.32000000000001,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "orgcaf",
+              "text": "stream",
+              "start_time": 97.32000000000001,
+              "end_time": 97.845,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ifxhm8",
+              "text": "running",
+              "start_time": 97.845,
+              "end_time": 98.37,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "cp9j0m",
+              "text": "through",
+              "start_time": 98.37,
+              "end_time": 98.895,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "17acji",
+              "text": "it",
+              "start_time": 98.895,
+              "end_time": 99.42,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "dpry3u",
+              "text": "in",
+              "start_time": 99.42,
+              "end_time": 99.94500000000001,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "cjyb7n",
+              "text": "denmark.",
+              "start_time": 99.94500000000001,
+              "end_time": 100.47,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 94.17,
+          "end_time": 100.47
+        },
+        {
+          "id": "x9pvuq",
+          "text": "yeah!",
+          "words": [
+            {
+              "id": "a7s15c",
+              "text": "yeah!",
+              "start_time": 100.47,
+              "end_time": 103.25,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 100.47,
+          "end_time": 103.25
+        }
+      ],
+      "word_count": 162
+    },
+    "genius": {
+      "segments": [
+        {
+          "id": "itt9gz",
+          "text": "[Verse 1: John Darnielle]",
+          "words": [
+            {
+              "id": "xo5lob",
+              "text": "[Verse",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jcs5mv",
+              "text": "1:",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nl6pxp",
+              "text": "John",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ybjz44",
+              "text": "Darnielle]",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "wy8x15",
+          "text": "Your bright eyes render all discussion pointless",
+          "words": [
+            {
+              "id": "zzc87a",
+              "text": "Your",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "zpbiqe",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kfj5h4",
+              "text": "eyes",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "yn0j23",
+              "text": "render",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "q47l92",
+              "text": "all",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8dah47",
+              "text": "discussion",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "khsa13",
+              "text": "pointless",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "vfii6v",
+          "text": "Your bright eyes are gonna kill me for sure",
+          "words": [
+            {
+              "id": "vlzg1p",
+              "text": "Your",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1ufthg",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1nals9",
+              "text": "eyes",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "l4wwsy",
+              "text": "are",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "txgann",
+              "text": "gonna",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "11ypkf",
+              "text": "kill",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uba5om",
+              "text": "me",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "brqlbf",
+              "text": "for",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "krj9r0",
+              "text": "sure",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "kcumau",
+          "text": "I look at you and I know that the house will come down",
+          "words": [
+            {
+              "id": "noao95",
+              "text": "I",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "hjpe69",
+              "text": "look",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xz27tv",
+              "text": "at",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "l3ga4c",
+              "text": "you",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "fkn1w1",
+              "text": "and",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "7gpall",
+              "text": "I",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "m2c5go",
+              "text": "know",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8dtrii",
+              "text": "that",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "pb5znc",
+              "text": "the",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ynauhy",
+              "text": "house",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "y0yhtj",
+              "text": "will",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "qtacv6",
+              "text": "come",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "oe9fp6",
+              "text": "down",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "gg21ns",
+          "text": "Because your burning eyes are bright and pure",
+          "words": [
+            {
+              "id": "kye44s",
+              "text": "Because",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "k85tz8",
+              "text": "your",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6wc3fj",
+              "text": "burning",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nx04t0",
+              "text": "eyes",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "r3c8kn",
+              "text": "are",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "gn1kgp",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "b3jhoc",
+              "text": "and",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uw7c71",
+              "text": "pure",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "vi2uyn",
+          "text": "[Chorus 1]",
+          "words": [
+            {
+              "id": "b2mzc4",
+              "text": "[Chorus",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9jujph",
+              "text": "1]",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "06qo1g",
+          "text": "But there's a room for us in a red brick building",
+          "words": [
+            {
+              "id": "lfzonb",
+              "text": "But",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "3zx7l2",
+              "text": "there's",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "n7wfhh",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "scgim1",
+              "text": "room",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1tj75o",
+              "text": "for",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4lk3c6",
+              "text": "us",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "erx3ee",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "japcd8",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1g4qjg",
+              "text": "red",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "bbs31f",
+              "text": "brick",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "mcnkbh",
+              "text": "building",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "f81lus",
+          "text": "By a bright green field in Denmark",
+          "words": [
+            {
+              "id": "o0zqtb",
+              "text": "By",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jxghhn",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "p2m4qk",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "y3gp7q",
+              "text": "green",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wntbix",
+              "text": "field",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "z8lcwb",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "0jcxk2",
+              "text": "Denmark",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "jbddjj",
+          "text": "I've got a twitch in my leg and it makes me nervous",
+          "words": [
+            {
+              "id": "flkbqg",
+              "text": "I've",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "gfe8lo",
+              "text": "got",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4wmjsm",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "7d0u0a",
+              "text": "twitch",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "k3j9hs",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "lw0242",
+              "text": "my",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "tx0xo6",
+              "text": "leg",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jjxzwm",
+              "text": "and",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "2blcjb",
+              "text": "it",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9bzsye",
+              "text": "makes",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "vwm3x3",
+              "text": "me",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "2vrkyx",
+              "text": "nervous",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "8nf12i",
+          "text": "And I've got fifty cents in my watch pocket",
+          "words": [
+            {
+              "id": "yclhtl",
+              "text": "And",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "xnqpvb",
+              "text": "I've",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "z834qj",
+              "text": "got",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "czjvqe",
+              "text": "fifty",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ebv6w3",
+              "text": "cents",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "aeei20",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ghnkca",
+              "text": "my",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "46gwy1",
+              "text": "watch",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "n6bmpt",
+              "text": "pocket",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "5za5mp",
+          "text": "And your name beating march time in my blood",
+          "words": [
+            {
+              "id": "se4ous",
+              "text": "And",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nnao44",
+              "text": "your",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5svjtg",
+              "text": "name",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "s2byuc",
+              "text": "beating",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "lw5ufh",
+              "text": "march",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "mbmgu9",
+              "text": "time",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "72oen0",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "2nxx7l",
+              "text": "my",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "sg6196",
+              "text": "blood",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "ehxkqh",
+          "text": "Putting pressure on the hollows of my eye sockets",
+          "words": [
+            {
+              "id": "xngld9",
+              "text": "Putting",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ffzcsq",
+              "text": "pressure",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "egizk0",
+              "text": "on",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "30u2vd",
+              "text": "the",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "2n57rh",
+              "text": "hollows",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6dgw0e",
+              "text": "of",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "b93esz",
+              "text": "my",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nh2aug",
+              "text": "eye",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ldoqxt",
+              "text": "sockets",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "7lawtx",
+          "text": "[Chorus 2]",
+          "words": [
+            {
+              "id": "x6u721",
+              "text": "[Chorus",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "41i366",
+              "text": "2]",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "hkzgdt",
+          "text": "There's a room for us in a red brick building",
+          "words": [
+            {
+              "id": "pnlsu4",
+              "text": "There's",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "yps7vj",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "unbuyf",
+              "text": "room",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "m27py2",
+              "text": "for",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "vtnwme",
+              "text": "us",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "80ub70",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "0zf502",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "hxuipr",
+              "text": "red",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "y0mo22",
+              "text": "brick",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "4t68pa",
+              "text": "building",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "0s5fey",
+          "text": "By a bright green field in a very old country",
+          "words": [
+            {
+              "id": "jsek4d",
+              "text": "By",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "0yn539",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "kfvhsp",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "tbps9g",
+              "text": "green",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "woe1wl",
+              "text": "field",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "thlqki",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "z8magv",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "v1y4q3",
+              "text": "very",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uys20b",
+              "text": "old",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "71t79e",
+              "text": "country",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "j7u6ko",
+          "text": "My mouth is open",
+          "words": [
+            {
+              "id": "hlbad7",
+              "text": "My",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uaz2qo",
+              "text": "mouth",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "la5qr2",
+              "text": "is",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "f1sp53",
+              "text": "open",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "hgem2j",
+          "text": "So you can stuff the bright red roses in",
+          "words": [
+            {
+              "id": "amyzct",
+              "text": "So",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "i5vwlh",
+              "text": "you",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "k6g0os",
+              "text": "can",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "nkatkx",
+              "text": "stuff",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "btfih9",
+              "text": "the",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ywqivg",
+              "text": "bright",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "uqif0v",
+              "text": "red",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "q70ldx",
+              "text": "roses",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "wlv77v",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "evc6da",
+          "text": "Cause I feel the California sky closing in",
+          "words": [
+            {
+              "id": "9326cd",
+              "text": "Cause",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "iv7ewr",
+              "text": "I",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "gu4mov",
+              "text": "feel",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "brre5z",
+              "text": "the",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "9lu4oj",
+              "text": "California",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "c17b0f",
+              "text": "sky",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "g4r691",
+              "text": "closing",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "6o8om6",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "bzfp4j",
+          "text": "[Chorus 3]",
+          "words": [
+            {
+              "id": "offlof",
+              "text": "[Chorus",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "oqw6qw",
+              "text": "3]",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "5l4md2",
+          "text": "There's a room for us on the third floor of a red brick building",
+          "words": [
+            {
+              "id": "0wxtf7",
+              "text": "There's",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "jxoxrs",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "25i4qa",
+              "text": "room",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "hrygrh",
+              "text": "for",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "cyzv1f",
+              "text": "us",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "eqag0p",
+              "text": "on",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "vln30g",
+              "text": "the",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "rqmnk6",
+              "text": "third",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "d7a2h2",
+              "text": "floor",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "oin5nd",
+              "text": "of",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "7o8meh",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "1za9xb",
+              "text": "red",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "pqhhyg",
+              "text": "brick",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "ly3epv",
+              "text": "building",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "j2kxeb",
+          "text": "By a green field with a stream running through it in Denmark",
+          "words": [
+            {
+              "id": "9wwuzn",
+              "text": "By",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "8m4ldh",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "diy9cf",
+              "text": "green",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "0tlui0",
+              "text": "field",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "5vrwge",
+              "text": "with",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "66fduu",
+              "text": "a",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "bqk6n1",
+              "text": "stream",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "na90n2",
+              "text": "running",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "m4lgwk",
+              "text": "through",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "n9tuly",
+              "text": "it",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "41370w",
+              "text": "in",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            },
+            {
+              "id": "aqm2yy",
+              "text": "Denmark",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        },
+        {
+          "id": "3ck84q",
+          "text": "Yeah!",
+          "words": [
+            {
+              "id": "gjy305",
+              "text": "Yeah!",
+              "start_time": 0.0,
+              "end_time": 0.0,
+              "confidence": 1.0,
+              "created_during_correction": false
+            }
+          ],
+          "start_time": 0.0,
+          "end_time": 0.0
+        }
+      ],
+      "word_count": 172
+    }
+  },
+  "expected_anchors": [
+    {
+      "id": "hz08t1",
+      "transcribed_word_ids": [
+        "umoir8",
+        "27o21z",
+        "lmcogt",
+        "jj1xla",
+        "938ksi",
+        "75a4yd",
+        "tjw01n",
+        "t7obgd",
+        "y9l6aw",
+        "wsd20f",
+        "bp3jcv",
+        "4p9lma",
+        "xvw23q",
+        "8ouxny",
+        "n6arhs",
+        "bhi6zn",
+        "ln4tr2",
+        "ewdm6e",
+        "1hmpwz",
+        "421jaq",
+        "y5mp2f",
+        "qw10w4",
+        "0dwg85",
+        "wd0hu5",
+        "tfllad",
+        "mipwo0",
+        "i3jjr5",
+        "ruvja6",
+        "v1hr4t",
+        "cidgbl",
+        "8qcwnh",
+        "5dgicj",
+        "w5k7m3",
+        "a7h5nr",
+        "0oc2bz",
+        "ow6ayq",
+        "ymkiln"
+      ],
+      "transcription_position": 0,
+      "reference_positions": {
+        "spotify": 0,
+        "genius": 4
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "wuvja1",
+          "ab2eei",
+          "54ovue",
+          "4w9cm7",
+          "29bq81",
+          "edxfsh",
+          "go4zuw",
+          "utzl6z",
+          "lm3gb1",
+          "k7h5b4",
+          "8fuk6r",
+          "haqxpc",
+          "1sh07y",
+          "5qiboz",
+          "fi1nk7",
+          "89wopj",
+          "o8p9s6",
+          "nda9dr",
+          "i5fwrz",
+          "x635o8",
+          "hpaspv",
+          "mocpmn",
+          "6awkoa",
+          "56ji2z",
+          "c02rif",
+          "qqdxf8",
+          "a4qn08",
+          "1ft9hz",
+          "tbfry9",
+          "ok9si5",
+          "nee0py",
+          "kq3b1s",
+          "xm5n8k",
+          "p7mc74",
+          "4vn994",
+          "d0zqdw",
+          "q8x228"
+        ],
+        "genius": [
+          "zzc87a",
+          "zpbiqe",
+          "kfj5h4",
+          "yn0j23",
+          "q47l92",
+          "8dah47",
+          "khsa13",
+          "vlzg1p",
+          "1ufthg",
+          "1nals9",
+          "l4wwsy",
+          "txgann",
+          "11ypkf",
+          "uba5om",
+          "brqlbf",
+          "krj9r0",
+          "noao95",
+          "hjpe69",
+          "xz27tv",
+          "l3ga4c",
+          "fkn1w1",
+          "7gpall",
+          "m2c5go",
+          "8dtrii",
+          "pb5znc",
+          "ynauhy",
+          "y0yhtj",
+          "qtacv6",
+          "oe9fp6",
+          "kye44s",
+          "k85tz8",
+          "6wc3fj",
+          "nx04t0",
+          "r3c8kn",
+          "gn1kgp",
+          "b3jhoc",
+          "uw7c71"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "Your",
+        "bright",
+        "eyes",
+        "render",
+        "all",
+        "discussion",
+        "pointless\n",
+        "Your",
+        "bright",
+        "eyes",
+        "are",
+        "gonna",
+        "kill",
+        "me",
+        "for",
+        "sure\n",
+        "I",
+        "look",
+        "at",
+        "you",
+        "and",
+        "I",
+        "know",
+        "that",
+        "the",
+        "house",
+        "will",
+        "come",
+        "down\n",
+        "Because",
+        "your",
+        "burning",
+        "eyes",
+        "are",
+        "bright",
+        "and",
+        "pure\n\n"
+      ],
+      "text": "Your bright eyes render all discussion pointless\n Your bright eyes are gonna kill me for sure\n I look at you and I know that the house will come down\n Because your burning eyes are bright and pure\n\n",
+      "length": 37,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 4.6
+    },
+    {
+      "id": "3wqsoa",
+      "transcribed_word_ids": [
+        "uzhr13",
+        "us9cwt",
+        "el2nwq",
+        "jelqw5",
+        "07ytrp",
+        "yn4z8q",
+        "iq1d1j",
+        "ila9af",
+        "m44t4v",
+        "hfqahn",
+        "pldapg",
+        "j6uenw",
+        "ax58il",
+        "c6kr5i",
+        "5nr1r5",
+        "x541b4",
+        "uidvfu",
+        "rpmig4",
+        "aqxsy5",
+        "fdhzso",
+        "8umkfs",
+        "as9y8t",
+        "przsgj",
+        "1l5ef0",
+        "m3yt8i",
+        "6u02x1"
+      ],
+      "transcription_position": 138,
+      "reference_positions": {
+        "spotify": 136,
+        "genius": 146
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "z8qj28",
+          "o0d77p",
+          "8s67bg",
+          "qprybg",
+          "oes0jx",
+          "r2nfb7",
+          "1gs4n7",
+          "4szxbm",
+          "7ne2q7",
+          "30acgc",
+          "sloy0b",
+          "6f8ful",
+          "pec47a",
+          "qp88td",
+          "5skjtt",
+          "6vjy3p",
+          "yqtwke",
+          "v25ru7",
+          "i2p4mf",
+          "orgcaf",
+          "ifxhm8",
+          "cp9j0m",
+          "17acji",
+          "dpry3u",
+          "cjyb7n",
+          "a7s15c"
+        ],
+        "genius": [
+          "jxoxrs",
+          "25i4qa",
+          "hrygrh",
+          "cyzv1f",
+          "eqag0p",
+          "vln30g",
+          "rqmnk6",
+          "d7a2h2",
+          "oin5nd",
+          "7o8meh",
+          "1za9xb",
+          "pqhhyg",
+          "ly3epv",
+          "9wwuzn",
+          "8m4ldh",
+          "diy9cf",
+          "0tlui0",
+          "5vrwge",
+          "66fduu",
+          "bqk6n1",
+          "na90n2",
+          "m4lgwk",
+          "n9tuly",
+          "41370w",
+          "aqm2yy",
+          "gjy305"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "a",
+        "room",
+        "for",
+        "us",
+        "on",
+        "the",
+        "third",
+        "floor",
+        "of",
+        "a",
+        "red",
+        "brick",
+        "building\n",
+        "By",
+        "a",
+        "green",
+        "field",
+        "with",
+        "a",
+        "stream",
+        "running",
+        "through",
+        "it",
+        "in",
+        "Denmark\n\n",
+        "Yeah!\n"
+      ],
+      "text": "a room for us on the third floor of a red brick building\n By a green field with a stream running through it in Denmark\n\n Yeah!\n",
+      "length": 26,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 3.5
+    },
+    {
+      "id": "l2zxrf",
+      "transcribed_word_ids": [
+        "flkamg",
+        "sbm92n",
+        "2zesh7",
+        "s16axa",
+        "dny0x2",
+        "fnajod",
+        "7nwgll",
+        "0gwne6",
+        "t15zha",
+        "z4jti1",
+        "7n53a8",
+        "qxa92p",
+        "owr5y7",
+        "tgwing",
+        "topnza",
+        "mgk7n6",
+        "eyybdc",
+        "pjuqdh",
+        "1balol"
+      ],
+      "transcription_position": 96,
+      "reference_positions": {
+        "spotify": 95,
+        "genius": 103
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "5mh5jh",
+          "94d4p7",
+          "fgbe1b",
+          "n8rvdh",
+          "zpx3jw",
+          "53jxuj",
+          "yf1fen",
+          "v7y0ei",
+          "cr9g9e",
+          "t9gx5n",
+          "vgt6zc",
+          "wcivf5",
+          "svpnvi",
+          "1v7hd1",
+          "jcjcov",
+          "xb4xy5",
+          "t6ffk0",
+          "qnmcet",
+          "w0pypy"
+        ],
+        "genius": [
+          "yps7vj",
+          "unbuyf",
+          "m27py2",
+          "vtnwme",
+          "80ub70",
+          "0zf502",
+          "hxuipr",
+          "y0mo22",
+          "4t68pa",
+          "jsek4d",
+          "0yn539",
+          "kfvhsp",
+          "tbps9g",
+          "woe1wl",
+          "thlqki",
+          "z8magv",
+          "v1y4q3",
+          "uys20b",
+          "71t79e"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "a",
+        "room",
+        "for",
+        "us",
+        "in",
+        "a",
+        "red",
+        "brick",
+        "building\n",
+        "By",
+        "a",
+        "bright",
+        "green",
+        "field",
+        "in",
+        "a",
+        "very",
+        "old",
+        "country\n\n"
+      ],
+      "text": "a room for us in a red brick building\n By a bright green field in a very old country\n\n",
+      "length": 19,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 2.8
+    },
+    {
+      "id": "nehfny",
+      "transcribed_word_ids": [
+        "zs97ea",
+        "xdleuf",
+        "b41wun",
+        "jkvbpr",
+        "pxehma",
+        "nbyrfb",
+        "qoms6s",
+        "b66qc1",
+        "wvedkq",
+        "gw36yk",
+        "alc1nu",
+        "pyb66c",
+        "t4g3qy",
+        "4cvai5",
+        "22spl8",
+        "y50kd0"
+      ],
+      "transcription_position": 39,
+      "reference_positions": {
+        "spotify": 39,
+        "genius": 45
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "rtaj2k",
+          "obyykz",
+          "kdpk4e",
+          "rme1ko",
+          "wy0d7y",
+          "74dtum",
+          "ns34s4",
+          "40vygo",
+          "tgurqb",
+          "cofylo",
+          "f8sdu9",
+          "rsakc7",
+          "timnrq",
+          "xmq4h3",
+          "auqspz",
+          "9gji0h"
+        ],
+        "genius": [
+          "n7wfhh",
+          "scgim1",
+          "1tj75o",
+          "4lk3c6",
+          "erx3ee",
+          "japcd8",
+          "1g4qjg",
+          "bbs31f",
+          "mcnkbh",
+          "o0zqtb",
+          "jxghhn",
+          "p2m4qk",
+          "y3gp7q",
+          "wntbix",
+          "z8lcwb",
+          "0jcxk2"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "a",
+        "room",
+        "for",
+        "us",
+        "in",
+        "a",
+        "red",
+        "brick",
+        "building\n",
+        "By",
+        "a",
+        "bright",
+        "green",
+        "field",
+        "in",
+        "Denmark\n\n"
+      ],
+      "text": "a room for us in a red brick building\n By a bright green field in Denmark\n\n",
+      "length": 16,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 2.5
+    },
+    {
+      "id": "gqn3q6",
+      "transcribed_word_ids": [
+        "1ceiky",
+        "gvalm2",
+        "y6dvn4",
+        "a3a5t3",
+        "4n0wzv",
+        "qyx1kn",
+        "w9lkrp",
+        "j5xvd2",
+        "vmagki",
+        "k2tnfp",
+        "g5780o",
+        "mpky4j",
+        "19xirb",
+        "zbo0jy",
+        "zdvvqg",
+        "ke0bir"
+      ],
+      "transcription_position": 69,
+      "reference_positions": {
+        "spotify": 69,
+        "genius": 75
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "kv8cm4",
+          "8jwpk3",
+          "o0jcek",
+          "9ealdf",
+          "xv70o5",
+          "xcziw6",
+          "lo5yj4",
+          "b3xyen",
+          "o1izke",
+          "gsakub",
+          "6av1ys",
+          "wna2b1",
+          "udo2za",
+          "jnp58x",
+          "usxvbv",
+          "b4vdli"
+        ],
+        "genius": [
+          "z834qj",
+          "czjvqe",
+          "ebv6w3",
+          "aeei20",
+          "ghnkca",
+          "46gwy1",
+          "n6bmpt",
+          "se4ous",
+          "nnao44",
+          "5svjtg",
+          "s2byuc",
+          "lw5ufh",
+          "mbmgu9",
+          "72oen0",
+          "2nxx7l",
+          "sg6196"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "got",
+        "fifty",
+        "cents",
+        "in",
+        "my",
+        "watch",
+        "pocket\n",
+        "And",
+        "your",
+        "name",
+        "beating",
+        "march",
+        "time",
+        "in",
+        "my",
+        "blood\n"
+      ],
+      "text": "got fifty cents in my watch pocket\n And your name beating march time in my blood\n",
+      "length": 16,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 2.5
+    },
+    {
+      "id": "ok4z84",
+      "transcribed_word_ids": [
+        "qo815t",
+        "w159lp",
+        "u60y6e",
+        "xhc8gv",
+        "nv6l21",
+        "newlwx",
+        "py31g9",
+        "ipb603",
+        "f6amei",
+        "3zoprb",
+        "3iuqmv",
+        "yn6woa",
+        "u379xk"
+      ],
+      "transcription_position": 116,
+      "reference_positions": {
+        "spotify": 114,
+        "genius": 122
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "iicspu",
+          "kikzkk",
+          "3j5kux",
+          "amkpli",
+          "r3ddg5",
+          "r5r8og",
+          "qeh4us",
+          "uyvoqd",
+          "8rbb14",
+          "svpiww",
+          "o7qfd5",
+          "wcchz6",
+          "gnxv9p"
+        ],
+        "genius": [
+          "hlbad7",
+          "uaz2qo",
+          "la5qr2",
+          "f1sp53",
+          "amyzct",
+          "i5vwlh",
+          "k6g0os",
+          "nkatkx",
+          "btfih9",
+          "ywqivg",
+          "uqif0v",
+          "q70ldx",
+          "wlv77v"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "my",
+        "mouth",
+        "is",
+        "open",
+        "so",
+        "you",
+        "can",
+        "stuff",
+        "the",
+        "bright",
+        "red",
+        "roses",
+        "in\n"
+      ],
+      "text": "my mouth is open so you can stuff the bright red roses in\n",
+      "length": 13,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 2.2
+    },
+    {
+      "id": "vjkexj",
+      "transcribed_word_ids": [
+        "iz8wrh",
+        "z55wr7",
+        "5fraz3",
+        "7g5taa",
+        "cy9ca0",
+        "p9jsum",
+        "p1pf9b",
+        "lqz3k4",
+        "x1dh62",
+        "irv9vx",
+        "bsyws4",
+        "xn50rh"
+      ],
+      "transcription_position": 56,
+      "reference_positions": {
+        "spotify": 56,
+        "genius": 62
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "jz1m0l",
+          "7pi82o",
+          "9ll49q",
+          "syyxee",
+          "tgrgeh",
+          "zo6g4q",
+          "83bt8m",
+          "i2kuzi",
+          "sav8c3",
+          "nratc6",
+          "xz3owb",
+          "tlgml0"
+        ],
+        "genius": [
+          "gfe8lo",
+          "4wmjsm",
+          "7d0u0a",
+          "k3j9hs",
+          "lw0242",
+          "tx0xo6",
+          "jjxzwm",
+          "2blcjb",
+          "9bzsye",
+          "vwm3x3",
+          "2vrkyx",
+          "yclhtl"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "got",
+        "a",
+        "twitch",
+        "in",
+        "my",
+        "leg",
+        "and",
+        "it",
+        "makes",
+        "me",
+        "nervous\n",
+        "And"
+      ],
+      "text": "got a twitch in my leg and it makes me nervous\n And",
+      "length": 12,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 2.1
+    },
+    {
+      "id": "isnxau",
+      "transcribed_word_ids": [
+        "73kfjp",
+        "rops0j",
+        "5owx9f",
+        "mn61az",
+        "t1c0d4",
+        "jssq3d",
+        "dlgk92",
+        "tptqvc",
+        "z7394w"
+      ],
+      "transcription_position": 86,
+      "reference_positions": {
+        "spotify": 85,
+        "genius": 91
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "fvm8gc",
+          "pjpdyw",
+          "l4i6y6",
+          "akov2l",
+          "l6f2rk",
+          "y0xyo4",
+          "hf6fe1",
+          "wyfma6",
+          "5wtlnh"
+        ],
+        "genius": [
+          "xngld9",
+          "ffzcsq",
+          "egizk0",
+          "30u2vd",
+          "2n57rh",
+          "6dgw0e",
+          "b93esz",
+          "nh2aug",
+          "ldoqxt"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "putting",
+        "pressure",
+        "on",
+        "the",
+        "hollows",
+        "of",
+        "my",
+        "eye",
+        "sockets\n\n"
+      ],
+      "text": "putting pressure on the hollows of my eye sockets\n\n",
+      "length": 9,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 1.8
+    },
+    {
+      "id": "7vtb2h",
+      "transcribed_word_ids": [
+        "nz2043",
+        "150cz9",
+        "t44nno",
+        "erakm0",
+        "d7e1vs",
+        "swqblo",
+        "vra8wn"
+      ],
+      "transcription_position": 130,
+      "reference_positions": {
+        "spotify": 128,
+        "genius": 136
+      },
+      "reference_word_ids": {
+        "spotify": [
+          "wvg1sv",
+          "ha086f",
+          "xsi9sj",
+          "phuewu",
+          "fv1vz4",
+          "y19uh3",
+          "kd6wwf"
+        ],
+        "genius": [
+          "iv7ewr",
+          "gu4mov",
+          "brre5z",
+          "9lu4oj",
+          "c17b0f",
+          "g4r691",
+          "6o8om6"
+        ]
+      },
+      "confidence": 1.0,
+      "words": [
+        "I",
+        "feel",
+        "the",
+        "California",
+        "sky",
+        "closing",
+        "in\n\n"
+      ],
+      "text": "I feel the California sky closing in\n\n",
+      "length": 7,
+      "phrase_score": {
+        "phrase_type": "complete",
+        "natural_break_score": 1.0,
+        "length_score": 1.0,
+        "total_score": 1.0
+      },
+      "total_score": 1.6
+    }
+  ],
+  "expected_anchor_count": 9,
+  "expected_word_coverage": 155,
+  "expected_coverage_percent": 94.51
+}
