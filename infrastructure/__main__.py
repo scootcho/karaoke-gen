@@ -2,10 +2,20 @@
 Pulumi infrastructure for Karaoke Generator backend on Google Cloud Platform.
 
 This replaces the manual setup scripts with proper Infrastructure as Code.
+
+Infrastructure includes:
+- Firestore database for job state
+- Cloud Storage bucket for files
+- Artifact Registry for Docker images
+- Service accounts and IAM
+- GitHub Actions Workload Identity Federation
+- Cloud Tasks queues for worker coordination (Phase 1 scalability)
+- Secret Manager secrets
+- Cloud Run domain mapping
 """
 import pulumi
 import pulumi_gcp as gcp
-from pulumi_gcp import storage, firestore, secretmanager, artifactregistry, cloudrun, serviceaccount
+from pulumi_gcp import storage, firestore, secretmanager, artifactregistry, cloudrun, serviceaccount, cloudtasks
 
 # Get the current GCP project
 project = gcp.organizations.get_project()
@@ -227,6 +237,167 @@ github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
     )],
 )
 
+# ==================== Cloud Tasks Queues (Phase 1 Scalability) ====================
+# These queues provide guaranteed delivery and horizontal scaling for worker tasks.
+# Workers are triggered via Cloud Tasks instead of BackgroundTasks, ensuring:
+# - Tasks survive container restarts
+# - Each task gets dedicated resources
+# - Automatic retries on failure
+# - Rate limiting to protect external APIs
+
+# Audio worker queue - calls Modal API for audio separation
+audio_worker_queue = cloudtasks.Queue(
+    "audio-worker-queue",
+    name="audio-worker-queue",
+    location="us-central1",
+    rate_limits=cloudtasks.QueueRateLimitsArgs(
+        max_dispatches_per_second=10,   # Protect Modal API
+        max_concurrent_dispatches=50,    # Max parallel audio workers
+    ),
+    retry_config=cloudtasks.QueueRetryConfigArgs(
+        max_attempts=3,
+        min_backoff="10s",
+        max_backoff="300s",
+        max_retry_duration="1800s",     # 30 min total retry window
+    ),
+)
+
+# Lyrics worker queue - calls AudioShake API for transcription
+lyrics_worker_queue = cloudtasks.Queue(
+    "lyrics-worker-queue",
+    name="lyrics-worker-queue",
+    location="us-central1",
+    rate_limits=cloudtasks.QueueRateLimitsArgs(
+        max_dispatches_per_second=10,
+        max_concurrent_dispatches=50,
+    ),
+    retry_config=cloudtasks.QueueRetryConfigArgs(
+        max_attempts=3,
+        min_backoff="10s",
+        max_backoff="300s",
+        max_retry_duration="1200s",     # 20 min total retry window
+    ),
+)
+
+# Screens worker queue - generates title/end screens (fast, CPU-light)
+screens_worker_queue = cloudtasks.Queue(
+    "screens-worker-queue",
+    name="screens-worker-queue",
+    location="us-central1",
+    rate_limits=cloudtasks.QueueRateLimitsArgs(
+        max_dispatches_per_second=50,   # Fast operations
+        max_concurrent_dispatches=100,
+    ),
+    retry_config=cloudtasks.QueueRetryConfigArgs(
+        max_attempts=3,
+        min_backoff="5s",
+        max_backoff="60s",
+        max_retry_duration="300s",      # 5 min total retry window
+    ),
+)
+
+# Render worker queue - LyricsTranscriber + FFmpeg (CPU-intensive)
+render_worker_queue = cloudtasks.Queue(
+    "render-worker-queue",
+    name="render-worker-queue",
+    location="us-central1",
+    rate_limits=cloudtasks.QueueRateLimitsArgs(
+        max_dispatches_per_second=5,    # CPU-intensive
+        max_concurrent_dispatches=20,
+    ),
+    retry_config=cloudtasks.QueueRetryConfigArgs(
+        max_attempts=2,
+        min_backoff="30s",
+        max_backoff="300s",
+        max_retry_duration="3600s",     # 60 min for render
+    ),
+)
+
+# Video worker queue - final encoding (very CPU-intensive, longest running)
+# Note: For tasks >30 min, consider Cloud Run Jobs instead
+video_worker_queue = cloudtasks.Queue(
+    "video-worker-queue",
+    name="video-worker-queue",
+    location="us-central1",
+    rate_limits=cloudtasks.QueueRateLimitsArgs(
+        max_dispatches_per_second=3,    # Very CPU-intensive
+        max_concurrent_dispatches=10,
+    ),
+    retry_config=cloudtasks.QueueRetryConfigArgs(
+        max_attempts=2,
+        min_backoff="60s",
+        max_backoff="600s",
+        max_retry_duration="7200s",     # 2 hour total (video is long)
+    ),
+)
+
+# Grant Cloud Tasks permission to invoke Cloud Run service
+# Cloud Tasks service agent needs to authenticate to Cloud Run
+cloud_tasks_invoker = gcp.projects.IAMMember(
+    "cloud-tasks-invoker",
+    project=project_id,
+    role="roles/run.invoker",
+    member=f"serviceAccount:service-{project.number}@gcp-sa-cloudtasks.iam.gserviceaccount.com",
+)
+
+# Grant backend service account permission to enqueue Cloud Tasks
+cloud_tasks_enqueuer = gcp.projects.IAMMember(
+    "karaoke-backend-cloudtasks-enqueuer",
+    project=project_id,
+    role="roles/cloudtasks.enqueuer",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# ==================== Cloud Run Job for Video Encoding (Phase 2 Scalability) ====================
+# Cloud Run Jobs provide up to 24-hour execution time for long-running video encoding.
+# This is used when video encoding might exceed the 30-minute Cloud Tasks timeout.
+# Triggered programmatically via WorkerService when ENABLE_CLOUD_TASKS=true and
+# USE_CLOUD_RUN_JOBS_FOR_VIDEO=true
+
+video_encoding_job = gcp.cloudrunv2.Job(
+    "video-encoding-job",
+    name="video-encoding-job",
+    location="us-central1",
+    template=gcp.cloudrunv2.JobTemplateArgs(
+        template=gcp.cloudrunv2.JobTemplateTemplateArgs(
+            # Use the same container as the backend service
+            # The job runs with --job-id argument to process a specific job
+            containers=[gcp.cloudrunv2.JobTemplateTemplateContainerArgs(
+                image=f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo/karaoke-backend:latest",
+                args=["python", "-m", "backend.workers.video_worker"],
+                resources=gcp.cloudrunv2.JobTemplateTemplateContainerResourcesArgs(
+                    limits={
+                        "cpu": "4",      # 4 vCPUs for encoding
+                        "memory": "8Gi",  # 8GB RAM
+                    },
+                ),
+                envs=[
+                    gcp.cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                        name="GOOGLE_CLOUD_PROJECT",
+                        value=project_id,
+                    ),
+                    gcp.cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                        name="GCS_BUCKET_NAME",
+                        value=bucket.name,
+                    ),
+                ],
+            )],
+            service_account=service_account.email,
+            timeout="3600s",  # 1 hour max per task
+            max_retries=2,
+        ),
+    ),
+)
+
+# Grant backend service account permission to run Cloud Run Jobs
+cloud_run_jobs_developer = gcp.projects.IAMMember(
+    "karaoke-backend-run-jobs-developer",
+    project=project_id,
+    role="roles/run.developer",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# ==================== Secrets ====================
 # Create secrets (you'll need to add the actual secret values manually or via pulumi config)
 config = pulumi.Config()
 
@@ -285,6 +456,16 @@ pulumi.export("backend_default_url", "https://karaoke-backend-ipzqd2k4yq-uc.a.ru
 # GitHub Actions CD exports
 pulumi.export("github_actions_service_account", github_actions_sa.email)
 pulumi.export("workload_identity_provider", workload_identity_provider.name)
+
+# Cloud Tasks queue exports (Phase 1 scalability)
+pulumi.export("audio_worker_queue", audio_worker_queue.name)
+pulumi.export("lyrics_worker_queue", lyrics_worker_queue.name)
+pulumi.export("screens_worker_queue", screens_worker_queue.name)
+pulumi.export("render_worker_queue", render_worker_queue.name)
+pulumi.export("video_worker_queue", video_worker_queue.name)
+
+# Cloud Run Job export (Phase 2 scalability)
+pulumi.export("video_encoding_job", video_encoding_job.name)
 
 # Export DNS configuration needed for Cloudflare
 # These are the records to add to your Cloudflare DNS
