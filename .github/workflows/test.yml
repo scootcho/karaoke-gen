@@ -1,8 +1,7 @@
 name: Backend Tests
 
 on:
-  push:
-    branches: [ main, replace-modal-with-google-cloud ]
+  push:  # Run on all branch pushes
   pull_request:
     branches: [ main ]
 
@@ -143,8 +142,9 @@ jobs:
     name: Deploy via Cloud Build
     runs-on: ubuntu-latest
     needs: [unit-tests, emulator-tests, lint]
-    # Only deploy on push to the branch (not on PRs)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/replace-modal-with-google-cloud'
+    # Deploy on any push where tests pass (pre-alpha: rapid iteration mode)
+    # TODO: Change back to main-only when ready for production: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     
     permissions:
       contents: read
