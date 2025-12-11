@@ -59,16 +59,51 @@ class InstrumentalSelection(BaseModel):
     Request to select instrumental audio option.
     
     This is the second critical human-in-the-loop interaction point.
-    User chooses between clean instrumental or instrumental with backing vocals.
+    User chooses between clean instrumental, instrumental with backing vocals,
+    or a custom instrumental (created via create-custom-instrumental endpoint).
     """
-    selection: str  # "clean" or "with_backing"
+    selection: str  # "clean", "with_backing", or "custom"
     
     @validator('selection')
     def validate_selection(cls, v):
         """Validate selection is a valid option."""
-        valid_options = ['clean', 'with_backing']
+        valid_options = ['clean', 'with_backing', 'custom']
         if v not in valid_options:
             raise ValueError(f"Selection must be one of: {valid_options}")
+        return v
+
+
+class MuteRegionRequest(BaseModel):
+    """A region to mute in the backing vocals."""
+    start_seconds: float
+    end_seconds: float
+    
+    @validator('start_seconds')
+    def validate_start(cls, v):
+        if v < 0:
+            raise ValueError("start_seconds must be non-negative")
+        return v
+    
+    @validator('end_seconds')
+    def validate_end(cls, v, values):
+        if 'start_seconds' in values and v <= values['start_seconds']:
+            raise ValueError("end_seconds must be greater than start_seconds")
+        return v
+
+
+class CreateCustomInstrumentalRequest(BaseModel):
+    """
+    Request to create a custom instrumental with muted backing vocal regions.
+    
+    The mute_regions specify time ranges in the backing vocals track that
+    should be silenced before mixing with the clean instrumental.
+    """
+    mute_regions: List[MuteRegionRequest]
+    
+    @validator('mute_regions')
+    def validate_regions(cls, v):
+        if not v:
+            raise ValueError("At least one mute region is required")
         return v
 
 

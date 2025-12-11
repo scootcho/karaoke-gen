@@ -763,7 +763,18 @@ class RemoteKaraokeClient:
                 error_detail = response.text
             raise RuntimeError(f"Error getting instrumental options: {error_detail}")
         return response.json()
-    
+
+    def get_instrumental_analysis(self, job_id: str) -> Dict[str, Any]:
+        """Get instrumental analysis data including backing vocals detection."""
+        response = self._request('GET', f'/api/jobs/{job_id}/instrumental-analysis')
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error getting instrumental analysis: {error_detail}")
+        return response.json()
+
     def select_instrumental(self, job_id: str, selection: str) -> Dict[str, Any]:
         """Submit instrumental selection."""
         response = self._request(
@@ -1009,39 +1020,97 @@ class JobMonitor:
                 time.sleep(self.config.poll_interval)
     
     def handle_instrumental_selection(self, job_id: str) -> None:
-        """Handle instrumental selection interaction."""
+        """Handle instrumental selection interaction with analysis-based recommendations."""
         self.logger.info("=" * 60)
         self.logger.info("INSTRUMENTAL SELECTION NEEDED")
         self.logger.info("=" * 60)
         
-        # In non-interactive mode, auto-select clean instrumental
-        if self.config.non_interactive:
-            self.logger.info("Non-interactive mode: Auto-selecting clean instrumental")
-            selection = 'clean'
-        else:
-            self.logger.info("")
-            self.logger.info("Choose which instrumental track to use for the final video:")
-            self.logger.info("")
-            self.logger.info("  1) Clean Instrumental (no backing vocals)")
-            self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
-            self.logger.info("")
-            self.logger.info("  2) Instrumental with Backing Vocals")
-            self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
-            self.logger.info("")
+        # Try to get analysis data for smart recommendations
+        analysis_data = None
+        try:
+            analysis_data = self.client.get_instrumental_analysis(job_id)
+            analysis = analysis_data.get('analysis', {})
             
-            selection = ""
-            while not selection:
+            # Display analysis summary
+            self.logger.info("")
+            self.logger.info("=== Backing Vocals Analysis ===")
+            if analysis.get('has_audible_content'):
+                self.logger.info(f"  Backing vocals detected: YES")
+                self.logger.info(f"  Audible segments: {len(analysis.get('audible_segments', []))}")
+                self.logger.info(f"  Audible duration: {analysis.get('total_audible_duration_seconds', 0):.1f}s "
+                               f"({analysis.get('audible_percentage', 0):.1f}% of track)")
+            else:
+                self.logger.info(f"  Backing vocals detected: NO")
+            self.logger.info(f"  Recommendation: {analysis.get('recommended_selection', 'review_needed')}")
+            self.logger.info("")
+        except Exception as e:
+            self.logger.warning(f"Could not fetch analysis data: {e}")
+            self.logger.info("Falling back to manual selection...")
+        
+        # In non-interactive mode, use analysis recommendation or default to clean
+        if self.config.non_interactive:
+            if analysis_data and analysis_data.get('analysis', {}).get('recommended_selection') == 'clean':
+                self.logger.info("Non-interactive mode: Auto-selecting clean instrumental (recommended)")
+                selection = 'clean'
+            else:
+                self.logger.info("Non-interactive mode: Auto-selecting clean instrumental (default)")
+                selection = 'clean'
+        else:
+            # Check if we should recommend clean based on analysis
+            recommend_clean = (
+                analysis_data and 
+                not analysis_data.get('analysis', {}).get('has_audible_content', True)
+            )
+            
+            if recommend_clean:
+                self.logger.info("No backing vocals detected - recommending clean instrumental.")
+                self.logger.info("")
+                self.logger.info("Options:")
+                self.logger.info("  1) Accept recommendation (clean instrumental)")
+                self.logger.info("  2) Open browser to review and select")
+                self.logger.info("")
+                
                 try:
                     choice = input("Enter your choice (1 or 2): ").strip()
                     if choice == '1':
                         selection = 'clean'
-                    elif choice == '2':
-                        selection = 'with_backing'
                     else:
-                        self.logger.error("Invalid choice. Please enter 1 or 2.")
+                        self._open_instrumental_review_and_wait(job_id)
+                        return  # Selection will be submitted via browser
                 except KeyboardInterrupt:
                     print()
                     raise
+            else:
+                # Backing vocals detected or analysis unavailable - offer browser review
+                self.logger.info("Choose how to select your instrumental:")
+                self.logger.info("")
+                self.logger.info("  1) Clean Instrumental (no backing vocals)")
+                self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
+                self.logger.info("")
+                self.logger.info("  2) Instrumental with Backing Vocals")
+                self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
+                self.logger.info("")
+                self.logger.info("  3) Open Browser for Advanced Review")
+                self.logger.info("     Listen to audio, view waveform, and optionally mute sections")
+                self.logger.info("     to create a custom instrumental")
+                self.logger.info("")
+                
+                selection = ""
+                while not selection:
+                    try:
+                        choice = input("Enter your choice (1, 2, or 3): ").strip()
+                        if choice == '1':
+                            selection = 'clean'
+                        elif choice == '2':
+                            selection = 'with_backing'
+                        elif choice == '3':
+                            self._open_instrumental_review_and_wait(job_id)
+                            return  # Selection will be submitted via browser
+                        else:
+                            self.logger.error("Invalid choice. Please enter 1, 2, or 3.")
+                    except KeyboardInterrupt:
+                        print()
+                        raise
         
         self.logger.info(f"Submitting selection: {selection}")
         
@@ -1053,6 +1122,51 @@ class JobMonitor:
                 self.logger.error(f"Error submitting selection: {result}")
         except Exception as e:
             self.logger.error(f"Error submitting selection: {e}")
+    
+    def _open_instrumental_review_and_wait(self, job_id: str) -> None:
+        """Open browser to instrumental review UI and wait for selection."""
+        review_url = f"{self.config.review_ui_url}/jobs/{job_id}/instrumental-review"
+        
+        self.logger.info("")
+        self.logger.info("=" * 60)
+        self.logger.info("OPENING BROWSER FOR INSTRUMENTAL REVIEW")
+        self.logger.info("=" * 60)
+        self.logger.info(f"Review URL: {review_url}")
+        self.logger.info("")
+        self.logger.info("In the browser you can:")
+        self.logger.info("  - View the backing vocals waveform")
+        self.logger.info("  - Listen to clean instrumental, backing vocals, or combined")
+        self.logger.info("  - Select regions to mute and create a custom instrumental")
+        self.logger.info("  - Submit your final selection")
+        self.logger.info("")
+        self.logger.info("Waiting for selection to be submitted...")
+        self.logger.info("(Press Ctrl+C to cancel)")
+        self.logger.info("")
+        
+        # Open browser
+        webbrowser.open(review_url)
+        
+        # Poll until job status changes from awaiting_instrumental_selection
+        while True:
+            try:
+                job_data = self.client.get_job(job_id)
+                current_status = job_data.get('status')
+                
+                if current_status != 'awaiting_instrumental_selection':
+                    selection = job_data.get('state_data', {}).get('instrumental_selection', 'unknown')
+                    self.logger.info(f"Selection received: {selection}")
+                    self.logger.info(f"Job status: {current_status}")
+                    return
+                
+                time.sleep(self.config.poll_interval)
+                
+            except KeyboardInterrupt:
+                print()
+                self.logger.info("Cancelled. You can resume this job later with --resume")
+                raise
+            except Exception as e:
+                self.logger.warning(f"Error checking status: {e}")
+                time.sleep(self.config.poll_interval)
     
     def download_outputs(self, job_id: str, job_data: Dict[str, Any]) -> None:
         """

@@ -19,7 +19,8 @@ from backend.models.requests import (
     CorrectionsSubmission,
     InstrumentalSelection,
     StartReviewRequest,
-    CancelJobRequest
+    CancelJobRequest,
+    CreateCustomInstrumentalRequest,
 )
 from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
@@ -521,6 +522,311 @@ async def get_instrumental_options(job_id: str) -> Dict[str, Any]:
         "artist": job.artist,
         "title": job.title
     }
+
+
+@router.get("/{job_id}/instrumental-analysis")
+async def get_instrumental_analysis(job_id: str) -> Dict[str, Any]:
+    """
+    Get audio analysis data for instrumental selection.
+    
+    Returns:
+    - Analysis of backing vocals (audible segments, recommendation)
+    - Waveform image URL
+    - Audio stream URLs for playback
+    
+    This endpoint enables intelligent instrumental selection by providing
+    detailed analysis of the backing vocals track.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for instrumental analysis (current status: {job.status})"
+        )
+    
+    storage = StorageService()
+    
+    # Get analysis from state_data (populated by render_video_worker)
+    analysis_data = job.state_data.get('backing_vocals_analysis', {})
+    
+    # Get URLs
+    stems = job.file_urls.get('stems', {})
+    analysis_files = job.file_urls.get('analysis', {})
+    
+    clean_url = stems.get('instrumental_clean')
+    backing_vocals_url = stems.get('backing_vocals')
+    with_backing_url = stems.get('instrumental_with_backing')
+    waveform_url = analysis_files.get('backing_vocals_waveform')
+    custom_instrumental_url = stems.get('instrumental_custom')
+    
+    # Build response
+    response = {
+        "job_id": job_id,
+        "artist": job.artist,
+        "title": job.title,
+        "status": job.status,
+        
+        # Analysis results
+        "analysis": {
+            "has_audible_content": analysis_data.get('has_audible_content', False),
+            "total_duration_seconds": analysis_data.get('total_duration_seconds', 0),
+            "audible_segments": analysis_data.get('audible_segments', []),
+            "recommended_selection": analysis_data.get('recommended_selection', 'review_needed'),
+            "total_audible_duration_seconds": analysis_data.get('total_audible_duration_seconds', 0),
+            "audible_percentage": analysis_data.get('audible_percentage', 0),
+            "silence_threshold_db": analysis_data.get('silence_threshold_db', -40.0),
+        },
+        
+        # Audio URLs for playback
+        "audio_urls": {
+            "clean_instrumental": storage.generate_signed_url(clean_url, expiration_minutes=120) if clean_url else None,
+            "backing_vocals": storage.generate_signed_url(backing_vocals_url, expiration_minutes=120) if backing_vocals_url else None,
+            "with_backing": storage.generate_signed_url(with_backing_url, expiration_minutes=120) if with_backing_url else None,
+            "custom_instrumental": storage.generate_signed_url(custom_instrumental_url, expiration_minutes=120) if custom_instrumental_url else None,
+        },
+        
+        # Waveform image URL
+        "waveform_url": storage.generate_signed_url(waveform_url, expiration_minutes=120) if waveform_url else None,
+        
+        # Whether a custom instrumental has been created
+        "has_custom_instrumental": custom_instrumental_url is not None,
+    }
+    
+    return response
+
+
+@router.get("/{job_id}/audio-stream/{stem_type}")
+async def stream_audio(job_id: str, stem_type: str):
+    """
+    Stream an audio file for playback in the browser.
+    
+    Supported stem_type values:
+    - clean_instrumental: Clean instrumental (no backing vocals)
+    - backing_vocals: Backing vocals only
+    - with_backing: Instrumental with backing vocals
+    - custom_instrumental: Custom instrumental (if created)
+    
+    Returns audio as a streaming response with proper headers for
+    browser audio playback.
+    """
+    from fastapi.responses import StreamingResponse
+    import tempfile
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Map stem_type to file_urls key
+    stem_map = {
+        'clean_instrumental': ('stems', 'instrumental_clean'),
+        'backing_vocals': ('stems', 'backing_vocals'),
+        'with_backing': ('stems', 'instrumental_with_backing'),
+        'custom_instrumental': ('stems', 'instrumental_custom'),
+    }
+    
+    if stem_type not in stem_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid stem_type. Must be one of: {list(stem_map.keys())}"
+        )
+    
+    category, key = stem_map[stem_type]
+    gcs_path = job.file_urls.get(category, {}).get(key)
+    
+    if not gcs_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Audio file not available: {stem_type}"
+        )
+    
+    # Determine content type
+    ext = gcs_path.split('.')[-1].lower()
+    content_types = {
+        'flac': 'audio/flac',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'm4a': 'audio/mp4',
+    }
+    content_type = content_types.get(ext, 'audio/flac')
+    
+    try:
+        storage = StorageService()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+            tmp_path = tmp.name
+        
+        storage.download_file(gcs_path, tmp_path)
+        
+        def file_iterator():
+            try:
+                with open(tmp_path, 'rb') as f:
+                    while chunk := f.read(8192):
+                        yield chunk
+            finally:
+                import os
+                os.unlink(tmp_path)
+        
+        filename = gcs_path.split('/')[-1]
+        
+        return StreamingResponse(
+            file_iterator(),
+            media_type=content_type,
+            headers={
+                'Content-Disposition': f'inline; filename="{filename}"',
+                'Accept-Ranges': 'bytes',
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error streaming audio {gcs_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error streaming audio: {e}")
+
+
+@router.post("/{job_id}/create-custom-instrumental")
+async def create_custom_instrumental(
+    job_id: str,
+    request: CreateCustomInstrumentalRequest,
+) -> Dict[str, Any]:
+    """
+    Create a custom instrumental by muting regions of backing vocals.
+    
+    This endpoint:
+    1. Takes a list of time ranges to mute in the backing vocals
+    2. Creates a custom instrumental (clean + muted backing vocals)
+    3. Stores the result and makes it available for selection
+    
+    After calling this endpoint, the user can select "custom" in the
+    select-instrumental endpoint.
+    """
+    from backend.services.audio_editing_service import AudioEditingService
+    from karaoke_gen.instrumental_review import MuteRegion
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for custom instrumental creation (current status: {job.status})"
+        )
+    
+    # Get stem paths
+    stems = job.file_urls.get('stems', {})
+    clean_path = stems.get('instrumental_clean')
+    backing_path = stems.get('backing_vocals')
+    
+    if not clean_path or not backing_path:
+        raise HTTPException(
+            status_code=500,
+            detail="Required audio files not available"
+        )
+    
+    try:
+        # Convert request mute regions to model objects
+        mute_regions = [
+            MuteRegion(
+                start_seconds=r.start_seconds,
+                end_seconds=r.end_seconds
+            )
+            for r in request.mute_regions
+        ]
+        
+        # Create custom instrumental
+        editing_service = AudioEditingService()
+        
+        # Determine output path
+        output_path = f"jobs/{job_id}/stems/instrumental_custom.flac"
+        
+        result = editing_service.create_custom_instrumental(
+            gcs_clean_instrumental_path=clean_path,
+            gcs_backing_vocals_path=backing_path,
+            mute_regions=mute_regions,
+            gcs_output_path=output_path,
+            job_id=job_id,
+        )
+        
+        # Update job file_urls with custom instrumental
+        job_manager.update_file_url(job_id, 'stems', 'instrumental_custom', output_path)
+        
+        # Store mute regions in state_data for reference
+        job_manager.update_state_data(job_id, 'custom_instrumental_mute_regions', [
+            {"start_seconds": r.start_seconds, "end_seconds": r.end_seconds}
+            for r in mute_regions
+        ])
+        
+        logger.info(f"Job {job_id}: Custom instrumental created with {len(mute_regions)} mute regions")
+        
+        # Generate signed URL for the new file
+        storage = StorageService()
+        
+        return {
+            "status": "success",
+            "message": "Custom instrumental created successfully",
+            "custom_instrumental_url": storage.generate_signed_url(output_path, expiration_minutes=120),
+            "mute_regions_applied": len(result.mute_regions_applied),
+            "total_muted_duration_seconds": result.total_muted_duration_seconds,
+            "output_duration_seconds": result.output_duration_seconds,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating custom instrumental for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{job_id}/waveform-data")
+async def get_waveform_data(job_id: str, num_points: int = 500) -> Dict[str, Any]:
+    """
+    Get waveform amplitude data for client-side rendering.
+    
+    This endpoint returns raw amplitude data that the frontend can use
+    to render a waveform using Canvas or SVG, enabling interactive
+    features like click-to-seek.
+    
+    Args:
+        num_points: Number of data points to return (default 500)
+    
+    Returns:
+        {
+            "amplitudes": [0.1, 0.2, ...],  # Normalized 0-1 values
+            "duration_seconds": 180.5,
+            "num_points": 500
+        }
+    """
+    from backend.services.audio_analysis_service import AudioAnalysisService
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.status != JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job not ready for waveform data (current status: {job.status})"
+        )
+    
+    backing_vocals_path = job.file_urls.get('stems', {}).get('backing_vocals')
+    if not backing_vocals_path:
+        raise HTTPException(status_code=404, detail="Backing vocals file not found")
+    
+    try:
+        analysis_service = AudioAnalysisService()
+        amplitudes, duration = analysis_service.get_waveform_data(
+            gcs_audio_path=backing_vocals_path,
+            job_id=job_id,
+            num_points=num_points,
+        )
+        
+        return {
+            "amplitudes": amplitudes,
+            "duration_seconds": duration,
+            "num_points": len(amplitudes),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting waveform data for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{job_id}/select-instrumental")
