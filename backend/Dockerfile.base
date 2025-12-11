@@ -27,6 +27,10 @@ COPY lyrics_transcriber_temp /app/lyrics_transcriber_temp
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
 
+# Download spaCy language model for lyrics transcription
+# This must be done at build time, not runtime (Cloud Run network restrictions)
+RUN python -m spacy download en_core_web_sm
+
 # Label with build info
 ARG BUILD_DATE
 ARG BUILD_ID

@@ -549,44 +549,94 @@ class TestRemoteKaraokeClient:
             client.submit_job(str(test_file), "Artist", "Title")
     
     @patch.object(RemoteKaraokeClient, '_request')
-    def test_submit_job_success(self, mock_request, client, tmp_path):
-        """Test successful job submission."""
+    @patch.object(RemoteKaraokeClient, '_upload_file_to_signed_url')
+    def test_submit_job_success(self, mock_upload, mock_request, client, tmp_path):
+        """Test successful job submission via signed URL flow."""
         # Create test audio file
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"audio data")
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+
+        # Mock create job response (first API call)
+        create_response = MagicMock()
+        create_response.status_code = 200
+        create_response.json.return_value = {
             "status": "success",
-            "job_id": "new-job-123"
+            "job_id": "new-job-123",
+            "upload_urls": [
+                {
+                    "file_type": "audio",
+                    "gcs_path": "uploads/new-job-123/audio/test.mp3",
+                    "upload_url": "https://storage.googleapis.com/signed-url",
+                    "content_type": "audio/mpeg"
+                }
+            ]
         }
-        mock_request.return_value = mock_response
         
+        # Mock uploads complete response (second API call)
+        complete_response = MagicMock()
+        complete_response.status_code = 200
+        complete_response.json.return_value = {
+            "status": "success",
+            "job_id": "new-job-123",
+            "message": "Processing started"
+        }
+        
+        mock_request.side_effect = [create_response, complete_response]
+        mock_upload.return_value = True
+
         result = client.submit_job(str(audio_file), "Test Artist", "Test Title")
-        
+
         assert result["status"] == "success"
         assert result["job_id"] == "new-job-123"
-    
+        # Verify the signed URL upload was called
+        mock_upload.assert_called_once()
+
+    @patch.object(RemoteKaraokeClient, '_upload_file_to_signed_url')
     @patch.object(RemoteKaraokeClient, '_request')
-    def test_submit_job_with_style_params(self, mock_request, client, tmp_path):
-        """Test job submission with style params."""
+    def test_submit_job_with_style_params(self, mock_request, mock_upload, client, tmp_path):
+        """Test job submission with style params via signed URL flow."""
         # Create test files
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"audio data")
-        
+
         style_file = tmp_path / "style_params.json"
         style_file.write_text(json.dumps({"intro": {}}))
-        
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+
+        # Mock create job response (first API call)
+        create_response = MagicMock()
+        create_response.status_code = 200
+        create_response.json.return_value = {
             "status": "success",
             "job_id": "new-job-456",
-            "style_assets_uploaded": []
+            "upload_urls": [
+                {
+                    "file_type": "audio",
+                    "gcs_path": "uploads/new-job-456/audio/test.mp3",
+                    "upload_url": "https://storage.googleapis.com/signed-url-1",
+                    "content_type": "audio/mpeg"
+                },
+                {
+                    "file_type": "style_params",
+                    "gcs_path": "uploads/new-job-456/style/style_params.json",
+                    "upload_url": "https://storage.googleapis.com/signed-url-2",
+                    "content_type": "application/json"
+                }
+            ]
         }
-        mock_request.return_value = mock_response
         
+        # Mock uploads complete response (second API call)
+        complete_response = MagicMock()
+        complete_response.status_code = 200
+        complete_response.json.return_value = {
+            "status": "success",
+            "job_id": "new-job-456",
+            "message": "Processing started",
+            "style_assets": ["style_params"]
+        }
+        
+        mock_request.side_effect = [create_response, complete_response]
+        mock_upload.return_value = True
+
         result = client.submit_job(
             str(audio_file),
             "Test Artist",
@@ -597,21 +647,23 @@ class TestRemoteKaraokeClient:
             brand_prefix="TEST",
             discord_webhook_url="https://discord.webhook/url"
         )
-        
+
         assert result["status"] == "success"
+        # Verify uploads were called for both files
+        assert mock_upload.call_count == 2
     
     @patch.object(RemoteKaraokeClient, '_request')
     def test_submit_job_api_error(self, mock_request, client, tmp_path):
-        """Test handling API error during job submission."""
+        """Test handling API error during job creation."""
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"audio data")
-        
+
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.json.return_value = {"error": "Server error"}
         mock_request.return_value = mock_response
-        
-        with pytest.raises(RuntimeError, match="Error submitting job"):
+
+        with pytest.raises(RuntimeError, match="Error creating job"):
             client.submit_job(str(audio_file), "Artist", "Title")
 
 
@@ -1717,3 +1769,164 @@ class TestJobMonitorHandleReview:
         
         mock_open_ui.assert_called_once_with("job-123")
         assert mock_get_job.call_count == 2
+
+
+class TestSignedUrlUploadFlow:
+    """Tests for the signed URL upload flow."""
+    
+    @pytest.fixture
+    def config(self):
+        return Config(
+            service_url="https://api.example.com",
+            review_ui_url="https://review.example.com",
+            poll_interval=5,
+            output_dir="/tmp/output"
+        )
+    
+    @pytest.fixture
+    def logger(self):
+        return logging.getLogger("test")
+    
+    @pytest.fixture
+    def client(self, config, logger):
+        return RemoteKaraokeClient(config, logger)
+    
+    def test_get_content_type_audio(self, client):
+        """Test content type detection for audio files."""
+        assert client._get_content_type("song.flac") == "audio/flac"
+        assert client._get_content_type("song.mp3") == "audio/mpeg"
+        assert client._get_content_type("song.wav") == "audio/wav"
+        assert client._get_content_type("song.m4a") == "audio/mp4"
+        assert client._get_content_type("song.ogg") == "audio/ogg"
+        assert client._get_content_type("song.aac") == "audio/aac"
+    
+    def test_get_content_type_images(self, client):
+        """Test content type detection for image files."""
+        assert client._get_content_type("bg.png") == "image/png"
+        assert client._get_content_type("bg.jpg") == "image/jpeg"
+        assert client._get_content_type("bg.jpeg") == "image/jpeg"
+        assert client._get_content_type("bg.gif") == "image/gif"
+        assert client._get_content_type("bg.webp") == "image/webp"
+    
+    def test_get_content_type_fonts(self, client):
+        """Test content type detection for font files."""
+        assert client._get_content_type("font.ttf") == "font/ttf"
+        assert client._get_content_type("font.otf") == "font/otf"
+        assert client._get_content_type("font.woff") == "font/woff"
+        assert client._get_content_type("font.woff2") == "font/woff2"
+    
+    def test_get_content_type_other(self, client):
+        """Test content type detection for other files."""
+        assert client._get_content_type("style.json") == "application/json"
+        assert client._get_content_type("lyrics.txt") == "text/plain"
+        assert client._get_content_type("unknown.xyz") == "application/octet-stream"
+    
+    @patch('requests.put')
+    def test_upload_file_to_signed_url_success(self, mock_put, client):
+        """Test successful upload to signed URL."""
+        mock_put.return_value = MagicMock(status_code=200)
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".flac") as f:
+            f.write(b"fake audio data")
+            temp_path = f.name
+        
+        try:
+            result = client._upload_file_to_signed_url(
+                "https://storage.googleapis.com/signed-url",
+                temp_path,
+                "audio/flac"
+            )
+            assert result is True
+            mock_put.assert_called_once()
+        finally:
+            os.unlink(temp_path)
+    
+    @patch('requests.put')
+    def test_upload_file_to_signed_url_failure(self, mock_put, client):
+        """Test failed upload to signed URL."""
+        mock_put.return_value = MagicMock(status_code=403, text="Forbidden")
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".flac") as f:
+            f.write(b"fake audio data")
+            temp_path = f.name
+        
+        try:
+            result = client._upload_file_to_signed_url(
+                "https://storage.googleapis.com/signed-url",
+                temp_path,
+                "audio/flac"
+            )
+            assert result is False
+        finally:
+            os.unlink(temp_path)
+    
+    @patch.object(RemoteKaraokeClient, '_upload_file_to_signed_url')
+    @patch.object(RemoteKaraokeClient, '_request')
+    def test_submit_job_uses_signed_url_flow(self, mock_request, mock_upload, client):
+        """Test that submit_job uses the signed URL upload flow."""
+        # Mock create job response
+        create_response = MagicMock()
+        create_response.status_code = 200
+        create_response.json.return_value = {
+            "status": "success",
+            "job_id": "test-job-123",
+            "upload_urls": [
+                {
+                    "file_type": "audio",
+                    "gcs_path": "uploads/test-job-123/audio/test.flac",
+                    "upload_url": "https://storage.googleapis.com/signed-url-1",
+                    "content_type": "audio/flac"
+                }
+            ]
+        }
+        
+        # Mock uploads complete response
+        complete_response = MagicMock()
+        complete_response.status_code = 200
+        complete_response.json.return_value = {
+            "status": "success",
+            "job_id": "test-job-123",
+            "message": "Processing started"
+        }
+        
+        mock_request.side_effect = [create_response, complete_response]
+        mock_upload.return_value = True
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".flac") as f:
+            f.write(b"fake audio data")
+            temp_path = f.name
+        
+        try:
+            result = client.submit_job(
+                filepath=temp_path,
+                artist="Test Artist",
+                title="Test Song"
+            )
+            
+            # Verify the flow: create -> upload -> complete
+            assert mock_request.call_count == 2
+            
+            # First call should be to create-with-upload-urls
+            first_call = mock_request.call_args_list[0]
+            assert first_call[0][0] == 'POST'
+            assert 'create-with-upload-urls' in first_call[0][1]
+            
+            # Second call should be to uploads-complete
+            second_call = mock_request.call_args_list[1]
+            assert second_call[0][0] == 'POST'
+            assert 'uploads-complete' in second_call[0][1]
+            
+            # Upload should have been called for the audio file
+            mock_upload.assert_called_once()
+            
+            assert result["status"] == "success"
+            assert result["job_id"] == "test-job-123"
+        finally:
+            os.unlink(temp_path)
+    
+    def test_client_has_signed_url_methods(self, client):
+        """Test that RemoteKaraokeClient has the required signed URL methods."""
+        assert hasattr(client, '_upload_file_to_signed_url')
+        assert hasattr(client, '_get_content_type')
+        assert callable(client._upload_file_to_signed_url)
+        assert callable(client._get_content_type)

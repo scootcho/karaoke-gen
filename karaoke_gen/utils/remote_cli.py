@@ -143,6 +143,70 @@ class RemoteKaraokeClient:
         response = self.session.request(method, url, **kwargs)
         return response
     
+    def _upload_file_to_signed_url(self, signed_url: str, file_path: str, content_type: str) -> bool:
+        """
+        Upload a file directly to GCS using a signed URL.
+        
+        Args:
+            signed_url: The signed URL from the backend
+            file_path: Local path to the file to upload
+            content_type: MIME type for the Content-Type header
+            
+        Returns:
+            True if upload succeeded, False otherwise
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                # Use a fresh requests session (not self.session) because
+                # signed URLs should not have our auth headers
+                response = requests.put(
+                    signed_url,
+                    data=f,
+                    headers={'Content-Type': content_type},
+                    timeout=600  # 10 minutes for large files
+                )
+            
+            if response.status_code in (200, 201):
+                return True
+            else:
+                self.logger.error(f"Failed to upload to signed URL: HTTP {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error uploading to signed URL: {e}")
+            return False
+    
+    def _get_content_type(self, file_path: str) -> str:
+        """Get the MIME content type for a file based on its extension."""
+        ext = Path(file_path).suffix.lower()
+        
+        content_types = {
+            # Audio
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.flac': 'audio/flac',
+            '.m4a': 'audio/mp4',
+            '.ogg': 'audio/ogg',
+            '.aac': 'audio/aac',
+            # Images
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            # Fonts
+            '.ttf': 'font/ttf',
+            '.otf': 'font/otf',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            # Other
+            '.json': 'application/json',
+            '.txt': 'text/plain',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.rtf': 'application/rtf',
+        }
+        
+        return content_types.get(ext, 'application/octet-stream')
+    
     def _parse_style_params(self, style_params_path: str) -> Dict[str, str]:
         """
         Parse style_params.json and extract file paths that need to be uploaded.
@@ -212,6 +276,11 @@ class RemoteKaraokeClient:
         """
         Submit a new karaoke generation job with optional style configuration.
         
+        Uses signed URL upload flow to bypass Cloud Run's 32MB request body limit:
+        1. Create job and get signed upload URLs from backend
+        2. Upload files directly to GCS using signed URLs
+        3. Notify backend that uploads are complete to start processing
+        
         Args:
             filepath: Path to audio file
             artist: Artist name
@@ -246,118 +315,157 @@ class RemoteKaraokeClient:
                 f"Allowed: {', '.join(self.ALLOWED_AUDIO_EXTENSIONS)}"
             )
         
-        self.logger.info(f"Uploading audio file: {filepath}")
+        # Step 1: Build list of files to upload
+        files_info = []
+        local_files = {}  # file_type -> local_path
         
-        # Prepare files dict for multipart upload
-        files_to_upload = {}
-        files_to_close = []
+        # Main audio file
+        audio_content_type = self._get_content_type(filepath)
+        files_info.append({
+            'filename': file_path.name,
+            'content_type': audio_content_type,
+            'file_type': 'audio'
+        })
+        local_files['audio'] = filepath
+        self.logger.info(f"Will upload audio: {filepath}")
         
-        try:
-            # Main audio file
-            audio_file = open(filepath, 'rb')
-            files_to_close.append(audio_file)
-            files_to_upload['file'] = (file_path.name, audio_file)
+        # Parse style params and find referenced files
+        style_assets = {}
+        if style_params_path and os.path.isfile(style_params_path):
+            self.logger.info(f"Parsing style configuration: {style_params_path}")
+            style_assets = self._parse_style_params(style_params_path)
             
-            # Parse style params and find referenced files
-            style_assets = {}
-            if style_params_path and os.path.isfile(style_params_path):
-                self.logger.info(f"Parsing style configuration: {style_params_path}")
-                style_assets = self._parse_style_params(style_params_path)
-                
-                # Upload style_params.json
-                style_file = open(style_params_path, 'rb')
-                files_to_close.append(style_file)
-                files_to_upload['style_params'] = (Path(style_params_path).name, style_file, 'application/json')
-                self.logger.info(f"  Will upload style_params.json")
-            
-            # Upload each style asset file
-            for asset_key, asset_path in style_assets.items():
-                if os.path.isfile(asset_path):
-                    asset_file = open(asset_path, 'rb')
-                    files_to_close.append(asset_file)
-                    # Determine content type
-                    ext = Path(asset_path).suffix.lower()
-                    if ext in self.ALLOWED_IMAGE_EXTENSIONS:
-                        content_type = f'image/{ext[1:]}'
-                    elif ext in self.ALLOWED_FONT_EXTENSIONS:
-                        content_type = 'font/ttf'
-                    else:
-                        content_type = 'application/octet-stream'
-                    files_to_upload[asset_key] = (Path(asset_path).name, asset_file, content_type)
-                    self.logger.info(f"  Will upload {asset_key}: {asset_path}")
-            
-            # Upload lyrics file if provided
-            if lyrics_file and os.path.isfile(lyrics_file):
-                self.logger.info(f"Uploading lyrics file: {lyrics_file}")
-                lyrics_file_handle = open(lyrics_file, 'rb')
-                files_to_close.append(lyrics_file_handle)
-                files_to_upload['lyrics_file'] = (Path(lyrics_file).name, lyrics_file_handle, 'text/plain')
-            
-            # Prepare form data
-            data = {
-                'artist': artist,
-                'title': title,
-                'enable_cdg': str(enable_cdg).lower(),
-                'enable_txt': str(enable_txt).lower(),
-            }
-            
-            if brand_prefix:
-                data['brand_prefix'] = brand_prefix
-            if discord_webhook_url:
-                data['discord_webhook_url'] = discord_webhook_url
-            if youtube_description:
-                data['youtube_description'] = youtube_description
-            if enable_youtube_upload:
-                data['enable_youtube_upload'] = str(enable_youtube_upload).lower()
-            
-            # Native API distribution (preferred for remote CLI)
-            if dropbox_path:
-                data['dropbox_path'] = dropbox_path
-            if gdrive_folder_id:
-                data['gdrive_folder_id'] = gdrive_folder_id
-            
-            # Legacy rclone distribution (deprecated)
-            if organised_dir_rclone_root:
-                data['organised_dir_rclone_root'] = organised_dir_rclone_root
-            
-            # Lyrics configuration
-            if lyrics_artist:
-                data['lyrics_artist'] = lyrics_artist
-            if lyrics_title:
-                data['lyrics_title'] = lyrics_title
-            if subtitle_offset_ms != 0:
-                data['subtitle_offset_ms'] = str(subtitle_offset_ms)
-            
-            # Audio separation model configuration
-            if clean_instrumental_model:
-                data['clean_instrumental_model'] = clean_instrumental_model
-            if backing_vocals_models:
-                data['backing_vocals_models'] = ','.join(backing_vocals_models)
-            if other_stems_models:
-                data['other_stems_models'] = ','.join(other_stems_models)
-            
-            self.logger.info(f"Submitting job to {self.config.service_url}/api/jobs/upload")
-            
-            response = self._request('POST', '/api/jobs/upload', files=files_to_upload, data=data)
-            
-        finally:
-            # Close all opened files
-            for f in files_to_close:
-                try:
-                    f.close()
-                except:
-                    pass
+            # Add style_params.json
+            files_info.append({
+                'filename': Path(style_params_path).name,
+                'content_type': 'application/json',
+                'file_type': 'style_params'
+            })
+            local_files['style_params'] = style_params_path
+            self.logger.info(f"  Will upload style_params.json")
+        
+        # Add each style asset file
+        for asset_key, asset_path in style_assets.items():
+            if os.path.isfile(asset_path):
+                content_type = self._get_content_type(asset_path)
+                files_info.append({
+                    'filename': Path(asset_path).name,
+                    'content_type': content_type,
+                    'file_type': asset_key  # e.g., 'style_intro_background'
+                })
+                local_files[asset_key] = asset_path
+                self.logger.info(f"  Will upload {asset_key}: {asset_path}")
+        
+        # Add lyrics file if provided
+        if lyrics_file and os.path.isfile(lyrics_file):
+            content_type = self._get_content_type(lyrics_file)
+            files_info.append({
+                'filename': Path(lyrics_file).name,
+                'content_type': content_type,
+                'file_type': 'lyrics_file'
+            })
+            local_files['lyrics_file'] = lyrics_file
+            self.logger.info(f"Will upload lyrics file: {lyrics_file}")
+        
+        # Step 2: Create job and get signed upload URLs
+        self.logger.info(f"Creating job at {self.config.service_url}/api/jobs/create-with-upload-urls")
+        
+        create_request = {
+            'artist': artist,
+            'title': title,
+            'files': files_info,
+            'enable_cdg': enable_cdg,
+            'enable_txt': enable_txt,
+        }
+        
+        if brand_prefix:
+            create_request['brand_prefix'] = brand_prefix
+        if discord_webhook_url:
+            create_request['discord_webhook_url'] = discord_webhook_url
+        if youtube_description:
+            create_request['youtube_description'] = youtube_description
+        if enable_youtube_upload:
+            create_request['enable_youtube_upload'] = enable_youtube_upload
+        if dropbox_path:
+            create_request['dropbox_path'] = dropbox_path
+        if gdrive_folder_id:
+            create_request['gdrive_folder_id'] = gdrive_folder_id
+        if organised_dir_rclone_root:
+            create_request['organised_dir_rclone_root'] = organised_dir_rclone_root
+        if lyrics_artist:
+            create_request['lyrics_artist'] = lyrics_artist
+        if lyrics_title:
+            create_request['lyrics_title'] = lyrics_title
+        if subtitle_offset_ms != 0:
+            create_request['subtitle_offset_ms'] = subtitle_offset_ms
+        if clean_instrumental_model:
+            create_request['clean_instrumental_model'] = clean_instrumental_model
+        if backing_vocals_models:
+            create_request['backing_vocals_models'] = backing_vocals_models
+        if other_stems_models:
+            create_request['other_stems_models'] = other_stems_models
+        
+        response = self._request('POST', '/api/jobs/create-with-upload-urls', json=create_request)
         
         if response.status_code != 200:
             try:
                 error_detail = response.json()
             except Exception:
                 error_detail = response.text
-            raise RuntimeError(f"Error submitting job: {error_detail}")
+            raise RuntimeError(f"Error creating job: {error_detail}")
+        
+        create_result = response.json()
+        if create_result.get('status') != 'success':
+            raise RuntimeError(f"Error creating job: {create_result}")
+        
+        job_id = create_result['job_id']
+        upload_urls = create_result['upload_urls']
+        
+        self.logger.info(f"Job {job_id} created. Uploading {len(upload_urls)} files directly to storage...")
+        
+        # Step 3: Upload each file directly to GCS using signed URLs
+        uploaded_files = []
+        for url_info in upload_urls:
+            file_type = url_info['file_type']
+            signed_url = url_info['upload_url']
+            content_type = url_info['content_type']
+            local_path = local_files.get(file_type)
+            
+            if not local_path:
+                self.logger.warning(f"No local file found for file_type: {file_type}")
+                continue
+            
+            # Calculate file size for logging
+            file_size = os.path.getsize(local_path)
+            file_size_mb = file_size / (1024 * 1024)
+            self.logger.info(f"  Uploading {file_type} ({file_size_mb:.1f} MB)...")
+            
+            success = self._upload_file_to_signed_url(signed_url, local_path, content_type)
+            if not success:
+                raise RuntimeError(f"Failed to upload {file_type} to storage")
+            
+            uploaded_files.append(file_type)
+            self.logger.info(f"  ✓ Uploaded {file_type}")
+        
+        # Step 4: Notify backend that uploads are complete
+        self.logger.info(f"Notifying backend that uploads are complete...")
+        
+        complete_request = {
+            'uploaded_files': uploaded_files
+        }
+        
+        response = self._request('POST', f'/api/jobs/{job_id}/uploads-complete', json=complete_request)
+        
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error completing uploads: {error_detail}")
         
         result = response.json()
         if result.get('status') != 'success':
-            raise RuntimeError(f"Error submitting job: {result}")
+            raise RuntimeError(f"Error completing uploads: {result}")
         
         # Log distribution services info if available
         if 'distribution_services' in result:

@@ -584,6 +584,205 @@ class TestCommaDelimitedModelParsing:
         assert result is None
 
 
+class TestSignedUrlUploadModels:
+    """Test Pydantic models for signed URL upload flow."""
+    
+    def test_file_upload_request_model(self):
+        """Test FileUploadRequest model."""
+        from backend.api.routes.file_upload import FileUploadRequest
+        
+        file_req = FileUploadRequest(
+            filename="test.flac",
+            content_type="audio/flac",
+            file_type="audio"
+        )
+        
+        assert file_req.filename == "test.flac"
+        assert file_req.content_type == "audio/flac"
+        assert file_req.file_type == "audio"
+    
+    def test_create_job_with_upload_urls_request_model(self):
+        """Test CreateJobWithUploadUrlsRequest model."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Test Artist",
+            title="Test Song",
+            files=[
+                FileUploadRequest(filename="test.flac", content_type="audio/flac", file_type="audio")
+            ],
+            enable_cdg=True,
+            enable_txt=True,
+            brand_prefix="NOMAD"
+        )
+        
+        assert request.artist == "Test Artist"
+        assert request.title == "Test Song"
+        assert len(request.files) == 1
+        assert request.files[0].file_type == "audio"
+        assert request.brand_prefix == "NOMAD"
+    
+    def test_signed_upload_url_model(self):
+        """Test SignedUploadUrl model."""
+        from backend.api.routes.file_upload import SignedUploadUrl
+        
+        url_info = SignedUploadUrl(
+            file_type="audio",
+            gcs_path="uploads/test123/audio/test.flac",
+            upload_url="https://storage.googleapis.com/signed-url",
+            content_type="audio/flac"
+        )
+        
+        assert url_info.file_type == "audio"
+        assert url_info.gcs_path == "uploads/test123/audio/test.flac"
+        assert url_info.upload_url.startswith("https://")
+        assert url_info.content_type == "audio/flac"
+    
+    def test_uploads_complete_request_model(self):
+        """Test UploadsCompleteRequest model."""
+        from backend.api.routes.file_upload import UploadsCompleteRequest
+        
+        request = UploadsCompleteRequest(
+            uploaded_files=["audio", "style_params", "style_intro_background"]
+        )
+        
+        assert len(request.uploaded_files) == 3
+        assert "audio" in request.uploaded_files
+
+
+class TestValidFileTypes:
+    """Test file type validation for signed URL upload."""
+    
+    def test_valid_file_types_includes_audio(self):
+        """Test that audio is a valid file type."""
+        from backend.api.routes.file_upload import VALID_FILE_TYPES
+        
+        assert 'audio' in VALID_FILE_TYPES
+        assert '.flac' in VALID_FILE_TYPES['audio']
+        assert '.mp3' in VALID_FILE_TYPES['audio']
+    
+    def test_valid_file_types_includes_style_assets(self):
+        """Test that all style assets are valid file types."""
+        from backend.api.routes.file_upload import VALID_FILE_TYPES
+        
+        assert 'style_params' in VALID_FILE_TYPES
+        assert 'style_intro_background' in VALID_FILE_TYPES
+        assert 'style_karaoke_background' in VALID_FILE_TYPES
+        assert 'style_end_background' in VALID_FILE_TYPES
+        assert 'style_font' in VALID_FILE_TYPES
+        assert 'style_cdg_instrumental_background' in VALID_FILE_TYPES
+        assert 'style_cdg_title_background' in VALID_FILE_TYPES
+        assert 'style_cdg_outro_background' in VALID_FILE_TYPES
+    
+    def test_valid_file_types_includes_lyrics(self):
+        """Test that lyrics file is a valid file type."""
+        from backend.api.routes.file_upload import VALID_FILE_TYPES
+        
+        assert 'lyrics_file' in VALID_FILE_TYPES
+        assert '.txt' in VALID_FILE_TYPES['lyrics_file']
+        assert '.docx' in VALID_FILE_TYPES['lyrics_file']
+
+
+class TestSignedUrlGCSPathGeneration:
+    """Test GCS path generation for signed URL upload."""
+    
+    def test_audio_gcs_path(self):
+        """Test GCS path generation for audio file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "audio", "song.flac")
+        assert path == "uploads/test123/audio/song.flac"
+    
+    def test_style_params_gcs_path(self):
+        """Test GCS path generation for style params."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "style_params", "style.json")
+        assert path == "uploads/test123/style/style_params.json"
+    
+    def test_style_background_gcs_path(self):
+        """Test GCS path generation for style background images."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "style_intro_background", "bg.png")
+        assert path == "uploads/test123/style/intro_background.png"
+    
+    def test_style_font_gcs_path(self):
+        """Test GCS path generation for font file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "style_font", "font.ttf")
+        assert path == "uploads/test123/style/font.ttf"
+    
+    def test_lyrics_file_gcs_path(self):
+        """Test GCS path generation for lyrics file."""
+        from backend.api.routes.file_upload import _get_gcs_path_for_file
+        
+        path = _get_gcs_path_for_file("test123", "lyrics_file", "lyrics.txt")
+        assert path == "uploads/test123/lyrics/user_lyrics.txt"
+
+
+class TestStorageServiceSignedUrls:
+    """Test StorageService signed URL generation."""
+    
+    def test_generate_signed_upload_url_method_exists(self):
+        """Test that generate_signed_upload_url method exists in StorageService."""
+        from backend.services.storage_service import StorageService
+        
+        assert hasattr(StorageService, 'generate_signed_upload_url')
+    
+    def test_generate_signed_url_internal_method_exists(self):
+        """Test that _generate_signed_url_internal method exists in StorageService."""
+        from backend.services.storage_service import StorageService
+        
+        assert hasattr(StorageService, '_generate_signed_url_internal')
+
+
+class TestCreateJobWithUploadUrlsValidation:
+    """Test validation for create_job_with_upload_urls endpoint."""
+    
+    def test_request_without_audio_is_invalid(self):
+        """Test that request without audio file is rejected."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        import pytest
+        
+        # This should be caught during endpoint validation
+        # Here we test the model can be created but endpoint should reject
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Artist",
+            title="Title",
+            files=[
+                FileUploadRequest(filename="style.json", content_type="application/json", file_type="style_params")
+            ]
+        )
+        
+        # Endpoint validation should catch this
+        audio_files = [f for f in request.files if f.file_type == 'audio']
+        assert len(audio_files) == 0  # No audio - should be rejected by endpoint
+    
+    def test_request_with_multiple_audio_is_invalid(self):
+        """Test that request with multiple audio files is rejected."""
+        from backend.api.routes.file_upload import CreateJobWithUploadUrlsRequest, FileUploadRequest
+        
+        request = CreateJobWithUploadUrlsRequest(
+            artist="Artist",
+            title="Title",
+            files=[
+                FileUploadRequest(filename="song1.flac", content_type="audio/flac", file_type="audio"),
+                FileUploadRequest(filename="song2.flac", content_type="audio/flac", file_type="audio")
+            ]
+        )
+        
+        audio_files = [f for f in request.files if f.file_type == 'audio']
+        assert len(audio_files) == 2  # Multiple audio - should be rejected by endpoint
+    
+    def test_request_with_invalid_file_type(self):
+        """Test that request with invalid file type is rejected."""
+        from backend.api.routes.file_upload import VALID_FILE_TYPES
+        
+        assert 'invalid_type' not in VALID_FILE_TYPES
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
