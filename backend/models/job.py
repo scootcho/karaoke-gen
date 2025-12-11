@@ -120,9 +120,14 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
     
-    # Terminal states have no transitions
+    # Terminal states - COMPLETE and CANCELLED have no transitions
+    # FAILED allows retry transitions to resume from checkpoints
     JobStatus.COMPLETE: [],
-    JobStatus.FAILED: [],
+    JobStatus.FAILED: [
+        JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
+        JobStatus.REVIEW_COMPLETE,        # Retry from render stage
+        JobStatus.LYRICS_COMPLETE,        # Retry from screens generation
+    ],
     JobStatus.CANCELLED: [],
     
     # Legacy states (for backward compatibility)

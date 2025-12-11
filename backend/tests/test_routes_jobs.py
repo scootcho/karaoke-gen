@@ -62,6 +62,16 @@ class TestJobStatusTransitions:
             if status not in excluded:
                 valid_transitions = STATE_TRANSITIONS.get(status, [])
                 assert JobStatus.FAILED in valid_transitions, f"{status} should be able to fail"
+    
+    def test_failed_can_transition_for_retry(self):
+        """Test FAILED status can transition to retry checkpoint states."""
+        from backend.models.job import STATE_TRANSITIONS
+        valid_transitions = STATE_TRANSITIONS.get(JobStatus.FAILED, [])
+        
+        # FAILED should allow retry transitions
+        assert JobStatus.INSTRUMENTAL_SELECTED in valid_transitions, "FAILED should allow retry to INSTRUMENTAL_SELECTED"
+        assert JobStatus.REVIEW_COMPLETE in valid_transitions, "FAILED should allow retry to REVIEW_COMPLETE"
+        assert JobStatus.LYRICS_COMPLETE in valid_transitions, "FAILED should allow retry to LYRICS_COMPLETE"
 
 
 class TestJobModelSerialization:

@@ -610,6 +610,40 @@ class JobMonitor:
         self._last_timeline_index = 0
         self._last_log_index = 0
         self._show_worker_logs = True  # Enable worker log display
+        self._polls_without_updates = 0  # Track polling activity for heartbeat
+        self._heartbeat_interval = 6  # Show heartbeat every N polls without updates (~30s with 5s poll)
+    
+    # Status descriptions for user-friendly logging
+    STATUS_DESCRIPTIONS = {
+        'pending': 'Job queued, waiting to start',
+        'downloading': 'Downloading and preparing input files',
+        'separating_stage1': 'AI audio separation (stage 1 of 2)',
+        'separating_stage2': 'AI audio separation (stage 2 of 2)',
+        'audio_complete': 'Audio separation complete',
+        'transcribing': 'Transcribing lyrics from audio',
+        'correcting': 'Auto-correcting lyrics against reference sources',
+        'lyrics_complete': 'Lyrics processing complete',
+        'generating_screens': 'Creating title and end screens',
+        'applying_padding': 'Adding intro/outro padding',
+        'awaiting_review': 'Waiting for lyrics review',
+        'in_review': 'Lyrics review in progress',
+        'review_complete': 'Review complete, preparing video render',
+        'rendering_video': 'Rendering karaoke video with lyrics',
+        'awaiting_instrumental_selection': 'Waiting for instrumental selection',
+        'instrumental_selected': 'Instrumental selected, preparing final encoding',
+        'generating_video': 'Downloading files for final video encoding',
+        'encoding': 'Encoding final videos (15-20 min, 4 formats)',
+        'packaging': 'Creating CDG/TXT packages',
+        'uploading': 'Uploading to distribution services',
+        'notifying': 'Sending notifications',
+        'complete': 'All processing complete',
+        'failed': 'Job failed',
+        'cancelled': 'Job cancelled',
+    }
+    
+    def _get_status_description(self, status: str) -> str:
+        """Get user-friendly description for a status."""
+        return self.STATUS_DESCRIPTIONS.get(status, status)
     
     def open_browser(self, url: str) -> None:
         """Open URL in the default browser."""
@@ -1101,6 +1135,7 @@ class JobMonitor:
         
         self.logger.info(f"Monitoring job: {job_id}")
         self.logger.info(f"Service URL: {self.config.service_url}")
+        self.logger.info(f"Polling every {self.config.poll_interval} seconds...")
         self.logger.info("")
         
         while True:
@@ -1111,16 +1146,40 @@ class JobMonitor:
                 artist = job_data.get('artist', '')
                 title = job_data.get('title', '')
                 
+                # Track whether we got any new updates this poll
+                had_updates = False
+                prev_timeline_index = self._last_timeline_index
+                prev_log_index = self._last_log_index
+                
                 # Log timeline updates (shows status changes and progress)
                 self.log_timeline_updates(job_data)
+                if self._last_timeline_index > prev_timeline_index:
+                    had_updates = True
                 
                 # Log worker logs (shows detailed worker output for debugging)
                 self.log_worker_logs(job_id)
+                if self._last_log_index > prev_log_index:
+                    had_updates = True
                 
-                # Log status changes
+                # Log status changes with user-friendly descriptions
                 if status != last_status:
-                    self.logger.info(f"Status changed: {last_status} -> {status}")
+                    description = self._get_status_description(status)
+                    if last_status:
+                        self.logger.info(f"Status: {status} - {description}")
+                    else:
+                        self.logger.info(f"Current status: {status} - {description}")
                     last_status = status
+                    had_updates = True
+                
+                # Heartbeat: if no updates for a while, show we're still alive
+                if had_updates:
+                    self._polls_without_updates = 0
+                else:
+                    self._polls_without_updates += 1
+                    if self._polls_without_updates >= self._heartbeat_interval:
+                        description = self._get_status_description(status)
+                        self.logger.info(f"  [Still processing: {description}]")
+                        self._polls_without_updates = 0
                 
                 # Handle human interaction points
                 if status in ['awaiting_review', 'in_review']:

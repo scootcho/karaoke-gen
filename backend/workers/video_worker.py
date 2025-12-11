@@ -41,8 +41,10 @@ logger = logging.getLogger(__name__)
 
 
 # Loggers to capture for video worker
+# Include the full module path to properly capture KaraokeFinalise logs
 VIDEO_WORKER_LOGGERS = [
     "karaoke_gen.karaoke_finalise",
+    "karaoke_gen.karaoke_finalise.karaoke_finalise",  # The actual logger name from __name__
 ]
 
 
@@ -116,9 +118,9 @@ async def generate_video(job_id: str) -> bool:
         
         # Download and set up files in the format KaraokeFinalise expects
         base_name = f"{job.artist} - {job.title}"
-        job_log.info("Downloading files from GCS...")
-        await _setup_working_directory(job_id, job, storage, temp_dir, base_name)
-        job_log.info("Files downloaded successfully")
+        job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
+        await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
+        job_log.info("All files downloaded successfully")
         
         # Load style config for CDG styles
         job_log.info("Loading CDG style configuration...")
@@ -443,7 +445,8 @@ async def _setup_working_directory(
     job,
     storage: StorageService,
     temp_dir: str,
-    base_name: str
+    base_name: str,
+    job_log=None
 ) -> None:
     """
     Download files from GCS and set up the directory structure KaraokeFinalise expects.
@@ -455,25 +458,34 @@ async def _setup_working_directory(
     - {base_name} (Karaoke).lrc
     - Instrumental audio file
     """
-    logger.info(f"Job {job_id}: Setting up working directory")
+    def log_progress(message: str):
+        """Log to both module logger and job logger if available."""
+        logger.info(f"Job {job_id}: {message}")
+        if job_log:
+            job_log.info(message)
+    
+    log_progress("Setting up working directory")
     
     # Download title screen
+    log_progress("Downloading title screen...")
     title_url = job.file_urls['screens']['title']
     title_path = os.path.join(temp_dir, f"{base_name} (Title).mov")
     storage.download_file(title_url, title_path)
-    logger.info(f"Job {job_id}: Downloaded title screen")
+    log_progress("Downloaded title screen")
     
     # Download end screen
+    log_progress("Downloading end screen...")
     end_url = job.file_urls['screens']['end']
     end_path = os.path.join(temp_dir, f"{base_name} (End).mov")
     storage.download_file(end_url, end_path)
-    logger.info(f"Job {job_id}: Downloaded end screen")
+    log_progress("Downloaded end screen")
     
-    # Download lyrics video (with vocals)
+    # Download lyrics video (with vocals) - this is the largest file, ~1-2GB
+    log_progress("Downloading karaoke video (largest file, may take 1-2 minutes)...")
     lyrics_video_url = job.file_urls['videos']['with_vocals']
     lyrics_video_path = os.path.join(temp_dir, f"{base_name} (With Vocals).mov")
     storage.download_file(lyrics_video_url, lyrics_video_path)
-    logger.info(f"Job {job_id}: Downloaded lyrics video")
+    log_progress("Downloaded karaoke video")
     
     # Download selected instrumental
     instrumental_selection = job.state_data['instrumental_selection']
@@ -481,8 +493,9 @@ async def _setup_working_directory(
     instrumental_url = job.file_urls['stems'][instrumental_key]
     instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
     instrumental_path = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
+    log_progress(f"Downloading {instrumental_selection} instrumental audio...")
     storage.download_file(instrumental_url, instrumental_path)
-    logger.info(f"Job {job_id}: Downloaded instrumental ({instrumental_selection})")
+    log_progress(f"Downloaded instrumental ({instrumental_selection})")
     
     # Download LRC file if available (needed for CDG/TXT)
     lyrics_urls = job.file_urls.get('lyrics', {})
@@ -490,19 +503,19 @@ async def _setup_working_directory(
         lrc_url = lyrics_urls['lrc']
         lrc_path = os.path.join(temp_dir, f"{base_name} (Karaoke).lrc")
         storage.download_file(lrc_url, lrc_path)
-        logger.info(f"Job {job_id}: Downloaded LRC file")
+        log_progress("Downloaded LRC file")
     
     # Download title/end JPG files (used for YouTube thumbnail)
     screens = job.file_urls.get('screens', {})
     if screens.get('title_jpg'):
         title_jpg_path = os.path.join(temp_dir, f"{base_name} (Title).jpg")
         storage.download_file(screens['title_jpg'], title_jpg_path)
-        logger.info(f"Job {job_id}: Downloaded title JPG for thumbnail")
+        log_progress("Downloaded title JPG for thumbnail")
     
     if screens.get('end_jpg'):
         end_jpg_path = os.path.join(temp_dir, f"{base_name} (End).jpg")
         storage.download_file(screens['end_jpg'], end_jpg_path)
-        logger.info(f"Job {job_id}: Downloaded end JPG")
+        log_progress("Downloaded end JPG")
 
 
 async def _upload_results(
