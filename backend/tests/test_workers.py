@@ -869,3 +869,81 @@ class TestDownloadAudioWithUrl:
                 # Should have called storage.download_file
                 mock_storage.download_file.assert_called()
 
+
+class TestBackingVocalsAnalysis:
+    """Tests for backing vocals analysis in render_video_worker."""
+    
+    def test_analyze_backing_vocals_function_exists(self):
+        """Test that _analyze_backing_vocals function exists in render_video_worker."""
+        from backend.workers.render_video_worker import _analyze_backing_vocals
+        assert callable(_analyze_backing_vocals)
+    
+    def test_analyze_backing_vocals_is_async(self):
+        """Test that _analyze_backing_vocals is an async function."""
+        import inspect
+        from backend.workers.render_video_worker import _analyze_backing_vocals
+        assert inspect.iscoroutinefunction(_analyze_backing_vocals)
+    
+    def test_render_video_worker_imports_analysis_service(self):
+        """Test that render_video_worker can import AudioAnalysisService."""
+        # This verifies the import path is correct
+        from backend.services.audio_analysis_service import AudioAnalysisService
+        assert AudioAnalysisService is not None
+    
+    @pytest.mark.asyncio
+    async def test_analyze_backing_vocals_handles_missing_job(self):
+        """Test that analysis returns early when job not found (no error stored)."""
+        mock_job_manager = MagicMock()
+        mock_job_manager.get_job.return_value = None  # No job found
+        mock_job_manager.update_state_data = MagicMock()
+        
+        mock_storage = MagicMock()
+        mock_logger = MagicMock()
+        
+        from backend.workers.render_video_worker import _analyze_backing_vocals
+        
+        # Should not raise when job not found, just log warning and return
+        await _analyze_backing_vocals(
+            "nonexistent", mock_job_manager, mock_storage, mock_logger
+        )
+        
+        # Should log warning but not update state (early return)
+        mock_logger.warning.assert_called()
+        # No state_data update since we return early
+        mock_job_manager.update_state_data.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_analyze_backing_vocals_handles_missing_stems(self):
+        """Test that analysis returns early when stems not found (no error stored)."""
+        mock_job = MagicMock()
+        mock_job.file_urls = {}  # No stems
+        
+        mock_job_manager = MagicMock()
+        mock_job_manager.get_job.return_value = mock_job
+        mock_job_manager.update_state_data = MagicMock()
+        
+        mock_storage = MagicMock()
+        mock_logger = MagicMock()
+        
+        from backend.workers.render_video_worker import _analyze_backing_vocals
+        
+        # Should not raise when stems not found, just log warning and return
+        await _analyze_backing_vocals(
+            "test123", mock_job_manager, mock_storage, mock_logger
+        )
+        
+        # Should log warning but not update state (early return)
+        mock_logger.warning.assert_called()
+        # No state_data update since we return early
+        mock_job_manager.update_state_data.assert_not_called()
+    
+    def test_analysis_service_can_be_instantiated(self):
+        """Test that AudioAnalysisService can be instantiated."""
+        from backend.services.audio_analysis_service import AudioAnalysisService
+        
+        mock_storage = MagicMock()
+        service = AudioAnalysisService(storage_service=mock_storage)
+        
+        assert service is not None
+        assert service.storage_service == mock_storage
+
