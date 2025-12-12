@@ -344,3 +344,5 @@ def get_audio_search_service() -> AudioSearchService:
     if _audio_search_service is None:
         _audio_search_service = AudioSearchService()
     return _audio_search_service
+
+

@@ -3,10 +3,13 @@ Internal API routes for worker coordination.
 
 These endpoints are for internal use only (backend → workers).
 They are protected by admin authentication.
+
+With Cloud Tasks integration, these endpoints may be called multiple times
+(retry on failure). Idempotency checks prevent duplicate processing.
 """
 import logging
 import asyncio
-from typing import Tuple
+from typing import Tuple, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
 
@@ -17,6 +20,7 @@ from backend.workers.video_worker import generate_video
 from backend.workers.render_video_worker import process_render_video
 from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
+from backend.services.job_manager import JobManager
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +39,57 @@ class WorkerResponse(BaseModel):
     message: str
 
 
+def _check_worker_idempotency(job_id: str, worker_name: str) -> Optional[WorkerResponse]:
+    """
+    Check if a worker is already running or completed for this job.
+    
+    This provides idempotency for Cloud Tasks retries - if a task is retried
+    but the worker is already running or has completed, we skip processing.
+    
+    Args:
+        job_id: Job ID to check
+        worker_name: Worker name (audio, lyrics, screens, render, video)
+        
+    Returns:
+        WorkerResponse if should skip (already running/complete), None to proceed
+    """
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+    
+    if not job:
+        logger.warning(f"Job {job_id} not found for {worker_name} worker")
+        return WorkerResponse(
+            status="not_found",
+            job_id=job_id,
+            message=f"Job {job_id} not found"
+        )
+    
+    # Check worker-specific progress in state_data
+    progress_key = f"{worker_name}_progress"
+    worker_progress = job.state_data.get(progress_key, {})
+    stage = worker_progress.get('stage')
+    
+    if stage == 'running':
+        logger.info(f"{worker_name.capitalize()} worker already running for job {job_id}, skipping")
+        return WorkerResponse(
+            status="already_running",
+            job_id=job_id,
+            message=f"{worker_name.capitalize()} worker already in progress"
+        )
+    
+    if stage == 'complete':
+        logger.info(f"{worker_name.capitalize()} worker already complete for job {job_id}, skipping")
+        return WorkerResponse(
+            status="already_complete",
+            job_id=job_id,
+            message=f"{worker_name.capitalize()} worker already completed"
+        )
+    
+    # Mark as running before starting (for idempotency on next retry)
+    job_manager.update_state_data(job_id, progress_key, {'stage': 'running'})
+    return None
+
+
 @router.post("/workers/audio", response_model=WorkerResponse)
 async def trigger_audio_worker(
     request: WorkerRequest,
@@ -47,10 +102,17 @@ async def trigger_audio_worker(
     This endpoint is called internally after job creation to start
     the audio processing track (parallel with lyrics processing).
     
+    Idempotency: If worker is already running or complete, returns early.
+    
     The worker runs in the background and updates job state as it progresses.
     """
     job_id = request.job_id
     logger.info(f"Triggering audio worker for job {job_id}")
+    
+    # Idempotency check
+    skip_response = _check_worker_idempotency(job_id, "audio")
+    if skip_response:
+        return skip_response
     
     # Add task to background tasks
     # This allows the HTTP response to return immediately
@@ -76,10 +138,17 @@ async def trigger_lyrics_worker(
     This endpoint is called internally after job creation to start
     the lyrics processing track (parallel with audio processing).
     
+    Idempotency: If worker is already running or complete, returns early.
+    
     The worker runs in the background and updates job state as it progresses.
     """
     job_id = request.job_id
     logger.info(f"Triggering lyrics worker for job {job_id}")
+    
+    # Idempotency check
+    skip_response = _check_worker_idempotency(job_id, "lyrics")
+    if skip_response:
+        return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(process_lyrics_transcription, job_id)
@@ -101,9 +170,16 @@ async def trigger_screens_worker(
     Trigger title/end screen generation worker.
     
     This is called automatically when both audio and lyrics are complete.
+    
+    Idempotency: If worker is already running or complete, returns early.
     """
     job_id = request.job_id
     logger.info(f"Triggering screens worker for job {job_id}")
+    
+    # Idempotency check
+    skip_response = _check_worker_idempotency(job_id, "screens")
+    if skip_response:
+        return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(generate_screens, job_id)
@@ -126,9 +202,16 @@ async def trigger_video_worker(
     
     This is called after user selects their preferred instrumental.
     This is the longest-running stage (15-20 minutes).
+    
+    Idempotency: If worker is already running or complete, returns early.
     """
     job_id = request.job_id
     logger.info(f"Triggering video worker for job {job_id}")
+    
+    # Idempotency check
+    skip_response = _check_worker_idempotency(job_id, "video")
+    if skip_response:
+        return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(generate_video, job_id)
@@ -153,11 +236,18 @@ async def trigger_render_video_worker(
     Uses OutputGenerator from LyricsTranscriber to generate the karaoke video
     with the corrected lyrics.
     
+    Idempotency: If worker is already running or complete, returns early.
+    
     Output: with_vocals.mkv in GCS
     Next state: AWAITING_INSTRUMENTAL_SELECTION
     """
     job_id = request.job_id
     logger.info(f"Triggering render-video worker for job {job_id}")
+    
+    # Idempotency check
+    skip_response = _check_worker_idempotency(job_id, "render")
+    if skip_response:
+        return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(process_render_video, job_id)

@@ -190,8 +190,15 @@ function JobDetailContent() {
         {job.status === "awaiting_instrumental" && (
           <Alert className="bg-secondary/10 border-secondary/30">
             <AlertCircle className="h-4 w-4 text-secondary" />
-            <AlertDescription className="text-foreground">
-              Multiple instrumental versions were detected. Please select your preferred version to continue.
+            <AlertDescription className="text-foreground flex items-center justify-between">
+              <span>Multiple instrumental versions were detected. Please select your preferred version to continue.</span>
+              <Button 
+                size="sm" 
+                onClick={() => router.push(`/jobs/${job.id}/instrumental-review`)}
+                className="ml-4"
+              >
+                Select Instrumental
+              </Button>
             </AlertDescription>
           </Alert>
         )}

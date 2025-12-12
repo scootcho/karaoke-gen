@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "5"))
     job_timeout_seconds: int = int(os.getenv("JOB_TIMEOUT_SECONDS", "3600"))
     
+    # Cloud Tasks (for scalable worker coordination)
+    # When enabled, workers are triggered via Cloud Tasks for guaranteed delivery
+    # When disabled (default), workers are triggered via direct HTTP (for development)
+    enable_cloud_tasks: bool = os.getenv("ENABLE_CLOUD_TASKS", "false").lower() in ("true", "1", "yes")
+    gcp_region: str = os.getenv("GCP_REGION", "us-central1")
+    
+    # Cloud Run Jobs (for long-running video encoding)
+    # When enabled AND enable_cloud_tasks is true, video worker uses Cloud Run Jobs
+    # instead of Cloud Tasks. This supports encoding times >30 minutes (up to 24 hours).
+    # Default is false - Cloud Tasks is sufficient for most videos (15-20 min).
+    use_cloud_run_jobs_for_video: bool = os.getenv("USE_CLOUD_RUN_JOBS_FOR_VIDEO", "false").lower() in ("true", "1", "yes")
+    
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")
     
