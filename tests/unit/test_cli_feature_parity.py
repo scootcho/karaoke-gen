@@ -206,3 +206,92 @@ class TestRemoteCLIAnalysisIntegration:
         from karaoke_gen.utils.remote_cli import JobMonitor
         
         assert hasattr(JobMonitor, 'handle_instrumental_selection')
+
+
+class TestLocalCLIIntegration:
+    """Verify local CLI actually integrates the instrumental review UI.
+    
+    These tests ensure the local CLI (gen_cli.py) actually uses the 
+    InstrumentalReviewServer to provide the interactive review experience,
+    not just that the classes exist.
+    """
+    
+    def test_gen_cli_has_run_instrumental_review_function(self):
+        """gen_cli.py should have run_instrumental_review function."""
+        from karaoke_gen.utils import gen_cli
+        
+        # The function should exist
+        assert hasattr(gen_cli, 'run_instrumental_review')
+        assert callable(gen_cli.run_instrumental_review)
+    
+    def test_gen_cli_imports_instrumental_review_components(self):
+        """gen_cli.py should import necessary instrumental review components."""
+        import karaoke_gen.utils.gen_cli as gen_cli
+        import inspect
+        
+        # Get the source of the module to verify imports
+        source = inspect.getsource(gen_cli)
+        
+        # Should import the key components
+        assert 'from karaoke_gen.instrumental_review import' in source
+        assert 'AudioAnalyzer' in source
+        assert 'WaveformGenerator' in source
+        assert 'InstrumentalReviewServer' in source
+    
+    def test_run_instrumental_review_uses_analyzer(self):
+        """run_instrumental_review should use AudioAnalyzer."""
+        import inspect
+        from karaoke_gen.utils.gen_cli import run_instrumental_review
+        
+        source = inspect.getsource(run_instrumental_review)
+        
+        # Should create and use analyzer
+        assert 'AudioAnalyzer()' in source or 'AudioAnalyzer(' in source
+        assert 'analyzer.analyze' in source or 'analysis = analyzer' in source
+    
+    def test_run_instrumental_review_uses_waveform_generator(self):
+        """run_instrumental_review should use WaveformGenerator."""
+        import inspect
+        from karaoke_gen.utils.gen_cli import run_instrumental_review
+        
+        source = inspect.getsource(run_instrumental_review)
+        
+        # Should create and use waveform generator
+        assert 'WaveformGenerator()' in source or 'WaveformGenerator(' in source
+        assert 'waveform_generator.generate' in source or 'generator.generate' in source
+    
+    def test_run_instrumental_review_uses_server(self):
+        """run_instrumental_review should use InstrumentalReviewServer."""
+        import inspect
+        from karaoke_gen.utils.gen_cli import run_instrumental_review
+        
+        source = inspect.getsource(run_instrumental_review)
+        
+        # Should create and use the review server
+        assert 'InstrumentalReviewServer(' in source
+        assert 'server.start_and_open_browser' in source
+        assert 'server.get_selection' in source
+    
+    def test_gen_cli_has_skip_instrumental_review_flag(self):
+        """gen_cli should support --skip_instrumental_review flag."""
+        from karaoke_gen.utils.cli_args import create_parser
+        
+        parser = create_parser(prog="test")
+        
+        # Parse with the flag
+        args = parser.parse_args(['--skip_instrumental_review', 'Test', 'Song'])
+        
+        assert hasattr(args, 'skip_instrumental_review')
+        assert args.skip_instrumental_review == True
+    
+    def test_gen_cli_skip_instrumental_review_defaults_false(self):
+        """skip_instrumental_review should default to False."""
+        from karaoke_gen.utils.cli_args import create_parser
+        
+        parser = create_parser(prog="test")
+        
+        # Parse without the flag
+        args = parser.parse_args(['Test', 'Song'])
+        
+        assert hasattr(args, 'skip_instrumental_review')
+        assert args.skip_instrumental_review == False

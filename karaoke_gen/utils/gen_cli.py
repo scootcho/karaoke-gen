@@ -14,10 +14,148 @@ import sys
 import json
 import asyncio
 import time
+import glob
 import pyperclip
 from karaoke_gen import KaraokePrep
 from karaoke_gen.karaoke_finalise import KaraokeFinalise
+from karaoke_gen.instrumental_review import (
+    AudioAnalyzer,
+    WaveformGenerator,
+    InstrumentalReviewServer,
+)
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
+
+
+def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
+    """
+    Run the instrumental review UI to let user select the best instrumental track.
+    
+    This analyzes the backing vocals, generates a waveform, and opens a browser
+    with an interactive UI for reviewing and selecting the instrumental.
+    
+    Args:
+        track: The track dictionary from KaraokePrep containing separated audio info
+        logger: Logger instance
+        
+    Returns:
+        Path to the selected instrumental file, or None to use the old numeric selection
+    """
+    track_dir = track.get("track_output_dir", ".")
+    artist = track.get("artist", "")
+    title = track.get("title", "")
+    base_name = f"{artist} - {title}"
+    
+    # Get separation results
+    separated = track.get("separated_audio", {})
+    if not separated:
+        logger.info("No separated audio found, skipping instrumental review UI")
+        return None
+    
+    # Find the backing vocals file
+    backing_vocals_path = None
+    backing_vocals_result = separated.get("backing_vocals", {})
+    for model, paths in backing_vocals_result.items():
+        if paths.get("backing_vocals"):
+            backing_vocals_path = paths["backing_vocals"]
+            break
+    
+    if not backing_vocals_path or not os.path.exists(backing_vocals_path):
+        logger.info("No backing vocals file found, skipping instrumental review UI")
+        return None
+    
+    # Find the clean instrumental file
+    clean_result = separated.get("clean_instrumental", {})
+    clean_instrumental_path = clean_result.get("instrumental")
+    
+    if not clean_instrumental_path or not os.path.exists(clean_instrumental_path):
+        logger.info("No clean instrumental file found, skipping instrumental review UI")
+        return None
+    
+    # Find the combined instrumental (with backing vocals) file - these have "(Padded)" suffix if padded
+    combined_result = separated.get("combined_instrumentals", {})
+    with_backing_path = None
+    for model, path in combined_result.items():
+        if path and os.path.exists(path):
+            with_backing_path = path
+            break
+    
+    try:
+        logger.info("=== Starting Instrumental Review ===")
+        logger.info(f"Analyzing backing vocals: {backing_vocals_path}")
+        
+        # Analyze backing vocals
+        analyzer = AudioAnalyzer()
+        analysis = analyzer.analyze(backing_vocals_path)
+        
+        logger.info(f"Analysis complete:")
+        logger.info(f"  Has audible content: {analysis.has_audible_content}")
+        logger.info(f"  Total duration: {analysis.total_duration_seconds:.1f}s")
+        logger.info(f"  Audible segments: {len(analysis.audible_segments)}")
+        logger.info(f"  Recommendation: {analysis.recommended_selection.value}")
+        
+        # Generate waveform
+        logger.info("Generating waveform visualization...")
+        waveform_generator = WaveformGenerator()
+        waveform_path = os.path.join(track_dir, f"{base_name} (Backing Vocals Waveform).png")
+        waveform_generator.generate(
+            audio_path=backing_vocals_path,
+            output_path=waveform_path,
+            audible_segments=analysis.audible_segments,
+        )
+        
+        # Start the review server
+        logger.info("Starting instrumental review UI...")
+        server = InstrumentalReviewServer(
+            output_dir=track_dir,
+            base_name=base_name,
+            analysis=analysis,
+            waveform_path=waveform_path,
+            backing_vocals_path=backing_vocals_path,
+            clean_instrumental_path=clean_instrumental_path,
+            with_backing_path=with_backing_path,
+        )
+        
+        # Start server and open browser, wait for selection
+        server.start_and_open_browser()
+        
+        logger.info("Waiting for instrumental selection in browser...")
+        logger.info("(Close the browser tab or press Ctrl+C to cancel)")
+        
+        try:
+            # Wait for user selection (blocking)
+            server._selection_event.wait()
+            selection = server.get_selection()
+            
+            logger.info(f"User selected: {selection}")
+            
+            # Stop the server
+            server.stop()
+            
+            # Return the selected instrumental path
+            if selection == "clean":
+                return clean_instrumental_path
+            elif selection == "with_backing":
+                return with_backing_path
+            elif selection == "custom":
+                custom_path = server.get_custom_instrumental_path()
+                if custom_path and os.path.exists(custom_path):
+                    return custom_path
+                else:
+                    logger.warning("Custom instrumental not found, falling back to clean")
+                    return clean_instrumental_path
+            else:
+                logger.warning(f"Unknown selection: {selection}, falling back to numeric selection")
+                return None
+                
+        except KeyboardInterrupt:
+            logger.info("Instrumental review cancelled by user")
+            server.stop()
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error during instrumental review: {e}")
+        logger.info("Falling back to numeric selection")
+        return None
 
 
 async def async_main():
@@ -461,6 +599,14 @@ async def async_main():
         logger.info(f"Changing to directory: {track_dir}")
         os.chdir(track_dir)
 
+        # Run instrumental review UI if not skipped
+        selected_instrumental_file = None
+        if not getattr(args, 'skip_instrumental_review', False):
+            selected_instrumental_file = run_instrumental_review(
+                track=track,
+                logger=logger,
+            )
+        
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None
         if args.enable_cdg:
@@ -504,6 +650,7 @@ async def async_main():
             cdg_styles=cdg_styles,
             keep_brand_code=getattr(args, 'keep_brand_code', False),
             non_interactive=args.yes,
+            selected_instrumental_file=selected_instrumental_file,
         )
 
         try:

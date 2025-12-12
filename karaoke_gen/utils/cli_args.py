@@ -208,6 +208,11 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         default="flac",
         help="Optional: format / file extension for instrumental track to use for remux (default: %(default)s). Example: --instrumental_format=mp3",
     )
+    audio_group.add_argument(
+        "--skip_instrumental_review",
+        action="store_true",
+        help="Optional: Skip the interactive instrumental review UI and use the old numeric selection. Example: --skip_instrumental_review",
+    )
 
     # Lyrics Configuration
     lyrics_group = parser.add_argument_group("Lyrics Configuration")
