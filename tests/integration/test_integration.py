@@ -759,14 +759,20 @@ async def test_full_cli_integration(tmp_path, mocker):
         print(f"MOCK process_audio_separation: Creating dummy separated files for {artist_title}")
         
         # Create dummy instrumental files (using a generic model name)
-        instrumental_file = os.path.join(track_output_dir, f"{artist_title} (Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt).flac")
+        model_name = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        instrumental_file = os.path.join(track_output_dir, f"{artist_title} (Instrumental {model_name}).flac")
         
         with open(instrumental_file, "w") as f:
             f.write("dummy instrumental audio content")
         
+        # Return data in the format expected by auto_select_instrumental
         return {
             "instrumental_path": instrumental_file,
             "vocals_path": None,  # Not needed for this test
+            # clean_instrumental is what auto_select_instrumental looks for
+            "clean_instrumental": {
+                "instrumental": instrumental_file
+            },
         }
     
     mocker.patch('karaoke_gen.audio_processor.AudioProcessor.process_audio_separation', 
@@ -1093,7 +1099,8 @@ async def test_full_cli_integration(tmp_path, mocker):
         '--enable_cdg',  # Named: enable CDG creation
         '--enable_txt',  # Named: enable TXT creation
         '-y',  # Named: auto-confirm (bypass user confirmation)
-        '--log_level', 'DEBUG'  # Named: log level
+        '--log_level', 'DEBUG',  # Named: log level
+        '--skip_instrumental_review',  # Named: skip instrumental review UI (use auto-select)
     ]
 
     # Now run the actual karaoke generation pipeline
