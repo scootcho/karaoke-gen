@@ -26,6 +26,39 @@ from karaoke_gen.instrumental_review import (
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
 
 
+def _resolve_path_for_cwd(path: str, track_dir: str) -> str:
+    """
+    Resolve a path that may have been created relative to the original working directory.
+    
+    After os.chdir(track_dir), paths like './TrackDir/stems/file.flac' become invalid.
+    This function converts such paths to work from the new current directory.
+    
+    Args:
+        path: The path to resolve (may be relative or absolute)
+        track_dir: The track directory we've chdir'd into
+        
+    Returns:
+        A path that's valid from the current working directory
+    """
+    if os.path.isabs(path):
+        return path
+    
+    # Normalize both paths for comparison
+    norm_path = os.path.normpath(path)
+    norm_track_dir = os.path.normpath(track_dir)
+    
+    # If path starts with track_dir, strip it to get the relative path from within track_dir
+    # e.g., './Four Lanes Male Choir - The White Rose/stems/file.flac' -> 'stems/file.flac'
+    if norm_path.startswith(norm_track_dir + os.sep):
+        return norm_path[len(norm_track_dir) + 1:]
+    elif norm_path.startswith(norm_track_dir):
+        return norm_path[len(norm_track_dir):].lstrip(os.sep) or '.'
+    
+    # If path doesn't start with track_dir, it might already be relative to track_dir
+    # or it's a path that doesn't need transformation
+    return path
+
+
 def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     """
     Run the instrumental review UI to let user select the best instrumental track.
@@ -52,11 +85,13 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         return None
     
     # Find the backing vocals file
+    # Note: Paths in separated_audio may be relative to the original working directory,
+    # but we've already chdir'd into track_dir. Use _resolve_path_for_cwd to fix paths.
     backing_vocals_path = None
     backing_vocals_result = separated.get("backing_vocals", {})
     for model, paths in backing_vocals_result.items():
         if paths.get("backing_vocals"):
-            backing_vocals_path = paths["backing_vocals"]
+            backing_vocals_path = _resolve_path_for_cwd(paths["backing_vocals"], track_dir)
             break
     
     if not backing_vocals_path or not os.path.exists(backing_vocals_path):
@@ -65,7 +100,8 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     
     # Find the clean instrumental file
     clean_result = separated.get("clean_instrumental", {})
-    clean_instrumental_path = clean_result.get("instrumental")
+    raw_clean_path = clean_result.get("instrumental")
+    clean_instrumental_path = _resolve_path_for_cwd(raw_clean_path, track_dir) if raw_clean_path else None
     
     if not clean_instrumental_path or not os.path.exists(clean_instrumental_path):
         logger.info("No clean instrumental file found, skipping instrumental review UI")
@@ -75,8 +111,9 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     combined_result = separated.get("combined_instrumentals", {})
     with_backing_path = None
     for model, path in combined_result.items():
-        if path and os.path.exists(path):
-            with_backing_path = path
+        resolved_path = _resolve_path_for_cwd(path, track_dir) if path else None
+        if resolved_path and os.path.exists(resolved_path):
+            with_backing_path = resolved_path
             break
     
     try:
@@ -94,9 +131,10 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         logger.info(f"  Recommendation: {analysis.recommended_selection.value}")
         
         # Generate waveform
+        # Note: We're already in track_dir after chdir, so use current directory
         logger.info("Generating waveform visualization...")
         waveform_generator = WaveformGenerator()
-        waveform_path = os.path.join(track_dir, f"{base_name} (Backing Vocals Waveform).png")
+        waveform_path = f"{base_name} (Backing Vocals Waveform).png"
         waveform_generator.generate(
             audio_path=backing_vocals_path,
             output_path=waveform_path,
@@ -104,9 +142,10 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         )
         
         # Start the review server
+        # Note: We're already in track_dir after chdir, so output_dir is "."
         logger.info("Starting instrumental review UI...")
         server = InstrumentalReviewServer(
-            output_dir=track_dir,
+            output_dir=".",
             base_name=base_name,
             analysis=analysis,
             waveform_path=waveform_path,

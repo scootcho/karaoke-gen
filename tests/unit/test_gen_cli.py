@@ -685,3 +685,78 @@ async def test_style_override_parsing(mock_kprep_class, mock_base_args):
         "end.video_duration": "10"
     }
     assert prep_kwargs["style_overrides"] == expected_overrides
+
+
+# --- Test _resolve_path_for_cwd helper function ---
+
+class TestResolvePathForCwd:
+    """Tests for the _resolve_path_for_cwd helper function.
+    
+    This function resolves paths that were created relative to the original working
+    directory after os.chdir(track_dir) has been called.
+    """
+    
+    def test_absolute_path_unchanged(self):
+        """Absolute paths should be returned unchanged."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "/absolute/path/to/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == path
+    
+    def test_relative_path_starting_with_track_dir(self):
+        """Paths starting with track_dir should have track_dir stripped."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Artist - Title/stems/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/file.flac"
+    
+    def test_relative_path_with_different_format(self):
+        """Paths without ./ prefix should also be handled."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "Artist - Title/stems/file.flac"
+        track_dir = "Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/file.flac"
+    
+    def test_path_not_starting_with_track_dir(self):
+        """Paths not starting with track_dir should be returned unchanged."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "different/path/to/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == path
+    
+    def test_path_with_complex_track_name(self):
+        """Test with a track name containing special characters."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Four Lanes Male Choir - The White Rose/stems/backing_vocals.flac"
+        track_dir = "./Four Lanes Male Choir - The White Rose"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/backing_vocals.flac"
+    
+    def test_path_exactly_matching_track_dir(self):
+        """Test when path exactly matches track_dir (edge case)."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Artist - Title"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "."
+    
+    def test_normalized_path_comparison(self):
+        """Test that path normalization works correctly."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        # Paths with extra slashes or dots should be normalized
+        path = "./Artist - Title//stems/./file.flac"
+        track_dir = "./Artist - Title/"
+        result = _resolve_path_for_cwd(path, track_dir)
+        # After normalization: "Artist - Title/stems/file.flac" vs "Artist - Title"
+        assert result == "stems/file.flac"
