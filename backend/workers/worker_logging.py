@@ -7,9 +7,46 @@ for remote debugging via the CLI.
 Two approaches are provided:
 1. JobLogger - A custom logger class for explicit logging in workers
 2. JobLogHandler - A logging.Handler that captures logs from any logger (including dependencies)
+
+IMPORTANT: Uses contextvars to ensure log isolation between concurrent jobs.
+When multiple jobs run in parallel on the same Cloud Run instance, each job's
+worker logs are correctly filtered to only include logs from that job.
 """
+import contextvars
 import logging
+from contextlib import contextmanager
 from typing import Optional, Set
+
+
+# Context variable to track the current job being processed
+# This is used to filter logs when multiple jobs run concurrently
+_current_job_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    'current_job_id', default=None
+)
+
+
+@contextmanager
+def job_logging_context(job_id: str):
+    """
+    Context manager to set the current job ID for log filtering.
+    
+    When multiple jobs run concurrently on the same Cloud Run instance,
+    this ensures that each job's handler only captures logs from its own
+    processing thread/context.
+    
+    Usage:
+        with job_logging_context(job_id):
+            # All logs emitted here will be associated with this job_id
+            process_job(job_id)
+    
+    Args:
+        job_id: The job ID to set as the current context
+    """
+    token = _current_job_id.set(job_id)
+    try:
+        yield
+    finally:
+        _current_job_id.reset(token)
 
 
 class JobLogHandler(logging.Handler):
@@ -53,6 +90,15 @@ class JobLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         """Process a log record."""
         try:
+            # CRITICAL: Filter by current job context to prevent log mixing
+            # When multiple jobs run concurrently, each attaches handlers to
+            # the same global loggers. Without this check, logs from Job A
+            # would be captured by Job B's handler and vice versa.
+            current_job = _current_job_id.get()
+            if current_job is not None and current_job != self.job_id:
+                # This log is from a different job's context, skip it
+                return
+            
             # Format the log message
             message = self.format(record)
             
@@ -182,6 +228,10 @@ def setup_job_logging(job_id: str, worker_name: str, *logger_names: str) -> JobL
     This adds a JobLogHandler to capture logs from specified loggers
     (including dependency loggers like lyrics_transcriber).
     
+    IMPORTANT: When using this function, wrap your job processing code in
+    `job_logging_context(job_id)` to ensure proper log isolation when multiple
+    jobs run concurrently on the same Cloud Run instance.
+    
     Args:
         job_id: Job ID
         worker_name: Worker name
@@ -199,7 +249,10 @@ def setup_job_logging(job_id: str, worker_name: str, *logger_names: str) -> JobL
             "lyrics_transcriber",  # Capture LyricsTranscriber logs
         )
         
-        # ... do work ...
+        # IMPORTANT: Use job_logging_context for proper isolation
+        with job_logging_context(job_id):
+            # ... do work ...
+            pass
         
         # Optional: remove handler when done
         for name in logger_names:

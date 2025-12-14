@@ -304,17 +304,24 @@ def test_real_world_lyrics_scenario(setup_teardown):
         "source2": "son of a mother\nson of a father\nyou can look inside",
     }
     finder = AnchorSequenceFinder(min_sequence_length=3, min_sources=1, cache_dir=setup_teardown)
-    
+
     # Create proper test data objects
     transcription_result = create_test_transcription_result_from_text(transcribed)
     lyrics_data_references = convert_references_to_lyrics_data(references)
-    
+
     anchors = finder.find_anchors(transcribed, lyrics_data_references, transcription_result)
 
-    # Should find at least one of these sequences
-    expected_sequences = ["son of a father", "son of a", "of a father"]
+    # Should find at least one anchor that contains these key phrases
+    # Note: The algorithm may find longer matches like "son of a father you" which is valid
+    expected_phrases = ["son of a father", "son of a", "of a father"]
     found_sequences = [anchor.anchor.text for anchor in anchors]
-    assert any(seq in found_sequences for seq in expected_sequences), f"Expected one of {expected_sequences}, but found {found_sequences}"
+    
+    # Check if any found sequence contains one of the expected phrases
+    found_expected = any(
+        any(phrase in seq for phrase in expected_phrases)
+        for seq in found_sequences
+    )
+    assert found_expected, f"Expected anchors containing one of {expected_phrases}, but found {found_sequences}"
 
 
 def test_find_anchors_with_punctuation(setup_teardown):

@@ -1,7 +1,7 @@
 # Backend Feature Parity Plan
 
 **Last Updated:** 2024-12-11  
-**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅ | Batch 3 ✅
+**Status:** ✅ Core Feature Parity Achieved (v0.71.0) | Batch 1 ✅ | Batch 2 ✅ | Batch 3 ✅ | Batch 4 ✅ | Batch 5 ✅
 
 This document tracks the progress toward complete feature parity between the local `karaoke-gen` CLI and the cloud backend, enabling the `karaoke-gen-remote` CLI to have equivalent functionality.
 
@@ -15,14 +15,14 @@ This document tracks the progress toward complete feature parity between the loc
 | Style Configuration | 1 | 4 | **25%** | S2-S4 are MEDIUM priority |
 | Workflow Control | 0 | 3 | **0%** | W1/W2 HIGH, W7 MEDIUM (skip flags deferred) |
 | Audio Processing | 4 | 4 | **100%** | ✅ **Batch 2 & 3 Complete** (AP1-AP3, AP5) |
-| Input Modes | 1 | 3 | **33%** | P2, P3 are HIGH priority |
-| Audio Fetching | 0 | 1 | **0%** | A1 is HIGH priority |
+| Input Modes | 3 | 3 | **100%** | ✅ **Batch 4 & 5 Complete** (P2, P3) |
+| Audio Fetching | 1 | 1 | **100%** | ✅ **Batch 5 Complete** (A1) |
 | Flags to Remove | - | - | - | I3-I6, AP6 (simplify codebase) |
 
 **Overall:** Core workflow complete. See [CLI Parameter Parity Analysis](#-cli-parameter-parity-analysis) for detailed parameter list with implementation plans.
 
 **Priority Summary:**
-- **HIGH**: L1-L4 (lyrics), AP1-AP5 (audio models/instrumental), P2-P3 (YouTube/flacfetch), A1 (interactive search), W1/W2 (prep/finalise phases), F15 (keep-brand-code)
+- **HIGH**: L1-L4 ✅, AP1-AP5 ✅, P3 ✅, A1 ✅ | P2 (YouTube URLs), W1/W2 (prep/finalise phases), F15 (keep-brand-code)
 - **MEDIUM**: S2-S4 (style overrides/video bg), W7 (edit-lyrics), F14 (email template)
 - **LOW/DEFERRED**: W3-W6 (skip flags), D2-D3 (debugging)
 - **REMOVE**: I3, I4, I5, I6, AP6 (unnecessary options)
@@ -79,13 +79,13 @@ This section provides a comprehensive comparison of all CLI parameters between `
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
 | P1 | `<file>` | ✅ | ✅ | **Local audio file path.** Copies file to output directory, converts to WAV for processing. Supports MP3, FLAC, WAV, M4A, OGG, AAC. |
-| P2 | `<url>` (YouTube) | ✅ | ❌ | **YouTube/online URL.** Uses yt-dlp to download audio and extract metadata (artist/title from video title). |
-| P3 | `<artist> <title>` | ✅ | ❌ | **Audio search mode.** When no file is provided, uses flacfetch to search Deezer/Tidal/etc for high-quality audio and downloads it. |
+| P2 | `<url>` (YouTube) | ✅ | ✅ | **YouTube/online URL.** Uses yt-dlp to download audio and extract metadata (artist/title from video title). |
+| P3 | `<artist> <title>` | ✅ | ✅ | **Audio search mode.** When no file is provided, uses flacfetch to search Deezer/Tidal/etc for high-quality audio and downloads it. |
 | P4 | `<folder>` | ✅ | ❌ | **Batch folder processing.** Process all audio files in a folder, using `--filename_pattern` to extract track titles from filenames. |
 
-**Remote Implementation Plan:**
-- **P2 YouTube URLs**: HIGH PRIORITY. Install yt-dlp in Docker container. Backend downloads audio to GCS, extracts metadata, then processes. Use case: Niche live versions only on YouTube.
-- **P3 Flacfetch search**: HIGH PRIORITY. Backend integrates flacfetch to search Deezer/Tidal/etc. IMPORTANT: Must support interactive mode via API - return search results to client, let user select, then proceed. Default should be interactive (not auto-select). Use case: Eventually expose audio source selection in web UI.
+**Remote Implementation Status:** ✅ **BATCH 4 & 5 COMPLETE** (v0.71.42)
+- **P2 YouTube URLs**: ✅ IMPLEMENTED. Backend accepts URL via `/api/jobs/create-from-url` endpoint. Uses yt-dlp to download audio and extract metadata (artist/title). Remote CLI detects URLs and routes to URL endpoint.
+- **P3 Flacfetch search**: ✅ IMPLEMENTED. Remote CLI submits artist+title, backend searches via flacfetch. Returns results for interactive selection (or auto-selects with `-y`/`--auto-download`). New job statuses: `searching_audio`, `awaiting_audio_selection`, `downloading_audio`.
 - **P4 Folder batch**: LOW PRIORITY. Could accept ZIP upload, process each as separate job. Defer for now.
 
 ---
@@ -149,12 +149,12 @@ This section provides a comprehensive comparison of all CLI parameters between `
 
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
-| A1 | `--auto-download` | ✅ | ❌ | **Auto-select audio source.** When using artist+title search mode (flacfetch), automatically select the best quality source instead of prompting for manual selection. Useful for scripted/batch processing. |
+| A1 | `--auto-download` | ✅ | ✅ | **Auto-select audio source.** When using artist+title search mode (flacfetch), automatically select the best quality source instead of prompting for manual selection. Useful for scripted/batch processing. |
 
-**Remote Implementation Plan:**
-- **A1 `--auto-download`**: HIGH PRIORITY. Backend must support BOTH modes:
-  - **Interactive (default)**: API returns search results to client. Client displays options, user selects, client sends selection back to backend. Use case: Web UI will show audio source picker.
-  - **Auto-download (`--auto-download` or `-y`)**: Backend auto-selects best quality source. Use case: Automated/batch processing.
+**Remote Implementation Status:** ✅ **BATCH 5 COMPLETE** (v0.71.28)
+- **A1 `--auto-download`**: ✅ IMPLEMENTED. Backend supports BOTH modes:
+  - **Interactive (default)**: API returns search results to client. Client displays options, user selects via `/api/audio-search/{job_id}/select` endpoint.
+  - **Auto-download (`--auto-download` or `-y`)**: Backend auto-selects best quality source using flacfetch's ranking.
 
 ---
 
@@ -369,41 +369,53 @@ Bump the patch version in `pyproject.toml` before committing.
 
 ---
 
-### Batch 4: YouTube URL Input (HIGH)
+### Batch 4: YouTube URL Input (HIGH) ✅ COMPLETE
 **Parameters:** P2 `<url>` (YouTube/online URL)
 
-**Scope:**
-- Remote CLI: Detect URL input, send URL instead of file
-- Backend: Accept URL as alternative to file upload
-- Backend: Download audio using yt-dlp, extract metadata
-- Docker: Add yt-dlp to container image
+**Status:** ✅ **IMPLEMENTED** (v0.71.26)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - detect URL, change submission flow
-- `backend/api/routes/file_upload.py` - accept URL parameter
-- `backend/workers/audio_worker.py` or new `download_worker.py` - yt-dlp download
-- `backend/Dockerfile` - add yt-dlp
+**Implementation Summary:**
+- Remote CLI: Detects URLs via `is_url()`, routes to `submit_job_from_url()` method
+- Backend: New `/api/jobs/create-from-url` endpoint accepts URL and optional artist/title
+- Backend: Audio worker downloads from URL using yt-dlp, auto-detects artist/title from metadata
+- FileHandler: Added `download_video()` and `extract_metadata_from_url()` methods
+- Dependencies: yt-dlp added to pyproject.toml
 
-**Complexity:** Medium-High (new input mode, container changes, rate limiting considerations)
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - URL detection, new `submit_job_from_url()` method
+- `karaoke_gen/file_handler.py` - `download_video()` and `extract_metadata_from_url()` methods
+- `backend/api/routes/file_upload.py` - `CreateJobFromUrlRequest`, `CreateJobFromUrlResponse`, `/api/jobs/create-from-url` endpoint
+- `backend/workers/audio_worker.py` - Enhanced `download_from_url()` with metadata extraction
+- `pyproject.toml` - Added yt-dlp dependency
+
+**Tests added:** 20+ unit tests covering URL validation, request/response models, Job URL field
+
+**Complexity:** Medium-High (new input mode, yt-dlp integration)
 
 ---
 
-### Batch 5: Flacfetch Audio Search (HIGH)
+### Batch 5: Flacfetch Audio Search (HIGH) ✅ COMPLETE
 **Parameters:** P3 `<artist> <title>` (search mode), A1 `--auto-download`
 
-**Scope:**
-- Remote CLI: Detect artist+title without file, trigger search flow
-- Backend: New endpoint to search for audio sources via flacfetch
-- Backend: Return search results to client for interactive selection
-- Remote CLI: Display results, let user select, send selection back
-- Backend: Download selected audio, proceed with job
-- Support `--auto-download` / `-y` to skip interactive selection
+**Status:** ✅ **IMPLEMENTED** - PR #13 merged (v0.71.28)
 
-**Files to modify:**
-- `karaoke_gen/utils/remote_cli.py` - search flow, display results, selection
-- `backend/api/routes/` - new search endpoint
-- `backend/services/` - flacfetch integration service
-- `backend/workers/` - download from selected source
+**Implementation Summary:**
+- Remote CLI: Detects artist+title without file, calls `/api/audio-search/search` endpoint
+- Backend: New `AudioSearchService` integrates flacfetch for searching
+- Backend: New job statuses `searching_audio`, `awaiting_audio_selection`, `downloading_audio`
+- Backend: Returns search results for interactive selection, or auto-selects with `auto_download=true`
+- Remote CLI: Displays results interactively, user selects, sends to `/api/audio-search/{job_id}/select`
+- Backend: Downloads selected audio to GCS, proceeds with normal job flow
+- Support `--auto-download` / `-y` for non-interactive auto-selection
+
+**Files modified:**
+- `karaoke_gen/utils/remote_cli.py` - search flow, display results, `search_audio()`, `select_audio_source()`, `handle_audio_selection()`
+- `backend/api/routes/audio_search.py` - NEW: search and select endpoints
+- `backend/services/audio_search_service.py` - NEW: flacfetch integration service
+- `backend/models/job.py` - New statuses and fields (`audio_search_artist`, `audio_search_title`, `auto_download`)
+- `backend/main.py` - Register audio_search router
+
+**Tests added:** 20+ unit tests covering Job model fields, AudioSearchService, state transitions
 
 **Complexity:** High (new interactive API flow, new service integration)
 
@@ -517,17 +529,17 @@ Bump the patch version in `pyproject.toml` before committing.
 | 1 | L1-L4 (lyrics config) | HIGH | Low-Medium | ✅ **COMPLETE** (PR #8) |
 | 2 | AP1-AP3 (model selection) | HIGH | Low | ✅ **COMPLETE** (PR #9) |
 | 3 | AP5 (existing instrumental) | HIGH | Medium | ✅ **COMPLETE** (PR #10) |
-| 4 | P2 (YouTube URLs) | HIGH | Medium-High | ⏳ Pending |
-| 5 | P3, A1 (flacfetch search) | HIGH | High | ⏳ Pending |
+| 4 | P2 (YouTube URLs) | HIGH | Medium-High | ✅ **COMPLETE** |
+| 5 | P3, A1 (flacfetch search) | HIGH | High | ✅ **COMPLETE** (PR #13) |
 | 6 | W1, W2, F15 (two-phase) | HIGH | High | ⏳ Pending |
 | 7 | S2 (style overrides) | MEDIUM | Medium | ⏳ Pending |
 | 8 | S3, S4 (video background) | MEDIUM | Medium | ⏳ Pending |
 | 9 | W7 (edit-lyrics) | MEDIUM | Medium-High | ⏳ Pending |
 | 10 | F14, D2, D3, removals | LOW | Mixed | ⏳ Pending |
 
-**Recommended Order:** ~~1~~ → ~~2~~ → ~~3~~ → 4 → 5 → 6 → 7 → 8 → 9 → 10
+**Recommended Order:** ~~1~~ → ~~2~~ → ~~3~~ → ~~4~~ → ~~5~~ → 6 → 7 → 8 → 9 → 10
 
-Batches 1-3 are quick wins that add significant value. Batches 4-6 are larger but high priority. Batches 7-10 can be done as time permits.
+Batches 1-4 are quick wins that add significant value. Batches 5-6 are larger but high priority. Batches 7-10 can be done as time permits.
 
 ---
 
@@ -634,6 +646,8 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 
 | Feature | Version | PR | Notes |
 |---------|---------|-----|-------|
+| Flacfetch audio search | v0.71.42 | #13 | `artist title` (search mode), `--auto-download` - search and download audio by artist+title |
+| YouTube URL input | v0.71.26 | - | `<url>` positional argument for YouTube/online URLs |
 | Existing instrumental | v0.71.26 | #10 | `--existing_instrumental` - upload and use user-provided instrumental |
 | Audio model selection | v0.71.24 | #9 | `--clean_instrumental_model`, `--backing_vocals_models`, `--other_stems_models` |
 | Lyrics override params | v0.71.22 | #8 | `--lyrics_artist`, `--lyrics_title`, `--lyrics_file`, `--subtitle_offset_ms` |
@@ -646,8 +660,6 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | Skip separation/transcription | MEDIUM | Workflow control for re-processing |
 | Edit lyrics mode | MEDIUM | `--edit-lyrics` for fixing existing tracks |
 | Background video | MEDIUM | `--background_video` requires video upload |
-| YouTube URL input | HIGH | Requires yt-dlp in container |
-| Audio search (flacfetch) | HIGH | Artist+title search, auto-download |
 | Two-phase workflow | HIGH | `--prep-only`, `--finalise-only` |
 | Batch folder processing | LOW | Process multiple files at once |
 | Gmail draft creation | LOW | Nice-to-have, not blocking |
@@ -706,96 +718,17 @@ karaoke-gen-remote \
 
 ---
 
-## Future Architecture: Shared Pipeline
+## Future Architecture
 
-Once feature parity is achieved, the codebase should be refactored toward a **shared pipeline architecture** where both local and remote execution use the same abstractions.
+For the comprehensive architecture plan covering both **horizontal scalability** (Cloud Tasks, Cloud Run Jobs) and **software architecture** (shared pipeline, SOLID, DRY), see:
 
-### Current State (Divergent Paths)
+**[SCALABLE-ARCHITECTURE-PLAN.md](./SCALABLE-ARCHITECTURE-PLAN.md)**
 
-```
-LOCAL CLI                               CLOUD BACKEND
-─────────                               ─────────────
-KaraokeGen.process()                    API Routes
-    │                                       │
-    ├─► AudioProcessor                      ├─► audio_worker.py
-    │   └── Modal API or local              │   └── Modal API
-    │                                       │
-    ├─► LyricsProcessor                     ├─► lyrics_worker.py
-    │   └── Orchestrates everything         │   └── Transcription only
-    │       including video generation      │
-    │                                       ├─► screens_worker.py
-    │                                       │
-    │                                       ├─► render_video_worker.py
-    │                                       │   └── OutputGenerator directly
-    │                                       │
-    └─► KaraokeFinalise                     └─► video_worker.py
-        └── Encoding, distribution              └── KaraokeFinalise
-```
-
-**Problems:**
-- Video generation called differently (via LyricsProcessor vs OutputGenerator directly)
-- LyricsProcessor does too many things (fetching, transcription, video, file management)
-- Testing requires mocking different things for local vs remote
-- Bug fixes may need to be applied in multiple places
-
-### Target State (Shared Pipeline)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         SHARED PIPELINE ARCHITECTURE                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   AudioInput → Separation → Transcription → Review → Render → Finalize     │
-│       │            │             │            │         │          │        │
-│       ▼            ▼             ▼            ▼         ▼          ▼        │
-│   ┌────────┐  ┌────────┐   ┌────────┐   ┌────────┐ ┌────────┐ ┌────────┐  │
-│   │ Stage  │  │ Stage  │   │ Stage  │   │ Stage  │ │ Stage  │ │ Stage  │  │
-│   │  API   │  │  API   │   │  API   │   │  API   │ │  API   │ │  API   │  │
-│   └────┬───┘  └────┬───┘   └────┬───┘   └────┬───┘ └────┬───┘ └────┬───┘  │
-│        │           │            │            │          │          │       │
-│   ┌────┴───────────┴────────────┴────────────┴──────────┴──────────┴────┐  │
-│   │                         EXECUTION LAYER                              │  │
-│   │                                                                      │  │
-│   │   Local Mode:        │    Remote Mode:                              │  │
-│   │   - Direct calls     │    - HTTP to backend                         │  │
-│   │   - Local GPU/CPU    │    - Workers + Modal                         │  │
-│   │   - Blocking         │    - Async + polling                         │  │
-│   └──────────────────────┴───────────────────────────────────────────────┘  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Benefits:**
-- Single source of truth for each pipeline stage
-- Each stage independently testable
-- Same business logic regardless of execution mode
-- Easier to add new stages or modify existing ones
-- DRY - fix bugs once, works everywhere
-
-### Implementation Plan for Shared Pipeline
-
-This refactor should be done in a separate branch after the v0.71.0 release:
-
-1. **Extract stage interfaces**
-   ```python
-   class PipelineStage(Protocol):
-       async def execute(self, context: PipelineContext) -> StageResult:
-           ...
-   ```
-
-2. **Create execution adapters**
-   ```python
-   class LocalExecutor:
-       """Runs stages directly in-process"""
-       
-   class RemoteExecutor:
-       """Runs stages via backend API/workers"""
-   ```
-
-3. **Refactor incrementally**
-   - Start with one stage (e.g., Separation)
-   - Prove the pattern works
-   - Migrate other stages
+Key goals:
+- **100+ concurrent jobs** with no performance degradation
+- **Dedicated resources per job** (no CPU/memory contention)
+- **Shared pipeline architecture** - single source of truth for business logic
+- **DRY codebase** - bug fixes apply to both local and remote execution
 
 ---
 
@@ -893,6 +826,19 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 
 ## Recent Changes Log
 
+### 2024-12-11: v0.71.28 - Batch 5 Complete (Flacfetch Audio Search)
+
+**PR #13: Flacfetch Audio Search for Remote CLI**
+
+- ✅ `artist title` (search mode) - Search for audio by artist and title without providing a file
+- ✅ `--auto-download` - Auto-select best audio source (skip interactive selection)
+- New job statuses: `searching_audio`, `awaiting_audio_selection`, `downloading_audio`
+- New API endpoints: `POST /api/audio-search/search`, `GET /api/audio-search/{job_id}/results`, `POST /api/audio-search/{job_id}/select`
+- Interactive mode: Returns search results for user selection
+- Auto mode: Uses flacfetch's quality ranking to auto-select best source
+- Added 20+ unit tests for new functionality
+- Files: `remote_cli.py`, `audio_search.py` (new route), `audio_search_service.py` (new service), `job.py`
+
 ### 2024-12-11: v0.71.26 - Batch 3 Complete (Existing Instrumental Support)
 
 **PR #10: Existing Instrumental Support for Remote CLI**
@@ -988,12 +934,13 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
    - Requires: yt-dlp in container
    - Enables: Processing niche live versions only on YouTube
 
+5. ✅ **Flacfetch Audio Search** (Batch 5 - COMPLETE)
+   - Interactive audio source selection via API
+   - v0.71.28
+
 ### Medium-Term: Workflow Features
 
-1. **Flacfetch Audio Search** (Batch 5)
-   - Interactive audio source selection via API
-   
-2. **Two-Phase Workflow** (Batch 6) ✅ COMPLETE
+1. **Two-Phase Workflow** (Batch 6) ✅ COMPLETE
    - `--prep-only` and `--finalise-only` modes
 
 3. **Style Override** (Batch 7)
@@ -1005,9 +952,10 @@ DEFAULT_DISCORD_WEBHOOK_URL=https://discord.com/...
 5. **Edit Lyrics Mode** (Batch 9)
    - Allow fixing lyrics on completed jobs
 
-### Long-Term (Shared Pipeline Refactor)
-1. Create new branch for shared pipeline architecture
-2. Extract stage interfaces
-3. Implement execution adapters
-4. Migrate stages incrementally
-5. Achieve true code sharing between local and remote
+### Long-Term (Scalable Architecture)
+
+See **[SCALABLE-ARCHITECTURE-PLAN.md](./SCALABLE-ARCHITECTURE-PLAN.md)** for the comprehensive plan covering:
+1. Cloud Tasks integration for horizontal scalability
+2. Cloud Run Jobs for long-running video encoding
+3. Shared pipeline architecture for code reuse
+4. Implementation roadmap and migration strategy

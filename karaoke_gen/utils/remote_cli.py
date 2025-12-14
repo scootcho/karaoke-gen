@@ -41,6 +41,11 @@ from .cli_args import create_parser, process_style_overrides, is_url, is_file
 class JobStatus(str, Enum):
     """Job status values (matching backend)."""
     PENDING = "pending"
+    # Audio search states (Batch 5)
+    SEARCHING_AUDIO = "searching_audio"
+    AWAITING_AUDIO_SELECTION = "awaiting_audio_selection"
+    DOWNLOADING_AUDIO = "downloading_audio"
+    # Main workflow
     DOWNLOADING = "downloading"
     SEPARATING_STAGE1 = "separating_stage1"
     SEPARATING_STAGE2 = "separating_stage2"
@@ -247,6 +252,132 @@ class RemoteKaraokeClient:
                         self.logger.info(f"  Found style asset: {asset_key} -> {file_path}")
         
         return asset_files
+    
+    def submit_job_from_url(
+        self,
+        url: str,
+        artist: Optional[str] = None,
+        title: Optional[str] = None,
+        enable_cdg: bool = True,
+        enable_txt: bool = True,
+        brand_prefix: Optional[str] = None,
+        discord_webhook_url: Optional[str] = None,
+        youtube_description: Optional[str] = None,
+        organised_dir_rclone_root: Optional[str] = None,
+        enable_youtube_upload: bool = False,
+        dropbox_path: Optional[str] = None,
+        gdrive_folder_id: Optional[str] = None,
+        lyrics_artist: Optional[str] = None,
+        lyrics_title: Optional[str] = None,
+        subtitle_offset_ms: int = 0,
+        clean_instrumental_model: Optional[str] = None,
+        backing_vocals_models: Optional[list] = None,
+        other_stems_models: Optional[list] = None,
+        # Two-phase workflow (Batch 6)
+        prep_only: bool = False,
+        keep_brand_code: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit a new karaoke generation job from a YouTube/online URL.
+        
+        The backend will download the audio from the URL and process it.
+        Artist and title will be auto-detected from the URL if not provided.
+        
+        Note: Custom style configuration is not supported for URL-based jobs.
+        If you need custom styles, download the audio locally first and use
+        the regular file upload flow with submit_job().
+        
+        Args:
+            url: YouTube or other video URL to download audio from
+            artist: Artist name (optional - auto-detected if not provided)
+            title: Song title (optional - auto-detected if not provided)
+            enable_cdg: Generate CDG+MP3 package
+            enable_txt: Generate TXT+MP3 package
+            brand_prefix: Brand code prefix (e.g., "NOMAD")
+            discord_webhook_url: Discord webhook for notifications
+            youtube_description: YouTube video description
+            organised_dir_rclone_root: Legacy rclone path (deprecated)
+            enable_youtube_upload: Enable YouTube upload
+            dropbox_path: Dropbox folder path for organized output (native API)
+            gdrive_folder_id: Google Drive folder ID for public share (native API)
+            lyrics_artist: Override artist name for lyrics search
+            lyrics_title: Override title for lyrics search
+            subtitle_offset_ms: Subtitle timing offset in milliseconds
+            clean_instrumental_model: Model for clean instrumental separation
+            backing_vocals_models: List of models for backing vocals separation
+            other_stems_models: List of models for other stems (bass, drums, etc.)
+        """
+        self.logger.info(f"Submitting URL-based job: {url}")
+        
+        # Build request payload
+        create_request = {
+            'url': url,
+            'enable_cdg': enable_cdg,
+            'enable_txt': enable_txt,
+        }
+        
+        if artist:
+            create_request['artist'] = artist
+        if title:
+            create_request['title'] = title
+        if brand_prefix:
+            create_request['brand_prefix'] = brand_prefix
+        if discord_webhook_url:
+            create_request['discord_webhook_url'] = discord_webhook_url
+        if youtube_description:
+            create_request['youtube_description'] = youtube_description
+        if enable_youtube_upload:
+            create_request['enable_youtube_upload'] = enable_youtube_upload
+        if dropbox_path:
+            create_request['dropbox_path'] = dropbox_path
+        if gdrive_folder_id:
+            create_request['gdrive_folder_id'] = gdrive_folder_id
+        if organised_dir_rclone_root:
+            create_request['organised_dir_rclone_root'] = organised_dir_rclone_root
+        if lyrics_artist:
+            create_request['lyrics_artist'] = lyrics_artist
+        if lyrics_title:
+            create_request['lyrics_title'] = lyrics_title
+        if subtitle_offset_ms != 0:
+            create_request['subtitle_offset_ms'] = subtitle_offset_ms
+        if clean_instrumental_model:
+            create_request['clean_instrumental_model'] = clean_instrumental_model
+        if backing_vocals_models:
+            create_request['backing_vocals_models'] = backing_vocals_models
+        if other_stems_models:
+            create_request['other_stems_models'] = other_stems_models
+        # Two-phase workflow (Batch 6)
+        if prep_only:
+            create_request['prep_only'] = prep_only
+        if keep_brand_code:
+            create_request['keep_brand_code'] = keep_brand_code
+        
+        self.logger.info(f"Creating URL-based job at {self.config.service_url}/api/jobs/create-from-url")
+        
+        response = self._request('POST', '/api/jobs/create-from-url', json=create_request)
+        
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error creating job from URL: {error_detail}")
+        
+        result = response.json()
+        if result.get('status') != 'success':
+            raise RuntimeError(f"Error creating job from URL: {result}")
+        
+        job_id = result['job_id']
+        detected_artist = result.get('detected_artist')
+        detected_title = result.get('detected_title')
+        
+        self.logger.info(f"Job {job_id} created from URL")
+        if detected_artist:
+            self.logger.info(f"  Artist: {detected_artist}")
+        if detected_title:
+            self.logger.info(f"  Title: {detected_title}")
+        
+        return result
     
     def submit_job(
         self, 
@@ -903,7 +1034,18 @@ class RemoteKaraokeClient:
                 error_detail = response.text
             raise RuntimeError(f"Error getting instrumental options: {error_detail}")
         return response.json()
-    
+
+    def get_instrumental_analysis(self, job_id: str) -> Dict[str, Any]:
+        """Get instrumental analysis data including backing vocals detection."""
+        response = self._request('GET', f'/api/jobs/{job_id}/instrumental-analysis')
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error getting instrumental analysis: {error_detail}")
+        return response.json()
+
     def select_instrumental(self, job_id: str, selection: str) -> Dict[str, Any]:
         """Submit instrumental selection."""
         response = self._request(
@@ -1015,6 +1157,122 @@ class RemoteKaraokeClient:
                 error_detail = response.text
             raise RuntimeError(f"Error completing review: {error_detail}")
         return response.json()
+    
+    def search_audio(
+        self,
+        artist: str,
+        title: str,
+        auto_download: bool = False,
+        style_params_path: Optional[str] = None,
+        enable_cdg: bool = True,
+        enable_txt: bool = True,
+        brand_prefix: Optional[str] = None,
+        discord_webhook_url: Optional[str] = None,
+        youtube_description: Optional[str] = None,
+        enable_youtube_upload: bool = False,
+        dropbox_path: Optional[str] = None,
+        gdrive_folder_id: Optional[str] = None,
+        lyrics_artist: Optional[str] = None,
+        lyrics_title: Optional[str] = None,
+        subtitle_offset_ms: int = 0,
+        clean_instrumental_model: Optional[str] = None,
+        backing_vocals_models: Optional[list] = None,
+        other_stems_models: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """
+        Search for audio by artist and title (Batch 5 - Flacfetch integration).
+        
+        This creates a job and searches for audio sources. If auto_download is True,
+        it automatically selects the best source. Otherwise, it returns search results
+        for user selection.
+        
+        Args:
+            artist: Artist name to search for
+            title: Song title to search for
+            auto_download: Automatically select best audio source (skip interactive selection)
+            ... other args same as submit_job()
+        
+        Returns:
+            Dict with job_id, status, and optionally search results
+        """
+        self.logger.info(f"Searching for audio: {artist} - {title}")
+        
+        request_data = {
+            'artist': artist,
+            'title': title,
+            'auto_download': auto_download,
+            'enable_cdg': enable_cdg,
+            'enable_txt': enable_txt,
+        }
+        
+        if brand_prefix:
+            request_data['brand_prefix'] = brand_prefix
+        if discord_webhook_url:
+            request_data['discord_webhook_url'] = discord_webhook_url
+        if youtube_description:
+            request_data['youtube_description'] = youtube_description
+        if enable_youtube_upload:
+            request_data['enable_youtube_upload'] = enable_youtube_upload
+        if dropbox_path:
+            request_data['dropbox_path'] = dropbox_path
+        if gdrive_folder_id:
+            request_data['gdrive_folder_id'] = gdrive_folder_id
+        if lyrics_artist:
+            request_data['lyrics_artist'] = lyrics_artist
+        if lyrics_title:
+            request_data['lyrics_title'] = lyrics_title
+        if subtitle_offset_ms != 0:
+            request_data['subtitle_offset_ms'] = subtitle_offset_ms
+        if clean_instrumental_model:
+            request_data['clean_instrumental_model'] = clean_instrumental_model
+        if backing_vocals_models:
+            request_data['backing_vocals_models'] = backing_vocals_models
+        if other_stems_models:
+            request_data['other_stems_models'] = other_stems_models
+        
+        response = self._request('POST', '/api/audio-search/search', json=request_data)
+        
+        if response.status_code == 404:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise ValueError(f"No audio sources found: {error_detail}")
+        
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error searching for audio: {error_detail}")
+        
+        return response.json()
+    
+    def get_audio_search_results(self, job_id: str) -> Dict[str, Any]:
+        """Get audio search results for a job awaiting selection."""
+        response = self._request('GET', f'/api/audio-search/{job_id}/results')
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error getting search results: {error_detail}")
+        return response.json()
+    
+    def select_audio_source(self, job_id: str, selection_index: int) -> Dict[str, Any]:
+        """Select an audio source and start processing."""
+        response = self._request(
+            'POST',
+            f'/api/audio-search/{job_id}/select',
+            json={'selection_index': selection_index}
+        )
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error selecting audio: {error_detail}")
+        return response.json()
 
 
 class JobMonitor:
@@ -1026,6 +1284,7 @@ class JobMonitor:
         self.logger = logger
         self._review_opened = False
         self._instrumental_prompted = False
+        self._audio_selection_prompted = False  # Batch 5: audio source selection
         self._last_timeline_index = 0
         self._last_log_index = 0
         self._show_worker_logs = True  # Enable worker log display
@@ -1035,6 +1294,11 @@ class JobMonitor:
     # Status descriptions for user-friendly logging
     STATUS_DESCRIPTIONS = {
         'pending': 'Job queued, waiting to start',
+        # Audio search states (Batch 5)
+        'searching_audio': 'Searching for audio sources',
+        'awaiting_audio_selection': 'Waiting for audio source selection',
+        'downloading_audio': 'Downloading selected audio',
+        # Main workflow
         'downloading': 'Downloading and preparing input files',
         'separating_stage1': 'AI audio separation (stage 1 of 2)',
         'separating_stage2': 'AI audio separation (stage 2 of 2)',
@@ -1150,39 +1414,97 @@ class JobMonitor:
                 time.sleep(self.config.poll_interval)
     
     def handle_instrumental_selection(self, job_id: str) -> None:
-        """Handle instrumental selection interaction."""
+        """Handle instrumental selection interaction with analysis-based recommendations."""
         self.logger.info("=" * 60)
         self.logger.info("INSTRUMENTAL SELECTION NEEDED")
         self.logger.info("=" * 60)
         
-        # In non-interactive mode, auto-select clean instrumental
-        if self.config.non_interactive:
-            self.logger.info("Non-interactive mode: Auto-selecting clean instrumental")
-            selection = 'clean'
-        else:
-            self.logger.info("")
-            self.logger.info("Choose which instrumental track to use for the final video:")
-            self.logger.info("")
-            self.logger.info("  1) Clean Instrumental (no backing vocals)")
-            self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
-            self.logger.info("")
-            self.logger.info("  2) Instrumental with Backing Vocals")
-            self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
-            self.logger.info("")
+        # Try to get analysis data for smart recommendations
+        analysis_data = None
+        try:
+            analysis_data = self.client.get_instrumental_analysis(job_id)
+            analysis = analysis_data.get('analysis', {})
             
-            selection = ""
-            while not selection:
+            # Display analysis summary
+            self.logger.info("")
+            self.logger.info("=== Backing Vocals Analysis ===")
+            if analysis.get('has_audible_content'):
+                self.logger.info(f"  Backing vocals detected: YES")
+                self.logger.info(f"  Audible segments: {len(analysis.get('audible_segments', []))}")
+                self.logger.info(f"  Audible duration: {analysis.get('total_audible_duration_seconds', 0):.1f}s "
+                               f"({analysis.get('audible_percentage', 0):.1f}% of track)")
+            else:
+                self.logger.info(f"  Backing vocals detected: NO")
+            self.logger.info(f"  Recommendation: {analysis.get('recommended_selection', 'review_needed')}")
+            self.logger.info("")
+        except Exception as e:
+            self.logger.warning(f"Could not fetch analysis data: {e}")
+            self.logger.info("Falling back to manual selection...")
+        
+        # In non-interactive mode, use analysis recommendation or default to clean
+        if self.config.non_interactive:
+            if analysis_data and analysis_data.get('analysis', {}).get('recommended_selection') == 'clean':
+                self.logger.info("Non-interactive mode: Auto-selecting clean instrumental (recommended)")
+                selection = 'clean'
+            else:
+                self.logger.info("Non-interactive mode: Auto-selecting clean instrumental (default)")
+                selection = 'clean'
+        else:
+            # Check if we should recommend clean based on analysis
+            recommend_clean = (
+                analysis_data and 
+                not analysis_data.get('analysis', {}).get('has_audible_content', True)
+            )
+            
+            if recommend_clean:
+                self.logger.info("No backing vocals detected - recommending clean instrumental.")
+                self.logger.info("")
+                self.logger.info("Options:")
+                self.logger.info("  1) Accept recommendation (clean instrumental)")
+                self.logger.info("  2) Open browser to review and select")
+                self.logger.info("")
+                
                 try:
                     choice = input("Enter your choice (1 or 2): ").strip()
                     if choice == '1':
                         selection = 'clean'
-                    elif choice == '2':
-                        selection = 'with_backing'
                     else:
-                        self.logger.error("Invalid choice. Please enter 1 or 2.")
+                        self._open_instrumental_review_and_wait(job_id)
+                        return  # Selection will be submitted via browser
                 except KeyboardInterrupt:
                     print()
                     raise
+            else:
+                # Backing vocals detected or analysis unavailable - offer browser review
+                self.logger.info("Choose how to select your instrumental:")
+                self.logger.info("")
+                self.logger.info("  1) Clean Instrumental (no backing vocals)")
+                self.logger.info("     Best for songs where you want ONLY the lead vocal removed")
+                self.logger.info("")
+                self.logger.info("  2) Instrumental with Backing Vocals")
+                self.logger.info("     Best for songs where backing vocals add to the karaoke experience")
+                self.logger.info("")
+                self.logger.info("  3) Open Browser for Advanced Review")
+                self.logger.info("     Listen to audio, view waveform, and optionally mute sections")
+                self.logger.info("     to create a custom instrumental")
+                self.logger.info("")
+                
+                selection = ""
+                while not selection:
+                    try:
+                        choice = input("Enter your choice (1, 2, or 3): ").strip()
+                        if choice == '1':
+                            selection = 'clean'
+                        elif choice == '2':
+                            selection = 'with_backing'
+                        elif choice == '3':
+                            self._open_instrumental_review_and_wait(job_id)
+                            return  # Selection will be submitted via browser
+                        else:
+                            self.logger.error("Invalid choice. Please enter 1, 2, or 3.")
+                    except KeyboardInterrupt:
+                        print()
+                        raise
         
         self.logger.info(f"Submitting selection: {selection}")
         
@@ -1194,6 +1516,126 @@ class JobMonitor:
                 self.logger.error(f"Error submitting selection: {result}")
         except Exception as e:
             self.logger.error(f"Error submitting selection: {e}")
+    
+    def handle_audio_selection(self, job_id: str) -> None:
+        """Handle audio source selection interaction (Batch 5)."""
+        self.logger.info("=" * 60)
+        self.logger.info("AUDIO SOURCE SELECTION NEEDED")
+        self.logger.info("=" * 60)
+        
+        try:
+            # Get search results
+            results_data = self.client.get_audio_search_results(job_id)
+            results = results_data.get('results', [])
+            
+            if not results:
+                self.logger.error("No search results available")
+                return
+            
+            # In non-interactive mode, auto-select first result
+            if self.config.non_interactive:
+                self.logger.info("Non-interactive mode: Auto-selecting first result")
+                selection_index = 0
+            else:
+                self.logger.info("")
+                self.logger.info("Choose which audio source to download:")
+                self.logger.info("")
+                
+                for result in results:
+                    index = result.get('index', 0)
+                    provider = result.get('provider', 'Unknown')
+                    artist = result.get('artist', 'Unknown')
+                    title = result.get('title', 'Unknown')
+                    quality = result.get('quality', '')
+                    duration = result.get('duration')
+                    
+                    # Format duration if available
+                    duration_str = ""
+                    if duration:
+                        minutes = duration // 60
+                        seconds = duration % 60
+                        duration_str = f" [{minutes}:{seconds:02d}]"
+                    
+                    quality_str = f" ({quality})" if quality else ""
+                    
+                    self.logger.info(f"  {index + 1}) [{provider}] {artist} - {title}{quality_str}{duration_str}")
+                
+                self.logger.info("")
+                
+                selection_index = -1
+                while selection_index < 0:
+                    try:
+                        choice = input(f"Enter your choice (1-{len(results)}): ").strip()
+                        choice_num = int(choice)
+                        if 1 <= choice_num <= len(results):
+                            selection_index = choice_num - 1
+                        else:
+                            self.logger.error(f"Please enter a number between 1 and {len(results)}")
+                    except ValueError:
+                        self.logger.error("Please enter a valid number")
+                    except KeyboardInterrupt:
+                        print()
+                        raise
+            
+            selected = results[selection_index]
+            self.logger.info(f"Selected: [{selected.get('provider')}] {selected.get('artist')} - {selected.get('title')}")
+            self.logger.info("")
+            
+            # Submit selection
+            result = self.client.select_audio_source(job_id, selection_index)
+            if result.get('status') == 'success':
+                self.logger.info(f"Selection submitted successfully")
+            else:
+                self.logger.error(f"Error submitting selection: {result}")
+                
+        except Exception as e:
+            self.logger.error(f"Error handling audio selection: {e}")
+
+    def _open_instrumental_review_and_wait(self, job_id: str) -> None:
+        """Open browser to instrumental review UI and wait for selection."""
+        review_url = f"{self.config.review_ui_url}/jobs/{job_id}/instrumental-review"
+        
+        self.logger.info("")
+        self.logger.info("=" * 60)
+        self.logger.info("OPENING BROWSER FOR INSTRUMENTAL REVIEW")
+        self.logger.info("=" * 60)
+        self.logger.info(f"Review URL: {review_url}")
+        self.logger.info("")
+        self.logger.info("In the browser you can:")
+        self.logger.info("  - View the backing vocals waveform")
+        self.logger.info("  - Listen to clean instrumental, backing vocals, or combined")
+        self.logger.info("  - Select regions to mute and create a custom instrumental")
+        self.logger.info("  - Submit your final selection")
+        self.logger.info("")
+        self.logger.info("Waiting for selection to be submitted...")
+        self.logger.info("(Press Ctrl+C to cancel)")
+        self.logger.info("")
+        
+        # Open browser
+        webbrowser.open(review_url)
+        
+        # Poll until job status changes from awaiting_instrumental_selection
+        while True:
+            try:
+                job_data = self.client.get_job(job_id)
+                current_status = job_data.get('status')
+                
+                if current_status != 'awaiting_instrumental_selection':
+                    selection = job_data.get('state_data', {}).get('instrumental_selection', 'unknown')
+                    self.logger.info(f"Selection received: {selection}")
+                    self.logger.info(f"Job status: {current_status}")
+                    return
+                
+                time.sleep(self.config.poll_interval)
+                
+            except KeyboardInterrupt:
+                print()
+                self.logger.info("Cancelled. You can resume this job later with --resume")
+                raise
+            except Exception as e:
+                self.logger.warning(f"Error checking status: {e}")
+                time.sleep(self.config.poll_interval)
+
     
     def download_outputs(self, job_id: str, job_data: Dict[str, Any]) -> None:
         """
@@ -1602,7 +2044,14 @@ class JobMonitor:
                         self._polls_without_updates = 0
                 
                 # Handle human interaction points
-                if status in ['awaiting_review', 'in_review']:
+                if status == 'awaiting_audio_selection':
+                    if not self._audio_selection_prompted:
+                        self.logger.info("")
+                        self.handle_audio_selection(job_id)
+                        self._audio_selection_prompted = True
+                        self._last_timeline_index = 0  # Reset to catch any events
+                
+                elif status in ['awaiting_review', 'in_review']:
                     if not self._review_opened:
                         self.logger.info("")
                         self.handle_review(job_id)
@@ -2155,8 +2604,7 @@ def main():
         ignored_features.append("--lyrics-only")
     if args.background_video:
         ignored_features.append("--background_video")
-    if getattr(args, 'auto_download', False):
-        ignored_features.append("--auto-download (audio search not yet supported)")
+    # --auto-download is now supported (Batch 5)
     # These are now supported but server-side handling may be partial
     if args.organised_dir:
         ignored_features.append("--organised_dir (local-only)")
@@ -2177,6 +2625,8 @@ def main():
     
     # Handle new job submission - parse input arguments same as gen_cli
     input_media, artist, title, filename_pattern = None, None, None, None
+    use_audio_search = False  # Batch 5: audio search mode
+    is_url_input = False
     
     if not args.args:
         parser.print_help()
@@ -2184,38 +2634,33 @@ def main():
     
     # Allow 3 forms of positional arguments:
     # 1. URL or Media File only
-    # 2. Artist and Title only
-    # 3. URL, Artist, and Title
+    # 2. Artist and Title only (audio search mode - Batch 5)
+    # 3. URL/File, Artist, and Title
     if args.args and (is_url(args.args[0]) or is_file(args.args[0])):
         input_media = args.args[0]
+        is_url_input = is_url(args.args[0])
         if len(args.args) > 2:
             artist = args.args[1]
             title = args.args[2]
         elif len(args.args) > 1:
             artist = args.args[1]
         else:
-            logger.error("Input media provided without Artist and Title")
-            return 1
+            # For URLs, artist/title can be auto-detected
+            if is_url_input:
+                logger.info("URL provided without Artist and Title - will be auto-detected from video metadata")
+            else:
+                logger.error("Input media provided without Artist and Title")
+                return 1
     elif os.path.isdir(args.args[0]):
         logger.error("Folder processing is not yet supported in remote mode")
         return 1
     elif len(args.args) > 1:
+        # Audio search mode: artist + title without file (Batch 5)
         artist = args.args[0]
         title = args.args[1]
-        logger.error("Audio search (artist+title) is not yet supported in remote mode.")
-        logger.error("Please provide a local audio file path instead.")
-        logger.error("")
-        logger.error("For local flacfetch search, use karaoke-gen instead:")
-        logger.error(f"  karaoke-gen \"{artist}\" \"{title}\"")
-        return 1
+        use_audio_search = True
     else:
         parser.print_help()
-        return 1
-    
-    # For now, remote mode only supports file uploads
-    if not input_media or not os.path.isfile(input_media):
-        logger.error("Remote mode currently only supports local file uploads")
-        logger.error("Please provide a path to an audio file (mp3, wav, flac, m4a, ogg, aac)")
         return 1
     
     # Validate artist and title are provided
@@ -2224,12 +2669,102 @@ def main():
         parser.print_help()
         return 1
     
+    # For file/URL input modes, validate input exists
+    if not use_audio_search:
+        if not input_media:
+            logger.error("No input media or URL provided")
+            return 1
+        
+        # For file input (not URL), validate file exists
+        if not is_url_input and not os.path.isfile(input_media):
+            logger.error(f"File not found: {input_media}")
+            logger.error("Please provide a valid path to an audio file (mp3, wav, flac, m4a, ogg, aac)")
+            return 1
+    
+    # Handle audio search mode (Batch 5)
+    if use_audio_search:
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Audio Search Mode")
+        logger.info("=" * 60)
+        logger.info(f"Searching for: {artist} - {title}")
+        if getattr(args, 'auto_download', False) or config.non_interactive:
+            logger.info(f"Auto-download: enabled (will auto-select best source)")
+        if args.style_params_json:
+            logger.info(f"Style: {args.style_params_json}")
+        logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
+        if args.brand_prefix:
+            logger.info(f"Brand: {args.brand_prefix}")
+        logger.info(f"Service URL: {config.service_url}")
+        logger.info("")
+        
+        # Read youtube description from file if provided
+        youtube_description = None
+        if args.youtube_description_file and os.path.isfile(args.youtube_description_file):
+            try:
+                with open(args.youtube_description_file, 'r') as f:
+                    youtube_description = f.read()
+                logger.info(f"Loaded YouTube description from: {args.youtube_description_file}")
+            except Exception as e:
+                logger.warning(f"Failed to read YouTube description file: {e}")
+        
+        try:
+            # Determine auto_download mode
+            auto_download = getattr(args, 'auto_download', False) or config.non_interactive
+            
+            result = client.search_audio(
+                artist=artist,
+                title=title,
+                auto_download=auto_download,
+                enable_cdg=args.enable_cdg,
+                enable_txt=args.enable_txt,
+                brand_prefix=args.brand_prefix,
+                discord_webhook_url=args.discord_webhook_url,
+                youtube_description=youtube_description,
+                enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
+                dropbox_path=getattr(args, 'dropbox_path', None),
+                gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
+                lyrics_artist=getattr(args, 'lyrics_artist', None),
+                lyrics_title=getattr(args, 'lyrics_title', None),
+                subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
+                clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
+                backing_vocals_models=getattr(args, 'backing_vocals_models', None),
+                other_stems_models=getattr(args, 'other_stems_models', None),
+            )
+            
+            job_id = result.get('job_id')
+            results_count = result.get('results_count', 0)
+            server_version = result.get('server_version', 'unknown')
+            
+            logger.info(f"Job created: {job_id}")
+            logger.info(f"Server version: {server_version}")
+            logger.info(f"Audio sources found: {results_count}")
+            logger.info("")
+            
+            # Monitor job
+            return monitor.monitor(job_id)
+            
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            logger.exception("Full error details:")
+            return 1
+    
+    # File upload mode (original flow)
     logger.info("=" * 60)
     logger.info("Karaoke Generator (Remote) - Job Submission")
     logger.info("=" * 60)
-    logger.info(f"File: {input_media}")
-    logger.info(f"Artist: {artist}")
-    logger.info(f"Title: {title}")
+    if is_url_input:
+        logger.info(f"URL: {input_media}")
+    else:
+        logger.info(f"File: {input_media}")
+    if artist:
+        logger.info(f"Artist: {artist}")
+    if title:
+        logger.info(f"Title: {title}")
+    if not artist and not title and is_url_input:
+        logger.info(f"Artist/Title: (will be auto-detected from URL)")
     if args.style_params_json:
         logger.info(f"Style: {args.style_params_json}")
     logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
@@ -2296,37 +2831,73 @@ def main():
                 logger.info(f"Preserving brand code: {keep_brand_code_value}")
     
     try:
-        # Submit job with all options
-        result = client.submit_job(
-            filepath=input_media,
-            artist=artist,
-            title=title,
-            style_params_path=args.style_params_json,
-            enable_cdg=args.enable_cdg,
-            enable_txt=args.enable_txt,
-            brand_prefix=args.brand_prefix,
-            discord_webhook_url=args.discord_webhook_url,
-            youtube_description=youtube_description,
-            organised_dir_rclone_root=args.organised_dir_rclone_root,
-            enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
-            # Native API distribution (preferred for remote CLI)
-            dropbox_path=getattr(args, 'dropbox_path', None),
-            gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
-            # Lyrics configuration
-            lyrics_artist=getattr(args, 'lyrics_artist', None),
-            lyrics_title=getattr(args, 'lyrics_title', None),
-            lyrics_file=getattr(args, 'lyrics_file', None),
-            subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
-            # Audio separation model configuration
-            clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
-            backing_vocals_models=getattr(args, 'backing_vocals_models', None),
-            other_stems_models=getattr(args, 'other_stems_models', None),
-            # Existing instrumental (Batch 3)
-            existing_instrumental=getattr(args, 'existing_instrumental', None),
-            # Two-phase workflow (Batch 6)
-            prep_only=getattr(args, 'prep_only', False),
-            keep_brand_code=keep_brand_code_value,
-        )
+        # Submit job - different endpoint for URL vs file
+        if is_url_input:
+            # URL-based job submission
+            # Note: style_params_path is not supported for URL-based jobs
+            # If custom styles are needed, download the audio locally first
+            if args.style_params_json:
+                logger.warning("Custom styles (--style_params_json) are not supported for URL-based jobs. "
+                             "Download the audio locally first and use file upload for custom styles.")
+            
+            result = client.submit_job_from_url(
+                url=input_media,
+                artist=artist,
+                title=title,
+                enable_cdg=args.enable_cdg,
+                enable_txt=args.enable_txt,
+                brand_prefix=args.brand_prefix,
+                discord_webhook_url=args.discord_webhook_url,
+                youtube_description=youtube_description,
+                organised_dir_rclone_root=args.organised_dir_rclone_root,
+                enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
+                # Native API distribution (preferred for remote CLI)
+                dropbox_path=getattr(args, 'dropbox_path', None),
+                gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
+                # Lyrics configuration
+                lyrics_artist=getattr(args, 'lyrics_artist', None),
+                lyrics_title=getattr(args, 'lyrics_title', None),
+                subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
+                # Audio separation model configuration
+                clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
+                backing_vocals_models=getattr(args, 'backing_vocals_models', None),
+                other_stems_models=getattr(args, 'other_stems_models', None),
+                # Two-phase workflow (Batch 6)
+                prep_only=getattr(args, 'prep_only', False),
+                keep_brand_code=keep_brand_code_value,
+            )
+        else:
+            # File-based job submission
+            result = client.submit_job(
+                filepath=input_media,
+                artist=artist,
+                title=title,
+                style_params_path=args.style_params_json,
+                enable_cdg=args.enable_cdg,
+                enable_txt=args.enable_txt,
+                brand_prefix=args.brand_prefix,
+                discord_webhook_url=args.discord_webhook_url,
+                youtube_description=youtube_description,
+                organised_dir_rclone_root=args.organised_dir_rclone_root,
+                enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
+                # Native API distribution (preferred for remote CLI)
+                dropbox_path=getattr(args, 'dropbox_path', None),
+                gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
+                # Lyrics configuration
+                lyrics_artist=getattr(args, 'lyrics_artist', None),
+                lyrics_title=getattr(args, 'lyrics_title', None),
+                lyrics_file=getattr(args, 'lyrics_file', None),
+                subtitle_offset_ms=getattr(args, 'subtitle_offset_ms', 0) or 0,
+                # Audio separation model configuration
+                clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
+                backing_vocals_models=getattr(args, 'backing_vocals_models', None),
+                other_stems_models=getattr(args, 'other_stems_models', None),
+                # Existing instrumental (Batch 3)
+                existing_instrumental=getattr(args, 'existing_instrumental', None),
+                # Two-phase workflow (Batch 6)
+                prep_only=getattr(args, 'prep_only', False),
+                keep_brand_code=keep_brand_code_value,
+            )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
         server_version = result.get('server_version', 'unknown')

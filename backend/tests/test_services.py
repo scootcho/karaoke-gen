@@ -12,6 +12,7 @@ from datetime import datetime, UTC
 import sys
 sys.modules['google.cloud.firestore'] = MagicMock()
 sys.modules['google.cloud.storage'] = MagicMock()
+sys.modules['google.cloud.tasks_v2'] = MagicMock()
 
 from backend.services.auth_service import AuthService, UserType
 from backend.services.storage_service import StorageService  
@@ -237,6 +238,190 @@ class TestWorkerService:
             mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
             assert "/api/internal/workers/video" in str(call_args)
+
+
+class TestWorkerServiceCloudTasks:
+    """Test WorkerService Cloud Tasks integration."""
+    
+    def test_should_use_cloud_tasks_default_false(self):
+        """Test that Cloud Tasks is disabled by default."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'PORT': '8000',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = None
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = False
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                service = WorkerService()
+                assert service._use_cloud_tasks is False
+    
+    def test_should_use_cloud_tasks_enabled(self):
+        """Test that Cloud Tasks can be enabled via settings."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'PORT': '8000',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = None
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                service = WorkerService()
+                assert service._use_cloud_tasks is True
+    
+    def test_worker_queues_mapping(self):
+        """Test that all worker types have queue mappings."""
+        from backend.services.worker_service import WORKER_QUEUES
+        
+        # Verify all expected workers have queues
+        assert "audio" in WORKER_QUEUES
+        assert "lyrics" in WORKER_QUEUES
+        assert "screens" in WORKER_QUEUES
+        assert "render-video" in WORKER_QUEUES
+        assert "video" in WORKER_QUEUES
+        
+        # Verify queue names are correct
+        assert WORKER_QUEUES["audio"] == "audio-worker-queue"
+        assert WORKER_QUEUES["lyrics"] == "lyrics-worker-queue"
+        assert WORKER_QUEUES["screens"] == "screens-worker-queue"
+        assert WORKER_QUEUES["render-video"] == "render-worker-queue"
+        assert WORKER_QUEUES["video"] == "video-worker-queue"
+    
+    @pytest.mark.asyncio
+    async def test_trigger_worker_uses_http_when_cloud_tasks_disabled(self):
+        """Test that trigger_worker uses HTTP when Cloud Tasks is disabled."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'PORT': '8000',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = "test-token"
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = False
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                with patch('backend.services.worker_service.httpx.AsyncClient') as mock_client_cls:
+                    mock_client = AsyncMock()
+                    mock_client_cls.return_value.__aenter__.return_value = mock_client
+                    
+                    mock_response = Mock()
+                    mock_response.status_code = 200
+                    mock_client.post.return_value = mock_response
+                    
+                    service = WorkerService()
+                    assert service._use_cloud_tasks is False
+                    
+                    result = await service.trigger_worker("audio", "test-job-123")
+                    
+                    # Verify HTTP was used
+                    assert result is True
+                    mock_client.post.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_trigger_worker_uses_cloud_tasks_when_enabled(self):
+        """Test that trigger_worker uses Cloud Tasks when enabled."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'CLOUD_RUN_SERVICE_URL': 'https://api.example.com',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = "test-token"
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                # Mock Cloud Tasks client
+                mock_tasks_client = MagicMock()
+                mock_tasks_client.queue_path.return_value = "projects/test-project/locations/us-central1/queues/audio-worker-queue"
+                mock_task_response = MagicMock()
+                mock_task_response.name = "projects/test-project/locations/us-central1/queues/audio-worker-queue/tasks/abc123"
+                mock_tasks_client.create_task.return_value = mock_task_response
+                
+                # Mock the google.cloud.tasks_v2 module which is imported inside the method
+                mock_tasks_module = MagicMock()
+                mock_tasks_module.CloudTasksClient.return_value = mock_tasks_client
+                mock_tasks_module.HttpMethod.POST = "POST"
+                
+                with patch.dict('sys.modules', {'google.cloud.tasks_v2': mock_tasks_module}):
+                    with patch.dict(sys.modules, {'google.cloud': MagicMock()}):
+                        service = WorkerService()
+                        service._tasks_client = mock_tasks_client  # Inject mocked client
+                        
+                        result = await service.trigger_worker("audio", "test-job-123")
+                        
+                        # Verify Cloud Tasks was used
+                        assert result is True
+                        mock_tasks_client.create_task.assert_called_once()
+                        
+                        # Verify task payload
+                        call_args = mock_tasks_client.create_task.call_args
+                        assert call_args is not None
+    
+    @pytest.mark.asyncio
+    async def test_trigger_worker_returns_false_for_unknown_worker_type(self):
+        """Test that trigger_worker returns False for unknown worker types."""
+        from backend.services.worker_service import WorkerService, reset_worker_service
+        reset_worker_service()
+        
+        with patch('backend.services.worker_service.os.getenv') as mock_getenv:
+            mock_getenv.side_effect = lambda k, d=None: {
+                'CLOUD_RUN_SERVICE_URL': 'https://api.example.com',
+            }.get(k, d)
+            
+            with patch('backend.services.worker_service.get_settings') as mock_settings:
+                mock_settings.return_value.admin_tokens = "test-token"
+                mock_settings.return_value.google_cloud_project = "test-project"
+                mock_settings.return_value.enable_cloud_tasks = True
+                mock_settings.return_value.gcp_region = "us-central1"
+                mock_settings.return_value.use_cloud_run_jobs_for_video = False
+                
+                service = WorkerService()
+                
+                result = await service.trigger_worker("unknown-worker", "test-job-123")
+                
+                assert result is False
+    
+    def test_reset_worker_service(self):
+        """Test that reset_worker_service resets the singleton."""
+        from backend.services.worker_service import get_worker_service, reset_worker_service
+        
+        with patch('backend.services.worker_service.get_settings') as mock_settings:
+            mock_settings.return_value.admin_tokens = None
+            mock_settings.return_value.google_cloud_project = "test-project"
+            mock_settings.return_value.enable_cloud_tasks = False
+            mock_settings.return_value.gcp_region = "us-central1"
+            mock_settings.return_value.use_cloud_run_jobs_for_video = False
+            
+            service1 = get_worker_service()
+            reset_worker_service()
+            service2 = get_worker_service()
+            
+            # After reset, should be different instances
+            assert service1 is not service2
 
 
 class TestFirestoreService:

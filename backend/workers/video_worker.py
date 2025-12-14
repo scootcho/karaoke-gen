@@ -31,7 +31,7 @@ from backend.services.rclone_service import get_rclone_service
 from backend.services.youtube_service import get_youtube_service
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config
-from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 
 # Import from karaoke_gen package - reuse existing implementation
 from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
@@ -105,162 +105,166 @@ async def generate_video(job_id: str) -> bool:
             job_log.warning("YouTube credentials not available - upload will be skipped")
     
     try:
-        job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
-        logger.info(f"Starting video generation for job {job_id}")
-        
-        # Transition to GENERATING_VIDEO state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.GENERATING_VIDEO,
-            progress=70,
-            message="Preparing files for video generation"
-        )
-        
-        # Download and set up files in the format KaraokeFinalise expects
-        base_name = f"{job.artist} - {job.title}"
-        job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
-        await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
-        job_log.info("All files downloaded successfully")
-        
-        # Load style config for CDG styles
-        job_log.info("Loading CDG style configuration...")
-        style_config = await load_style_config(job, storage, temp_dir)
-        cdg_styles = style_config.get_cdg_styles()
-        if cdg_styles:
-            job_log.info("CDG styles loaded from custom configuration")
-        else:
-            job_log.info("Using default CDG styles")
-        
-        # Change to working directory (KaraokeFinalise works in cwd)
-        os.chdir(temp_dir)
-        
-        # Get the selected instrumental file path
-        # Batch 3: If user provided existing instrumental, use that; otherwise use AI-separated
-        instrumental_selection = job.state_data['instrumental_selection']
-        existing_instrumental_path = getattr(job, 'existing_instrumental_gcs_path', None)
-        
-        if existing_instrumental_path:
-            # User provided existing instrumental
-            ext = Path(existing_instrumental_path).suffix.lower()
-            instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental User){ext}")
-            instrumental_source = "user-provided"
-        else:
-            # Use AI-separated instrumental
-            instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
-            instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
-            instrumental_source = instrumental_selection
-        
-        # Transition to encoding state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.ENCODING,
-            progress=75,
-            message="Encoding videos (15-20 min)"
-        )
-        
-        # Log finalization parameters
-        job_log.info("Creating KaraokeFinalise with parameters:")
-        job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
-        job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
-        job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
-        job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
-        job_log.info(f"  instrumental source: {instrumental_source}")
-        if existing_instrumental_path:
-            job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
-        
-        # Create KaraokeFinalise with ALL the parameters from the job
-        # This reuses all existing functionality!
-        
-        # Set up YouTube description file if template is provided
-        youtube_desc_path = None
-        if youtube_credentials and getattr(job, 'youtube_description_template', None):
-            youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
-            with open(youtube_desc_path, 'w') as f:
-                f.write(job.youtube_description_template)
-            job_log.info("YouTube description template written to temp file")
-        
-        finalise = KaraokeFinalise(
-            logger=logger,
-            log_level=logging.INFO,
-            dry_run=False,
-            instrumental_format="flac",
-            # CDG/TXT generation
-            enable_cdg=getattr(job, 'enable_cdg', False),
-            enable_txt=getattr(job, 'enable_txt', False),
-            cdg_styles=cdg_styles,
-            # Brand code and organization (server-side mode uses rclone)
-            brand_prefix=getattr(job, 'brand_prefix', None),
-            organised_dir=None,  # Not used in cloud - files stay in GCS
-            organised_dir_rclone_root=getattr(job, 'organised_dir_rclone_root', None),
-            public_share_dir=None,  # Not used in cloud
-            # Notifications
-            discord_webhook_url=getattr(job, 'discord_webhook_url', None),
-            # YouTube upload (server-side with pre-loaded credentials)
-            youtube_client_secrets_file=None,  # Not used with pre-stored credentials
-            youtube_description_file=youtube_desc_path,
-            user_youtube_credentials=youtube_credentials,  # Pre-loaded from Secret Manager
-            rclone_destination=None,
-            email_template_file=None,
-            # Server-side optimizations
-            non_interactive=True,
-            server_side_mode=True,
-            selected_instrumental_file=instrumental_file,
-        )
-        
-        # Call process() - this does ALL the work:
-        # - Encodes to 4 video formats
-        # - Generates CDG/TXT packages if enabled
-        # - Posts Discord notification if configured
-        # - Handles brand code generation
-        job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
-        logger.info(f"Job {job_id}: Starting KaraokeFinalise.process()")
-        result = finalise.process()
-        
-        job_log.info("KaraokeFinalise.process() complete!")
-        if result.get('brand_code'):
-            job_log.info(f"Brand code: {result.get('brand_code')}")
-        logger.info(f"Job {job_id}: KaraokeFinalise.process() complete")
-        logger.info(f"Job {job_id}: Brand code: {result.get('brand_code')}")
-        
-        # Native API distribution uploads (used by remote CLI instead of rclone)
-        await _handle_native_distribution(
-            job_id=job_id,
-            job=job,
-            job_log=job_log,
-            job_manager=job_manager,
-            temp_dir=temp_dir,
-            result=result,
-        )
-        
-        # Upload generated files to GCS
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.PACKAGING,
-            progress=95,
-            message="Uploading final files"
-        )
-        
-        await _upload_results(job_id, job_manager, storage, temp_dir, result)
-        
-        # Mark job as complete
-        logger.info(f"Job {job_id}: Video generation complete")
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.COMPLETE,
-            progress=100,
-            message="Karaoke generation complete!"
-        )
-        
-        # Store result metadata in job
-        job_manager.update_job(job_id, {
-            'state_data': {
-                **job.state_data,
-                'brand_code': result.get('brand_code'),
-                'youtube_url': result.get('youtube_url'),
-            }
-        })
-        
-        return True
+        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+        # This ensures logs from third-party libraries (karaoke_gen.karaoke_finalise) are only
+        # captured by this job's handler, not handlers from other concurrent jobs
+        with job_logging_context(job_id):
+            job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
+            logger.info(f"Starting video generation for job {job_id}")
+            
+            # Transition to GENERATING_VIDEO state
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.GENERATING_VIDEO,
+                progress=70,
+                message="Preparing files for video generation"
+            )
+            
+            # Download and set up files in the format KaraokeFinalise expects
+            base_name = f"{job.artist} - {job.title}"
+            job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
+            await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
+            job_log.info("All files downloaded successfully")
+            
+            # Load style config for CDG styles
+            job_log.info("Loading CDG style configuration...")
+            style_config = await load_style_config(job, storage, temp_dir)
+            cdg_styles = style_config.get_cdg_styles()
+            if cdg_styles:
+                job_log.info("CDG styles loaded from custom configuration")
+            else:
+                job_log.info("Using default CDG styles")
+            
+            # Change to working directory (KaraokeFinalise works in cwd)
+            os.chdir(temp_dir)
+            
+            # Get the selected instrumental file path
+            # Batch 3: If user provided existing instrumental, use that; otherwise use AI-separated
+            instrumental_selection = job.state_data['instrumental_selection']
+            existing_instrumental_path = getattr(job, 'existing_instrumental_gcs_path', None)
+            
+            if existing_instrumental_path:
+                # User provided existing instrumental
+                ext = Path(existing_instrumental_path).suffix.lower()
+                instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental User){ext}")
+                instrumental_source = "user-provided"
+            else:
+                # Use AI-separated instrumental
+                instrumental_suffix = "Clean" if instrumental_selection == 'clean' else "Backing"
+                instrumental_file = os.path.join(temp_dir, f"{base_name} (Instrumental {instrumental_suffix}).flac")
+                instrumental_source = instrumental_selection
+            
+            # Transition to encoding state
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.ENCODING,
+                progress=75,
+                message="Encoding videos (15-20 min)"
+            )
+            
+            # Log finalization parameters
+            job_log.info("Creating KaraokeFinalise with parameters:")
+            job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
+            job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
+            job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
+            job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
+            job_log.info(f"  instrumental source: {instrumental_source}")
+            if existing_instrumental_path:
+                job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
+            
+            # Create KaraokeFinalise with ALL the parameters from the job
+            # This reuses all existing functionality!
+            
+            # Set up YouTube description file if template is provided
+            youtube_desc_path = None
+            if youtube_credentials and getattr(job, 'youtube_description_template', None):
+                youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
+                with open(youtube_desc_path, 'w') as f:
+                    f.write(job.youtube_description_template)
+                job_log.info("YouTube description template written to temp file")
+            
+            finalise = KaraokeFinalise(
+                logger=logger,
+                log_level=logging.INFO,
+                dry_run=False,
+                instrumental_format="flac",
+                # CDG/TXT generation
+                enable_cdg=getattr(job, 'enable_cdg', False),
+                enable_txt=getattr(job, 'enable_txt', False),
+                cdg_styles=cdg_styles,
+                # Brand code and organization (server-side mode uses rclone)
+                brand_prefix=getattr(job, 'brand_prefix', None),
+                organised_dir=None,  # Not used in cloud - files stay in GCS
+                organised_dir_rclone_root=getattr(job, 'organised_dir_rclone_root', None),
+                public_share_dir=None,  # Not used in cloud
+                # Notifications
+                discord_webhook_url=getattr(job, 'discord_webhook_url', None),
+                # YouTube upload (server-side with pre-loaded credentials)
+                youtube_client_secrets_file=None,  # Not used with pre-stored credentials
+                youtube_description_file=youtube_desc_path,
+                user_youtube_credentials=youtube_credentials,  # Pre-loaded from Secret Manager
+                rclone_destination=None,
+                email_template_file=None,
+                # Server-side optimizations
+                non_interactive=True,
+                server_side_mode=True,
+                selected_instrumental_file=instrumental_file,
+            )
+            
+            # Call process() - this does ALL the work:
+            # - Encodes to 4 video formats
+            # - Generates CDG/TXT packages if enabled
+            # - Posts Discord notification if configured
+            # - Handles brand code generation
+            job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
+            logger.info(f"Job {job_id}: Starting KaraokeFinalise.process()")
+            result = finalise.process()
+            
+            job_log.info("KaraokeFinalise.process() complete!")
+            if result.get('brand_code'):
+                job_log.info(f"Brand code: {result.get('brand_code')}")
+            logger.info(f"Job {job_id}: KaraokeFinalise.process() complete")
+            logger.info(f"Job {job_id}: Brand code: {result.get('brand_code')}")
+            
+            # Native API distribution uploads (used by remote CLI instead of rclone)
+            await _handle_native_distribution(
+                job_id=job_id,
+                job=job,
+                job_log=job_log,
+                job_manager=job_manager,
+                temp_dir=temp_dir,
+                result=result,
+            )
+            
+            # Upload generated files to GCS
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.PACKAGING,
+                progress=95,
+                message="Uploading final files"
+            )
+            
+            await _upload_results(job_id, job_manager, storage, temp_dir, result)
+            
+            # Mark job as complete
+            logger.info(f"Job {job_id}: Video generation complete")
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.COMPLETE,
+                progress=100,
+                message="Karaoke generation complete!"
+            )
+            
+            # Store result metadata in job
+            job_manager.update_job(job_id, {
+                'state_data': {
+                    **job.state_data,
+                    'brand_code': result.get('brand_code'),
+                    'youtube_url': result.get('youtube_url'),
+                }
+            })
+            
+            return True
         
     except Exception as e:
         logger.error(f"Job {job_id}: Video generation failed: {e}", exc_info=True)
@@ -580,3 +584,64 @@ async def _upload_results(
                     logger.info(f"Job {job_id}: Uploaded {file_key}")
                 except Exception as e:
                     logger.error(f"Job {job_id}: Failed to upload {file_key}: {e}")
+
+
+# ==================== CLI Entry Point for Cloud Run Jobs ====================
+# This allows the video worker to be run as a standalone Cloud Run Job.
+# Usage: python -m backend.workers.video_worker --job-id <job_id>
+
+def main():
+    """
+    CLI entry point for running video worker as a Cloud Run Job.
+    
+    This is used when video encoding needs more than 30 minutes
+    (the Cloud Tasks timeout limit). Cloud Run Jobs support up to 24 hours.
+    
+    Usage:
+        python -m backend.workers.video_worker --job-id abc123
+    
+    Environment Variables:
+        GOOGLE_CLOUD_PROJECT: GCP project ID (required)
+        GCS_BUCKET_NAME: Storage bucket name (required)
+    """
+    import argparse
+    import asyncio
+    import sys
+    
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description="Video encoding worker for karaoke generation"
+    )
+    parser.add_argument(
+        "--job-id",
+        required=True,
+        help="Job ID to process"
+    )
+    
+    args = parser.parse_args()
+    job_id = args.job_id
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    logger.info(f"Starting video worker CLI for job {job_id}")
+    
+    # Run the async worker function
+    try:
+        success = asyncio.run(generate_video(job_id))
+        if success:
+            logger.info(f"Video generation completed successfully for job {job_id}")
+            sys.exit(0)
+        else:
+            logger.error(f"Video generation failed for job {job_id}")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"Video worker crashed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

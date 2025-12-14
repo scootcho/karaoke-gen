@@ -14,8 +14,8 @@ class JobStatus(str, Enum):
     """
     Job status enumeration - Complete state machine.
     
-    The workflow has 8 main stages with 2 human interaction points:
-    1. Input & Setup
+    The workflow has 8 main stages with 3 human interaction points:
+    1. Input & Setup (may include audio source selection)
     2. Parallel Processing (audio + lyrics)
     3. Title/End Screen Generation
     4. Countdown Padding Synchronization
@@ -26,6 +26,12 @@ class JobStatus(str, Enum):
     """
     # Initial states
     PENDING = "pending"                           # Job created, queued for processing
+    
+    # Audio search states (for artist+title search mode)
+    SEARCHING_AUDIO = "searching_audio"           # Searching for audio sources via flacfetch
+    AWAITING_AUDIO_SELECTION = "awaiting_audio_selection"  # ⚠️ WAITING FOR USER - select audio source
+    DOWNLOADING_AUDIO = "downloading_audio"       # Downloading selected audio from source
+    
     DOWNLOADING = "downloading"                   # Downloading from URL or processing upload
     
     # Stage 2a: Audio separation (parallel track 1)
@@ -81,8 +87,14 @@ class JobStatus(str, Enum):
 
 # Valid state transitions
 STATE_TRANSITIONS = {
-    # PENDING allows AWAITING_INSTRUMENTAL_SELECTION for finalise-only jobs
-    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED, JobStatus.CANCELLED],
+    # PENDING can go to DOWNLOADING (file upload), SEARCHING_AUDIO (artist+title search), or AWAITING_INSTRUMENTAL_SELECTION (finalise-only)
+    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.SEARCHING_AUDIO, JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED, JobStatus.CANCELLED],
+    
+    # Audio search flow (for artist+title search mode)
+    JobStatus.SEARCHING_AUDIO: [JobStatus.AWAITING_AUDIO_SELECTION, JobStatus.DOWNLOADING_AUDIO, JobStatus.FAILED],
+    JobStatus.AWAITING_AUDIO_SELECTION: [JobStatus.DOWNLOADING_AUDIO, JobStatus.FAILED, JobStatus.CANCELLED],
+    JobStatus.DOWNLOADING_AUDIO: [JobStatus.DOWNLOADING, JobStatus.FAILED],
+    
     # DOWNLOADING allows parallel processing (audio + lyrics) and then screens when both complete
     JobStatus.DOWNLOADING: [JobStatus.SEPARATING_STAGE1, JobStatus.TRANSCRIBING, JobStatus.GENERATING_SCREENS, JobStatus.FAILED],
     
@@ -228,6 +240,11 @@ class Job(BaseModel):
     
     # Existing instrumental configuration (Batch 3)
     existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
+    
+    # Audio search configuration (Batch 5 - artist+title search mode)
+    audio_search_artist: Optional[str] = None     # Artist name used for audio search
+    audio_search_title: Optional[str] = None      # Title used for audio search
+    auto_download: bool = False                    # Auto-select best audio source (skip selection)
     
     # Two-phase workflow configuration (Batch 6)
     prep_only: bool = False                      # Stop after review, don't run finalisation
@@ -409,6 +426,11 @@ class JobCreate(BaseModel):
     
     # Existing instrumental configuration (Batch 3)
     existing_instrumental_gcs_path: Optional[str] = None  # GCS path to user-provided instrumental file
+    
+    # Audio search configuration (Batch 5 - artist+title search mode)
+    audio_search_artist: Optional[str] = None     # Artist name used for audio search
+    audio_search_title: Optional[str] = None      # Title used for audio search
+    auto_download: bool = False                    # Auto-select best audio source (skip selection)
     
     # Two-phase workflow configuration (Batch 6)
     prep_only: bool = False                      # Stop after review, don't run finalisation

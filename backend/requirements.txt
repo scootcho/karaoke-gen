@@ -11,6 +11,8 @@ httpx>=0.25.0,<1.0.0
 google-cloud-firestore>=2.14.0,<3.0.0
 google-cloud-storage>=2.14.0,<3.0.0
 google-cloud-secret-manager>=2.18.0,<3.0.0
+google-cloud-tasks>=2.14.0,<3.0.0
+google-cloud-run>=0.10.0,<1.0.0
 python-dotenv>=1.0.0,<2.0.0
 
 # Audio processing (reuses karaoke_gen library)

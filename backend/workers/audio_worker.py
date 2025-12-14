@@ -19,7 +19,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.workers.worker_logging import create_job_logger, setup_job_logging
+from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 
 # Import from karaoke_gen package
 from karaoke_gen.audio_processor import AudioProcessor
@@ -34,7 +34,7 @@ AUDIO_WORKER_LOGGERS = [
 ]
 
 
-async def download_from_url(url: str, temp_dir: str, artist: str, title: str) -> Optional[str]:
+async def download_from_url(url: str, temp_dir: str, artist: str, title: str, job_manager: JobManager = None, job_id: str = None) -> Optional[str]:
     """
     Download audio from a URL (YouTube, etc.) using karaoke_gen.FileHandler.
     
@@ -43,11 +43,16 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
     - Cookie support for authenticated downloads
     - Retry logic
     
+    If artist and/or title are not provided, attempts to extract them from 
+    the URL metadata.
+    
     Args:
         url: URL to download from
         temp_dir: Temporary directory to save to
-        artist: Artist name for filename
-        title: Song title for filename
+        artist: Artist name for filename (can be None for auto-detection)
+        title: Song title for filename (can be None for auto-detection)
+        job_manager: Optional JobManager to update job with detected metadata
+        job_id: Optional job ID to update
         
     Returns:
         Path to downloaded audio file, or None if failed
@@ -63,6 +68,34 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str) ->
             create_track_subfolders=False,
             dry_run=False
         )
+        
+        # Try to extract metadata if artist or title not provided
+        if not artist or not title:
+            logger.info(f"Extracting metadata from URL: {url}")
+            metadata = file_handler.extract_metadata_from_url(url)
+            
+            if metadata:
+                if not artist:
+                    artist = metadata.get('artist', 'Unknown')
+                    logger.info(f"Auto-detected artist: {artist}")
+                if not title:
+                    title = metadata.get('title', 'Unknown')
+                    logger.info(f"Auto-detected title: {title}")
+                
+                # Update job with detected metadata if job_manager provided
+                if job_manager and job_id:
+                    update_data = {}
+                    if artist:
+                        update_data['artist'] = artist
+                    if title:
+                        update_data['title'] = title
+                    if update_data:
+                        job_manager.update_job(job_id, update_data)
+                        logger.info(f"Updated job {job_id} with detected metadata")
+            else:
+                logger.warning("Could not extract metadata from URL, using defaults")
+                artist = artist or "Unknown"
+                title = title or "Unknown"
         
         # Create output filename (without extension)
         safe_artist = sanitize_filename(artist) if artist else "Unknown"
@@ -208,84 +241,88 @@ async def process_audio_separation(job_id: str) -> bool:
     job_log.info(f"Created temp directory: {temp_dir}")
     
     try:
-        job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
-        logger.info(f"Starting audio separation for job {job_id}")
-        
-        # Ensure AUDIO_SEPARATOR_API_URL is set
-        api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
-        if not api_url:
-            raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
-                          "Cannot perform audio separation without remote API access.")
-        job_log.info(f"Audio separator API: {api_url}")
-        
-        # Download audio file from GCS
-        job_log.info("Downloading audio file from GCS...")
-        audio_path = await download_audio(job_id, temp_dir, storage, job)
-        if not audio_path:
-            raise Exception("Failed to download audio file")
-        job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
-        
-        # Update progress using state_data (don't change status during parallel processing)
-        # The status is managed at a higher level - workers just track their progress
-        job_manager.update_state_data(job_id, 'audio_progress', {
-            'stage': 'separating_stage1',
-            'progress': 10,
-            'message': 'Starting audio separation (Stage 1: Clean instrumental)'
-        })
-        
-        # Create AudioProcessor instance (reuses karaoke_gen code)
-        # Use model configuration from job if provided, otherwise use defaults
-        job_log.info("Creating AudioProcessor instance...")
-        if job.clean_instrumental_model:
-            job_log.info(f"  Using clean instrumental model: {job.clean_instrumental_model}")
-        if job.backing_vocals_models:
-            job_log.info(f"  Using backing vocals models: {job.backing_vocals_models}")
-        if job.other_stems_models:
-            job_log.info(f"  Using other stems models: {job.other_stems_models}")
-        
-        audio_processor = create_audio_processor(
-            temp_dir,
-            clean_instrumental_model=job.clean_instrumental_model,
-            backing_vocals_models=job.backing_vocals_models,
-            other_stems_models=job.other_stems_models
-        )
-        
-        # Format artist-title for file naming (matches CLI behavior)
-        artist_title = f"{job.artist} - {job.title}"
-        
-        # Run audio separation (calls Modal API internally)
-        # This returns a dict with paths to all separated stems
-        job_log.info("Starting audio separation (this may take 5-10 minutes)...")
-        job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
-        job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
-        logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
-        separation_result = audio_processor.process_audio_separation(
-            audio_file=audio_path,
-            artist_title=artist_title,
-            track_output_dir=temp_dir
-        )
-        
-        job_log.info("Audio separation complete!")
-        job_log.info(f"  Generated {len(separation_result)} stem files")
-        logger.info(f"Job {job_id}: Audio separation complete, organizing results")
-        
-        # Update progress using state_data (don't change status during parallel processing)
-        job_manager.update_state_data(job_id, 'audio_progress', {
-            'stage': 'audio_complete',
-            'progress': 45,
-            'message': 'Audio separation complete, uploading stems'
-        })
-        
-        # Upload all stems to GCS
-        await upload_separation_results(job_id, separation_result, storage, job_manager)
-        
-        logger.info(f"Job {job_id}: All stems uploaded successfully")
-        
-        # Mark audio processing complete
-        # This will check if lyrics are also complete and transition to next stage if so
-        job_manager.mark_audio_complete(job_id)
-        
-        return True
+        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+        # This ensures logs from third-party libraries (karaoke_gen.audio_processor) are
+        # only captured by this job's handler, not handlers from other concurrent jobs
+        with job_logging_context(job_id):
+            job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
+            logger.info(f"Starting audio separation for job {job_id}")
+            
+            # Ensure AUDIO_SEPARATOR_API_URL is set
+            api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
+            if not api_url:
+                raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
+                              "Cannot perform audio separation without remote API access.")
+            job_log.info(f"Audio separator API: {api_url}")
+            
+            # Download audio file from GCS or URL
+            job_log.info("Downloading audio file...")
+            audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager_instance=job_manager)
+            if not audio_path:
+                raise Exception("Failed to download audio file")
+            job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
+            
+            # Update progress using state_data (don't change status during parallel processing)
+            # The status is managed at a higher level - workers just track their progress
+            job_manager.update_state_data(job_id, 'audio_progress', {
+                'stage': 'separating_stage1',
+                'progress': 10,
+                'message': 'Starting audio separation (Stage 1: Clean instrumental)'
+            })
+            
+            # Create AudioProcessor instance (reuses karaoke_gen code)
+            # Use model configuration from job if provided, otherwise use defaults
+            job_log.info("Creating AudioProcessor instance...")
+            if job.clean_instrumental_model:
+                job_log.info(f"  Using clean instrumental model: {job.clean_instrumental_model}")
+            if job.backing_vocals_models:
+                job_log.info(f"  Using backing vocals models: {job.backing_vocals_models}")
+            if job.other_stems_models:
+                job_log.info(f"  Using other stems models: {job.other_stems_models}")
+            
+            audio_processor = create_audio_processor(
+                temp_dir,
+                clean_instrumental_model=job.clean_instrumental_model,
+                backing_vocals_models=job.backing_vocals_models,
+                other_stems_models=job.other_stems_models
+            )
+            
+            # Format artist-title for file naming (matches CLI behavior)
+            artist_title = f"{job.artist} - {job.title}"
+            
+            # Run audio separation (calls Modal API internally)
+            # This returns a dict with paths to all separated stems
+            job_log.info("Starting audio separation (this may take 5-10 minutes)...")
+            job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
+            job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
+            logger.info(f"Job {job_id}: Calling audio_processor.process_audio_separation()")
+            separation_result = audio_processor.process_audio_separation(
+                audio_file=audio_path,
+                artist_title=artist_title,
+                track_output_dir=temp_dir
+            )
+            
+            job_log.info("Audio separation complete!")
+            job_log.info(f"  Generated {len(separation_result)} stem files")
+            logger.info(f"Job {job_id}: Audio separation complete, organizing results")
+            
+            # Update progress using state_data (don't change status during parallel processing)
+            job_manager.update_state_data(job_id, 'audio_progress', {
+                'stage': 'audio_complete',
+                'progress': 45,
+                'message': 'Audio separation complete, uploading stems'
+            })
+            
+            # Upload all stems to GCS
+            await upload_separation_results(job_id, separation_result, storage, job_manager)
+            
+            logger.info(f"Job {job_id}: All stems uploaded successfully")
+            
+            # Mark audio processing complete
+            # This will check if lyrics are also complete and transition to next stage if so
+            job_manager.mark_audio_complete(job_id)
+            
+            return True
         
     except Exception as e:
         logger.error(f"Job {job_id}: Audio separation failed: {e}", exc_info=True)
@@ -314,7 +351,8 @@ async def download_audio(
     job_id: str,
     temp_dir: str,
     storage: StorageService,
-    job
+    job,
+    job_manager_instance: JobManager = None
 ) -> Optional[str]:
     """
     Download or fetch audio file to local temp directory.
@@ -322,6 +360,13 @@ async def download_audio(
     Handles two cases:
     1. Uploaded file: Download from GCS using input_media_gcs_path
     2. URL (YouTube, etc.): Download using yt-dlp or other tools
+    
+    Args:
+        job_id: Job ID
+        temp_dir: Temporary directory to save to
+        storage: StorageService instance
+        job: Job object with URL or GCS path
+        job_manager_instance: Optional JobManager instance for updating job metadata
     
     Returns:
         Path to downloaded audio file, or None if failed
@@ -347,7 +392,18 @@ async def download_audio(
         # Case 3: Fresh URL that needs downloading
         if job.url:
             logger.info(f"Job {job_id}: Downloading from URL: {job.url}")
-            local_path = await download_from_url(job.url, temp_dir, job.artist, job.title)
+            
+            # Use provided job_manager or create new one
+            jm = job_manager_instance or JobManager()
+            
+            local_path = await download_from_url(
+                job.url, 
+                temp_dir, 
+                job.artist, 
+                job.title,
+                job_manager=jm,
+                job_id=job_id
+            )
             
             if local_path and os.path.exists(local_path):
                 # Upload to GCS and update job
@@ -355,9 +411,8 @@ async def download_audio(
                 url = storage.upload_file(local_path, gcs_path)
                 
                 # Update job with GCS path for lyrics worker
-                job_manager = JobManager()
-                job_manager.firestore.update_job(job_id, {'input_media_gcs_path': gcs_path})
-                job_manager.update_file_url(job_id, 'input', 'audio', url)
+                jm.update_job(job_id, {'input_media_gcs_path': gcs_path})
+                jm.update_file_url(job_id, 'input', 'audio', url)
                 
                 logger.info(f"Job {job_id}: Downloaded and uploaded audio to GCS: {gcs_path}")
                 return local_path

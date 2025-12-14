@@ -1,0 +1,587 @@
+"""Tests for the style_loader module."""
+import json
+import os
+import pytest
+import tempfile
+from unittest.mock import MagicMock, patch, mock_open
+
+from karaoke_gen.style_loader import (
+    DEFAULT_INTRO_STYLE,
+    DEFAULT_END_STYLE,
+    DEFAULT_KARAOKE_STYLE,
+    DEFAULT_CDG_STYLE,
+    DEFAULT_STYLE_PARAMS,
+    ASSET_KEY_MAPPINGS,
+    load_style_params_from_file,
+    apply_style_overrides,
+    update_asset_paths,
+    save_style_params,
+    load_styles_from_gcs,
+    get_default_style_params,
+    get_minimal_karaoke_styles,
+    get_intro_format,
+    get_end_format,
+    get_karaoke_format,
+    get_cdg_format,
+    get_video_durations,
+    get_existing_images,
+)
+
+
+class TestDefaultStyles:
+    """Tests for default style configurations."""
+
+    def test_default_intro_style_has_required_keys(self):
+        """Test that DEFAULT_INTRO_STYLE has all required keys."""
+        required_keys = [
+            "video_duration", "existing_image", "background_color",
+            "background_image", "font", "artist_color", "title_color",
+        ]
+        for key in required_keys:
+            assert key in DEFAULT_INTRO_STYLE
+
+    def test_default_end_style_has_required_keys(self):
+        """Test that DEFAULT_END_STYLE has all required keys."""
+        required_keys = [
+            "video_duration", "background_color", "font",
+            "extra_text", "extra_text_color",
+        ]
+        for key in required_keys:
+            assert key in DEFAULT_END_STYLE
+
+    def test_default_karaoke_style_has_required_keys(self):
+        """Test that DEFAULT_KARAOKE_STYLE has all required keys."""
+        required_keys = [
+            "background_color", "font", "font_path", "primary_color",
+            "secondary_color", "outline_color", "back_color",
+            "font_size", "max_line_length",
+        ]
+        for key in required_keys:
+            assert key in DEFAULT_KARAOKE_STYLE
+
+    def test_default_cdg_style_has_required_keys(self):
+        """Test that DEFAULT_CDG_STYLE has all required keys."""
+        required_keys = [
+            "font_path", "instrumental_background",
+            "title_screen_background", "outro_background",
+        ]
+        for key in required_keys:
+            assert key in DEFAULT_CDG_STYLE
+
+    def test_default_style_params_has_all_sections(self):
+        """Test that DEFAULT_STYLE_PARAMS has all sections."""
+        assert "intro" in DEFAULT_STYLE_PARAMS
+        assert "end" in DEFAULT_STYLE_PARAMS
+        assert "karaoke" in DEFAULT_STYLE_PARAMS
+        assert "cdg" in DEFAULT_STYLE_PARAMS
+
+
+class TestAssetKeyMappings:
+    """Tests for asset key mappings."""
+
+    def test_background_mappings_exist(self):
+        """Test that background image mappings exist."""
+        assert "intro_background" in ASSET_KEY_MAPPINGS
+        assert "karaoke_background" in ASSET_KEY_MAPPINGS
+        assert "end_background" in ASSET_KEY_MAPPINGS
+
+    def test_font_mapping_is_list(self):
+        """Test that font mapping is a list (maps to multiple sections)."""
+        assert isinstance(ASSET_KEY_MAPPINGS["font"], list)
+        assert len(ASSET_KEY_MAPPINGS["font"]) == 4  # intro, karaoke, end, cdg
+
+    def test_cdg_mappings_exist(self):
+        """Test that CDG-specific mappings exist."""
+        assert "cdg_instrumental_background" in ASSET_KEY_MAPPINGS
+        assert "cdg_title_background" in ASSET_KEY_MAPPINGS
+        assert "cdg_outro_background" in ASSET_KEY_MAPPINGS
+
+
+class TestLoadStyleParamsFromFile:
+    """Tests for load_style_params_from_file function."""
+
+    def test_returns_defaults_when_no_path(self):
+        """Test that defaults are returned when no path is provided."""
+        result = load_style_params_from_file(None)
+        assert result == get_default_style_params()
+
+    def test_loads_valid_json_file(self, temp_dir):
+        """Test loading a valid JSON file."""
+        style_data = {"intro": {"video_duration": 10}}
+        style_path = os.path.join(temp_dir, "styles.json")
+        
+        with open(style_path, "w") as f:
+            json.dump(style_data, f)
+        
+        result = load_style_params_from_file(style_path)
+        assert result == style_data
+
+    def test_raises_on_file_not_found(self, temp_dir):
+        """Test that FileNotFoundError is raised when file doesn't exist."""
+        fake_path = os.path.join(temp_dir, "nonexistent.json")
+        
+        with pytest.raises(FileNotFoundError):
+            load_style_params_from_file(fake_path, exit_on_error=False)
+
+    def test_raises_on_invalid_json(self, temp_dir):
+        """Test that JSONDecodeError is raised for invalid JSON."""
+        invalid_path = os.path.join(temp_dir, "invalid.json")
+        
+        with open(invalid_path, "w") as f:
+            f.write("not valid json {{{")
+        
+        with pytest.raises(json.JSONDecodeError):
+            load_style_params_from_file(invalid_path, exit_on_error=False)
+
+    def test_raises_on_generic_error(self, temp_dir):
+        """Test that generic exceptions are raised."""
+        style_path = os.path.join(temp_dir, "styles.json")
+        
+        # Create a file that will cause a read error by mocking open
+        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
+            with pytest.raises(PermissionError):
+                load_style_params_from_file(style_path, exit_on_error=False)
+
+    def test_exit_on_error_file_not_found(self, temp_dir):
+        """Test that sys.exit is called when exit_on_error=True and file not found."""
+        fake_path = os.path.join(temp_dir, "nonexistent.json")
+        
+        with patch("sys.exit") as mock_exit:
+            # sys.exit is mocked so exception still propagates after sys.exit call
+            with pytest.raises(FileNotFoundError):
+                load_style_params_from_file(fake_path, exit_on_error=True)
+            mock_exit.assert_called_once_with(1)
+
+    def test_exit_on_error_invalid_json(self, temp_dir):
+        """Test that sys.exit is called when exit_on_error=True and invalid JSON."""
+        invalid_path = os.path.join(temp_dir, "invalid.json")
+        
+        with open(invalid_path, "w") as f:
+            f.write("not valid json")
+        
+        with patch("sys.exit") as mock_exit:
+            # sys.exit is mocked so exception still propagates after sys.exit call
+            with pytest.raises(json.JSONDecodeError):
+                load_style_params_from_file(invalid_path, exit_on_error=True)
+            mock_exit.assert_called_once_with(1)
+
+
+class TestApplyStyleOverrides:
+    """Tests for apply_style_overrides function."""
+
+    def test_applies_simple_override(self):
+        """Test applying a simple override."""
+        style_params = {"intro": {"video_duration": 5}}
+        overrides = {"intro.video_duration": "10"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["intro"]["video_duration"] == 10
+
+    def test_applies_string_override(self):
+        """Test applying a string override."""
+        style_params = {"intro": {"font": "Arial"}}
+        overrides = {"intro.font": "Helvetica"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["intro"]["font"] == "Helvetica"
+
+    def test_applies_bool_override_true(self):
+        """Test applying a boolean true override."""
+        style_params = {"karaoke": {"bold": False}}
+        overrides = {"karaoke.bold": "true"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["karaoke"]["bold"] is True
+
+    def test_applies_bool_override_false(self):
+        """Test applying a boolean false override."""
+        style_params = {"karaoke": {"bold": True}}
+        overrides = {"karaoke.bold": "false"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["karaoke"]["bold"] is False
+
+    def test_applies_bool_override_yes(self):
+        """Test applying a boolean 'yes' override."""
+        style_params = {"karaoke": {"bold": False}}
+        overrides = {"karaoke.bold": "yes"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["karaoke"]["bold"] is True
+
+    def test_warns_on_missing_key(self, mock_logger):
+        """Test that a warning is logged for missing keys."""
+        style_params = {"intro": {"video_duration": 5}}
+        overrides = {"intro.nonexistent": "value"}
+        
+        apply_style_overrides(style_params, overrides, logger=mock_logger)
+        
+        mock_logger.warning.assert_called()
+
+    def test_warns_on_missing_section(self, mock_logger):
+        """Test that a warning is logged for missing sections."""
+        style_params = {"intro": {"video_duration": 5}}
+        overrides = {"nonexistent.key": "value"}
+        
+        apply_style_overrides(style_params, overrides, logger=mock_logger)
+        
+        mock_logger.warning.assert_called()
+
+    def test_handles_type_conversion_error(self, mock_logger):
+        """Test handling of type conversion errors."""
+        style_params = {"intro": {"video_duration": 5}}
+        # This will try to convert "not_a_number" to int and fail gracefully
+        overrides = {"intro.video_duration": "not_a_number"}
+        
+        apply_style_overrides(style_params, overrides, logger=mock_logger)
+        
+        # Should use string value as fallback
+        mock_logger.warning.assert_called()
+
+    def test_handles_none_original_value(self):
+        """Test handling when original value is None."""
+        style_params = {"intro": {"background_image": None}}
+        overrides = {"intro.background_image": "/path/to/image.png"}
+        
+        apply_style_overrides(style_params, overrides)
+        
+        assert style_params["intro"]["background_image"] == "/path/to/image.png"
+
+
+class TestUpdateAssetPaths:
+    """Tests for update_asset_paths function."""
+
+    def test_updates_single_mapping(self):
+        """Test updating a single asset path."""
+        style_data = {"intro": {"background_image": None}}
+        local_assets = {"intro_background": "/local/path/background.png"}
+        
+        result = update_asset_paths(style_data, local_assets)
+        
+        assert result is True
+        assert style_data["intro"]["background_image"] == "/local/path/background.png"
+
+    def test_updates_multiple_mappings(self):
+        """Test updating multiple asset paths from font mapping."""
+        style_data = {
+            "intro": {"font": None},
+            "karaoke": {"font_path": None},
+            "end": {"font": None},
+            "cdg": {"font_path": None},
+        }
+        local_assets = {"font": "/local/path/font.ttf"}
+        
+        result = update_asset_paths(style_data, local_assets)
+        
+        assert result is True
+        assert style_data["intro"]["font"] == "/local/path/font.ttf"
+        assert style_data["karaoke"]["font_path"] == "/local/path/font.ttf"
+        assert style_data["end"]["font"] == "/local/path/font.ttf"
+        assert style_data["cdg"]["font_path"] == "/local/path/font.ttf"
+
+    def test_skips_unknown_asset_keys(self):
+        """Test that unknown asset keys are skipped."""
+        style_data = {"intro": {"background_image": None}}
+        local_assets = {"unknown_key": "/local/path/file.png"}
+        
+        result = update_asset_paths(style_data, local_assets)
+        
+        assert result is False
+        assert style_data["intro"]["background_image"] is None
+
+    def test_skips_missing_sections(self):
+        """Test that missing sections don't cause errors."""
+        style_data = {}  # No sections
+        local_assets = {"intro_background": "/local/path/background.png"}
+        
+        result = update_asset_paths(style_data, local_assets)
+        
+        assert result is False
+
+    def test_returns_false_when_no_updates(self):
+        """Test that False is returned when no updates are made."""
+        style_data = {"intro": {"background_image": None}}
+        local_assets = {}
+        
+        result = update_asset_paths(style_data, local_assets)
+        
+        assert result is False
+
+
+class TestSaveStyleParams:
+    """Tests for save_style_params function."""
+
+    def test_saves_to_file(self, temp_dir):
+        """Test saving style params to a file."""
+        style_data = {"intro": {"video_duration": 10}}
+        output_path = os.path.join(temp_dir, "output.json")
+        
+        result = save_style_params(style_data, output_path)
+        
+        assert result == output_path
+        assert os.path.exists(output_path)
+        
+        with open(output_path) as f:
+            loaded = json.load(f)
+        assert loaded == style_data
+
+    def test_formats_json_with_indent(self, temp_dir):
+        """Test that JSON is formatted with indentation."""
+        style_data = {"intro": {"video_duration": 10}}
+        output_path = os.path.join(temp_dir, "output.json")
+        
+        save_style_params(style_data, output_path)
+        
+        with open(output_path) as f:
+            content = f.read()
+        # Check for indentation (2 spaces)
+        assert "  " in content
+
+
+class TestLoadStylesFromGcs:
+    """Tests for load_styles_from_gcs function."""
+
+    def test_returns_minimal_styles_when_no_gcs_path(self, temp_dir):
+        """Test that minimal styles are returned when no GCS path provided."""
+        mock_download = MagicMock()
+        
+        styles_path, style_data = load_styles_from_gcs(
+            style_params_gcs_path=None,
+            style_assets=None,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+        )
+        
+        assert os.path.exists(styles_path)
+        assert "karaoke" in style_data
+        assert "cdg" in style_data
+        mock_download.assert_not_called()
+
+    def test_downloads_and_loads_custom_styles(self, temp_dir):
+        """Test downloading and loading custom styles from GCS."""
+        custom_styles = {"karaoke": {"font_size": 120}}
+        
+        def mock_download(gcs_path, local_path):
+            if "styles.json" in local_path:
+                with open(local_path, "w") as f:
+                    json.dump(custom_styles, f)
+        
+        styles_path, style_data = load_styles_from_gcs(
+            style_params_gcs_path="gs://bucket/styles.json",
+            style_assets=None,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+        )
+        
+        assert style_data["karaoke"]["font_size"] == 120
+
+    def test_downloads_style_assets(self, temp_dir):
+        """Test downloading style assets."""
+        custom_styles = {"karaoke": {"background_image": None}}
+        download_calls = []
+        
+        def mock_download(gcs_path, local_path):
+            download_calls.append((gcs_path, local_path))
+            if "styles.json" in local_path:
+                with open(local_path, "w") as f:
+                    json.dump(custom_styles, f)
+            else:
+                # Create a dummy asset file
+                with open(local_path, "w") as f:
+                    f.write("asset content")
+        
+        style_assets = {
+            "style_params": "gs://bucket/styles.json",
+            "karaoke_background": "gs://bucket/background.png",
+        }
+        
+        styles_path, style_data = load_styles_from_gcs(
+            style_params_gcs_path="gs://bucket/styles.json",
+            style_assets=style_assets,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+        )
+        
+        # Should have downloaded both styles.json and the background
+        assert len(download_calls) >= 2
+
+    def test_skips_style_params_asset(self, temp_dir):
+        """Test that style_params asset key is skipped (already downloaded)."""
+        custom_styles = {"karaoke": {"background_image": None}}
+        download_calls = []
+        
+        def mock_download(gcs_path, local_path):
+            download_calls.append((gcs_path, local_path))
+            if "styles.json" in local_path:
+                with open(local_path, "w") as f:
+                    json.dump(custom_styles, f)
+        
+        style_assets = {"style_params": "gs://bucket/styles.json"}
+        
+        load_styles_from_gcs(
+            style_params_gcs_path="gs://bucket/styles.json",
+            style_assets=style_assets,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+        )
+        
+        # Should only download styles.json once (not from style_assets)
+        assert len(download_calls) == 1
+
+    def test_handles_asset_download_failure(self, temp_dir, mock_logger):
+        """Test handling of asset download failures."""
+        custom_styles = {"karaoke": {"background_image": None}}
+        
+        def mock_download(gcs_path, local_path):
+            if "background" in gcs_path:
+                raise Exception("Download failed")
+            with open(local_path, "w") as f:
+                json.dump(custom_styles, f)
+        
+        style_assets = {"karaoke_background": "gs://bucket/background.png"}
+        
+        # Should not raise, just log warning
+        styles_path, style_data = load_styles_from_gcs(
+            style_params_gcs_path="gs://bucket/styles.json",
+            style_assets=style_assets,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+            logger=mock_logger,
+        )
+        
+        mock_logger.warning.assert_called()
+
+    def test_returns_defaults_on_download_failure(self, temp_dir, mock_logger):
+        """Test that defaults are returned when download fails."""
+        def mock_download(gcs_path, local_path):
+            raise Exception("Download failed")
+        
+        styles_path, style_data = load_styles_from_gcs(
+            style_params_gcs_path="gs://bucket/styles.json",
+            style_assets=None,
+            temp_dir=temp_dir,
+            download_func=mock_download,
+            logger=mock_logger,
+        )
+        
+        assert "karaoke" in style_data
+        mock_logger.warning.assert_called()
+
+
+class TestHelperFunctions:
+    """Tests for helper functions."""
+
+    def test_get_default_style_params(self):
+        """Test get_default_style_params returns fresh copy."""
+        params1 = get_default_style_params()
+        params2 = get_default_style_params()
+        
+        # Modify params1
+        params1["intro"]["video_duration"] = 999
+        
+        # params2 should be unaffected
+        assert params2["intro"]["video_duration"] != 999
+
+    def test_get_minimal_karaoke_styles(self):
+        """Test get_minimal_karaoke_styles returns minimal set."""
+        styles = get_minimal_karaoke_styles()
+        
+        assert "karaoke" in styles
+        assert "cdg" in styles
+        assert "intro" not in styles
+        assert "end" not in styles
+
+    def test_get_intro_format_with_defaults(self):
+        """Test get_intro_format with empty params uses defaults."""
+        result = get_intro_format({})
+        
+        assert result["video_duration"] == DEFAULT_INTRO_STYLE["video_duration"]
+
+    def test_get_intro_format_merges_custom(self):
+        """Test get_intro_format merges custom params."""
+        style_params = {"intro": {"video_duration": 10}}
+        result = get_intro_format(style_params)
+        
+        assert result["video_duration"] == 10
+        # Should still have default keys
+        assert "font" in result
+
+    def test_get_end_format_with_defaults(self):
+        """Test get_end_format with empty params uses defaults."""
+        result = get_end_format({})
+        
+        assert result["video_duration"] == DEFAULT_END_STYLE["video_duration"]
+
+    def test_get_end_format_merges_custom(self):
+        """Test get_end_format merges custom params."""
+        style_params = {"end": {"video_duration": 8}}
+        result = get_end_format(style_params)
+        
+        assert result["video_duration"] == 8
+
+    def test_get_karaoke_format_with_defaults(self):
+        """Test get_karaoke_format with empty params uses defaults."""
+        result = get_karaoke_format({})
+        
+        assert result["font_size"] == DEFAULT_KARAOKE_STYLE["font_size"]
+
+    def test_get_karaoke_format_merges_custom(self):
+        """Test get_karaoke_format merges custom params."""
+        style_params = {"karaoke": {"font_size": 120}}
+        result = get_karaoke_format(style_params)
+        
+        assert result["font_size"] == 120
+
+    def test_get_cdg_format_returns_none_when_missing(self):
+        """Test get_cdg_format returns None when section is missing."""
+        result = get_cdg_format({})
+        
+        assert result is None
+
+    def test_get_cdg_format_merges_custom(self):
+        """Test get_cdg_format merges custom params."""
+        style_params = {"cdg": {"font_path": "/custom/font.ttf"}}
+        result = get_cdg_format(style_params)
+        
+        assert result["font_path"] == "/custom/font.ttf"
+
+    def test_get_video_durations_defaults(self):
+        """Test get_video_durations with defaults."""
+        intro_dur, end_dur = get_video_durations({})
+        
+        assert intro_dur == DEFAULT_INTRO_STYLE["video_duration"]
+        assert end_dur == DEFAULT_END_STYLE["video_duration"]
+
+    def test_get_video_durations_custom(self):
+        """Test get_video_durations with custom values."""
+        style_params = {
+            "intro": {"video_duration": 10},
+            "end": {"video_duration": 8},
+        }
+        intro_dur, end_dur = get_video_durations(style_params)
+        
+        assert intro_dur == 10
+        assert end_dur == 8
+
+    def test_get_existing_images_defaults(self):
+        """Test get_existing_images with no existing images."""
+        title_img, end_img = get_existing_images({})
+        
+        assert title_img is None
+        assert end_img is None
+
+    def test_get_existing_images_custom(self):
+        """Test get_existing_images with custom images."""
+        style_params = {
+            "intro": {"existing_image": "/path/to/title.png"},
+            "end": {"existing_image": "/path/to/end.png"},
+        }
+        title_img, end_img = get_existing_images(style_params)
+        
+        assert title_img == "/path/to/title.png"
+        assert end_img == "/path/to/end.png"

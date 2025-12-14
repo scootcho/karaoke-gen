@@ -337,6 +337,256 @@ class TestRemoteExecutor:
         assert result["status"] == "complete"
         assert result["progress"] == 100
 
+    @pytest.mark.asyncio
+    async def test_run_pipeline_success(self):
+        """Test run_pipeline with successful job completion."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.base import PipelineStage, StageResult, StageStatus
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        class TestStage(PipelineStage):
+            @property
+            def name(self):
+                return "test"
+            
+            async def execute(self, context):
+                return StageResult(status=StageStatus.COMPLETED)
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Mock _submit_job and _monitor_job
+        with patch.object(executor, '_submit_job', new_callable=AsyncMock, return_value="job-123"):
+            with patch.object(executor, '_monitor_job', new_callable=AsyncMock, return_value="complete"):
+                results = await executor.run_pipeline([TestStage()], context)
+        
+        assert "test" in results
+        assert results["test"].status == StageStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_run_pipeline_failure(self):
+        """Test run_pipeline with job failure."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.base import PipelineStage, StageResult, StageStatus
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        class TestStage(PipelineStage):
+            @property
+            def name(self):
+                return "test"
+            
+            async def execute(self, context):
+                return StageResult(status=StageStatus.COMPLETED)
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Mock _submit_job and _monitor_job to simulate failure
+        with patch.object(executor, '_submit_job', new_callable=AsyncMock, return_value="job-123"):
+            with patch.object(executor, '_monitor_job', new_callable=AsyncMock, return_value="failed"):
+                results = await executor.run_pipeline([TestStage()], context)
+        
+        assert "test" in results
+        assert results["test"].status == StageStatus.FAILED
+        assert "failed" in results["test"].error_message
+
+    @pytest.mark.asyncio
+    async def test_run_pipeline_exception(self):
+        """Test run_pipeline handles exceptions."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.base import PipelineStage, StageResult, StageStatus
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        class TestStage(PipelineStage):
+            @property
+            def name(self):
+                return "test"
+            
+            async def execute(self, context):
+                return StageResult(status=StageStatus.COMPLETED)
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Mock _submit_job to raise exception
+        with patch.object(executor, '_submit_job', new_callable=AsyncMock, side_effect=Exception("Connection error")):
+            results = await executor.run_pipeline([TestStage()], context)
+        
+        assert "test" in results
+        assert results["test"].status == StageStatus.FAILED
+        assert "Connection error" in results["test"].error_message
+
+    @pytest.mark.asyncio
+    async def test_submit_job(self):
+        """Test _submit_job method."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.context import PipelineContext
+        import tempfile
+        import os
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        
+        # Create a temporary audio file
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
+            f.write(b"fake audio data")
+            audio_path = f.name
+        
+        try:
+            context = PipelineContext(
+                job_id="test",
+                artist="Artist",
+                title="Title",
+                input_audio_path=audio_path,
+                output_dir="/output",
+                enable_cdg=True,
+                enable_txt=True,
+            )
+            
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "job-123"}
+            
+            mock_session = MagicMock()
+            mock_session.post.return_value = mock_response
+            executor._session = mock_session
+            
+            result = await executor._submit_job(context)
+            
+            assert result == "job-123"
+            mock_session.post.assert_called_once()
+        finally:
+            os.unlink(audio_path)
+
+    @pytest.mark.asyncio
+    async def test_submit_job_with_optional_params(self):
+        """Test _submit_job with optional parameters."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.context import PipelineContext
+        import tempfile
+        import os
+        
+        executor = RemoteExecutor(service_url="https://api.example.com")
+        
+        # Create a temporary audio file
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
+            f.write(b"fake audio data")
+            audio_path = f.name
+        
+        try:
+            context = PipelineContext(
+                job_id="test",
+                artist="Artist",
+                title="Title",
+                input_audio_path=audio_path,
+                output_dir="/output",
+                brand_prefix="TestBrand",
+                discord_webhook_url="https://discord.com/webhook",
+                enable_youtube_upload=True,
+                dropbox_path="/dropbox/path",
+                gdrive_folder_id="folder123",
+            )
+            
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"job_id": "job-456"}
+            
+            mock_session = MagicMock()
+            mock_session.post.return_value = mock_response
+            executor._session = mock_session
+            
+            result = await executor._submit_job(context)
+            
+            assert result == "job-456"
+            # Check that optional params were included
+            call_args = mock_session.post.call_args
+            data = call_args.kwargs.get('data') or call_args[1].get('data')
+            assert data['brand_prefix'] == "TestBrand"
+        finally:
+            os.unlink(audio_path)
+
+    @pytest.mark.asyncio
+    async def test_monitor_job_complete(self):
+        """Test _monitor_job until job completes."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        executor = RemoteExecutor(service_url="https://api.example.com", poll_interval=0.01)
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Simulate job progression
+        call_count = [0]
+        def mock_get(*args, **kwargs):
+            call_count[0] += 1
+            mock_response = MagicMock()
+            if call_count[0] < 3:
+                mock_response.json.return_value = {"status": "processing", "progress": 50}
+            else:
+                mock_response.json.return_value = {"status": "complete", "progress": 100}
+            return mock_response
+        
+        mock_session = MagicMock()
+        mock_session.get.side_effect = mock_get
+        executor._session = mock_session
+        
+        result = await executor._monitor_job("job-123", context)
+        
+        assert result == "complete"
+
+    @pytest.mark.asyncio
+    async def test_monitor_job_handles_error(self):
+        """Test _monitor_job handles polling errors gracefully."""
+        from karaoke_gen.pipeline.executors.remote import RemoteExecutor
+        from karaoke_gen.pipeline.context import PipelineContext
+        
+        executor = RemoteExecutor(service_url="https://api.example.com", poll_interval=0.01)
+        context = PipelineContext(
+            job_id="test",
+            artist="Artist",
+            title="Title",
+            input_audio_path="/audio.flac",
+            output_dir="/output",
+        )
+        
+        # Simulate error then success
+        call_count = [0]
+        def mock_get(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("Network error")
+            mock_response = MagicMock()
+            mock_response.json.return_value = {"status": "complete", "progress": 100}
+            return mock_response
+        
+        mock_session = MagicMock()
+        mock_session.get.side_effect = mock_get
+        executor._session = mock_session
+        
+        result = await executor._monitor_job("job-123", context)
+        
+        assert result == "complete"
+
 
 class TestExecutorModuleExports:
     """Tests for module exports."""
