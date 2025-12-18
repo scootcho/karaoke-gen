@@ -17,6 +17,7 @@ from karaoke_gen.audio_fetcher import (
     AudioFetcherError,
     NoResultsError,
     DownloadError,
+    UserCancelledError,
     FlacFetchAudioFetcher,
     create_audio_fetcher,
 )
@@ -119,6 +120,15 @@ class TestExceptions:
         with pytest.raises(DownloadError) as exc_info:
             raise DownloadError("Download failed")
         assert str(exc_info.value) == "Download failed"
+
+    def test_user_cancelled_error(self):
+        """Test UserCancelledError inherits from AudioFetcherError."""
+        with pytest.raises(AudioFetcherError):
+            raise UserCancelledError("User cancelled")
+        
+        with pytest.raises(UserCancelledError) as exc_info:
+            raise UserCancelledError("User cancelled")
+        assert str(exc_info.value) == "User cancelled"
 
 
 class TestFlacFetchAudioFetcher:
@@ -353,7 +363,7 @@ class TestFlacFetchAudioFetcher:
 
     @patch('builtins.input', return_value='0')
     def test_interactive_select_cancel(self, mock_input, fetcher):
-        """Test interactive selection returns None when user cancels."""
+        """Test interactive selection raises UserCancelledError when user cancels."""
         # Use correct flacfetch Release attribute names for fallback display
         mock_result = MagicMock()
         mock_result.source_name = "YouTube"
@@ -364,8 +374,8 @@ class TestFlacFetchAudioFetcher:
         mock_result.seeders = None
         mock_result.target_file = None
 
-        result = fetcher._interactive_select([mock_result], "Artist", "Test")
-        assert result is None
+        with pytest.raises(UserCancelledError):
+            fetcher._interactive_select([mock_result], "Artist", "Test")
 
     @patch('builtins.input', side_effect=['invalid', '1'])
     def test_interactive_select_invalid_then_valid(self, mock_input, fetcher):
@@ -402,7 +412,7 @@ class TestFlacFetchAudioFetcher:
 
     @patch('builtins.input', side_effect=KeyboardInterrupt)
     def test_interactive_select_keyboard_interrupt(self, mock_input, fetcher, capsys):
-        """Test interactive selection handles keyboard interrupt."""
+        """Test interactive selection raises UserCancelledError on keyboard interrupt."""
         mock_result = MagicMock()
         mock_result.source_name = "YouTube"
         mock_result.title = "Test"
@@ -412,8 +422,8 @@ class TestFlacFetchAudioFetcher:
         mock_result.seeders = None
         mock_result.target_file = None
 
-        result = fetcher._interactive_select([mock_result], "Artist", "Test")
-        assert result is None
+        with pytest.raises(UserCancelledError):
+            fetcher._interactive_select([mock_result], "Artist", "Test")
         
         captured = capsys.readouterr()
         assert "Cancelled" in captured.out

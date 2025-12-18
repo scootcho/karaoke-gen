@@ -18,6 +18,7 @@ import glob
 import pyperclip
 from karaoke_gen import KaraokePrep
 from karaoke_gen.karaoke_finalise import KaraokeFinalise
+from karaoke_gen.audio_fetcher import UserCancelledError
 from karaoke_gen.instrumental_review import (
     AudioAnalyzer,
     WaveformGenerator,
@@ -390,7 +391,21 @@ async def async_main():
         kprep.input_media = input_audio_wav
         
         # Run KaraokePrep
-        tracks = await kprep.process()
+        try:
+            tracks = await kprep.process()
+        except UserCancelledError:
+            logger.info("Operation cancelled by user")
+            return
+        except KeyboardInterrupt:
+            logger.info("Operation cancelled by user (Ctrl+C)")
+            return
+        
+        # Filter out None tracks (can happen if prep failed for some tracks)
+        tracks = [t for t in tracks if t is not None] if tracks else []
+        
+        if not tracks:
+            logger.warning("No tracks to process")
+            return
         
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None
@@ -709,7 +724,21 @@ async def async_main():
     kprep = kprep_coroutine
 
     # Create final tracks data structure
-    tracks = await kprep.process()
+    try:
+        tracks = await kprep.process()
+    except UserCancelledError:
+        logger.info("Operation cancelled by user")
+        return
+    except KeyboardInterrupt:
+        logger.info("Operation cancelled by user (Ctrl+C)")
+        return
+
+    # Filter out None tracks (can happen if prep failed for some tracks)
+    tracks = [t for t in tracks if t is not None] if tracks else []
+    
+    if not tracks:
+        logger.warning("No tracks to process")
+        return
 
     # If prep-only mode, we're done
     if args.prep_only:
