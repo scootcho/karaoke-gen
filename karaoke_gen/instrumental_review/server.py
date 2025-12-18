@@ -270,6 +270,8 @@ class InstrumentalReviewServer:
                     detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
                 )
             
+            tmp_path = None
+            file_moved = False
             try:
                 # Save to temp file first to validate
                 with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -284,7 +286,6 @@ class InstrumentalReviewServer:
                 duration_diff = abs(uploaded_duration - expected_duration)
                 
                 if duration_diff > 0.5:
-                    os.unlink(tmp_path)
                     raise HTTPException(
                         status_code=400,
                         detail=f"Duration mismatch: uploaded file is {uploaded_duration:.2f}s, "
@@ -297,6 +298,7 @@ class InstrumentalReviewServer:
                     f"{self.base_name} (Instrumental Uploaded){ext}"
                 )
                 shutil.move(tmp_path, output_path)
+                file_moved = True
                 self.uploaded_instrumental_path = output_path
                 
                 return {
@@ -310,6 +312,13 @@ class InstrumentalReviewServer:
             except Exception as e:
                 logger.exception(f"Error uploading instrumental: {e}")
                 raise HTTPException(status_code=500, detail=str(e)) from e
+            finally:
+                # Clean up temp file if it wasn't moved
+                if tmp_path and not file_moved and os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass  # Best effort cleanup
         
         @app.post("/api/jobs/local/select-instrumental")
         async def select_instrumental(request: SelectionRequest):

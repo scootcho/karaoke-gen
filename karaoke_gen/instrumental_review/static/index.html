@@ -595,8 +595,22 @@
         let uploadedFilename = '';
         let zoomLevel = 1;
         let animationFrameId = null;
+        let audioListenersInitialized = false;
         
         const API_BASE = '/api/jobs/local';
+        
+        // HTML escape helper to prevent XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+        
+        // Named event handlers for audio (so they can be added once)
+        function onAudioPlay() { isPlaying = true; updatePlayButton(); startPlayheadAnimation(); }
+        function onAudioPause() { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); }
+        function onAudioEnded() { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); }
         
         // Initialize
         async function init() {
@@ -645,7 +659,7 @@
                 <div class="header">
                     <div class="header-left">
                         <span class="logo">🎤 Instrumental Review</span>
-                        <span class="track-info">${analysisData.artist || ''} ${analysisData.artist && analysisData.title ? '–' : ''} ${analysisData.title || ''}</span>
+                        <span class="track-info">${escapeHtml(analysisData.artist) || ''} ${analysisData.artist && analysisData.title ? '–' : ''} ${escapeHtml(analysisData.title) || ''}</span>
                     </div>
                     <div class="header-right">
                         ${hasSegments ? `
@@ -674,16 +688,16 @@
                         
                         <div class="toolbar-center">
                             <div class="audio-toggle-group">
-                                <button class="audio-toggle ${activeAudio === 'backing' ? 'active' : ''}" onclick="setActiveAudio('backing')">Backing Vocals Only</button>
-                                <button class="audio-toggle ${activeAudio === 'clean' ? 'active' : ''}" onclick="setActiveAudio('clean')">Pure Instrumental</button>
+                                <button class="audio-toggle ${activeAudio === 'backing' ? 'active' : ''}" data-audio-type="backing" onclick="setActiveAudio('backing')">Backing Vocals Only</button>
+                                <button class="audio-toggle ${activeAudio === 'clean' ? 'active' : ''}" data-audio-type="clean" onclick="setActiveAudio('clean')">Pure Instrumental</button>
                                 ${analysisData.audio_urls.with_backing ? `
-                                <button class="audio-toggle ${activeAudio === 'with_backing' ? 'active' : ''}" onclick="setActiveAudio('with_backing')">Instrumental + Backing</button>
+                                <button class="audio-toggle ${activeAudio === 'with_backing' ? 'active' : ''}" data-audio-type="with_backing" onclick="setActiveAudio('with_backing')">Instrumental + Backing</button>
                                 ` : ''}
                                 ${hasCustom ? `
-                                <button class="audio-toggle ${activeAudio === 'custom' ? 'active' : ''}" onclick="setActiveAudio('custom')">Custom</button>
+                                <button class="audio-toggle ${activeAudio === 'custom' ? 'active' : ''}" data-audio-type="custom" onclick="setActiveAudio('custom')">Custom</button>
                                 ` : ''}
                                 ${hasUploaded ? `
-                                <button class="audio-toggle ${activeAudio === 'uploaded' ? 'active' : ''}" onclick="setActiveAudio('uploaded')" title="${uploadedFilename}">Uploaded</button>
+                                <button class="audio-toggle ${activeAudio === 'uploaded' ? 'active' : ''}" data-audio-type="uploaded" onclick="setActiveAudio('uploaded')" title="${escapeHtml(uploadedFilename)}">Uploaded</button>
                                 ` : ''}
                             </div>
                             <label class="btn btn-sm btn-secondary upload-btn" title="Upload custom instrumental">
@@ -798,7 +812,7 @@
                                 <div class="selection-radio"></div>
                                 <div class="selection-label">
                                     <div class="selection-label-title">Uploaded</div>
-                                    <div class="selection-label-desc">${uploadedFilename}</div>
+                                    <div class="selection-label-desc">${escapeHtml(uploadedFilename)}</div>
                                 </div>
                             </label>
                             ` : ''}
@@ -817,17 +831,19 @@
                 setupWaveformInteraction();
             }
             
-            // Restore audio state
+            // Setup audio state - only add listeners once
             const audio = document.getElementById('audio-player');
             if (audio) {
-                audio.addEventListener('timeupdate', onTimeUpdate);
-                audio.addEventListener('play', () => { isPlaying = true; updatePlayButton(); startPlayheadAnimation(); });
-                audio.addEventListener('pause', () => { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); });
-                audio.addEventListener('ended', () => { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); });
+                if (!audioListenersInitialized) {
+                    audio.addEventListener('timeupdate', onTimeUpdate);
+                    audio.addEventListener('play', onAudioPlay);
+                    audio.addEventListener('pause', onAudioPause);
+                    audio.addEventListener('ended', onAudioEnded);
+                    audioListenersInitialized = true;
+                }
                 
                 // Restore playback position and state after audio is ready
                 audio.addEventListener('loadeddata', function onLoaded() {
-                    audio.removeEventListener('loadeddata', onLoaded);
                     audio.currentTime = currentTime;
                     if (wasPlaying) {
                         audio.play().catch(() => {});
@@ -1005,14 +1021,20 @@
             if (!playhead || !canvas || !audio) return;
             
             currentTime = audio.currentTime;
-            const x = (currentTime / duration) * canvas.width;
             
-            playhead.style.left = `${x}px`;
-            playhead.classList.remove('hidden');
-            
-            // Update time display
+            // Update time display regardless of playhead position validity
             const timeEl = document.getElementById('current-time');
             if (timeEl) timeEl.textContent = formatTime(currentTime);
+            
+            // Guard against NaN/Infinity when calculating playhead position
+            if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(canvas.width) || canvas.width <= 0) {
+                playhead.style.left = '0px';
+            } else {
+                const x = Math.max(0, Math.min((currentTime / duration) * canvas.width, canvas.width));
+                playhead.style.left = `${x}px`;
+            }
+            
+            playhead.classList.remove('hidden');
         }
         
         function updatePlayButton() {
@@ -1061,20 +1083,15 @@
             
             activeAudio = type;
             
-            // Update toggle button states directly (no full render needed)
+            // Update toggle button states using data attributes (robust detection)
             document.querySelectorAll('.audio-toggle').forEach(btn => {
-                const btnText = btn.textContent;
-                const btnType = btnText.includes('Backing Vocals') ? 'backing' :
-                               btnText.includes('Pure') ? 'clean' :
-                               btnText.includes('Instrumental +') ? 'with_backing' :
-                               btnText.includes('Uploaded') ? 'uploaded' : 'custom';
+                const btnType = btn.dataset.audioType || 'custom';
                 btn.classList.toggle('active', btnType === type);
             });
             
             // Change source and restore playback
             audio.src = getAudioUrl();
             audio.addEventListener('loadeddata', function onLoaded() {
-                audio.removeEventListener('loadeddata', onLoaded);
                 audio.currentTime = time;
                 if (wasPlaying) {
                     audio.play().catch(() => {});
@@ -1377,10 +1394,18 @@
                     throw new Error(data.detail || 'Failed to submit');
                 }
                 
+                const selectionLabels = {
+                    clean: 'Clean Instrumental',
+                    with_backing: 'With Backing Vocals',
+                    custom: 'Custom',
+                    uploaded: 'Uploaded Instrumental'
+                };
+                const selectionLabel = selectionLabels[selectedOption] || selectedOption;
+                
                 document.getElementById('app').innerHTML = `
                     <div class="success-screen">
                         <h2>✓ Selection Submitted</h2>
-                        <p>You selected: <strong>${selectedOption === 'clean' ? 'Clean Instrumental' : selectedOption === 'with_backing' ? 'With Backing Vocals' : 'Custom'}</strong></p>
+                        <p>You selected: <strong>${escapeHtml(selectionLabel)}</strong></p>
                         <p style="color: var(--text-muted);">You can close this window now.</p>
                     </div>
                 `;
