@@ -936,30 +936,34 @@
         
         function setActiveAudio(type) {
             const audio = document.getElementById('audio-player');
-            const wasPlaying = isPlaying;
-            const time = currentTime;
+            if (!audio) return;
             
-            // Pause before changing source to avoid AbortError
-            if (audio && !audio.paused) {
-                audio.pause();
-            }
+            const wasPlaying = !audio.paused;
+            const time = audio.currentTime;
+            
+            // Pause before changing source
+            audio.pause();
             
             activeAudio = type;
             
-            if (audio) {
-                audio.src = getAudioUrl();
-                audio.load();
+            // Update toggle button states directly (no full render needed)
+            document.querySelectorAll('.audio-toggle').forEach(btn => {
+                const btnText = btn.textContent;
+                const btnType = btnText.includes('Backing Vocals') ? 'backing' :
+                               btnText.includes('Pure') ? 'clean' :
+                               btnText.includes('Instrumental +') ? 'with_backing' : 'custom';
+                btn.classList.toggle('active', btnType === type);
+            });
+            
+            // Change source and restore playback
+            audio.src = getAudioUrl();
+            audio.addEventListener('loadeddata', function onLoaded() {
+                audio.removeEventListener('loadeddata', onLoaded);
                 audio.currentTime = time;
                 if (wasPlaying) {
-                    // Wait for loadeddata before playing to avoid race conditions
-                    audio.addEventListener('loadeddata', function onLoaded() {
-                        audio.removeEventListener('loadeddata', onLoaded);
-                        audio.play().catch(() => {});
-                    }, { once: true });
+                    audio.play().catch(() => {});
                 }
-            }
-            
-            render();
+            }, { once: true });
         }
         
         function getAudioUrl() {
