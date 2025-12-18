@@ -15,11 +15,15 @@ import threading
 import webbrowser
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
+import shutil
+import tempfile
 import uvicorn
+
+from pydub import AudioSegment
 
 from karaoke_gen.instrumental_review import (
     AnalysisResult,
@@ -85,6 +89,7 @@ class InstrumentalReviewServer:
         self.clean_instrumental_path = clean_instrumental_path
         self.with_backing_path = with_backing_path
         self.custom_instrumental_path: Optional[str] = None
+        self.uploaded_instrumental_path: Optional[str] = None
         self.selection: Optional[str] = None
         
         self._app: Optional[FastAPI] = None
@@ -149,9 +154,11 @@ class InstrumentalReviewServer:
                     "backing_vocals": "/api/audio/backing_vocals" if self.backing_vocals_path else None,
                     "with_backing": "/api/audio/with_backing" if self.with_backing_path else None,
                     "custom_instrumental": "/api/audio/custom_instrumental" if self.custom_instrumental_path else None,
+                    "uploaded_instrumental": "/api/audio/uploaded_instrumental" if self.uploaded_instrumental_path else None,
                 },
                 "waveform_url": "/api/waveform" if self.waveform_path else None,
                 "has_custom_instrumental": self.custom_instrumental_path is not None,
+                "has_uploaded_instrumental": self.uploaded_instrumental_path is not None,
             }
         
         @app.get("/api/jobs/local/waveform-data")
@@ -183,6 +190,7 @@ class InstrumentalReviewServer:
                 "backing_vocals": self.backing_vocals_path,
                 "with_backing": self.with_backing_path,
                 "custom_instrumental": self.custom_instrumental_path,
+                "uploaded_instrumental": self.uploaded_instrumental_path,
             }
             
             audio_path = path_map.get(stem_type)
@@ -250,10 +258,63 @@ class InstrumentalReviewServer:
                 logger.exception(f"Error creating custom instrumental: {e}")
                 raise HTTPException(status_code=500, detail=str(e)) from e
         
+        @app.post("/api/jobs/local/upload-instrumental")
+        async def upload_instrumental(file: UploadFile = File(...)):
+            """Upload a custom instrumental audio file."""
+            # Validate file type
+            allowed_extensions = {".flac", ".mp3", ".wav", ".m4a", ".ogg"}
+            ext = os.path.splitext(file.filename or "")[1].lower()
+            if ext not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+                )
+            
+            try:
+                # Save to temp file first to validate
+                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                    shutil.copyfileobj(file.file, tmp)
+                    tmp_path = tmp.name
+                
+                # Load and check duration
+                uploaded_audio = AudioSegment.from_file(tmp_path)
+                uploaded_duration = len(uploaded_audio) / 1000.0  # ms to seconds
+                
+                expected_duration = self.analysis.total_duration_seconds
+                duration_diff = abs(uploaded_duration - expected_duration)
+                
+                if duration_diff > 0.5:
+                    os.unlink(tmp_path)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Duration mismatch: uploaded file is {uploaded_duration:.2f}s, "
+                               f"expected {expected_duration:.2f}s (±0.5s allowed)"
+                    )
+                
+                # Move to final location
+                output_path = os.path.join(
+                    self.output_dir,
+                    f"{self.base_name} (Instrumental Uploaded){ext}"
+                )
+                shutil.move(tmp_path, output_path)
+                self.uploaded_instrumental_path = output_path
+                
+                return {
+                    "status": "success",
+                    "uploaded_instrumental_url": "/api/audio/uploaded_instrumental",
+                    "duration_seconds": uploaded_duration,
+                    "filename": file.filename,
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception(f"Error uploading instrumental: {e}")
+                raise HTTPException(status_code=500, detail=str(e)) from e
+        
         @app.post("/api/jobs/local/select-instrumental")
         async def select_instrumental(request: SelectionRequest):
             """Submit instrumental selection."""
-            if request.selection not in ("clean", "with_backing", "custom"):
+            if request.selection not in ("clean", "with_backing", "custom", "uploaded"):
                 raise HTTPException(status_code=400, detail=f"Invalid selection: {request.selection}")
             
             self.selection = request.selection
@@ -341,3 +402,7 @@ class InstrumentalReviewServer:
     def get_custom_instrumental_path(self) -> Optional[str]:
         """Get the path to the custom instrumental if one was created."""
         return self.custom_instrumental_path
+    
+    def get_uploaded_instrumental_path(self) -> Optional[str]:
+        """Get the path to the uploaded instrumental if one was uploaded."""
+        return self.uploaded_instrumental_path

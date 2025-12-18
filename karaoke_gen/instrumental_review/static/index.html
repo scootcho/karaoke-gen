@@ -197,20 +197,98 @@
         .audio-toggle.active { background: var(--primary); color: white; }
         
         /* Waveform canvas area */
-        .waveform-area {
+        .waveform-container {
             flex: 1;
             position: relative;
+            overflow-x: auto;
+            overflow-y: hidden;
             background: var(--waveform-bg);
             min-height: 120px;
         }
         
+        .waveform-area {
+            position: relative;
+            height: 100%;
+            min-width: 100%;
+        }
+        
         #waveform-canvas {
+            display: block;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        /* Zoom controls */
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--bg);
+            border-radius: 6px;
+            padding: 2px;
+        }
+        
+        .zoom-btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .zoom-btn:hover { background: var(--secondary); color: var(--text); }
+        .zoom-btn.active { background: var(--primary); color: white; }
+        
+        .zoom-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            min-width: 28px;
+            text-align: center;
+        }
+        
+        /* Upload button */
+        .upload-btn {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .upload-btn input[type="file"] {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            opacity: 0;
             cursor: pointer;
+        }
+        
+        .upload-progress {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 24px 32px;
+            z-index: 1000;
+            text-align: center;
+        }
+        
+        .upload-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 999;
         }
         
         .playhead {
@@ -513,6 +591,9 @@
         let activeAudio = 'backing';
         let selectedOption = 'with_backing';
         let hasCustom = false;
+        let hasUploaded = false;
+        let uploadedFilename = '';
+        let zoomLevel = 1;
         let animationFrameId = null;
         
         const API_BASE = '/api/jobs/local';
@@ -535,6 +616,11 @@
                 
                 // Set initial selection based on recommendation
                 selectedOption = analysisData.analysis.recommended_selection === 'clean' ? 'clean' : 'with_backing';
+                
+                // Check if there's already an uploaded instrumental
+                if (analysisData.has_uploaded_instrumental) {
+                    hasUploaded = true;
+                }
                 
                 render();
                 setupKeyboardShortcuts();
@@ -596,21 +682,35 @@
                                 ${hasCustom ? `
                                 <button class="audio-toggle ${activeAudio === 'custom' ? 'active' : ''}" onclick="setActiveAudio('custom')">Custom</button>
                                 ` : ''}
+                                ${hasUploaded ? `
+                                <button class="audio-toggle ${activeAudio === 'uploaded' ? 'active' : ''}" onclick="setActiveAudio('uploaded')" title="${uploadedFilename}">Uploaded</button>
+                                ` : ''}
                             </div>
+                            <label class="btn btn-sm btn-secondary upload-btn" title="Upload custom instrumental">
+                                📁 Upload
+                                <input type="file" accept=".flac,.mp3,.wav,.m4a,.ogg" onchange="handleUpload(event)">
+                            </label>
                         </div>
                         
                         <div class="toolbar-right">
-                            <span style="font-size: 0.75rem; color: var(--text-muted);">
-                                <span class="kbd">Shift</span> + drag to mute
+                            <div class="zoom-controls">
+                                <button class="zoom-btn ${zoomLevel === 1 ? 'active' : ''}" onclick="setZoom(1)" title="1x zoom">1x</button>
+                                <button class="zoom-btn ${zoomLevel === 2 ? 'active' : ''}" onclick="setZoom(2)" title="2x zoom">2x</button>
+                                <button class="zoom-btn ${zoomLevel === 4 ? 'active' : ''}" onclick="setZoom(4)" title="4x zoom">4x</button>
+                            </div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">
+                                <span class="kbd">Shift</span>+drag
                             </span>
                             <span class="kbd">Space</span>
                         </div>
                     </div>
                     
-                    <div class="waveform-area" id="waveform-area">
-                        <canvas id="waveform-canvas"></canvas>
-                        <div class="playhead hidden" id="playhead"></div>
-                        <div class="selection-overlay hidden" id="selection-overlay"></div>
+                    <div class="waveform-container" id="waveform-container">
+                        <div class="waveform-area" id="waveform-area" style="width: ${zoomLevel * 100}%;">
+                            <canvas id="waveform-canvas"></canvas>
+                            <div class="playhead hidden" id="playhead"></div>
+                            <div class="selection-overlay hidden" id="selection-overlay"></div>
+                        </div>
                     </div>
                     
                     <div class="time-axis">
@@ -692,6 +792,16 @@
                                 </div>
                             </label>
                             ` : ''}
+                            ${hasUploaded ? `
+                            <label class="selection-option ${selectedOption === 'uploaded' ? 'selected' : ''}" onclick="setSelection('uploaded')">
+                                <input type="radio" name="selection" value="uploaded">
+                                <div class="selection-radio"></div>
+                                <div class="selection-label">
+                                    <div class="selection-label-title">Uploaded</div>
+                                    <div class="selection-label-desc">${uploadedFilename}</div>
+                                </div>
+                            </label>
+                            ` : ''}
                         </div>
                         <button class="btn btn-primary submit-btn" id="submit-btn" onclick="submitSelection()">
                             ✓ Confirm & Continue
@@ -736,11 +846,16 @@
         
         function resizeCanvas() {
             const canvas = document.getElementById('waveform-canvas');
+            const container = document.getElementById('waveform-container');
             const area = document.getElementById('waveform-area');
-            if (!canvas || !area) return;
+            if (!canvas || !container || !area) return;
             
-            canvas.width = area.clientWidth;
-            canvas.height = area.clientHeight;
+            // Set canvas width based on container width * zoom level
+            canvas.width = container.clientWidth * zoomLevel;
+            canvas.height = container.clientHeight;
+            
+            // Update area width to match
+            area.style.width = `${zoomLevel * 100}%`;
         }
         
         function drawWaveform() {
@@ -951,7 +1066,8 @@
                 const btnText = btn.textContent;
                 const btnType = btnText.includes('Backing Vocals') ? 'backing' :
                                btnText.includes('Pure') ? 'clean' :
-                               btnText.includes('Instrumental +') ? 'with_backing' : 'custom';
+                               btnText.includes('Instrumental +') ? 'with_backing' :
+                               btnText.includes('Uploaded') ? 'uploaded' : 'custom';
                 btn.classList.toggle('active', btnType === type);
             });
             
@@ -971,7 +1087,8 @@
                 backing: '/api/audio/backing_vocals',
                 clean: '/api/audio/clean_instrumental',
                 with_backing: '/api/audio/with_backing',
-                custom: '/api/audio/custom_instrumental'
+                custom: '/api/audio/custom_instrumental',
+                uploaded: '/api/audio/uploaded_instrumental'
             };
             return urls[activeAudio] || urls.backing;
         }
@@ -1029,6 +1146,95 @@
         function setSelection(value) {
             selectedOption = value;
             render();
+        }
+        
+        function setZoom(level) {
+            const container = document.getElementById('waveform-container');
+            const oldScrollRatio = container ? container.scrollLeft / (container.scrollWidth - container.clientWidth || 1) : 0;
+            
+            zoomLevel = level;
+            
+            // Update zoom button states directly (avoid full render)
+            document.querySelectorAll('.zoom-btn').forEach(btn => {
+                const btnLevel = parseInt(btn.textContent);
+                btn.classList.toggle('active', btnLevel === level);
+            });
+            
+            // Resize canvas and redraw
+            resizeCanvas();
+            drawWaveform();
+            
+            // Maintain scroll position proportionally
+            if (container && zoomLevel > 1) {
+                const newMaxScroll = container.scrollWidth - container.clientWidth;
+                container.scrollLeft = oldScrollRatio * newMaxScroll;
+            }
+        }
+        
+        async function handleUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Show upload progress
+            const overlay = document.createElement('div');
+            overlay.className = 'upload-overlay';
+            overlay.id = 'upload-overlay';
+            document.body.appendChild(overlay);
+            
+            const progress = document.createElement('div');
+            progress.className = 'upload-progress';
+            progress.id = 'upload-progress';
+            progress.innerHTML = `
+                <div class="spinner" style="margin: 0 auto 12px;"></div>
+                <div>Uploading ${file.name}...</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">Validating duration...</div>
+            `;
+            document.body.appendChild(progress);
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(`${API_BASE}/upload-instrumental`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Upload failed');
+                }
+                
+                const result = await response.json();
+                hasUploaded = true;
+                uploadedFilename = file.name;
+                activeAudio = 'uploaded';
+                selectedOption = 'uploaded';
+                
+                render();
+                showSuccess(`Uploaded ${file.name} (${result.duration_seconds.toFixed(1)}s)`);
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                // Clean up progress UI
+                document.getElementById('upload-overlay')?.remove();
+                document.getElementById('upload-progress')?.remove();
+                // Reset file input so same file can be uploaded again
+                event.target.value = '';
+            }
+        }
+        
+        function showSuccess(message) {
+            const existing = document.querySelector('.alert-success-toast');
+            if (existing) existing.remove();
+            
+            const el = document.createElement('div');
+            el.className = 'alert-error'; // Reuse error styling but green
+            el.style.background = 'rgba(34, 197, 94, 0.95)';
+            el.textContent = message;
+            document.body.appendChild(el);
+            
+            setTimeout(() => el.remove(), 3000);
         }
         
         async function createCustomInstrumental() {
