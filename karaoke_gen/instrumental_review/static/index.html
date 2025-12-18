@@ -544,6 +544,13 @@
         }
         
         function render() {
+            // Pause any existing audio before rebuilding DOM to avoid AbortError
+            const existingAudio = document.getElementById('audio-player');
+            const wasPlaying = isPlaying;
+            if (existingAudio && !existingAudio.paused) {
+                existingAudio.pause();
+            }
+            
             const app = document.getElementById('app');
             const segments = analysisData.analysis.audible_segments;
             const hasSegments = segments.length > 0;
@@ -703,12 +710,27 @@
             // Restore audio state
             const audio = document.getElementById('audio-player');
             if (audio) {
-                audio.currentTime = currentTime;
                 audio.addEventListener('timeupdate', onTimeUpdate);
                 audio.addEventListener('play', () => { isPlaying = true; updatePlayButton(); startPlayheadAnimation(); });
                 audio.addEventListener('pause', () => { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); });
                 audio.addEventListener('ended', () => { isPlaying = false; updatePlayButton(); stopPlayheadAnimation(); });
-                if (isPlaying) audio.play();
+                
+                // Restore playback position and state after audio is ready
+                audio.addEventListener('loadeddata', function onLoaded() {
+                    audio.removeEventListener('loadeddata', onLoaded);
+                    audio.currentTime = currentTime;
+                    if (wasPlaying) {
+                        audio.play().catch(() => {});
+                    }
+                }, { once: true });
+                
+                // If already loaded (cached), set time directly
+                if (audio.readyState >= 2) {
+                    audio.currentTime = currentTime;
+                    if (wasPlaying) {
+                        audio.play().catch(() => {});
+                    }
+                }
             }
         }
         
@@ -917,18 +939,23 @@
             const wasPlaying = isPlaying;
             const time = currentTime;
             
+            // Pause before changing source to avoid AbortError
+            if (audio && !audio.paused) {
+                audio.pause();
+            }
+            
             activeAudio = type;
             
             if (audio) {
                 audio.src = getAudioUrl();
-                audio.load(); // Ensure the new source is loaded
+                audio.load();
                 audio.currentTime = time;
                 if (wasPlaying) {
-                    // Use a small timeout to ensure audio is ready after source change
-                    audio.play().catch(() => {
-                        // Retry once if initial play fails
-                        setTimeout(() => audio.play(), 50);
-                    });
+                    // Wait for loadeddata before playing to avoid race conditions
+                    audio.addEventListener('loadeddata', function onLoaded() {
+                        audio.removeEventListener('loadeddata', onLoaded);
+                        audio.play().catch(() => {});
+                    }, { once: true });
                 }
             }
             
@@ -1002,6 +1029,15 @@
         
         async function createCustomInstrumental() {
             const btn = document.getElementById('create-custom-btn');
+            const audio = document.getElementById('audio-player');
+            const wasPlaying = isPlaying;
+            const time = currentTime;
+            
+            // Pause audio while creating custom instrumental
+            if (audio && !audio.paused) {
+                audio.pause();
+            }
+            
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = 'Creating...';
@@ -1021,12 +1057,31 @@
                 
                 hasCustom = true;
                 selectedOption = 'custom';
-                setActiveAudio('custom');
+                activeAudio = 'custom';
+                
+                // Render first, then restore playback
+                render();
+                
+                // After render, seek to previous position and optionally resume
+                const newAudio = document.getElementById('audio-player');
+                if (newAudio) {
+                    newAudio.addEventListener('loadeddata', function onLoaded() {
+                        newAudio.removeEventListener('loadeddata', onLoaded);
+                        newAudio.currentTime = time;
+                        if (wasPlaying) {
+                            newAudio.play().catch(() => {});
+                        }
+                    }, { once: true });
+                }
             } catch (error) {
                 showError(error.message);
                 if (btn) {
                     btn.disabled = false;
                     btn.textContent = 'Create Custom';
+                }
+                // Resume playback if there was an error
+                if (wasPlaying && audio) {
+                    audio.play().catch(() => {});
                 }
             }
         }
