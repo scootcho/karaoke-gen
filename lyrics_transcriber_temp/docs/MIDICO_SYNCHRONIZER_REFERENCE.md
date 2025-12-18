@@ -65,7 +65,7 @@ The main rectangular timeline area is the core of the interface.
 
 #### Timeline Background
 - Light gray gradient background
-- **Clicking on the background does nothing** (prevents accidental deselection)
+- **Clicking on the background deselects any selected words**
 - **Click-drag creates a selection rectangle** for selecting multiple word blocks
 
 #### Zoom Control
@@ -87,6 +87,7 @@ The main rectangular timeline area is the core of the interface.
 Synced words appear as **red rectangular blocks** on the timeline:
 
 - Each block shows the word text above the red bar
+- If word text is too long to fit the width of the red bar, the alignment with the red blocks becomes "best effort". Words don't overlap, they're all readable above the red bars for that segment
 - Block width corresponds to the word's duration
 - Block horizontal position corresponds to the word's start time
 
@@ -116,7 +117,7 @@ During sync mode, unsynced words appear in **two locations**:
 
 1. **Fixed position above time bar** (left side): Shows upcoming words as red/white blocks in a horizontal row. The next word to sync is highlighted in red, subsequent words in white.
 
-2. **On the timeline, right of playhead**: Same words appear starting from the playhead position and extending to the right, moving along with the playhead during playback.
+2. **On the timeline, right of playhead**: Same words appear starting from the playhead position and extending to the right, with a pale yellow background and black text, moving along with the playhead during playback.
 
 This dual display makes it easy to:
 - See what's coming next (fixed position - easy to read while focused on timing)
@@ -132,8 +133,8 @@ A row of small icon-only buttons appears above the timeline. Key buttons we need
 
 | Icon | Tooltip | Function |
 |------|---------|----------|
-| **AI** | Split, spell or edit selected word | Opens popup to edit a single word. Useful for typos. Entering multiple space-separated words splits the selected word while preserving timing. |
-| **Clock with X** | Unsynchronize from cursor position | All word blocks **after** the current playhead position are reset to unsynced state. Critical for fixing drift in later parts of a song. |
+| **Rectangle with Pencil** | Split, spell or edit selected word | Opens popup to edit a single word. Useful for typos. Entering multiple space-separated words splits the selected word while preserving timing. |
+| **No entry symbol** | Unsynchronize from cursor position | All word blocks **after** the current playhead position are reset to unsynced state. Critical for fixing drift in later parts of a song. |
 | **Trash** | Delete selected | Deletes selected word(s) entirely. Useful for removing backing vocals or nonsense words. |
 
 ### Typical Workflow for Deleting Unwanted Words
