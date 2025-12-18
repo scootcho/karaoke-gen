@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.71.47"
+version = "0.71.60"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -10,6 +10,7 @@ packages = [
     { include = "lyrics_transcriber", from = "lyrics_transcriber_temp" }
 ]
 include = [
+    "karaoke_gen/instrumental_review/static/*",
     "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets",
     "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets/**/*",
     "lyrics_transcriber_temp/lyrics_transcriber/output/fonts/*",
