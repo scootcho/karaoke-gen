@@ -47,45 +47,57 @@ def find_audio_files(job_dir: str) -> dict:
     Find the required audio files in a karaoke job directory.
     
     Returns dict with paths to:
-    - backing_vocals: The backing vocals stem
-    - clean_instrumental: The clean instrumental (no backing vocals)
-    - with_backing: The instrumental with backing vocals (optional)
+    - backing_vocals: The backing vocals stem (in stems/)
+    - clean_instrumental: The clean instrumental (no backing vocals) - in job_dir
+    - with_backing: The instrumental with backing vocals (optional) - in job_dir
     """
     stems_dir = os.path.join(job_dir, "stems")
     
-    if not os.path.exists(stems_dir):
-        raise FileNotFoundError(f"stems/ directory not found in {job_dir}")
+    # Find backing vocals in stems/ directory
+    backing_vocals = None
+    if os.path.exists(stems_dir):
+        backing_vocals = find_file(stems_dir, [
+            "*Backing Vocals*.flac",
+            "*Backing Vocals*.mp3",
+            "*Backing Vocals*.wav",
+            "*backing_vocals*.flac",
+            "*backing_vocals*.mp3",
+        ])
     
-    # Find backing vocals - look for files with "Backing Vocals" in the name
-    backing_vocals = find_file(stems_dir, [
-        "*Backing Vocals*.flac",
-        "*Backing Vocals*.mp3",
-        "*Backing Vocals*.wav",
-        "*backing_vocals*.flac",
-        "*backing_vocals*.mp3",
-    ])
+    # Also check main directory for backing vocals
+    if not backing_vocals:
+        backing_vocals = find_file(job_dir, [
+            "*Backing Vocals*.flac",
+            "*Backing Vocals*.mp3",
+            "*Backing Vocals*.wav",
+        ])
     
     if not backing_vocals:
-        raise FileNotFoundError(f"No backing vocals file found in {stems_dir}")
+        raise FileNotFoundError(f"No backing vocals file found in {job_dir}")
     
-    # Find clean instrumental - look for "Instrumental" without "Backing"
-    # Usually has model name like "(Instrumental mel_band_roformer...)"
-    all_instrumentals = glob.glob(os.path.join(stems_dir, "*Instrumental*.flac"))
-    all_instrumentals += glob.glob(os.path.join(stems_dir, "*Instrumental*.mp3"))
+    # Find instrumentals in main job directory
+    # Look for "(Instrumental ...)" files - clean ones don't have "+BV" or "Backing"
+    all_instrumentals = glob.glob(os.path.join(job_dir, "*Instrumental*.flac"))
+    all_instrumentals += glob.glob(os.path.join(job_dir, "*Instrumental*.mp3"))
     
-    # Filter out ones that have "Backing" in the name (those are combined)
+    # Also check stems/ directory
+    if os.path.exists(stems_dir):
+        all_instrumentals += glob.glob(os.path.join(stems_dir, "*Instrumental*.flac"))
+        all_instrumentals += glob.glob(os.path.join(stems_dir, "*Instrumental*.mp3"))
+    
+    # Filter: files with "+BV" or "Backing" are combined, others are clean
     clean_instrumental = None
     with_backing = None
     
     for inst in all_instrumentals:
         basename = os.path.basename(inst)
-        if "Backing" in basename or "backing" in basename:
+        if "+BV" in basename or "Backing" in basename or "backing" in basename:
             with_backing = inst
-        else:
+        elif "Custom" not in basename:  # Skip custom instrumentals from previous runs
             clean_instrumental = inst
     
     if not clean_instrumental:
-        raise FileNotFoundError(f"No clean instrumental file found in {stems_dir}")
+        raise FileNotFoundError(f"No clean instrumental file found in {job_dir}")
     
     return {
         "backing_vocals": backing_vocals,
