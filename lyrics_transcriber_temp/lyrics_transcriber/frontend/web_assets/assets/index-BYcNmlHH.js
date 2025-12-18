@@ -38142,6 +38142,9 @@ const OndemandVideo = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path"
 const PauseIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M6 19h4V5H6zm8-14v14h4V5z"
 }), "Pause");
+const RateReviewIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2M6 14v-2.47l6.88-6.88c.2-.2.51-.2.71 0l1.77 1.77c.2.2.2.51 0 .71L8.47 14zm12 0h-7.5l2-2H18z"
+}), "RateReview");
 const RedoIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7z"
 }), "Redo");
@@ -39964,7 +39967,9 @@ function Header({
   onUndo,
   onRedo,
   canUndo,
-  canRedo
+  canRedo,
+  annotationsEnabled = true,
+  onAnnotationsToggle
 }) {
   var _a, _b, _c;
   const theme2 = useTheme();
@@ -40011,17 +40016,34 @@ function Header({
       mb: 1
     }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h4", sx: { fontSize: isMobile ? "1.3rem" : "1.5rem" }, children: "Nomad Karaoke: Lyrics Transcription Review" }),
-      isReadOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Button,
-        {
-          variant: "outlined",
-          size: "small",
-          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(UploadFileIcon, {}),
-          onClick: onFileLoad,
-          fullWidth: isMobile,
-          children: "Load File"
-        }
-      )
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+        !isReadOnly && onAnnotationsToggle && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: annotationsEnabled ? "Click to disable annotation prompts when editing" : "Click to enable annotation prompts when editing", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Chip,
+          {
+            icon: /* @__PURE__ */ jsxRuntimeExports.jsx(RateReviewIcon, {}),
+            label: annotationsEnabled ? "Feedback On" : "Feedback Off",
+            onClick: () => onAnnotationsToggle(!annotationsEnabled),
+            color: annotationsEnabled ? "primary" : "default",
+            variant: annotationsEnabled ? "filled" : "outlined",
+            size: "small",
+            sx: {
+              cursor: "pointer",
+              "& .MuiChip-icon": { fontSize: "1rem" }
+            }
+          }
+        ) }),
+        isReadOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outlined",
+            size: "small",
+            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(UploadFileIcon, {}),
+            onClick: onFileLoad,
+            fullWidth: isMobile,
+            children: "Load File"
+          }
+        )
+      ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
       display: "flex",
@@ -40859,7 +40881,9 @@ const MemoizedHeader = reactExports.memo(function MemoizedHeader2({
   onRedo,
   canUndo,
   canRedo,
-  onUnCorrectAll
+  onUnCorrectAll,
+  annotationsEnabled,
+  onAnnotationsToggle
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     Header,
@@ -40884,7 +40908,9 @@ const MemoizedHeader = reactExports.memo(function MemoizedHeader2({
       onRedo,
       canUndo,
       canRedo,
-      onUnCorrectAll
+      onUnCorrectAll,
+      annotationsEnabled,
+      onAnnotationsToggle
     }
   );
 });
@@ -40920,10 +40946,14 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
   const [annotations, setAnnotations] = reactExports.useState([]);
   const [isAnnotationModalOpen, setIsAnnotationModalOpen] = reactExports.useState(false);
   const [pendingAnnotation, setPendingAnnotation] = reactExports.useState(null);
-  const [annotationsEnabled] = reactExports.useState(() => {
+  const [annotationsEnabled, setAnnotationsEnabled] = reactExports.useState(() => {
     const saved = localStorage.getItem("annotationsEnabled");
     return saved !== null ? saved === "true" : true;
   });
+  const handleAnnotationsToggle = reactExports.useCallback((enabled) => {
+    setAnnotationsEnabled(enabled);
+    localStorage.setItem("annotationsEnabled", String(enabled));
+  }, []);
   const [correctionDetailOpen, setCorrectionDetailOpen] = reactExports.useState(false);
   const [selectedCorrection, setSelectedCorrection] = reactExports.useState(null);
   const theme2 = useTheme();
@@ -41473,7 +41503,9 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
         onRedo: handleRedo,
         canUndo,
         canRedo,
-        onUnCorrectAll: handleUnCorrectAll
+        onUnCorrectAll: handleUnCorrectAll,
+        annotationsEnabled,
+        onAnnotationsToggle: handleAnnotationsToggle
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Grid, { container: true, direction: isMobile ? "column" : "row", children: [
@@ -42025,7 +42057,7 @@ const theme = createTheme({
   spacing: (factor) => `${0.6 * factor}rem`
   // Further reduced from 0.8 * factor
 });
-const version = "0.80.0";
+const version = "0.82.0";
 const packageJson = {
   version
 };
@@ -42036,4 +42068,4 @@ ReactDOM$1.createRoot(document.getElementById("root")).render(
     /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
   ] })
 );
-//# sourceMappingURL=index-DdJTDWH3.js.map
+//# sourceMappingURL=index-BYcNmlHH.js.map
