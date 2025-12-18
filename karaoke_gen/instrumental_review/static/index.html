@@ -596,7 +596,7 @@
         let hasOriginal = false;
         let zoomLevel = 1;
         let animationFrameId = null;
-        let audioListenersInitialized = false;
+        let currentAudioElement = null;  // Track audio element reference for listener management
         
         const API_BASE = '/api/jobs/local';
         
@@ -850,15 +850,16 @@
                 setupWaveformInteraction();
             }
             
-            // Setup audio state - only add listeners once
+            // Setup audio state - add listeners when element changes
             const audio = document.getElementById('audio-player');
             if (audio) {
-                if (!audioListenersInitialized) {
+                // Check if this is a new audio element (DOM was rebuilt)
+                if (audio !== currentAudioElement) {
                     audio.addEventListener('timeupdate', onTimeUpdate);
                     audio.addEventListener('play', onAudioPlay);
                     audio.addEventListener('pause', onAudioPause);
                     audio.addEventListener('ended', onAudioEnded);
-                    audioListenersInitialized = true;
+                    currentAudioElement = audio;
                 }
                 
                 // Restore playback position and state after audio is ready
