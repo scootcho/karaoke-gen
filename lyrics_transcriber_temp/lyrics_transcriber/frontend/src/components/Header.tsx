@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton } from '@mui/material'
+import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton, Chip } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import FindReplaceIcon from '@mui/icons-material/FindReplace'
@@ -7,6 +7,7 @@ import UndoIcon from '@mui/icons-material/Undo'
 import RedoIcon from '@mui/icons-material/Redo'
 import TimerIcon from '@mui/icons-material/Timer'
 import RestoreIcon from '@mui/icons-material/Restore'
+import RateReviewIcon from '@mui/icons-material/RateReview'
 import { CorrectionData, InteractionMode } from '../types'
 import CorrectionMetrics from './CorrectionMetrics'
 import AgenticCorrectionMetrics from './AgenticCorrectionMetrics'
@@ -41,6 +42,8 @@ interface HeaderProps {
     onRedo: () => void
     canUndo: boolean
     canRedo: boolean
+    annotationsEnabled?: boolean
+    onAnnotationsToggle?: (enabled: boolean) => void
 }
 
 export default function Header({
@@ -65,6 +68,8 @@ export default function Header({
     onRedo,
     canUndo,
     canRedo,
+    annotationsEnabled = true,
+    onAnnotationsToggle,
 }: HeaderProps) {
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -135,17 +140,38 @@ export default function Header({
                 <Typography variant="h4" sx={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>
                     Nomad Karaoke: Lyrics Transcription Review
                 </Typography>
-                {isReadOnly && (
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<UploadFileIcon />}
-                        onClick={onFileLoad}
-                        fullWidth={isMobile}
-                    >
-                        Load File
-                    </Button>
-                )}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {!isReadOnly && onAnnotationsToggle && (
+                        <Tooltip title={annotationsEnabled 
+                            ? "Click to disable annotation prompts when editing" 
+                            : "Click to enable annotation prompts when editing"
+                        }>
+                            <Chip
+                                icon={<RateReviewIcon />}
+                                label={annotationsEnabled ? "Feedback On" : "Feedback Off"}
+                                onClick={() => onAnnotationsToggle(!annotationsEnabled)}
+                                color={annotationsEnabled ? "primary" : "default"}
+                                variant={annotationsEnabled ? "filled" : "outlined"}
+                                size="small"
+                                sx={{ 
+                                    cursor: 'pointer',
+                                    '& .MuiChip-icon': { fontSize: '1rem' }
+                                }}
+                            />
+                        </Tooltip>
+                    )}
+                    {isReadOnly && (
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<UploadFileIcon />}
+                            onClick={onFileLoad}
+                            fullWidth={isMobile}
+                        >
+                            Load File
+                        </Button>
+                    )}
+                </Box>
             </Box>
 
             <Box sx={{
