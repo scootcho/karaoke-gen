@@ -68,6 +68,7 @@ class InstrumentalReviewServer:
         backing_vocals_path: str,
         clean_instrumental_path: str,
         with_backing_path: Optional[str] = None,
+        original_audio_path: Optional[str] = None,
     ):
         """
         Initialize the review server.
@@ -80,6 +81,7 @@ class InstrumentalReviewServer:
             backing_vocals_path: Path to the backing vocals audio file
             clean_instrumental_path: Path to the clean instrumental audio file
             with_backing_path: Path to the instrumental with backing vocals
+            original_audio_path: Path to the original audio file (with vocals)
         """
         self.output_dir = output_dir
         self.base_name = base_name
@@ -88,6 +90,7 @@ class InstrumentalReviewServer:
         self.backing_vocals_path = backing_vocals_path
         self.clean_instrumental_path = clean_instrumental_path
         self.with_backing_path = with_backing_path
+        self.original_audio_path = original_audio_path
         self.custom_instrumental_path: Optional[str] = None
         self.uploaded_instrumental_path: Optional[str] = None
         self.selection: Optional[str] = None
@@ -155,10 +158,12 @@ class InstrumentalReviewServer:
                     "with_backing": "/api/audio/with_backing" if self.with_backing_path else None,
                     "custom_instrumental": "/api/audio/custom_instrumental" if self.custom_instrumental_path else None,
                     "uploaded_instrumental": "/api/audio/uploaded_instrumental" if self.uploaded_instrumental_path else None,
+                    "original": "/api/audio/original" if self.original_audio_path else None,
                 },
                 "waveform_url": "/api/waveform" if self.waveform_path else None,
                 "has_custom_instrumental": self.custom_instrumental_path is not None,
                 "has_uploaded_instrumental": self.uploaded_instrumental_path is not None,
+                "has_original": self.original_audio_path is not None,
             }
         
         @app.get("/api/jobs/local/waveform-data")
@@ -191,6 +196,7 @@ class InstrumentalReviewServer:
                 "with_backing": self.with_backing_path,
                 "custom_instrumental": self.custom_instrumental_path,
                 "uploaded_instrumental": self.uploaded_instrumental_path,
+                "original": self.original_audio_path,
             }
             
             audio_path = path_map.get(stem_type)
@@ -323,7 +329,7 @@ class InstrumentalReviewServer:
         @app.post("/api/jobs/local/select-instrumental")
         async def select_instrumental(request: SelectionRequest):
             """Submit instrumental selection."""
-            if request.selection not in ("clean", "with_backing", "custom", "uploaded"):
+            if request.selection not in ("clean", "with_backing", "custom", "uploaded", "original"):
                 raise HTTPException(status_code=400, detail=f"Invalid selection: {request.selection}")
             
             self.selection = request.selection

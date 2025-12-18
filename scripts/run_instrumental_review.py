@@ -50,6 +50,7 @@ def find_audio_files(job_dir: str) -> dict:
     - backing_vocals: The backing vocals stem (in stems/)
     - clean_instrumental: The clean instrumental (no backing vocals) - in job_dir
     - with_backing: The instrumental with backing vocals (optional) - in job_dir
+    - original: The original audio file (optional) - in job_dir
     """
     stems_dir = os.path.join(job_dir, "stems")
     
@@ -74,6 +75,13 @@ def find_audio_files(job_dir: str) -> dict:
     
     if not backing_vocals:
         raise FileNotFoundError(f"No backing vocals file found in {job_dir}")
+    
+    # Find original audio file - look for "(Original)" in name
+    original = find_file(job_dir, [
+        "*(Original)*.flac",
+        "*(Original)*.mp3",
+        "*(Original)*.wav",
+    ])
     
     # Find instrumentals in main job directory
     # Look for "(Instrumental ...)" files - clean ones don't have "+BV" or "Backing"
@@ -103,6 +111,7 @@ def find_audio_files(job_dir: str) -> dict:
         "backing_vocals": backing_vocals,
         "clean_instrumental": clean_instrumental,
         "with_backing": with_backing,
+        "original": original,
     }
 
 
@@ -158,6 +167,10 @@ Examples:
         logger.info(f"Found with backing: {os.path.basename(files['with_backing'])}")
     else:
         logger.info("No combined instrumental found (optional)")
+    if files["original"]:
+        logger.info(f"Found original: {os.path.basename(files['original'])}")
+    else:
+        logger.info("No original audio found (optional)")
     
     # Analyze backing vocals
     logger.info("Analyzing backing vocals...")
@@ -196,6 +209,7 @@ Examples:
         backing_vocals_path=files["backing_vocals"],
         clean_instrumental_path=files["clean_instrumental"],
         with_backing_path=files["with_backing"],
+        original_audio_path=files["original"],
     )
     
     url = f"http://localhost:{args.port}/"

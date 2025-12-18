@@ -593,6 +593,7 @@
         let hasCustom = false;
         let hasUploaded = false;
         let uploadedFilename = '';
+        let hasOriginal = false;
         let zoomLevel = 1;
         let animationFrameId = null;
         let audioListenersInitialized = false;
@@ -634,6 +635,11 @@
                 // Check if there's already an uploaded instrumental
                 if (analysisData.has_uploaded_instrumental) {
                     hasUploaded = true;
+                }
+                
+                // Check if original audio is available
+                if (analysisData.has_original) {
+                    hasOriginal = true;
                 }
                 
                 render();
@@ -688,6 +694,9 @@
                         
                         <div class="toolbar-center">
                             <div class="audio-toggle-group">
+                                ${hasOriginal ? `
+                                <button class="audio-toggle ${activeAudio === 'original' ? 'active' : ''}" data-audio-type="original" onclick="setActiveAudio('original')">Original</button>
+                                ` : ''}
                                 <button class="audio-toggle ${activeAudio === 'backing' ? 'active' : ''}" data-audio-type="backing" onclick="setActiveAudio('backing')">Backing Vocals Only</button>
                                 <button class="audio-toggle ${activeAudio === 'clean' ? 'active' : ''}" data-audio-type="clean" onclick="setActiveAudio('clean')">Pure Instrumental</button>
                                 ${analysisData.audio_urls.with_backing ? `
@@ -796,6 +805,16 @@
                                     <div class="selection-label-desc">All backing vocals included</div>
                                 </div>
                             </label>
+                            ${hasOriginal ? `
+                            <label class="selection-option ${selectedOption === 'original' ? 'selected' : ''}" onclick="setSelection('original')">
+                                <input type="radio" name="selection" value="original">
+                                <div class="selection-radio"></div>
+                                <div class="selection-label">
+                                    <div class="selection-label-title">Original Audio</div>
+                                    <div class="selection-label-desc">Full original with lead vocals</div>
+                                </div>
+                            </label>
+                            ` : ''}
                             ${hasCustom ? `
                             <label class="selection-option ${selectedOption === 'custom' ? 'selected' : ''}" onclick="setSelection('custom')">
                                 <input type="radio" name="selection" value="custom">
@@ -1101,6 +1120,7 @@
         
         function getAudioUrl() {
             const urls = {
+                original: '/api/audio/original',
                 backing: '/api/audio/backing_vocals',
                 clean: '/api/audio/clean_instrumental',
                 with_backing: '/api/audio/with_backing',
@@ -1398,7 +1418,8 @@
                     clean: 'Clean Instrumental',
                     with_backing: 'With Backing Vocals',
                     custom: 'Custom',
-                    uploaded: 'Uploaded Instrumental'
+                    uploaded: 'Uploaded Instrumental',
+                    original: 'Original Audio'
                 };
                 const selectionLabel = selectionLabels[selectedOption] || selectedOption;
                 
