@@ -130,7 +130,7 @@ def mock_sleep():
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
-async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, mock_base_args, mock_logger, caplog):
+async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, mock_base_args, mock_logger, capsys):
     """Test URL-only argument parsing."""
     mock_base_args.args = ["https://example.com/song.mp3"]
     mock_kprep_instance = MagicMock()
@@ -145,8 +145,9 @@ async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, m
     # Verify that input_media=URL is passed
     assert mock_kprep_class.call_args.kwargs["input_media"] == "https://example.com/song.mp3"
     mock_kprep_instance.process.assert_awaited_once()
-    # Verify warning in log
-    assert "Input media provided without Artist and Title" in caplog.text
+    # Verify warning in log (captured in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "Input media provided without Artist and Title" in captured.err
 
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
@@ -194,7 +195,7 @@ async def test_arg_parsing_file_artist_title(mock_kprep_class, mock_isfile, mock
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.os.path.isdir", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
-async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_isfile, mock_isurl, mock_base_args, mock_logger, caplog):
+async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_isfile, mock_isurl, mock_base_args, mock_logger, capsys):
     """Test Artist and Title only argument parsing."""
     mock_base_args.args = ["Test Artist", "Test Title"]
     mock_kprep_instance = MagicMock()
@@ -211,8 +212,9 @@ async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_
     assert mock_kprep_class.call_args.kwargs["title"] == "Test Title"
     assert mock_kprep_class.call_args.kwargs["input_media"] is None
     mock_kprep_instance.process.assert_awaited_once()
-    # Verify message about flacfetch search is shown
-    assert "flacfetch will search for" in caplog.text
+    # Verify message about flacfetch search is shown (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "flacfetch will search for" in captured.err
 
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
@@ -496,7 +498,7 @@ async def test_finalise_cdg_style_invalid_json(mock_run_review, mock_exit, mock_
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
-async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test error handling if KaraokePrep.process fails."""
     mock_base_args.args = ["Artist", "Title"]
     mock_kprep_instance = MagicMock()
@@ -519,7 +521,7 @@ async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mo
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
-async def test_error_handling_kfinalise_failure(mock_run_review, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+async def test_error_handling_kfinalise_failure(mock_run_review, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test error handling if KaraokeFinalise.process fails."""
     mock_base_args.args = ["Artist", "Title"]
     mock_kprep_instance = MagicMock()
@@ -540,8 +542,9 @@ async def test_error_handling_kfinalise_failure(mock_run_review, mock_exists, mo
     mock_kfinalise.assert_called_once() # Finalise is called
     mock_kfinalise_instance.process.assert_called_once() # Process is called
     
-    # Check the error message in log
-    assert "An error occurred during finalisation, see stack trace below: KFinalise Failed!" in caplog.text
+    # Check the error message in log (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "An error occurred during finalisation, see stack trace below: KFinalise Failed!" in captured.err
 
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
@@ -604,7 +607,7 @@ async def test_argument_passthrough(mock_run_review, mock_kfinalise, mock_kprep_
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.pyperclip.copy")
 @patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
-async def test_clipboard_copy_success(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+async def test_clipboard_copy_success(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test logging when clipboard copy succeeds."""
     mock_base_args.args = ["Artist", "Title"]
     
@@ -624,9 +627,10 @@ async def test_clipboard_copy_success(mock_run_review, mock_copy, mock_exists, m
         await gen_cli.async_main()
 
     mock_kprep_instance.process.assert_awaited_once()
-    # Check log capture for success messages
-    assert "(Folder link copied to clipboard)" in caplog.text
-    assert "(YouTube URL copied to clipboard)" in caplog.text
+    # Check log capture for success messages (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "(Folder link copied to clipboard)" in captured.err
+    assert "(YouTube URL copied to clipboard)" in captured.err
     
     mock_copy.assert_has_calls([
         call("http://share.link/fake"),
@@ -640,7 +644,7 @@ async def test_clipboard_copy_success(mock_run_review, mock_copy, mock_exists, m
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.pyperclip.copy", side_effect=Exception("Clipboard Error"))
 @patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
-async def test_clipboard_copy_failure(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+async def test_clipboard_copy_failure(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test logging when clipboard copy fails."""
     mock_base_args.args = ["Artist", "Title"]
     
@@ -660,9 +664,10 @@ async def test_clipboard_copy_failure(mock_run_review, mock_copy, mock_exists, m
         await gen_cli.async_main()
 
     mock_kprep_instance.process.assert_awaited_once()
-    # Check log capture for warning messages
-    assert "Failed to copy folder link to clipboard: Clipboard Error" in caplog.text
-    assert "Failed to copy YouTube URL to clipboard: Clipboard Error" in caplog.text
+    # Check log capture for warning messages (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "Failed to copy folder link to clipboard: Clipboard Error" in captured.err
+    assert "Failed to copy YouTube URL to clipboard: Clipboard Error" in captured.err
     
     # Verify clipboard calls were attempted
     mock_copy.assert_has_calls([

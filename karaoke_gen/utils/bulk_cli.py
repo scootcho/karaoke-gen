@@ -19,6 +19,9 @@ from karaoke_gen.karaoke_finalise import KaraokeFinalise
 # Global logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)  # Set initial log level
+# Prevent log propagation to root logger to avoid duplicate logs
+# when external packages (like lyrics_converter) configure root logger handlers
+logger.propagate = False
 
 
 async def process_track_prep(row, args, logger, log_formatter):

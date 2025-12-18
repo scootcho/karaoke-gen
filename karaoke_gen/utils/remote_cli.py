@@ -1879,6 +1879,9 @@ def main():
     """Main entry point for the remote CLI."""
     # Set up logging - same format as gen_cli.py
     logger = logging.getLogger(__name__)
+    # Prevent log propagation to root logger to avoid duplicate logs
+    # when external packages (like lyrics_converter) configure root logger handlers
+    logger.propagate = False
     log_handler = logging.StreamHandler()
     log_formatter = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d - %(levelname)s - %(module)s - %(message)s",
