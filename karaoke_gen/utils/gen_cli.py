@@ -221,7 +221,7 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         waveform_generator.generate(
             audio_path=backing_vocals_path,
             output_path=waveform_path,
-            audible_segments=analysis.audible_segments,
+            segments=analysis.audible_segments,
         )
         
         # Start the review server
