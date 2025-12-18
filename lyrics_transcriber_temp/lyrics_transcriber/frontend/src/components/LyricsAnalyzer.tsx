@@ -200,6 +200,8 @@ interface MemoizedHeaderProps {
     canUndo: boolean
     canRedo: boolean
     onUnCorrectAll: () => void
+    annotationsEnabled: boolean
+    onAnnotationsToggle: (enabled: boolean) => void
 }
 
 // Create a memoized Header component
@@ -224,7 +226,9 @@ const MemoizedHeader = memo(function MemoizedHeader({
     onRedo,
     canUndo,
     canRedo,
-    onUnCorrectAll
+    onUnCorrectAll,
+    annotationsEnabled,
+    onAnnotationsToggle
 }: MemoizedHeaderProps) {
     return (
         <Header
@@ -249,6 +253,8 @@ const MemoizedHeader = memo(function MemoizedHeader({
             canUndo={canUndo}
             canRedo={canRedo}
             onUnCorrectAll={onUnCorrectAll}
+            annotationsEnabled={annotationsEnabled}
+            onAnnotationsToggle={onAnnotationsToggle}
         />
     );
 });
@@ -295,12 +301,17 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
         wordIdsAffected: string[]
         gapId?: string
     } | null>(null)
-    const [annotationsEnabled] = useState(() => {
+    const [annotationsEnabled, setAnnotationsEnabled] = useState(() => {
         // Check localStorage for user preference
         const saved = localStorage.getItem('annotationsEnabled')
         return saved !== null ? saved === 'true' : true // Default: enabled
-        // TODO: Add UI toggle to enable/disable via setAnnotationsEnabled
     })
+    
+    // Persist annotation preference to localStorage
+    const handleAnnotationsToggle = useCallback((enabled: boolean) => {
+        setAnnotationsEnabled(enabled)
+        localStorage.setItem('annotationsEnabled', String(enabled))
+    }, [])
     
     // Correction detail card state
     const [correctionDetailOpen, setCorrectionDetailOpen] = useState(false)
@@ -1164,6 +1175,8 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 canUndo={canUndo}
                 canRedo={canRedo}
                 onUnCorrectAll={handleUnCorrectAll}
+                annotationsEnabled={annotationsEnabled}
+                onAnnotationsToggle={handleAnnotationsToggle}
             />
 
             <Grid container direction={isMobile ? 'column' : 'row'}>
