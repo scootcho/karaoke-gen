@@ -170,24 +170,37 @@ class FlacFetchAudioFetcher(AudioFetcher):
             # Import flacfetch here to avoid import errors if not installed
             from flacfetch.core.manager import FetchManager
             from flacfetch.providers.youtube import YoutubeProvider
+            from flacfetch.downloaders.youtube import YoutubeDownloader
+
+            # Try to import TorrentDownloader (has optional dependencies)
+            try:
+                from flacfetch.downloaders.torrent import TorrentDownloader
+            except ImportError:
+                TorrentDownloader = None
+                self.logger.debug("TorrentDownloader not available (missing dependencies)")
 
             self._manager = FetchManager()
 
-            # Add providers based on available API keys
+            # Add providers and downloaders based on available API keys
             if self._redacted_api_key:
                 from flacfetch.providers.redacted import RedactedProvider
 
                 self._manager.add_provider(RedactedProvider(api_key=self._redacted_api_key))
+                if TorrentDownloader:
+                    self._manager.register_downloader("Redacted", TorrentDownloader())
                 self.logger.debug("Added Redacted provider")
 
             if self._ops_api_key:
                 from flacfetch.providers.ops import OPSProvider
 
                 self._manager.add_provider(OPSProvider(api_key=self._ops_api_key))
+                if TorrentDownloader:
+                    self._manager.register_downloader("OPS", TorrentDownloader())
                 self.logger.debug("Added OPS provider")
 
-            # Always add YouTube as a fallback provider
+            # Always add YouTube as a fallback provider with its downloader
             self._manager.add_provider(YoutubeProvider())
+            self._manager.register_downloader("YouTube", YoutubeDownloader())
             self.logger.debug("Added YouTube provider")
 
         return self._manager
