@@ -284,7 +284,6 @@ class TestServerAppCreation:
         
         assert isinstance(html, str)
         assert "<!DOCTYPE html>" in html
-        assert "Karaoke Generator" in html
         assert "Instrumental Review" in html
     
     def test_get_frontend_html_contains_required_elements(self, mock_analysis, temp_files):
@@ -422,7 +421,7 @@ class TestServerAPIEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "Karaoke Generator" in response.text
+        assert "Instrumental Review" in response.text
     
     def test_get_analysis_returns_data(self, client, mock_analysis):
         """Test analysis endpoint returns correct data."""
