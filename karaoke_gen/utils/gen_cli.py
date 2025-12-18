@@ -294,6 +294,11 @@ async def async_main():
     parser = create_parser(prog="karaoke-gen")
     args = parser.parse_args()
 
+    # Set review UI URL environment variable for the lyrics transcriber review server
+    # This allows development against a local frontend dev server (e.g., http://localhost:5173)
+    if hasattr(args, 'review_ui_url') and args.review_ui_url:
+        os.environ['LYRICS_REVIEW_UI_URL'] = args.review_ui_url
+        
     # Process style overrides
     try:
         style_overrides = process_style_overrides(args.style_override, logger)
