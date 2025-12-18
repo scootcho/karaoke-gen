@@ -1104,7 +1104,57 @@
             muteRegions.sort((a, b) => a.start_seconds - b.start_seconds);
             mergeOverlappingRegions();
             hasCustom = false; // Invalidate custom when regions change
-            render();
+            
+            // Just redraw waveform instead of full render to preserve scroll position
+            drawWaveform();
+            updateMuteRegionsPanel();
+        }
+        
+        function updateMuteRegionsPanel() {
+            // Update only the mute regions panel without full DOM rebuild
+            const panel = document.querySelector('.mute-panel');
+            if (!panel) return;
+            
+            const segments = analysisData.analysis.audible_segments;
+            const hasSegments = segments.length > 0;
+            
+            panel.innerHTML = `
+                <div class="mute-panel-header">
+                    <span class="mute-panel-title">Mute Regions ${muteRegions.length > 0 ? \`(\${muteRegions.length})\` : ''}</span>
+                    ${muteRegions.length > 0 ? \`
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-sm btn-secondary" onclick="clearAllRegions()">Clear</button>
+                        \${!hasCustom ? \`<button class="btn btn-sm btn-primary" id="create-custom-btn" onclick="createCustomInstrumental()">Create Custom</button>\` : ''}
+                    </div>
+                    \` : ''}
+                </div>
+                
+                ${muteRegions.length > 0 ? \`
+                <div class="mute-regions-list">
+                    \${muteRegions.map((r, i) => \`
+                    <div class="mute-region-tag">
+                        <span onclick="seekTo(\${r.start_seconds}, true)" style="cursor: pointer">\${formatTime(r.start_seconds)} – \${formatTime(r.end_seconds)}</span>
+                        <button onclick="removeRegion(\${i})">×</button>
+                    </div>
+                    \`).join('')}
+                </div>
+                \` : \`
+                <div style="color: var(--text-muted); font-size: 0.75rem;">
+                    \${hasSegments ? 'Click segments below or <kbd class="kbd">Shift</kbd> + drag on waveform' : 'No backing vocals detected – clean instrumental recommended'}
+                </div>
+                \`}
+                
+                ${hasSegments ? \`
+                <div class="quick-segments">
+                    \${segments.slice(0, 8).map((seg, i) => \`
+                    <button class="quick-segment-btn" onclick="addSegmentAsRegion(\${i})" title="Add to mute regions">
+                        \${formatTime(seg.start_seconds)} – \${formatTime(seg.end_seconds)}
+                    </button>
+                    \`).join('')}
+                    \${segments.length > 8 ? \`<span style="font-size: 0.7rem; color: var(--text-muted); padding: 3px;">+\${segments.length - 8} more</span>\` : ''}
+                </div>
+                \` : ''}
+            `;
         }
         
         function addSegmentAsRegion(index) {
@@ -1117,13 +1167,15 @@
         function removeRegion(index) {
             muteRegions.splice(index, 1);
             hasCustom = false;
-            render();
+            drawWaveform();
+            updateMuteRegionsPanel();
         }
         
         function clearAllRegions() {
             muteRegions = [];
             hasCustom = false;
-            render();
+            drawWaveform();
+            updateMuteRegionsPanel();
         }
         
         function mergeOverlappingRegions() {
