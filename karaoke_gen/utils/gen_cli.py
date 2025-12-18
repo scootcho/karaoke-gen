@@ -59,6 +59,89 @@ def _resolve_path_for_cwd(path: str, track_dir: str) -> str:
     return path
 
 
+def auto_select_instrumental(track: dict, track_dir: str, logger: logging.Logger) -> str:
+    """
+    Auto-select the best instrumental file when --skip_instrumental_review is used.
+    
+    Selection priority:
+    1. Padded combined instrumental (+BV) - synchronized with vocals + backing vocals
+    2. Non-padded combined instrumental (+BV) - has backing vocals
+    3. Padded clean instrumental - synchronized with vocals
+    4. Non-padded clean instrumental - basic instrumental
+    
+    Args:
+        track: The track dictionary from KaraokePrep containing separated audio info
+        track_dir: The track output directory (we're already chdir'd into it)
+        logger: Logger instance
+        
+    Returns:
+        Path to the selected instrumental file
+        
+    Raises:
+        FileNotFoundError: If no suitable instrumental file can be found
+    """
+    separated = track.get("separated_audio", {})
+    
+    # Look for combined instrumentals first (they include backing vocals)
+    combined = separated.get("combined_instrumentals", {})
+    for model, path in combined.items():
+        if path:
+            resolved = _resolve_path_for_cwd(path, track_dir)
+            # Prefer padded version if it exists
+            base, ext = os.path.splitext(resolved)
+            padded = f"{base} (Padded){ext}"
+            if os.path.exists(padded):
+                logger.info(f"Auto-selected padded combined instrumental: {padded}")
+                return padded
+            if os.path.exists(resolved):
+                logger.info(f"Auto-selected combined instrumental: {resolved}")
+                return resolved
+    
+    # Fall back to clean instrumental
+    clean = separated.get("clean_instrumental", {})
+    if clean.get("instrumental"):
+        resolved = _resolve_path_for_cwd(clean["instrumental"], track_dir)
+        # Prefer padded version if it exists
+        base, ext = os.path.splitext(resolved)
+        padded = f"{base} (Padded){ext}"
+        if os.path.exists(padded):
+            logger.info(f"Auto-selected padded clean instrumental: {padded}")
+            return padded
+        if os.path.exists(resolved):
+            logger.info(f"Auto-selected clean instrumental: {resolved}")
+            return resolved
+    
+    # If separated_audio doesn't have what we need, search the directory
+    # This handles edge cases and custom instrumentals
+    logger.info("No instrumental found in separated_audio, searching directory...")
+    instrumental_files = glob.glob("*(Instrumental*.flac") + glob.glob("*(Instrumental*.wav")
+    
+    # Sort to prefer padded versions and combined instrumentals
+    padded_combined = [f for f in instrumental_files if "(Padded)" in f and "+BV" in f]
+    if padded_combined:
+        logger.info(f"Auto-selected from directory: {padded_combined[0]}")
+        return padded_combined[0]
+    
+    padded_files = [f for f in instrumental_files if "(Padded)" in f]
+    if padded_files:
+        logger.info(f"Auto-selected from directory: {padded_files[0]}")
+        return padded_files[0]
+    
+    combined_files = [f for f in instrumental_files if "+BV" in f]
+    if combined_files:
+        logger.info(f"Auto-selected from directory: {combined_files[0]}")
+        return combined_files[0]
+    
+    if instrumental_files:
+        logger.info(f"Auto-selected from directory: {instrumental_files[0]}")
+        return instrumental_files[0]
+    
+    raise FileNotFoundError(
+        "No instrumental file found. Audio separation may have failed. "
+        "Check the stems/ directory for separated audio files."
+    )
+
+
 def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     """
     Run the instrumental review UI to let user select the best instrumental track.
@@ -638,13 +721,60 @@ async def async_main():
         logger.info(f"Changing to directory: {track_dir}")
         os.chdir(track_dir)
 
-        # Run instrumental review UI if not skipped
+        # Select instrumental file - either via web UI or auto-selection
+        # This ALWAYS produces a selected file - no silent fallback to legacy code
         selected_instrumental_file = None
-        if not getattr(args, 'skip_instrumental_review', False):
+        skip_review = getattr(args, 'skip_instrumental_review', False)
+        
+        if skip_review:
+            # Auto-select instrumental when review is skipped (non-interactive mode)
+            logger.info("Instrumental review skipped (--skip_instrumental_review), auto-selecting instrumental file...")
+            try:
+                selected_instrumental_file = auto_select_instrumental(
+                    track=track,
+                    track_dir=track_dir,
+                    logger=logger,
+                )
+            except FileNotFoundError as e:
+                logger.error(f"Failed to auto-select instrumental: {e}")
+                logger.error("Check that audio separation completed successfully.")
+                sys.exit(1)
+                return  # Explicit return for testing
+        else:
+            # Run instrumental review web UI
             selected_instrumental_file = run_instrumental_review(
                 track=track,
                 logger=logger,
             )
+            
+            # If instrumental review failed/returned None, show error and exit
+            # NO SILENT FALLBACK - we want to know if the new flow has issues
+            if selected_instrumental_file is None:
+                logger.error("")
+                logger.error("=" * 70)
+                logger.error("INSTRUMENTAL SELECTION FAILED")
+                logger.error("=" * 70)
+                logger.error("")
+                logger.error("The instrumental review UI could not find the required files.")
+                logger.error("")
+                logger.error("Common causes:")
+                logger.error("  - No backing vocals file was found (check stems/ directory)")
+                logger.error("  - No clean instrumental was found (audio separation may have failed)")
+                logger.error("  - Path resolution failed after directory change")
+                logger.error("")
+                logger.error("To investigate:")
+                logger.error("  - Check the stems/ directory for: *Backing Vocals*.flac and *Instrumental*.flac")
+                logger.error("  - Look for separation errors earlier in the log")
+                logger.error("  - Verify audio separation completed without errors")
+                logger.error("")
+                logger.error("Workarounds:")
+                logger.error("  - Re-run with --skip_instrumental_review to auto-select an instrumental")
+                logger.error("  - Re-run the full pipeline to regenerate stems")
+                logger.error("")
+                sys.exit(1)
+                return  # Explicit return for testing
+        
+        logger.info(f"Selected instrumental file: {selected_instrumental_file}")
         
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None
