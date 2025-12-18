@@ -162,16 +162,16 @@ class TestFlacFetchAudioFetcher:
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_search_success(self, mock_get_manager, fetcher):
         """Test successful search returns results."""
-        # Set up mock
+        # Set up mock using correct flacfetch Release attribute names
         mock_manager = MagicMock()
         mock_result = MagicMock()
         mock_result.title = "Found Song"
         mock_result.artist = "Found Artist"
-        mock_result.url = "https://example.com/song"
-        mock_result.provider = "YouTube"
-        mock_result.duration = 200
-        mock_result.quality = "320kbps"
-        mock_result.id = "abc123"
+        mock_result.download_url = "https://example.com/song"
+        mock_result.source_name = "YouTube"
+        mock_result.duration_seconds = 200
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="320kbps"))
+        mock_result.info_hash = "abc123"
         mock_manager.search.return_value = [mock_result]
         mock_get_manager.return_value = mock_manager
 
@@ -273,14 +273,14 @@ class TestFlacFetchAudioFetcher:
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_search_and_download_auto_select(self, mock_get_manager, fetcher, tmp_path):
         """Test search_and_download with auto_select=True uses select_best."""
-        # Set up mock
+        # Set up mock using correct flacfetch Release attribute names
         mock_manager = MagicMock()
         mock_result = MagicMock()
         mock_result.title = "Test Song"
         mock_result.artist = "Test Artist"
-        mock_result.provider = "YouTube"
-        mock_result.duration = 180
-        mock_result.quality = "FLAC"
+        mock_result.source_name = "YouTube"
+        mock_result.duration_seconds = 180
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
         mock_manager.search.return_value = [mock_result]
         mock_manager.select_best.return_value = mock_result
         downloaded_path = str(tmp_path / "song.flac")
@@ -305,14 +305,16 @@ class TestFlacFetchAudioFetcher:
     @patch('builtins.input', return_value='1')
     def test_search_and_download_interactive_select(self, mock_input, mock_get_manager, fetcher, tmp_path, capsys):
         """Test search_and_download with interactive selection."""
-        # Set up mock
+        # Set up mock using correct flacfetch Release attribute names
         mock_manager = MagicMock()
         mock_result = MagicMock()
         mock_result.title = "Test Song"
         mock_result.artist = "Test Artist"
-        mock_result.provider = "YouTube"
-        mock_result.duration = 180
-        mock_result.quality = "320kbps"
+        mock_result.source_name = "YouTube"
+        mock_result.duration_seconds = 180
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="320kbps"))
+        mock_result.seeders = None
+        mock_result.target_file = None
         mock_manager.search.return_value = [mock_result]
         downloaded_path = str(tmp_path / "song.flac")
         mock_manager.download.return_value = downloaded_path
@@ -352,12 +354,15 @@ class TestFlacFetchAudioFetcher:
     @patch('builtins.input', return_value='0')
     def test_interactive_select_cancel(self, mock_input, fetcher):
         """Test interactive selection returns None when user cancels."""
+        # Use correct flacfetch Release attribute names for fallback display
         mock_result = MagicMock()
-        mock_result.provider = "YouTube"
+        mock_result.source_name = "YouTube"
         mock_result.title = "Test"
         mock_result.artist = "Artist"
-        mock_result.quality = "FLAC"
-        mock_result.duration = 180
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
+        mock_result.duration_seconds = 180
+        mock_result.seeders = None
+        mock_result.target_file = None
 
         result = fetcher._interactive_select([mock_result], "Artist", "Test")
         assert result is None
@@ -366,11 +371,13 @@ class TestFlacFetchAudioFetcher:
     def test_interactive_select_invalid_then_valid(self, mock_input, fetcher):
         """Test interactive selection handles invalid input gracefully."""
         mock_result = MagicMock()
-        mock_result.provider = "YouTube"
+        mock_result.source_name = "YouTube"
         mock_result.title = "Test"
         mock_result.artist = "Artist"
-        mock_result.quality = "FLAC"
-        mock_result.duration = 180
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
+        mock_result.duration_seconds = 180
+        mock_result.seeders = None
+        mock_result.target_file = None
 
         result = fetcher._interactive_select([mock_result], "Artist", "Test")
         assert result == mock_result
@@ -379,11 +386,13 @@ class TestFlacFetchAudioFetcher:
     def test_interactive_select_out_of_range_then_valid(self, mock_input, fetcher, capsys):
         """Test interactive selection handles out-of-range input."""
         mock_result = MagicMock()
-        mock_result.provider = "YouTube"
+        mock_result.source_name = "YouTube"
         mock_result.title = "Test"
         mock_result.artist = "Artist"
-        mock_result.quality = "FLAC"
-        mock_result.duration = 180
+        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
+        mock_result.duration_seconds = 180
+        mock_result.seeders = None
+        mock_result.target_file = None
 
         result = fetcher._interactive_select([mock_result], "Artist", "Test")
         assert result == mock_result
@@ -395,11 +404,13 @@ class TestFlacFetchAudioFetcher:
     def test_interactive_select_keyboard_interrupt(self, mock_input, fetcher, capsys):
         """Test interactive selection handles keyboard interrupt."""
         mock_result = MagicMock()
-        mock_result.provider = "YouTube"
+        mock_result.source_name = "YouTube"
         mock_result.title = "Test"
         mock_result.artist = "Artist"
         mock_result.quality = None
-        mock_result.duration = None
+        mock_result.duration_seconds = None
+        mock_result.seeders = None
+        mock_result.target_file = None
 
         result = fetcher._interactive_select([mock_result], "Artist", "Test")
         assert result is None
