@@ -29,7 +29,7 @@ from .audio_processor import AudioProcessor
 from .lyrics_processor import LyricsProcessor
 from .video_generator import VideoGenerator
 from .video_background_processor import VideoBackgroundProcessor
-from .audio_fetcher import create_audio_fetcher, AudioFetcherError, NoResultsError
+from .audio_fetcher import create_audio_fetcher, AudioFetcherError, NoResultsError, UserCancelledError
 
 
 class KaraokePrep:
@@ -422,6 +422,9 @@ class KaraokePrep:
                         # No still image for audio-only downloads
                         processed_track["input_still_image"] = None
                         
+                    except UserCancelledError:
+                        # User cancelled - propagate up to CLI for graceful exit
+                        raise
                     except NoResultsError as e:
                         self.logger.error(f"No audio found: {e}")
                         return None

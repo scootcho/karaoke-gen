@@ -7,10 +7,17 @@ using flacfetch, replacing the previous direct yt-dlp usage.
 
 import logging
 import os
+import signal
+import sys
 import tempfile
+import threading
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from typing import List, Optional
+
+# Global flag to track if user requested cancellation via Ctrl+C
+_interrupt_requested = False
 
 
 @dataclass
@@ -56,6 +63,19 @@ class DownloadError(AudioFetcherError):
     """Raised when download fails."""
 
     pass
+
+
+class UserCancelledError(AudioFetcherError):
+    """Raised when user explicitly cancels the operation (e.g., enters 0 or Ctrl+C)."""
+
+    pass
+
+
+def _check_interrupt():
+    """Check if interrupt was requested and raise UserCancelledError if so."""
+    global _interrupt_requested
+    if _interrupt_requested:
+        raise UserCancelledError("Operation cancelled by user")
 
 
 class AudioFetcher(ABC):
@@ -336,6 +356,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
         Raises:
             NoResultsError: If no results are found
             DownloadError: If download fails
+            UserCancelledError: If user cancels (Ctrl+C or enters 0)
         """
         from flacfetch.core.models import TrackQuery
 
@@ -343,7 +364,9 @@ class FlacFetchAudioFetcher(AudioFetcher):
         query = TrackQuery(artist=artist, title=title)
 
         self.logger.info(f"Searching for: {artist} - {title}")
-        results = manager.search(query)
+        
+        # Run search in a thread so we can handle Ctrl+C
+        results = self._interruptible_search(manager, query)
 
         if not results:
             raise NoResultsError(f"No results found for: {artist} - {title}")
@@ -358,6 +381,8 @@ class FlacFetchAudioFetcher(AudioFetcher):
             # Interactive mode: present options to user
             selected = self._interactive_select(results, artist, title)
 
+        # Note: _interactive_select now raises UserCancelledError instead of returning None
+        # This check is kept as a safety net
         if selected is None:
             raise NoResultsError(f"No result selected for: {artist} - {title}")
 
@@ -395,8 +420,73 @@ class FlacFetchAudioFetcher(AudioFetcher):
                 quality=quality_str,
             )
 
+        except (UserCancelledError, KeyboardInterrupt):
+            # Let cancellation exceptions propagate without wrapping
+            raise
         except Exception as e:
             raise DownloadError(f"Failed to download {artist} - {title}: {e}") from e
+
+    def _interruptible_search(self, manager, query) -> list:
+        """
+        Run search in a way that can be interrupted by Ctrl+C.
+        
+        The flacfetch search is a blocking network operation that doesn't
+        respond to SIGINT while running. This method runs it in a background
+        thread and periodically checks for interrupts.
+        
+        Args:
+            manager: The FetchManager instance
+            query: The TrackQuery to search for
+            
+        Returns:
+            List of search results
+            
+        Raises:
+            UserCancelledError: If user presses Ctrl+C during search
+        """
+        global _interrupt_requested
+        _interrupt_requested = False
+        result_container = {"results": None, "error": None}
+        
+        def do_search():
+            try:
+                result_container["results"] = manager.search(query)
+            except Exception as e:
+                result_container["error"] = e
+        
+        # Set up signal handler for immediate response to Ctrl+C
+        original_handler = signal.getsignal(signal.SIGINT)
+        
+        def interrupt_handler(signum, frame):
+            global _interrupt_requested
+            _interrupt_requested = True
+            # Print immediately so user knows it was received
+            print("\nCancelling... please wait", file=sys.stderr)
+        
+        signal.signal(signal.SIGINT, interrupt_handler)
+        
+        try:
+            # Start search in background thread
+            search_thread = threading.Thread(target=do_search, daemon=True)
+            search_thread.start()
+            
+            # Wait for completion with periodic interrupt checks
+            while search_thread.is_alive():
+                search_thread.join(timeout=0.1)  # Check every 100ms
+                if _interrupt_requested:
+                    # Don't wait for thread - it's a daemon and will be killed
+                    raise UserCancelledError("Search cancelled by user (Ctrl+C)")
+            
+            # Check for errors from the search
+            if result_container["error"] is not None:
+                raise result_container["error"]
+                
+            return result_container["results"]
+            
+        finally:
+            # Restore original signal handler
+            signal.signal(signal.SIGINT, original_handler)
+            _interrupt_requested = False
 
     def _interactive_select(self, results: list, artist: str, title: str) -> object:
         """
@@ -411,19 +501,25 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
         Returns:
             The selected Release object
+            
+        Raises:
+            UserCancelledError: If user cancels selection
         """
         try:
             # Use flacfetch's built-in CLIHandler for rich display
             from flacfetch.interface.cli import CLIHandler
 
             handler = CLIHandler(target_artist=artist)
-            return handler.select_release(results)
+            result = handler.select_release(results)
+            if result is None:
+                # User selected 0 to cancel
+                raise UserCancelledError("Selection cancelled by user")
+            return result
         except ImportError:
             # Fallback to basic display if CLIHandler not available
             return self._basic_interactive_select(results, artist, title)
         except (KeyboardInterrupt, EOFError):
-            print("\nCancelled")
-            return None
+            raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
         except (AttributeError, TypeError):
             # Fallback if results aren't proper Release objects (e.g., in tests)
             return self._basic_interactive_select(results, artist, title)
@@ -439,6 +535,9 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
         Returns:
             The selected Release object
+            
+        Raises:
+            UserCancelledError: If user cancels selection
         """
         print(f"\n{'=' * 60}")
         print(f"Search Results for: {artist} - {title}")
@@ -482,7 +581,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
                 if choice == "0":
                     self.logger.info("User cancelled selection")
-                    return None
+                    raise UserCancelledError("Selection cancelled by user")
 
                 choice_num = int(choice)
                 if 1 <= choice_num <= len(results):
@@ -496,7 +595,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
                 print("Please enter a valid number")
             except KeyboardInterrupt:
                 print("\nCancelled")
-                return None
+                raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
 
 
 def create_audio_fetcher(
