@@ -36255,7 +36255,7 @@ const ZoomInIcon = createSvgIcon([/* @__PURE__ */ jsxRuntimeExports.jsx("path", 
 const ZoomOutIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14M7 9h5v1H7z"
 }), "ZoomOut");
-const ArrowBack = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+const ArrowBackIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"
 }), "ArrowBack");
 const ArrowForwardIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
@@ -36614,7 +36614,7 @@ const TimelineControls = reactExports.memo(({
           onClick: onScrollLeft,
           disabled: visibleStartTime <= startTime,
           size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBack, {})
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {})
         }
       ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Zoom Out (Show More Time)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -38118,6 +38118,12 @@ function PreviewVideoSection({
     ) })
   ] });
 }
+const BlockIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2M4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12m8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8"
+}), "Block");
+const ClearAllIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M5 13h14v-2H5zm-2 4h14v-2H3zM7 7v2h14V7z"
+}), "ClearAll");
 const CloudUpload = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96M14 13v4h-4v-4H7l5-5 5 5z"
 }), "CloudUpload");
@@ -38127,6 +38133,9 @@ const ContentPasteIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("pa
 const EditIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"
 }), "Edit");
+const EditNoteIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M3 10h11v2H3zm0-2h11V6H3zm0 8h7v-2H3zm15.01-3.13.71-.71c.39-.39 1.02-.39 1.41 0l.71.71c.39.39.39 1.02 0 1.41l-.71.71zm-.71.71-5.3 5.3V21h2.12l5.3-5.3z"
+}), "EditNote");
 const FindReplaceIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M11 6c1.38 0 2.63.56 3.54 1.46L12 10h6V4l-2.05 2.05C14.68 4.78 12.93 4 11 4c-3.53 0-6.43 2.61-6.92 6H6.1c.46-2.28 2.48-4 4.9-4m5.64 9.14c.66-.9 1.12-1.97 1.28-3.14H15.9c-.46 2.28-2.48 4-4.9 4-1.38 0-2.63-.56-3.54-1.46L10 12H4v6l2.05-2.05C7.32 17.22 9.07 18 11 18c1.55 0 2.98-.51 4.14-1.36L20 21.49 21.49 20z"
 }), "FindReplace");
@@ -38151,6 +38160,9 @@ const RedoIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
 const RestoreIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9m-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"
 }), "Restore");
+const SyncIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8m0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4z"
+}), "Sync");
 const TimerIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M9 1h6v2H9zm10.03 6.39 1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61M13 14h-2V8h2z"
 }), "Timer");
@@ -38411,7 +38423,7 @@ function ReviewChangesModal({
             {
               onClick: onClose,
               color: "warning",
-              startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBack, {}),
+              startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {}),
               sx: { mr: "auto" },
               children: "Cancel"
             }
@@ -38431,26 +38443,1498 @@ function ReviewChangesModal({
     }
   );
 }
+function ModeSelectionModal({
+  open,
+  onClose,
+  onSelectReplace,
+  onSelectResync,
+  hasExistingLyrics
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    Dialog,
+    {
+      open,
+      onClose,
+      maxWidth: "sm",
+      fullWidth: true,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flex: 1 }, children: "Edit All Lyrics" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: onClose, sx: { ml: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseIcon, {}) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { dividers: true, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body1", sx: { mb: 3 }, children: "Choose how you want to edit the lyrics:" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 2 }, children: [
+            hasExistingLyrics && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Paper,
+              {
+                sx: {
+                  p: 2,
+                  cursor: "pointer",
+                  border: 2,
+                  borderColor: "primary.main",
+                  "&:hover": {
+                    bgcolor: "action.hover",
+                    borderColor: "primary.dark"
+                  }
+                },
+                onClick: onSelectResync,
+                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "flex-start", gap: 2 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SyncIcon, { color: "primary", sx: { fontSize: 40, mt: 0.5 } }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", color: "primary", children: "Re-sync Existing Lyrics" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", color: "text.secondary", children: "Keep the current lyrics text and fix timing issues. Use this when lyrics are correct but timing has drifted, especially in the second half of the song." }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", color: "success.main", sx: { mt: 1, display: "block" }, children: "Recommended for fixing timing drift" })
+                  ] })
+                ] })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Paper,
+              {
+                sx: {
+                  p: 2,
+                  cursor: "pointer",
+                  border: 1,
+                  borderColor: "divider",
+                  "&:hover": {
+                    bgcolor: "action.hover",
+                    borderColor: "text.secondary"
+                  }
+                },
+                onClick: onSelectReplace,
+                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "flex-start", gap: 2 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ContentPasteIcon, { sx: { fontSize: 40, mt: 0.5, color: "text.secondary" } }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", children: "Replace All Lyrics" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", color: "text.secondary", children: "Paste completely new lyrics from clipboard and manually sync timing for all words from scratch." }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", color: "warning.main", sx: { mt: 1, display: "block" }, children: "All existing timing data will be lost" })
+                  ] })
+                ] })
+              }
+            )
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(DialogActions, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: onClose, color: "inherit", children: "Cancel" }) })
+      ]
+    }
+  );
+}
+const TIME_BAR_HEIGHT = 28;
+const WORD_BLOCK_HEIGHT = 24;
+const WORD_LEVEL_SPACING = 50;
+const CANVAS_PADDING = 8;
+const TEXT_ABOVE_BLOCK = 14;
+const RESIZE_HANDLE_SIZE = 8;
+const RESIZE_HANDLE_HITAREA = 12;
+const PLAYHEAD_COLOR = "#ffffff";
+const WORD_BLOCK_COLOR = "#d32f2f";
+const WORD_BLOCK_SELECTED_COLOR = "#b71c1c";
+const WORD_BLOCK_CURRENT_COLOR = "#f44336";
+const WORD_TEXT_CURRENT_COLOR = "#d32f2f";
+const UPCOMING_WORD_BG = "#fff9c4";
+const UPCOMING_WORD_TEXT = "#000000";
+const TIME_BAR_BG = "#f5f5f5";
+const TIME_BAR_TEXT = "#666666";
+const TIMELINE_BG = "#e0e0e0";
+function buildWordToSegmentMap(segments) {
+  const map = /* @__PURE__ */ new Map();
+  segments.forEach((segment, idx) => {
+    segment.words.forEach((word) => {
+      map.set(word.id, idx);
+    });
+  });
+  return map;
+}
+function calculateWordLevels(words, segments) {
+  const levels = /* @__PURE__ */ new Map();
+  const wordToSegment = buildWordToSegmentMap(segments);
+  const segmentsWithTiming = segments.map((segment, idx) => {
+    const timedWords = segment.words.filter((w) => w.start_time !== null);
+    const minStart = timedWords.length > 0 ? Math.min(...timedWords.map((w) => w.start_time)) : Infinity;
+    return { idx, minStart };
+  }).filter((s) => s.minStart !== Infinity).sort((a, b) => a.minStart - b.minStart);
+  const segmentLevels = /* @__PURE__ */ new Map();
+  segmentsWithTiming.forEach(({ idx }, orderIndex) => {
+    segmentLevels.set(idx, orderIndex % 2);
+  });
+  for (const word of words) {
+    const segmentIdx = wordToSegment.get(word.id);
+    if (segmentIdx !== void 0 && segmentLevels.has(segmentIdx)) {
+      levels.set(word.id, segmentLevels.get(segmentIdx));
+    } else {
+      levels.set(word.id, 0);
+    }
+  }
+  return levels;
+}
+function formatTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
+const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
+  words,
+  segments,
+  visibleStartTime,
+  visibleEndTime,
+  currentTime,
+  selectedWordIds,
+  onWordClick,
+  onBackgroundClick,
+  onTimeBarClick,
+  onSelectionComplete,
+  onWordTimingChange,
+  onWordsMove,
+  syncWordIndex,
+  isManualSyncing,
+  onScrollChange,
+  audioDuration,
+  zoomSeconds,
+  height: height2 = 200
+}) {
+  const canvasRef = reactExports.useRef(null);
+  const containerRef = reactExports.useRef(null);
+  const [canvasWidth, setCanvasWidth] = reactExports.useState(800);
+  const animationFrameRef = reactExports.useRef();
+  const wordLevelsRef = reactExports.useRef(/* @__PURE__ */ new Map());
+  const [dragMode, setDragMode] = reactExports.useState("none");
+  const dragStartRef = reactExports.useRef(null);
+  const dragWordIdRef = reactExports.useRef(null);
+  const dragOriginalTimesRef = reactExports.useRef(/* @__PURE__ */ new Map());
+  const [selectionRect, setSelectionRect] = reactExports.useState(null);
+  const [hoveredWordId, setHoveredWordId] = reactExports.useState(null);
+  const [cursorStyle, setCursorStyle] = reactExports.useState("default");
+  reactExports.useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setCanvasWidth(containerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    const resizeObserver = new ResizeObserver(updateWidth);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    return () => resizeObserver.disconnect();
+  }, []);
+  reactExports.useEffect(() => {
+    wordLevelsRef.current = calculateWordLevels(words, segments);
+  }, [words, segments]);
+  const timeToX = reactExports.useCallback((time) => {
+    const duration2 = visibleEndTime - visibleStartTime;
+    if (duration2 <= 0) return 0;
+    return CANVAS_PADDING + (time - visibleStartTime) / duration2 * (canvasWidth - CANVAS_PADDING * 2);
+  }, [visibleStartTime, visibleEndTime, canvasWidth]);
+  const xToTime = reactExports.useCallback((x) => {
+    const duration2 = visibleEndTime - visibleStartTime;
+    return visibleStartTime + (x - CANVAS_PADDING) / (canvasWidth - CANVAS_PADDING * 2) * duration2;
+  }, [visibleStartTime, visibleEndTime, canvasWidth]);
+  const getWordBounds = reactExports.useCallback((word) => {
+    if (word.start_time === null || word.end_time === null) return null;
+    const level = wordLevelsRef.current.get(word.id) || 0;
+    const startX = timeToX(word.start_time);
+    const endX = timeToX(word.end_time);
+    const blockWidth = Math.max(endX - startX, 4);
+    const y = TIME_BAR_HEIGHT + CANVAS_PADDING + TEXT_ABOVE_BLOCK + level * WORD_LEVEL_SPACING;
+    return { startX, endX, blockWidth, y, level };
+  }, [timeToX]);
+  const isNearResizeHandlePos = reactExports.useCallback((word, x, y) => {
+    const bounds = getWordBounds(word);
+    if (!bounds) return false;
+    const handleX = bounds.startX + bounds.blockWidth - RESIZE_HANDLE_SIZE / 2;
+    const handleY = bounds.y + WORD_BLOCK_HEIGHT / 2;
+    return Math.abs(x - handleX) < RESIZE_HANDLE_HITAREA / 2 && Math.abs(y - handleY) < RESIZE_HANDLE_HITAREA / 2;
+  }, [getWordBounds]);
+  const findWordAtPosition = reactExports.useCallback((x, y) => {
+    for (const word of words) {
+      const bounds = getWordBounds(word);
+      if (!bounds) continue;
+      if (x >= bounds.startX && x <= bounds.startX + bounds.blockWidth && y >= bounds.y && y <= bounds.y + WORD_BLOCK_HEIGHT) {
+        return word;
+      }
+    }
+    return null;
+  }, [words, getWordBounds]);
+  const findWordsInRect = reactExports.useCallback((rect) => {
+    const rectLeft = Math.min(rect.startX, rect.endX);
+    const rectRight = Math.max(rect.startX, rect.endX);
+    const rectTop = Math.min(rect.startY, rect.endY);
+    const rectBottom = Math.max(rect.startY, rect.endY);
+    const selectedIds = [];
+    for (const word of words) {
+      const bounds = getWordBounds(word);
+      if (!bounds) continue;
+      if (bounds.startX + bounds.blockWidth >= rectLeft && bounds.startX <= rectRight && bounds.y + WORD_BLOCK_HEIGHT >= rectTop && bounds.y <= rectBottom) {
+        selectedIds.push(word.id);
+      }
+    }
+    return selectedIds;
+  }, [words, getWordBounds]);
+  const draw = reactExports.useCallback(() => {
+    var _a;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvasWidth * dpr;
+    canvas.height = height2 * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = TIMELINE_BG;
+    ctx.fillRect(0, 0, canvasWidth, height2);
+    ctx.fillStyle = TIME_BAR_BG;
+    ctx.fillRect(0, 0, canvasWidth, TIME_BAR_HEIGHT);
+    const duration2 = visibleEndTime - visibleStartTime;
+    const secondsPerTick = duration2 > 15 ? 2 : duration2 > 8 ? 1 : 0.5;
+    const startSecond = Math.ceil(visibleStartTime / secondsPerTick) * secondsPerTick;
+    ctx.fillStyle = TIME_BAR_TEXT;
+    ctx.font = "11px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    for (let t = startSecond; t <= visibleEndTime; t += secondsPerTick) {
+      const x = timeToX(t);
+      ctx.beginPath();
+      ctx.strokeStyle = "#999999";
+      ctx.lineWidth = 1;
+      ctx.moveTo(x, TIME_BAR_HEIGHT - 6);
+      ctx.lineTo(x, TIME_BAR_HEIGHT);
+      ctx.stroke();
+      if (t % 1 === 0) {
+        ctx.fillText(formatTime(t), x, TIME_BAR_HEIGHT - 10);
+      }
+    }
+    ctx.beginPath();
+    ctx.strokeStyle = "#cccccc";
+    ctx.lineWidth = 1;
+    ctx.moveTo(0, TIME_BAR_HEIGHT);
+    ctx.lineTo(canvasWidth, TIME_BAR_HEIGHT);
+    ctx.stroke();
+    const wordToSegment = buildWordToSegmentMap(segments);
+    const syncedWords = words.filter((w) => w.start_time !== null && w.end_time !== null);
+    const currentWordId = ((_a = syncedWords.find(
+      (w) => currentTime >= w.start_time && currentTime <= w.end_time
+    )) == null ? void 0 : _a.id) || null;
+    for (const word of syncedWords) {
+      const bounds = getWordBounds(word);
+      if (!bounds) continue;
+      const isSelected = selectedWordIds.has(word.id);
+      const isCurrent = word.id === currentWordId;
+      const isHovered = word.id === hoveredWordId;
+      if (isSelected) {
+        ctx.fillStyle = WORD_BLOCK_SELECTED_COLOR;
+      } else if (isCurrent) {
+        ctx.fillStyle = WORD_BLOCK_CURRENT_COLOR;
+      } else {
+        ctx.fillStyle = WORD_BLOCK_COLOR;
+      }
+      ctx.fillRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT);
+      if (isSelected) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT);
+        if (isHovered || selectedWordIds.size === 1) {
+          const handleX = bounds.startX + bounds.blockWidth - RESIZE_HANDLE_SIZE / 2;
+          const handleY = bounds.y + WORD_BLOCK_HEIGHT / 2;
+          ctx.beginPath();
+          ctx.fillStyle = "#ffffff";
+          ctx.arc(handleX, handleY, RESIZE_HANDLE_SIZE / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#666666";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+    const wordsBySegment = /* @__PURE__ */ new Map();
+    for (const word of syncedWords) {
+      const segIdx = wordToSegment.get(word.id);
+      if (segIdx !== void 0) {
+        if (!wordsBySegment.has(segIdx)) {
+          wordsBySegment.set(segIdx, []);
+        }
+        wordsBySegment.get(segIdx).push(word);
+      }
+    }
+    ctx.font = "11px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "left";
+    for (const [, segmentWords] of wordsBySegment) {
+      const sortedWords = [...segmentWords].sort(
+        (a, b) => (a.start_time || 0) - (b.start_time || 0)
+      );
+      if (sortedWords.length === 0) continue;
+      const level = wordLevelsRef.current.get(sortedWords[0].id) || 0;
+      const textY = TIME_BAR_HEIGHT + CANVAS_PADDING + TEXT_ABOVE_BLOCK + level * WORD_LEVEL_SPACING - 3;
+      let rightmostTextEnd = -Infinity;
+      for (const word of sortedWords) {
+        const blockStartX = timeToX(word.start_time);
+        const textWidth = ctx.measureText(word.text).width;
+        const textStartX = Math.max(blockStartX, rightmostTextEnd + 3);
+        if (textStartX < canvasWidth - 10) {
+          const isCurrent = word.id === currentWordId;
+          ctx.fillStyle = isCurrent ? WORD_TEXT_CURRENT_COLOR : "#333333";
+          ctx.fillText(word.text, textStartX, textY);
+          rightmostTextEnd = textStartX + textWidth;
+        }
+      }
+    }
+    if (isManualSyncing && syncWordIndex >= 0) {
+      const upcomingWords = words.slice(syncWordIndex).filter((w) => w.start_time === null);
+      const playheadX = timeToX(currentTime);
+      let offsetX = playheadX + 10;
+      ctx.font = "11px system-ui, -apple-system, sans-serif";
+      for (let i = 0; i < Math.min(upcomingWords.length, 12); i++) {
+        const word = upcomingWords[i];
+        const textWidth = ctx.measureText(word.text).width + 10;
+        ctx.fillStyle = UPCOMING_WORD_BG;
+        ctx.fillRect(offsetX, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 60, textWidth, 20);
+        ctx.fillStyle = UPCOMING_WORD_TEXT;
+        ctx.textAlign = "left";
+        ctx.fillText(word.text, offsetX + 5, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 74);
+        offsetX += textWidth + 3;
+        if (offsetX > canvasWidth - 20) break;
+      }
+    }
+    if (currentTime >= visibleStartTime && currentTime <= visibleEndTime) {
+      const playheadX = timeToX(currentTime);
+      ctx.beginPath();
+      ctx.fillStyle = PLAYHEAD_COLOR;
+      ctx.strokeStyle = "#333333";
+      ctx.lineWidth = 1;
+      ctx.moveTo(playheadX - 6, 2);
+      ctx.lineTo(playheadX + 6, 2);
+      ctx.lineTo(playheadX, TIME_BAR_HEIGHT - 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = PLAYHEAD_COLOR;
+      ctx.lineWidth = 2;
+      ctx.moveTo(playheadX, TIME_BAR_HEIGHT);
+      ctx.lineTo(playheadX, height2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = 1;
+      ctx.moveTo(playheadX + 1, TIME_BAR_HEIGHT);
+      ctx.lineTo(playheadX + 1, height2);
+      ctx.stroke();
+    }
+    if (selectionRect) {
+      ctx.fillStyle = "rgba(25, 118, 210, 0.2)";
+      ctx.strokeStyle = "rgba(25, 118, 210, 0.8)";
+      ctx.lineWidth = 1;
+      const rectX = Math.min(selectionRect.startX, selectionRect.endX);
+      const rectY = Math.min(selectionRect.startY, selectionRect.endY);
+      const rectW = Math.abs(selectionRect.endX - selectionRect.startX);
+      const rectH = Math.abs(selectionRect.endY - selectionRect.startY);
+      ctx.fillRect(rectX, rectY, rectW, rectH);
+      ctx.strokeRect(rectX, rectY, rectW, rectH);
+    }
+  }, [
+    canvasWidth,
+    height2,
+    visibleStartTime,
+    visibleEndTime,
+    currentTime,
+    words,
+    segments,
+    selectedWordIds,
+    selectionRect,
+    hoveredWordId,
+    syncWordIndex,
+    isManualSyncing,
+    timeToX,
+    getWordBounds
+  ]);
+  reactExports.useEffect(() => {
+    const animate = () => {
+      draw();
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [draw]);
+  const handleMouseDown = reactExports.useCallback((e) => {
+    var _a;
+    const rect = (_a = canvasRef.current) == null ? void 0 : _a.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const time = xToTime(x);
+    if (y < TIME_BAR_HEIGHT) {
+      onTimeBarClick(Math.max(0, time));
+      return;
+    }
+    const clickedWord = findWordAtPosition(x, y);
+    if (clickedWord && selectedWordIds.has(clickedWord.id)) {
+      if (isNearResizeHandlePos(clickedWord, x, y)) {
+        setDragMode("resize");
+        dragStartRef.current = { x, y, time };
+        dragWordIdRef.current = clickedWord.id;
+        dragOriginalTimesRef.current = /* @__PURE__ */ new Map([[clickedWord.id, {
+          start: clickedWord.start_time,
+          end: clickedWord.end_time
+        }]]);
+        return;
+      }
+      setDragMode("move");
+      dragStartRef.current = { x, y, time };
+      dragWordIdRef.current = clickedWord.id;
+      const originalTimes = /* @__PURE__ */ new Map();
+      for (const wordId of selectedWordIds) {
+        const word = words.find((w) => w.id === wordId);
+        if (word && word.start_time !== null && word.end_time !== null) {
+          originalTimes.set(wordId, { start: word.start_time, end: word.end_time });
+        }
+      }
+      dragOriginalTimesRef.current = originalTimes;
+      return;
+    }
+    if (clickedWord) {
+      onWordClick(clickedWord.id, e);
+      return;
+    }
+    setDragMode("selection");
+    dragStartRef.current = { x, y, time };
+    setSelectionRect({ startX: x, startY: y, endX: x, endY: y });
+  }, [xToTime, onTimeBarClick, findWordAtPosition, selectedWordIds, isNearResizeHandlePos, onWordClick, words]);
+  const handleMouseMove = reactExports.useCallback((e) => {
+    var _a;
+    const rect = (_a = canvasRef.current) == null ? void 0 : _a.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const time = xToTime(x);
+    if (dragMode === "none") {
+      const hoveredWord = findWordAtPosition(x, y);
+      setHoveredWordId((hoveredWord == null ? void 0 : hoveredWord.id) || null);
+      if (hoveredWord && selectedWordIds.has(hoveredWord.id)) {
+        const nearHandle = isNearResizeHandlePos(hoveredWord, x, y);
+        setCursorStyle(nearHandle ? "ew-resize" : "grab");
+      } else if (hoveredWord) {
+        setCursorStyle("pointer");
+      } else if (y < TIME_BAR_HEIGHT) {
+        setCursorStyle("pointer");
+      } else {
+        setCursorStyle("default");
+      }
+    }
+    if (!dragStartRef.current) return;
+    if (dragMode === "selection") {
+      setSelectionRect({
+        startX: dragStartRef.current.x,
+        startY: dragStartRef.current.y,
+        endX: x,
+        endY: y
+      });
+    } else if (dragMode === "resize" && dragWordIdRef.current) {
+      const originalTimes = dragOriginalTimesRef.current.get(dragWordIdRef.current);
+      if (originalTimes) {
+        const deltaTime = time - dragStartRef.current.time;
+        const newEndTime = Math.max(originalTimes.start + 0.05, originalTimes.end + deltaTime);
+        onWordTimingChange(dragWordIdRef.current, originalTimes.start, newEndTime);
+      }
+      setCursorStyle("ew-resize");
+    } else if (dragMode === "move") {
+      const deltaTime = time - dragStartRef.current.time;
+      const updates = [];
+      for (const [wordId, originalTimes] of dragOriginalTimesRef.current) {
+        updates.push({
+          wordId,
+          newStartTime: Math.max(0, originalTimes.start + deltaTime),
+          newEndTime: Math.max(0.05, originalTimes.end + deltaTime)
+        });
+      }
+      if (updates.length > 0) {
+        onWordsMove(updates);
+      }
+      setCursorStyle("grabbing");
+    }
+  }, [dragMode, xToTime, findWordAtPosition, selectedWordIds, isNearResizeHandlePos, onWordTimingChange, onWordsMove]);
+  const handleMouseUp = reactExports.useCallback((e) => {
+    var _a;
+    const rect = (_a = canvasRef.current) == null ? void 0 : _a.getBoundingClientRect();
+    if (dragMode === "selection" && dragStartRef.current && rect) {
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+      const dragDistance = Math.sqrt(
+        Math.pow(endX - dragStartRef.current.x, 2) + Math.pow(endY - dragStartRef.current.y, 2)
+      );
+      if (dragDistance < 5) {
+        onBackgroundClick();
+      } else {
+        const finalRect = {
+          startX: dragStartRef.current.x,
+          startY: dragStartRef.current.y,
+          endX,
+          endY
+        };
+        const selectedIds = findWordsInRect(finalRect);
+        if (selectedIds.length > 0) {
+          onSelectionComplete(selectedIds);
+        }
+      }
+    }
+    setDragMode("none");
+    dragStartRef.current = null;
+    dragWordIdRef.current = null;
+    dragOriginalTimesRef.current = /* @__PURE__ */ new Map();
+    setSelectionRect(null);
+    setCursorStyle("default");
+  }, [dragMode, onBackgroundClick, findWordsInRect, onSelectionComplete]);
+  const handleWheel = reactExports.useCallback((e) => {
+    const delta = e.deltaX !== 0 ? e.deltaX : e.deltaY;
+    const scrollAmount = delta / 100 * (zoomSeconds / 4);
+    let newStart = Math.max(0, Math.min(audioDuration - zoomSeconds, visibleStartTime + scrollAmount));
+    if (newStart !== visibleStartTime) {
+      onScrollChange(newStart);
+    }
+  }, [visibleStartTime, zoomSeconds, audioDuration, onScrollChange]);
+  const handleScrollLeft = reactExports.useCallback(() => {
+    const newStart = Math.max(0, visibleStartTime - zoomSeconds * 0.25);
+    onScrollChange(newStart);
+  }, [visibleStartTime, zoomSeconds, onScrollChange]);
+  const handleScrollRight = reactExports.useCallback(() => {
+    const newStart = Math.min(audioDuration - zoomSeconds, visibleStartTime + zoomSeconds * 0.25);
+    onScrollChange(Math.max(0, newStart));
+  }, [visibleStartTime, zoomSeconds, audioDuration, onScrollChange]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { display: "flex", flexDirection: "column", gap: 0.5 }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Left", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      IconButton,
+      {
+        size: "small",
+        onClick: handleScrollLeft,
+        disabled: visibleStartTime <= 0,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, { fontSize: "small" })
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Box,
+      {
+        ref: containerRef,
+        sx: {
+          flexGrow: 1,
+          height: height2,
+          cursor: cursorStyle,
+          borderRadius: 1,
+          overflow: "hidden"
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "canvas",
+          {
+            ref: canvasRef,
+            style: {
+              width: "100%",
+              height: "100%",
+              display: "block",
+              cursor: cursorStyle
+            },
+            onMouseDown: handleMouseDown,
+            onMouseMove: handleMouseMove,
+            onMouseUp: handleMouseUp,
+            onMouseLeave: handleMouseUp,
+            onWheel: handleWheel
+          }
+        )
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      IconButton,
+      {
+        size: "small",
+        onClick: handleScrollRight,
+        disabled: visibleStartTime >= audioDuration - zoomSeconds,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowForwardIcon, { fontSize: "small" })
+      }
+    ) })
+  ] }) });
+});
+const UpcomingWordsBar = reactExports.memo(function UpcomingWordsBar2({
+  words,
+  syncWordIndex,
+  isManualSyncing,
+  maxWordsToShow = 20
+}) {
+  const upcomingWords = reactExports.useMemo(() => {
+    if (!isManualSyncing || syncWordIndex < 0) return [];
+    return words.slice(syncWordIndex).filter((w) => w.start_time === null).slice(0, maxWordsToShow);
+  }, [words, syncWordIndex, isManualSyncing, maxWordsToShow]);
+  const totalRemaining = reactExports.useMemo(() => {
+    if (!isManualSyncing || syncWordIndex < 0) return 0;
+    return words.slice(syncWordIndex).filter((w) => w.start_time === null).length;
+  }, [words, syncWordIndex, isManualSyncing]);
+  if (upcomingWords.length === 0) {
+    return null;
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+    height: 44,
+    bgcolor: "grey.100",
+    borderRadius: 1,
+    display: "flex",
+    alignItems: "center",
+    px: 1,
+    gap: 0.5,
+    overflow: "hidden",
+    boxSizing: "border-box"
+  }, children: [
+    upcomingWords.map((word, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Box,
+      {
+        sx: {
+          px: 1,
+          py: 0.5,
+          borderRadius: 0.5,
+          bgcolor: index === 0 ? "error.main" : "grey.300",
+          color: index === 0 ? "white" : "text.primary",
+          fontWeight: index === 0 ? "bold" : "normal",
+          fontSize: "13px",
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          whiteSpace: "nowrap",
+          border: index === 0 ? "2px solid" : "none",
+          borderColor: "error.dark"
+        },
+        children: word.text
+      },
+      word.id
+    )),
+    totalRemaining > maxWordsToShow && /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "caption", color: "text.secondary", sx: { ml: 1 }, children: [
+      "+",
+      totalRemaining - maxWordsToShow,
+      " more"
+    ] })
+  ] });
+});
+const SyncControls = reactExports.memo(function SyncControls2({
+  isManualSyncing,
+  isPaused,
+  onStartSync,
+  onPauseSync,
+  onResumeSync,
+  onClearSync,
+  onEditLyrics,
+  onPlay,
+  onStop,
+  isPlaying,
+  hasSelectedWords,
+  selectedWordCount,
+  onUnsyncFromCursor,
+  onEditSelectedWord,
+  onDeleteSelected,
+  canUnsyncFromCursor
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 1.5 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Stack, { direction: "row", spacing: 1, alignItems: "center", flexWrap: "wrap", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          color: "primary",
+          onClick: onPlay,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(PlayArrowIcon, {}),
+          size: "small",
+          disabled: isPlaying,
+          children: "Play"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          color: "error",
+          onClick: onStop,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(StopIcon, {}),
+          size: "small",
+          disabled: !isPlaying,
+          children: "Stop"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true, sx: { mx: 0.5 } }),
+      isManualSyncing ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "contained",
+            color: "error",
+            onClick: onStartSync,
+            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(StopIcon, {}),
+            size: "small",
+            children: "Stop Sync"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outlined",
+            color: isPaused ? "success" : "warning",
+            onClick: isPaused ? onResumeSync : onPauseSync,
+            startIcon: isPaused ? /* @__PURE__ */ jsxRuntimeExports.jsx(PlayArrowIcon, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(PauseIcon, {}),
+            size: "small",
+            children: isPaused ? "Resume" : "Pause"
+          }
+        )
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "contained",
+          color: "primary",
+          onClick: onStartSync,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(PlayCircleOutlineIcon, {}),
+          size: "small",
+          children: "Start Sync"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Stack, { direction: "row", spacing: 1, alignItems: "center", flexWrap: "wrap", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          color: "warning",
+          onClick: onClearSync,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(ClearAllIcon, {}),
+          size: "small",
+          disabled: isManualSyncing && !isPaused,
+          children: "Clear Sync"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          onClick: onEditLyrics,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(EditNoteIcon, {}),
+          size: "small",
+          disabled: isManualSyncing && !isPaused,
+          children: "Edit Lyrics"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true, sx: { mx: 0.5 } }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          onClick: onUnsyncFromCursor,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(BlockIcon, {}),
+          size: "small",
+          disabled: !canUnsyncFromCursor || isManualSyncing && !isPaused,
+          children: "Unsync from Cursor"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          onClick: onEditSelectedWord,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(EditIcon, {}),
+          size: "small",
+          disabled: !hasSelectedWords || selectedWordCount !== 1,
+          children: "Edit Word"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        Button,
+        {
+          variant: "outlined",
+          color: "error",
+          onClick: onDeleteSelected,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(DeleteIcon, {}),
+          size: "small",
+          disabled: !hasSelectedWords || isManualSyncing && !isPaused,
+          children: [
+            "Delete",
+            hasSelectedWords && selectedWordCount > 0 ? ` (${selectedWordCount})` : ""
+          ]
+        }
+      )
+    ] })
+  ] });
+});
+const MIN_ZOOM_SECONDS = 4.5;
+const MAX_ZOOM_SECONDS = 24;
+const ZOOM_STEPS = 50;
+function getAllWords(segments) {
+  return segments.flatMap((s) => s.words);
+}
+function cloneSegments(segments) {
+  return JSON.parse(JSON.stringify(segments));
+}
+const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
+  segments: initialSegments,
+  currentTime,
+  onPlaySegment,
+  onSave,
+  onCancel,
+  setModalSpacebarHandler
+}) {
+  const [workingSegments, setWorkingSegments] = reactExports.useState(
+    () => cloneSegments(initialSegments)
+  );
+  const allWords = reactExports.useMemo(() => getAllWords(workingSegments), [workingSegments]);
+  const audioDuration = reactExports.useMemo(() => {
+    if (window.getAudioDuration) {
+      const duration2 = window.getAudioDuration();
+      return duration2 > 0 ? duration2 : 300;
+    }
+    return 300;
+  }, []);
+  const [zoomSeconds, setZoomSeconds] = reactExports.useState(12);
+  const [visibleStartTime, setVisibleStartTime] = reactExports.useState(0);
+  const visibleEndTime = reactExports.useMemo(
+    () => Math.min(visibleStartTime + zoomSeconds, audioDuration),
+    [visibleStartTime, zoomSeconds, audioDuration]
+  );
+  const [isManualSyncing, setIsManualSyncing] = reactExports.useState(false);
+  const [isPaused, setIsPaused] = reactExports.useState(false);
+  const [syncWordIndex, setSyncWordIndex] = reactExports.useState(-1);
+  const [isSpacebarPressed, setIsSpacebarPressed] = reactExports.useState(false);
+  const wordStartTimeRef = reactExports.useRef(null);
+  const spacebarPressTimeRef = reactExports.useRef(null);
+  const currentTimeRef = reactExports.useRef(currentTime);
+  const [selectedWordIds, setSelectedWordIds] = reactExports.useState(/* @__PURE__ */ new Set());
+  const [showEditLyricsModal, setShowEditLyricsModal] = reactExports.useState(false);
+  const [editLyricsText, setEditLyricsText] = reactExports.useState("");
+  const [showEditWordModal, setShowEditWordModal] = reactExports.useState(false);
+  const [editWordText, setEditWordText] = reactExports.useState("");
+  const [editWordId, setEditWordId] = reactExports.useState(null);
+  reactExports.useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  reactExports.useEffect(() => {
+    if (isManualSyncing && !isPaused && currentTime > 0) {
+      if (currentTime > visibleEndTime - zoomSeconds * 0.1) {
+        const newStart = Math.max(0, currentTime - zoomSeconds * 0.1);
+        setVisibleStartTime(newStart);
+      } else if (currentTime < visibleStartTime) {
+        setVisibleStartTime(Math.max(0, currentTime - 1));
+      }
+    }
+  }, [currentTime, isManualSyncing, isPaused, visibleStartTime, visibleEndTime, zoomSeconds]);
+  const handleZoomChange = reactExports.useCallback((_, value) => {
+    const zoomValue = value;
+    const newZoomSeconds = MIN_ZOOM_SECONDS + zoomValue / ZOOM_STEPS * (MAX_ZOOM_SECONDS - MIN_ZOOM_SECONDS);
+    setZoomSeconds(newZoomSeconds);
+  }, []);
+  const sliderValue = reactExports.useMemo(() => {
+    return (zoomSeconds - MIN_ZOOM_SECONDS) / (MAX_ZOOM_SECONDS - MIN_ZOOM_SECONDS) * ZOOM_STEPS;
+  }, [zoomSeconds]);
+  const handleScrollChange = reactExports.useCallback((newStartTime) => {
+    setVisibleStartTime(newStartTime);
+  }, []);
+  const updateWords = reactExports.useCallback((newWords) => {
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      const wordMap = new Map(newWords.map((w) => [w.id, w]));
+      for (const segment of newSegments) {
+        segment.words = segment.words.map((w) => wordMap.get(w.id) || w);
+        const timedWords = segment.words.filter(
+          (w) => w.start_time !== null && w.end_time !== null
+        );
+        if (timedWords.length > 0) {
+          segment.start_time = Math.min(...timedWords.map((w) => w.start_time));
+          segment.end_time = Math.max(...timedWords.map((w) => w.end_time));
+        } else {
+          segment.start_time = null;
+          segment.end_time = null;
+        }
+      }
+      return newSegments;
+    });
+  }, []);
+  const [isPlaying, setIsPlaying] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    const checkPlaying = () => {
+      setIsPlaying(window.isAudioPlaying || false);
+    };
+    checkPlaying();
+    const interval = setInterval(checkPlaying, 100);
+    return () => clearInterval(interval);
+  }, []);
+  const handlePlayAudio = reactExports.useCallback(() => {
+    if (onPlaySegment) {
+      onPlaySegment(currentTimeRef.current);
+    }
+  }, [onPlaySegment]);
+  const handleStopAudio = reactExports.useCallback(() => {
+    if (window.toggleAudioPlayback && window.isAudioPlaying) {
+      window.toggleAudioPlayback();
+    }
+    if (isManualSyncing) {
+      setIsManualSyncing(false);
+      setIsPaused(false);
+      setIsSpacebarPressed(false);
+    }
+  }, [isManualSyncing]);
+  const handleStartSync = reactExports.useCallback(() => {
+    if (isManualSyncing) {
+      setIsManualSyncing(false);
+      setIsPaused(false);
+      setSyncWordIndex(-1);
+      setIsSpacebarPressed(false);
+      handleStopAudio();
+      return;
+    }
+    const firstUnsyncedIndex = allWords.findIndex(
+      (w) => w.start_time === null || w.end_time === null
+    );
+    const startIndex = firstUnsyncedIndex !== -1 ? firstUnsyncedIndex : 0;
+    setIsManualSyncing(true);
+    setIsPaused(false);
+    setSyncWordIndex(startIndex);
+    setIsSpacebarPressed(false);
+    if (onPlaySegment) {
+      onPlaySegment(Math.max(0, currentTimeRef.current - 1));
+    }
+  }, [isManualSyncing, allWords, onPlaySegment, handleStopAudio]);
+  const handlePauseSync = reactExports.useCallback(() => {
+    setIsPaused(true);
+    handleStopAudio();
+  }, [handleStopAudio]);
+  const handleResumeSync = reactExports.useCallback(() => {
+    setIsPaused(false);
+    const firstUnsyncedIndex = allWords.findIndex(
+      (w) => w.start_time === null || w.end_time === null
+    );
+    if (firstUnsyncedIndex !== -1 && firstUnsyncedIndex !== syncWordIndex) {
+      setSyncWordIndex(firstUnsyncedIndex);
+    }
+    if (onPlaySegment) {
+      onPlaySegment(currentTimeRef.current);
+    }
+  }, [allWords, syncWordIndex, onPlaySegment]);
+  const handleClearSync = reactExports.useCallback(() => {
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      for (const segment of newSegments) {
+        for (const word of segment.words) {
+          word.start_time = null;
+          word.end_time = null;
+        }
+        segment.start_time = null;
+        segment.end_time = null;
+      }
+      return newSegments;
+    });
+    setSyncWordIndex(-1);
+  }, []);
+  const handleUnsyncFromCursor = reactExports.useCallback(() => {
+    const cursorTime = currentTimeRef.current;
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      for (const segment of newSegments) {
+        for (const word of segment.words) {
+          if (word.start_time !== null && word.start_time > cursorTime) {
+            word.start_time = null;
+            word.end_time = null;
+          }
+        }
+        const timedWords = segment.words.filter(
+          (w) => w.start_time !== null && w.end_time !== null
+        );
+        if (timedWords.length > 0) {
+          segment.start_time = Math.min(...timedWords.map((w) => w.start_time));
+          segment.end_time = Math.max(...timedWords.map((w) => w.end_time));
+        } else {
+          segment.start_time = null;
+          segment.end_time = null;
+        }
+      }
+      return newSegments;
+    });
+  }, []);
+  const canUnsyncFromCursor = reactExports.useMemo(() => {
+    const cursorTime = currentTimeRef.current;
+    return allWords.some(
+      (w) => w.start_time !== null && w.start_time > cursorTime
+    );
+  }, [allWords, currentTime]);
+  const handleEditLyrics = reactExports.useCallback(() => {
+    const text = workingSegments.map((s) => s.text).join("\n");
+    setEditLyricsText(text);
+    setShowEditLyricsModal(true);
+  }, [workingSegments]);
+  const handleSaveEditedLyrics = reactExports.useCallback(() => {
+    const lines = editLyricsText.split("\n").filter((l) => l.trim());
+    const newSegments = lines.map((line2, idx) => {
+      const words = line2.trim().split(/\s+/).map((text, wIdx) => ({
+        id: `word-${idx}-${wIdx}-${Date.now()}`,
+        text,
+        start_time: null,
+        end_time: null,
+        confidence: 1
+      }));
+      return {
+        id: `segment-${idx}-${Date.now()}`,
+        text: line2.trim(),
+        words,
+        start_time: null,
+        end_time: null
+      };
+    });
+    setWorkingSegments(newSegments);
+    setShowEditLyricsModal(false);
+    setSyncWordIndex(-1);
+  }, [editLyricsText]);
+  const handleEditSelectedWord = reactExports.useCallback(() => {
+    if (selectedWordIds.size !== 1) return;
+    const wordId = Array.from(selectedWordIds)[0];
+    const word = allWords.find((w) => w.id === wordId);
+    if (word) {
+      setEditWordId(wordId);
+      setEditWordText(word.text);
+      setShowEditWordModal(true);
+    }
+  }, [selectedWordIds, allWords]);
+  const handleSaveEditedWord = reactExports.useCallback(() => {
+    if (!editWordId) return;
+    const newText = editWordText.trim();
+    if (!newText) return;
+    const newWords = newText.split(/\s+/);
+    if (newWords.length === 1) {
+      const updatedWords = allWords.map(
+        (w) => w.id === editWordId ? { ...w, text: newWords[0] } : w
+      );
+      updateWords(updatedWords);
+    } else {
+      const originalWord = allWords.find((w) => w.id === editWordId);
+      if (!originalWord) return;
+      setWorkingSegments((prevSegments) => {
+        const newSegments = cloneSegments(prevSegments);
+        for (const segment of newSegments) {
+          const wordIndex = segment.words.findIndex((w) => w.id === editWordId);
+          if (wordIndex !== -1) {
+            const newWordObjects = newWords.map((text, idx) => ({
+              id: idx === 0 ? editWordId : `${editWordId}-split-${idx}`,
+              text,
+              start_time: idx === 0 ? originalWord.start_time : null,
+              end_time: idx === 0 ? originalWord.end_time : null,
+              confidence: 1
+            }));
+            segment.words.splice(wordIndex, 1, ...newWordObjects);
+            segment.text = segment.words.map((w) => w.text).join(" ");
+            break;
+          }
+        }
+        return newSegments;
+      });
+    }
+    setShowEditWordModal(false);
+    setEditWordId(null);
+    setEditWordText("");
+    setSelectedWordIds(/* @__PURE__ */ new Set());
+  }, [editWordId, editWordText, allWords, updateWords]);
+  const handleDeleteSelected = reactExports.useCallback(() => {
+    if (selectedWordIds.size === 0) return;
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      for (const segment of newSegments) {
+        segment.words = segment.words.filter((w) => !selectedWordIds.has(w.id));
+        segment.text = segment.words.map((w) => w.text).join(" ");
+        const timedWords = segment.words.filter(
+          (w) => w.start_time !== null && w.end_time !== null
+        );
+        if (timedWords.length > 0) {
+          segment.start_time = Math.min(...timedWords.map((w) => w.start_time));
+          segment.end_time = Math.max(...timedWords.map((w) => w.end_time));
+        } else {
+          segment.start_time = null;
+          segment.end_time = null;
+        }
+      }
+      return newSegments.filter((s) => s.words.length > 0);
+    });
+    setSelectedWordIds(/* @__PURE__ */ new Set());
+  }, [selectedWordIds]);
+  const handleWordClick = reactExports.useCallback((wordId, event) => {
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      setSelectedWordIds((prev2) => {
+        const newSet = new Set(prev2);
+        if (newSet.has(wordId)) {
+          newSet.delete(wordId);
+        } else {
+          newSet.add(wordId);
+        }
+        return newSet;
+      });
+    } else {
+      setSelectedWordIds(/* @__PURE__ */ new Set([wordId]));
+    }
+  }, []);
+  const handleBackgroundClick = reactExports.useCallback(() => {
+    setSelectedWordIds(/* @__PURE__ */ new Set());
+  }, []);
+  const handleWordTimingChange = reactExports.useCallback((wordId, newStartTime, newEndTime) => {
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      for (const segment of newSegments) {
+        const word = segment.words.find((w) => w.id === wordId);
+        if (word) {
+          word.start_time = Math.max(0, newStartTime);
+          word.end_time = Math.max(word.start_time + 0.05, newEndTime);
+          const timedWords = segment.words.filter(
+            (w) => w.start_time !== null && w.end_time !== null
+          );
+          if (timedWords.length > 0) {
+            segment.start_time = Math.min(...timedWords.map((w) => w.start_time));
+            segment.end_time = Math.max(...timedWords.map((w) => w.end_time));
+          }
+          break;
+        }
+      }
+      return newSegments;
+    });
+  }, []);
+  const handleWordsMove = reactExports.useCallback((updates) => {
+    setWorkingSegments((prevSegments) => {
+      const newSegments = cloneSegments(prevSegments);
+      const updateMap = new Map(updates.map((u) => [u.wordId, u]));
+      for (const segment of newSegments) {
+        for (const word of segment.words) {
+          const update = updateMap.get(word.id);
+          if (update) {
+            word.start_time = update.newStartTime;
+            word.end_time = update.newEndTime;
+          }
+        }
+        const timedWords = segment.words.filter(
+          (w) => w.start_time !== null && w.end_time !== null
+        );
+        if (timedWords.length > 0) {
+          segment.start_time = Math.min(...timedWords.map((w) => w.start_time));
+          segment.end_time = Math.max(...timedWords.map((w) => w.end_time));
+        }
+      }
+      return newSegments;
+    });
+  }, []);
+  const handleTimeBarClick = reactExports.useCallback((time) => {
+    const newStart = Math.max(0, time - zoomSeconds / 2);
+    setVisibleStartTime(Math.min(newStart, Math.max(0, audioDuration - zoomSeconds)));
+    if (onPlaySegment) {
+      onPlaySegment(time);
+      setTimeout(() => {
+        if (window.toggleAudioPlayback && window.isAudioPlaying) {
+          window.toggleAudioPlayback();
+        }
+      }, 50);
+    }
+  }, [zoomSeconds, audioDuration, onPlaySegment]);
+  const handleSelectionComplete = reactExports.useCallback((wordIds) => {
+    setSelectedWordIds(new Set(wordIds));
+  }, []);
+  const handleKeyDown = reactExports.useCallback((e) => {
+    if (e.code !== "Space") return;
+    if (!isManualSyncing || isPaused) return;
+    if (syncWordIndex < 0 || syncWordIndex >= allWords.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (isSpacebarPressed) return;
+    setIsSpacebarPressed(true);
+    wordStartTimeRef.current = currentTimeRef.current;
+    spacebarPressTimeRef.current = Date.now();
+    const newWords = [...allWords];
+    const currentWord = newWords[syncWordIndex];
+    currentWord.start_time = currentTimeRef.current;
+    if (syncWordIndex > 0) {
+      const prevWord = newWords[syncWordIndex - 1];
+      if (prevWord.start_time !== null && prevWord.end_time === null) {
+        const gap2 = currentTimeRef.current - prevWord.start_time;
+        if (gap2 > 1) {
+          prevWord.end_time = prevWord.start_time + 0.5;
+        } else {
+          prevWord.end_time = currentTimeRef.current - 5e-3;
+        }
+      }
+    }
+    updateWords(newWords);
+  }, [isManualSyncing, isPaused, syncWordIndex, allWords, isSpacebarPressed, updateWords]);
+  const handleKeyUp = reactExports.useCallback((e) => {
+    if (e.code !== "Space") return;
+    if (!isManualSyncing || isPaused) return;
+    if (!isSpacebarPressed) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSpacebarPressed(false);
+    const pressDuration = spacebarPressTimeRef.current ? Date.now() - spacebarPressTimeRef.current : 0;
+    const isTap = pressDuration < 200;
+    const newWords = [...allWords];
+    const currentWord = newWords[syncWordIndex];
+    if (isTap) {
+      currentWord.end_time = (wordStartTimeRef.current || currentTimeRef.current) + 0.5;
+    } else {
+      currentWord.end_time = currentTimeRef.current;
+    }
+    updateWords(newWords);
+    if (syncWordIndex < allWords.length - 1) {
+      setSyncWordIndex(syncWordIndex + 1);
+    } else {
+      setIsManualSyncing(false);
+      setSyncWordIndex(-1);
+      handleStopAudio();
+    }
+    wordStartTimeRef.current = null;
+    spacebarPressTimeRef.current = null;
+  }, [isManualSyncing, isPaused, isSpacebarPressed, syncWordIndex, allWords, updateWords, handleStopAudio]);
+  const handleSpacebar = reactExports.useCallback((e) => {
+    if (e.type === "keydown") {
+      handleKeyDown(e);
+    } else if (e.type === "keyup") {
+      handleKeyUp(e);
+    }
+  }, [handleKeyDown, handleKeyUp]);
+  const spacebarHandlerRef = reactExports.useRef(handleSpacebar);
+  spacebarHandlerRef.current = handleSpacebar;
+  reactExports.useEffect(() => {
+    const handler = (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        e.stopPropagation();
+        spacebarHandlerRef.current(e);
+      }
+    };
+    setModalSpacebarHandler(() => handler);
+    return () => {
+      setModalSpacebarHandler(void 0);
+    };
+  }, [setModalSpacebarHandler]);
+  const handleSave = reactExports.useCallback(() => {
+    onSave(workingSegments);
+  }, [workingSegments, onSave]);
+  const stats = reactExports.useMemo(() => {
+    const total = allWords.length;
+    const synced = allWords.filter(
+      (w) => w.start_time !== null && w.end_time !== null
+    ).length;
+    return { total, synced, remaining: total - synced };
+  }, [allWords]);
+  const getInstructionText = reactExports.useCallback(() => {
+    if (isManualSyncing) {
+      if (isSpacebarPressed) {
+        return { primary: "⏱️ Holding... release when word ends", secondary: "Release spacebar when the word finishes" };
+      }
+      if (stats.remaining === 0) {
+        return { primary: "✅ All words synced!", secondary: 'Click "Stop Sync" then "Apply" to save' };
+      }
+      return { primary: "👆 Press SPACEBAR when you hear each word", secondary: "Tap for short words, hold for longer words" };
+    }
+    if (stats.synced === 0) {
+      return { primary: 'Click "Start Sync" to begin timing words', secondary: "Audio will play and you'll tap spacebar for each word" };
+    }
+    if (stats.remaining > 0) {
+      return { primary: `${stats.remaining} words remaining to sync`, secondary: 'Click "Start Sync" to continue, or "Unsync from Cursor" to re-sync from a point' };
+    }
+    return { primary: "✅ All words synced!", secondary: 'Click "Apply" to save changes, or make adjustments first' };
+  }, [isManualSyncing, isSpacebarPressed, stats.synced, stats.remaining]);
+  const instruction = getInstructionText();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", height: "100%", gap: 1 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { display: "flex", justifyContent: "flex-end", alignItems: "center", height: 24 }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "body2", color: "text.secondary", children: [
+      stats.synced,
+      " / ",
+      stats.total,
+      " words synced",
+      stats.remaining > 0 && ` (${stats.remaining} remaining)`
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Box,
+      {
+        sx: {
+          height: 56,
+          flexShrink: 0
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          Paper,
+          {
+            sx: {
+              p: 1.5,
+              height: "100%",
+              bgcolor: isManualSyncing ? "info.main" : "grey.100",
+              color: isManualSyncing ? "info.contrastText" : "text.primary",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              overflow: "hidden",
+              boxSizing: "border-box"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { fontWeight: 500, lineHeight: 1.3 }, children: instruction.primary }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", sx: { opacity: 0.85, display: "block", lineHeight: 1.3 }, children: instruction.secondary })
+            ]
+          }
+        )
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { height: 88, flexShrink: 0 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SyncControls,
+      {
+        isManualSyncing,
+        isPaused,
+        onStartSync: handleStartSync,
+        onPauseSync: handlePauseSync,
+        onResumeSync: handleResumeSync,
+        onClearSync: handleClearSync,
+        onEditLyrics: handleEditLyrics,
+        onPlay: handlePlayAudio,
+        onStop: handleStopAudio,
+        isPlaying,
+        hasSelectedWords: selectedWordIds.size > 0,
+        selectedWordCount: selectedWordIds.size,
+        onUnsyncFromCursor: handleUnsyncFromCursor,
+        onEditSelectedWord: handleEditSelectedWord,
+        onDeleteSelected: handleDeleteSelected,
+        canUnsyncFromCursor
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { height: 44, flexShrink: 0 }, children: isManualSyncing && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      UpcomingWordsBar,
+      {
+        words: allWords,
+        syncWordIndex,
+        isManualSyncing
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flexGrow: 1, minHeight: 200 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      TimelineCanvas,
+      {
+        words: allWords,
+        segments: workingSegments,
+        visibleStartTime,
+        visibleEndTime,
+        currentTime,
+        selectedWordIds,
+        onWordClick: handleWordClick,
+        onBackgroundClick: handleBackgroundClick,
+        onTimeBarClick: handleTimeBarClick,
+        onSelectionComplete: handleSelectionComplete,
+        onWordTimingChange: handleWordTimingChange,
+        onWordsMove: handleWordsMove,
+        syncWordIndex,
+        isManualSyncing,
+        onScrollChange: handleScrollChange,
+        audioDuration,
+        zoomSeconds,
+        height: 200
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 2, px: 2 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomInIcon, { color: "action", fontSize: "small" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Slider,
+        {
+          value: sliderValue,
+          onChange: handleZoomChange,
+          min: 0,
+          max: ZOOM_STEPS,
+          step: 1,
+          sx: { flexGrow: 1 },
+          disabled: isManualSyncing && !isPaused
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomOutIcon, { color: "action", fontSize: "small" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "caption", color: "text.secondary", sx: { minWidth: 60 }, children: [
+        zoomSeconds.toFixed(1),
+        "s view"
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", justifyContent: "flex-end", gap: 2, pt: 2, borderTop: 1, borderColor: "divider" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: onCancel, color: "inherit", children: "Cancel" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          onClick: handleSave,
+          variant: "contained",
+          color: "primary",
+          disabled: isManualSyncing && !isPaused,
+          children: "Apply"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      Dialog,
+      {
+        open: showEditLyricsModal,
+        onClose: () => setShowEditLyricsModal(false),
+        maxWidth: "md",
+        fullWidth: true,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(DialogTitle, { children: "Edit Lyrics" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Alert, { severity: "warning", sx: { mb: 2 }, children: "Editing lyrics will reset all timing data. You will need to re-sync the entire song." }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              TextField,
+              {
+                multiline: true,
+                rows: 15,
+                fullWidth: true,
+                value: editLyricsText,
+                onChange: (e) => setEditLyricsText(e.target.value),
+                placeholder: "Enter lyrics, one line per segment..."
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogActions, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => setShowEditLyricsModal(false), children: "Cancel" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: handleSaveEditedLyrics, variant: "contained", color: "warning", children: "Save & Reset Timing" })
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      Dialog,
+      {
+        open: showEditWordModal,
+        onClose: () => setShowEditWordModal(false),
+        maxWidth: "xs",
+        fullWidth: true,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(DialogTitle, { children: "Edit Word" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogContent, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", color: "text.secondary", sx: { mb: 2 }, children: "Edit the word text. Enter multiple words separated by spaces to split." }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              TextField,
+              {
+                fullWidth: true,
+                value: editWordText,
+                onChange: (e) => setEditWordText(e.target.value),
+                autoFocus: true,
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") {
+                    handleSaveEditedWord();
+                  }
+                }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogActions, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: () => setShowEditWordModal(false), children: "Cancel" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: handleSaveEditedWord, variant: "contained", children: "Save" })
+          ] })
+        ]
+      }
+    )
+  ] });
+});
 function ReplaceAllLyricsModal({
   open,
   onClose,
   onSave,
   onPlaySegment,
   currentTime = 0,
-  setModalSpacebarHandler
+  setModalSpacebarHandler,
+  existingSegments = []
 }) {
+  const [mode, setMode] = reactExports.useState("selection");
   const [inputText, setInputText] = reactExports.useState("");
-  const [isReplaced, setIsReplaced] = reactExports.useState(false);
-  const [globalSegment, setGlobalSegment] = reactExports.useState(null);
-  const [originalSegments, setOriginalSegments] = reactExports.useState([]);
-  const [currentSegments, setCurrentSegments] = reactExports.useState([]);
-  const getAudioDuration = reactExports.useCallback(() => {
-    if (window.getAudioDuration) {
-      const duration2 = window.getAudioDuration();
-      return duration2 > 0 ? duration2 : 600;
+  const [newSegments, setNewSegments] = reactExports.useState([]);
+  reactExports.useEffect(() => {
+    if (open) {
+      setMode("selection");
+      setInputText("");
+      setNewSegments([]);
     }
-    return 600;
-  }, []);
+  }, [open]);
   const parseInfo = reactExports.useMemo(() => {
     if (!inputText.trim()) return { lines: 0, words: 0 };
     const lines = inputText.trim().split("\n").filter((line2) => line2.trim().length > 0);
@@ -38462,51 +39946,28 @@ function ReplaceAllLyricsModal({
   const processLyrics = reactExports.useCallback(() => {
     if (!inputText.trim()) return;
     const lines = inputText.trim().split("\n").filter((line2) => line2.trim().length > 0);
-    const newSegments = [];
-    const allWords = [];
+    const segments = [];
     lines.forEach((line2) => {
       const words = line2.trim().split(/\s+/).filter((word) => word.length > 0);
-      const segmentWords = [];
-      words.forEach((wordText) => {
-        const word = {
-          id: nanoid(),
-          text: wordText,
-          start_time: null,
-          end_time: null,
-          confidence: 1,
-          created_during_correction: true
-        };
-        segmentWords.push(word);
-        allWords.push(word);
-      });
-      const segment = {
+      const segmentWords = words.map((wordText) => ({
+        id: nanoid(),
+        text: wordText,
+        start_time: null,
+        end_time: null,
+        confidence: 1,
+        created_during_correction: true
+      }));
+      segments.push({
         id: nanoid(),
         text: line2.trim(),
         words: segmentWords,
         start_time: null,
         end_time: null
-      };
-      newSegments.push(segment);
+      });
     });
-    const audioDuration = getAudioDuration();
-    const endTime = Math.max(audioDuration, 3600);
-    console.log("ReplaceAllLyricsModal - Creating global segment", {
-      audioDuration,
-      endTime,
-      wordCount: allWords.length
-    });
-    const globalSegment2 = {
-      id: "global-replacement",
-      text: allWords.map((w) => w.text).join(" "),
-      words: allWords,
-      start_time: 0,
-      end_time: endTime
-    };
-    setCurrentSegments(newSegments);
-    setOriginalSegments(JSON.parse(JSON.stringify(newSegments)));
-    setGlobalSegment(globalSegment2);
-    setIsReplaced(true);
-  }, [inputText, getAudioDuration]);
+    setNewSegments(segments);
+    setMode("resync");
+  }, [inputText]);
   const handlePasteFromClipboard = reactExports.useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -38516,241 +39977,70 @@ function ReplaceAllLyricsModal({
       alert("Failed to read from clipboard. Please paste manually.");
     }
   }, []);
-  const updateSegment2 = reactExports.useCallback((newWords) => {
-    if (!globalSegment) return;
-    const validStartTimes = newWords.map((w) => w.start_time).filter((t) => t !== null);
-    const validEndTimes = newWords.map((w) => w.end_time).filter((t) => t !== null);
-    const segmentStartTime = validStartTimes.length > 0 ? Math.min(...validStartTimes) : null;
-    const segmentEndTime = validEndTimes.length > 0 ? Math.max(...validEndTimes) : null;
-    const updatedGlobalSegment = {
-      ...globalSegment,
-      words: newWords,
-      text: newWords.map((w) => w.text).join(" "),
-      start_time: segmentStartTime,
-      end_time: segmentEndTime
-    };
-    setGlobalSegment(updatedGlobalSegment);
-    const updatedSegments = currentSegments.map((segment) => {
-      const segmentWordsWithTiming = segment.words.map((segmentWord) => {
-        const globalWord = newWords.find((w) => w.id === segmentWord.id);
-        return globalWord || segmentWord;
-      });
-      const wordsWithTiming = segmentWordsWithTiming.filter(
-        (w) => w.start_time !== null && w.end_time !== null
-      );
-      if (wordsWithTiming.length === segmentWordsWithTiming.length && wordsWithTiming.length > 0) {
-        const segmentStart = Math.min(...wordsWithTiming.map((w) => w.start_time));
-        const segmentEnd = Math.max(...wordsWithTiming.map((w) => w.end_time));
-        return {
-          ...segment,
-          words: segmentWordsWithTiming,
-          start_time: segmentStart,
-          end_time: segmentEnd
-        };
-      } else {
-        return {
-          ...segment,
-          words: segmentWordsWithTiming
-        };
-      }
-    });
-    setCurrentSegments(updatedSegments);
-  }, [globalSegment, currentSegments]);
-  const {
-    isManualSyncing,
-    isPaused,
-    syncWordIndex,
-    startManualSync,
-    pauseManualSync,
-    resumeManualSync,
-    cleanupManualSync,
-    handleSpacebar,
-    isSpacebarPressed
-  } = useManualSync({
-    editedSegment: globalSegment,
-    currentTime,
-    onPlaySegment,
-    updateSegment: updateSegment2
-  });
-  const handleWordUpdate = reactExports.useCallback((wordIndex, updates) => {
-    var _a;
-    if (!globalSegment) return;
-    if (isManualSyncing && !isPaused) {
-      console.log("ReplaceAllLyricsModal - Ignoring word update during active manual sync");
-      return;
-    }
-    console.log("ReplaceAllLyricsModal - Manual word update", {
-      wordIndex,
-      wordText: (_a = globalSegment.words[wordIndex]) == null ? void 0 : _a.text,
-      updates,
-      isManualSyncing,
-      isPaused
-    });
-    const newWords = [...globalSegment.words];
-    newWords[wordIndex] = {
-      ...newWords[wordIndex],
-      ...updates
-    };
-    updateSegment2(newWords);
-  }, [globalSegment, updateSegment2, isManualSyncing, isPaused]);
-  const handleUnsyncWord = reactExports.useCallback((wordIndex) => {
-    var _a;
-    if (!globalSegment) return;
-    console.log("ReplaceAllLyricsModal - Un-syncing word", {
-      wordIndex,
-      wordText: (_a = globalSegment.words[wordIndex]) == null ? void 0 : _a.text
-    });
-    const newWords = [...globalSegment.words];
-    newWords[wordIndex] = {
-      ...newWords[wordIndex],
-      start_time: null,
-      end_time: null
-    };
-    updateSegment2(newWords);
-  }, [globalSegment, updateSegment2]);
   const handleClose = reactExports.useCallback(() => {
-    cleanupManualSync();
+    setMode("selection");
     setInputText("");
-    setIsReplaced(false);
-    setGlobalSegment(null);
-    setOriginalSegments([]);
-    setCurrentSegments([]);
+    setNewSegments([]);
     onClose();
-  }, [onClose, cleanupManualSync]);
-  const handleSave = reactExports.useCallback(() => {
-    if (!globalSegment || !currentSegments.length) return;
-    const finalSegments = [];
-    let wordIndex = 0;
-    currentSegments.forEach((segment) => {
-      const originalWordCount = segment.words.length;
-      const segmentWords = globalSegment.words.slice(wordIndex, wordIndex + originalWordCount);
-      wordIndex += originalWordCount;
-      if (segmentWords.length > 0) {
-        const validStartTimes = segmentWords.map((w) => w.start_time).filter((t) => t !== null);
-        const validEndTimes = segmentWords.map((w) => w.end_time).filter((t) => t !== null);
-        const segmentStartTime = validStartTimes.length > 0 ? Math.min(...validStartTimes) : null;
-        const segmentEndTime = validEndTimes.length > 0 ? Math.max(...validEndTimes) : null;
-        finalSegments.push({
-          ...segment,
-          words: segmentWords,
-          text: segmentWords.map((w) => w.text).join(" "),
-          start_time: segmentStartTime,
-          end_time: segmentEndTime
-        });
-      }
-    });
-    console.log("ReplaceAllLyricsModal - Saving new segments:", {
-      originalSegmentCount: currentSegments.length,
-      finalSegmentCount: finalSegments.length,
-      totalWords: finalSegments.reduce((count, seg) => count + seg.words.length, 0)
-    });
-    onSave(finalSegments);
+  }, [onClose]);
+  const handleSave = reactExports.useCallback((segments) => {
+    onSave(segments);
     handleClose();
-  }, [globalSegment, currentSegments, onSave, handleClose]);
-  const handleReset = reactExports.useCallback(() => {
-    if (!originalSegments.length) return;
-    console.log("ReplaceAllLyricsModal - Resetting to original state");
-    const resetWords = originalSegments.flatMap(
-      (segment) => segment.words.map((word) => ({
-        ...word,
-        start_time: null,
-        end_time: null
-      }))
-    );
-    const audioDuration = getAudioDuration();
-    const resetGlobalSegment = {
-      id: "global-replacement",
-      text: resetWords.map((w) => w.text).join(" "),
-      words: resetWords,
-      start_time: 0,
-      end_time: Math.max(audioDuration, 3600)
-      // At least 1 hour to prevent auto-stop
-    };
-    const resetCurrentSegments = originalSegments.map((segment) => ({
-      ...segment,
-      words: segment.words.map((word) => ({
-        ...word,
-        start_time: null,
-        end_time: null
-      })),
-      start_time: null,
-      end_time: null
-    }));
-    setGlobalSegment(resetGlobalSegment);
-    setCurrentSegments(resetCurrentSegments);
-  }, [originalSegments, getAudioDuration]);
-  const spacebarHandlerRef = reactExports.useRef(handleSpacebar);
-  spacebarHandlerRef.current = handleSpacebar;
-  reactExports.useEffect(() => {
-    if (open && isReplaced) {
-      console.log("ReplaceAllLyricsModal - Setting up spacebar handler");
-      const handleKeyEvent = (e) => {
-        if (e.code === "Space") {
-          console.log("ReplaceAllLyricsModal - Spacebar captured in modal");
-          e.preventDefault();
-          e.stopPropagation();
-          spacebarHandlerRef.current(e);
-        }
-      };
-      setModalSpacebarHandler(() => handleKeyEvent);
-      return () => {
-        if (!open) {
-          console.log("ReplaceAllLyricsModal - Clearing spacebar handler");
-          setModalSpacebarHandler(void 0);
-        }
-      };
-    } else if (open) {
-      setModalSpacebarHandler(void 0);
-    }
-  }, [open, isReplaced, setModalSpacebarHandler]);
-  const timeRange = reactExports.useMemo(() => {
-    const audioDuration = getAudioDuration();
-    return { start: 0, end: audioDuration };
-  }, [getAudioDuration]);
-  const segmentProgressProps = reactExports.useMemo(() => ({
-    currentSegments,
-    globalSegment,
-    syncWordIndex
-  }), [currentSegments, globalSegment, syncWordIndex]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    Dialog,
-    {
-      open,
-      onClose: handleClose,
-      maxWidth: false,
-      fullWidth: true,
-      onKeyDown: (e) => {
-        if (e.key === "Enter" && !e.shiftKey && isReplaced) {
-          e.preventDefault();
-          handleSave();
-        }
-      },
-      PaperProps: {
-        sx: {
-          height: "90vh",
-          margin: "5vh 2vh",
-          maxWidth: "calc(100vw - 4vh)",
-          width: "calc(100vw - 4vh)"
-        }
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flex: 1 }, children: "Replace All Lyrics" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: handleClose, sx: { ml: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseIcon, {}) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          DialogContent,
-          {
-            dividers: true,
-            sx: {
-              display: "flex",
-              flexDirection: "column",
-              flexGrow: 1,
-              overflow: "hidden"
-            },
-            children: !isReplaced ? (
-              // Step 1: Input new lyrics
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 2, height: "100%" }, children: [
+  }, [onSave, handleClose]);
+  const handleSelectReplace = reactExports.useCallback(() => {
+    setMode("replace");
+  }, []);
+  const handleSelectResync = reactExports.useCallback(() => {
+    setMode("resync");
+  }, []);
+  const handleBackToSelection = reactExports.useCallback(() => {
+    setMode("selection");
+    setInputText("");
+    setNewSegments([]);
+  }, []);
+  const segmentsForSync = mode === "resync" && newSegments.length > 0 ? newSegments : existingSegments;
+  const hasExistingLyrics = existingSegments.length > 0 && existingSegments.some((s) => s.words.length > 0);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ModeSelectionModal,
+      {
+        open: open && mode === "selection",
+        onClose: handleClose,
+        onSelectReplace: handleSelectReplace,
+        onSelectResync: handleSelectResync,
+        hasExistingLyrics
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      Dialog,
+      {
+        open: open && mode === "replace",
+        onClose: handleClose,
+        maxWidth: "md",
+        fullWidth: true,
+        PaperProps: {
+          sx: {
+            height: "80vh",
+            maxHeight: "80vh"
+          }
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: handleBackToSelection, size: "small", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {}) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flex: 1 }, children: "Replace All Lyrics" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: handleClose, sx: { ml: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseIcon, {}) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            DialogContent,
+            {
+              dividers: true,
+              sx: {
+                display: "flex",
+                flexDirection: "column",
+                flexGrow: 1,
+                overflow: "hidden"
+              },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 2, height: "100%" }, children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", gutterBottom: true, children: "Paste your new lyrics below:" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", color: "text.secondary", gutterBottom: true, children: "Each line will become a separate segment. Words will be separated by spaces." }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", gap: 2, mb: 2 }, children: [
@@ -38791,185 +40081,95 @@ function ReplaceAllLyricsModal({
                       }
                     }
                   }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { display: "flex", justifyContent: "flex-end", gap: 2 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                )
+              ] })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogActions, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: handleClose, color: "inherit", children: "Cancel" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Button,
+              {
+                variant: "contained",
+                onClick: processLyrics,
+                disabled: !inputText.trim(),
+                startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(AutoFixHighIcon, {}),
+                children: "Continue to Sync"
+              }
+            )
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      Dialog,
+      {
+        open: open && mode === "resync",
+        onClose: handleClose,
+        maxWidth: false,
+        fullWidth: true,
+        PaperProps: {
+          sx: {
+            height: "90vh",
+            margin: "5vh 2vw",
+            maxWidth: "calc(100vw - 4vw)",
+            width: "calc(100vw - 4vw)"
+          }
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(DialogTitle, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: handleBackToSelection, size: "small", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {}) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flex: 1 }, children: newSegments.length > 0 ? "Sync New Lyrics" : "Re-sync Existing Lyrics" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(IconButton, { onClick: handleClose, sx: { ml: "auto" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(CloseIcon, {}) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            DialogContent,
+            {
+              dividers: true,
+              sx: {
+                display: "flex",
+                flexDirection: "column",
+                flexGrow: 1,
+                overflow: "hidden",
+                p: 2
+              },
+              children: segmentsForSync.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                LyricsSynchronizer,
+                {
+                  segments: segmentsForSync,
+                  currentTime,
+                  onPlaySegment,
+                  onSave: handleSave,
+                  onCancel: handleClose,
+                  setModalSpacebarHandler
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                gap: 2
+              }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", color: "text.secondary", children: "No lyrics to sync" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", color: "text.secondary", children: "Go back and paste new lyrics, or close this modal." }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
                   Button,
                   {
-                    variant: "contained",
-                    onClick: processLyrics,
-                    disabled: !inputText.trim(),
-                    startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(AutoFixHighIcon, {}),
-                    children: "Replace All Lyrics"
+                    variant: "outlined",
+                    onClick: handleBackToSelection,
+                    startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {}),
+                    children: "Back to Selection"
                   }
-                ) })
+                )
               ] })
-            ) : (
-              // Step 2: Manual sync interface
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", height: "100%", gap: 2 }, children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(Paper, { sx: { p: 2, bgcolor: "background.paper" }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", gutterBottom: true, children: "Lyrics Replaced Successfully" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "body2", color: "text.secondary", children: [
-                    "Created ",
-                    currentSegments.length,
-                    " segments with ",
-                    globalSegment == null ? void 0 : globalSegment.words.length,
-                    " words total. Use Manual Sync to set timing for all words."
-                  ] })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, {}),
-                globalSegment && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", gap: 2, flexGrow: 1, minHeight: 0 }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { flex: 2, display: "flex", flexDirection: "column", minHeight: 0 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    EditTimelineSection,
-                    {
-                      words: globalSegment.words,
-                      startTime: timeRange.start,
-                      endTime: timeRange.end,
-                      originalStartTime: 0,
-                      originalEndTime: getAudioDuration(),
-                      currentStartTime: globalSegment.start_time,
-                      currentEndTime: globalSegment.end_time,
-                      currentTime,
-                      isManualSyncing,
-                      syncWordIndex,
-                      isSpacebarPressed,
-                      onWordUpdate: handleWordUpdate,
-                      onUnsyncWord: handleUnsyncWord,
-                      onPlaySegment,
-                      onStopAudio: () => {
-                        if (window.toggleAudioPlayback && window.isAudioPlaying) {
-                          window.toggleAudioPlayback();
-                        }
-                      },
-                      startManualSync,
-                      pauseManualSync,
-                      resumeManualSync,
-                      isPaused,
-                      isGlobal: true,
-                      defaultZoomLevel: 10,
-                      isReplaceAllMode: true
-                    }
-                  ) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    SegmentProgressPanel,
-                    {
-                      currentSegments: segmentProgressProps.currentSegments,
-                      globalSegment: segmentProgressProps.globalSegment,
-                      syncWordIndex: segmentProgressProps.syncWordIndex
-                    }
-                  )
-                ] })
-              ] })
-            )
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(DialogActions, { children: isReplaced && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          EditActionBar,
-          {
-            onReset: handleReset,
-            onClose: handleClose,
-            onSave: handleSave,
-            editedSegment: globalSegment,
-            isGlobal: true
-          }
-        ) })
-      ]
-    }
-  );
-}
-const SegmentProgressItem = reactExports.memo(({
-  segment,
-  index,
-  isActive
-}) => {
-  const wordsWithTiming = segment.words.filter(
-    (w) => w.start_time !== null && w.end_time !== null
-  ).length;
-  const totalWords = segment.words.length;
-  const isComplete = wordsWithTiming === totalWords;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    Paper,
-    {
-      ref: isActive ? (el) => {
-        if (el) {
-          el.scrollIntoView({
-            behavior: "smooth",
-            block: "center"
-          });
-        }
-      } : void 0,
-      sx: {
-        p: 1,
-        mb: 1,
-        bgcolor: isActive ? "primary.light" : isComplete ? "success.light" : "background.paper",
-        border: isActive ? 2 : 1,
-        borderColor: isActive ? "primary.main" : "divider"
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          Typography,
-          {
-            variant: "body2",
-            sx: {
-              fontWeight: isActive ? "bold" : "normal",
-              mb: 0.5
-            },
-            children: [
-              "Segment ",
-              index + 1,
-              ": ",
-              segment.text.slice(0, 50),
-              segment.text.length > 50 ? "..." : ""
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "caption", color: "text.secondary", children: [
-          wordsWithTiming,
-          "/",
-          totalWords,
-          " words synced",
-          isComplete && segment.start_time !== null && segment.end_time !== null && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
-            segment.start_time.toFixed(2),
-            "s - ",
-            segment.end_time.toFixed(2),
-            "s"
-          ] })
-        ] })
-      ]
-    },
-    segment.id
-  );
-});
-const SegmentProgressPanel = reactExports.memo(({
-  currentSegments,
-  globalSegment,
-  syncWordIndex
-}) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h6", gutterBottom: true, children: "Segment Progress" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: {
-      overflow: "auto",
-      flexGrow: 1,
-      border: 1,
-      borderColor: "divider",
-      borderRadius: 1,
-      p: 1
-    }, children: currentSegments.map((segment, index) => {
-      const isActive = Boolean(
-        globalSegment && syncWordIndex >= 0 && syncWordIndex < globalSegment.words.length && globalSegment.words[syncWordIndex] && segment.words.some((w) => w.id === globalSegment.words[syncWordIndex].id)
-      );
-      return /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SegmentProgressItem,
-        {
-          segment,
-          index,
-          isActive
-        },
-        segment.id
-      );
-    }) })
+            }
+          )
+        ]
+      }
+    )
   ] });
-});
+}
 const ANNOTATION_TYPES = [
   {
     value: "SOUND_ALIKE",
@@ -39869,7 +41069,7 @@ function AudioPlayer({ apiClient, onTimeUpdate, audioHash }) {
     audioRef.current.currentTime = time;
     setCurrentTime(time);
   };
-  const formatTime = (seconds) => {
+  const formatTime2 = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -39921,7 +41121,7 @@ function AudioPlayer({ apiClient, onTimeUpdate, audioHash }) {
         children: isPlaying ? /* @__PURE__ */ jsxRuntimeExports.jsx(PauseIcon, { fontSize: "small" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(PlayArrowIcon, { fontSize: "small" })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { minWidth: 32, fontSize: "0.75rem" }, children: formatTime(currentTime) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { minWidth: 32, fontSize: "0.75rem" }, children: formatTime2(currentTime) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Slider,
       {
@@ -39943,7 +41143,7 @@ function AudioPlayer({ apiClient, onTimeUpdate, audioHash }) {
         }
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { minWidth: 32, fontSize: "0.75rem" }, children: formatTime(duration2) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { minWidth: 32, fontSize: "0.75rem" }, children: formatTime2(duration2) })
   ] });
 }
 function Header({
@@ -41652,7 +42852,8 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
         onSave: handleSaveReplaceAllLyrics,
         onPlaySegment: handlePlaySegment,
         currentTime: currentAudioTime,
-        setModalSpacebarHandler: handleSetModalSpacebarHandler
+        setModalSpacebarHandler: handleSetModalSpacebarHandler,
+        existingSegments: data.corrected_segments
       }
     ),
     pendingAnnotation && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -42068,4 +43269,4 @@ ReactDOM$1.createRoot(document.getElementById("root")).render(
     /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
   ] })
 );
-//# sourceMappingURL=index-BYcNmlHH.js.map
+//# sourceMappingURL=index-COYImAcx.js.map
