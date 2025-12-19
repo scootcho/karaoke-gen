@@ -1326,6 +1326,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 onPlaySegment={handlePlaySegment}
                 currentTime={currentAudioTime}
                 setModalSpacebarHandler={handleSetModalSpacebarHandler}
+                existingSegments={data.corrected_segments}
             />
             
             {pendingAnnotation && (

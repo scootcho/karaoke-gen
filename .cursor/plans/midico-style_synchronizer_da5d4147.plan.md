@@ -4,34 +4,34 @@ overview: Build a new MidiCo-style Synchronizer component for efficient re-synci
 todos:
   - id: mode-selection-modal
     content: Create ModeSelectionModal for 'Replace All' vs 'Re-sync Existing' choice
-    status: pending
+    status: completed
   - id: timeline-canvas
     content: Build canvas-based TimelineCanvas component for high-performance word block rendering
-    status: pending
+    status: completed
   - id: upcoming-words-bar
     content: Create UpcomingWordsBar component showing next unsynced words in fixed position
-    status: pending
+    status: completed
   - id: sync-controls
     content: Build SyncControls with Start Sync, Clear Sync, Unsync from Cursor, Delete Selected buttons
-    status: pending
+    status: completed
   - id: lyrics-synchronizer
     content: Create main LyricsSynchronizer component integrating all sub-components
-    status: pending
+    status: completed
   - id: unsync-from-cursor
     content: Add 'unsync from cursor' functionality to useManualSync hook
-    status: pending
+    status: completed
   - id: integrate-modal
     content: Integrate new synchronizer into ReplaceAllLyricsModal with mode selection
-    status: pending
+    status: completed
   - id: word-selection
     content: Implement single-click and drag-select for word blocks
-    status: pending
+    status: completed
   - id: zoom-slider
     content: Add smooth zoom slider with 4.5s-24s range
-    status: pending
+    status: completed
   - id: performance-test
     content: Test performance with long songs and optimize as needed
-    status: pending
+    status: completed
 ---
 
 # MidiCo-Style Synchronizer Implementation

@@ -91,16 +91,32 @@ Synced words appear as **red rectangular blocks** on the timeline:
 - Block width corresponds to the word's duration
 - Block horizontal position corresponds to the word's start time
 
-#### Two-Level Word Layout
+#### Two-Level Word Layout (Alternating Segments)
 
-When words from different segments overlap in time or are close together, they display on two vertical levels to avoid visual overlap:
+Segments alternate between two vertical positions on the timeline. Each consecutive segment (in time order) is placed on the opposite level from the previous one:
+
+- **Level 0 (top)**: 1st, 3rd, 5th, 7th... segments
+- **Level 1 (bottom)**: 2nd, 4th, 6th, 8th... segments
 
 ![Two Level Word Blocks](midico-sync-screenshots/MidiCo-Synchronizer-2025-12-18-During-Sync-Showing-Two-Levels-Word-Blocks.png)
 
-This is particularly useful for:
-- Songs with backing vocals
-- Fast sections where words are close together
-- Overlapping vocal lines
+This alternating layout is critical because:
+
+1. **Text never overlaps between consecutive segments** - Since each segment is on a different level, the text labels above the red blocks from one segment won't collide with text from the next segment, even if the text extends past its block width.
+
+2. **All words remain readable** - Text is allowed to extend horizontally beyond the red block boundaries. Because consecutive segments are always on different vertical levels, this extended text doesn't overlap with adjacent segments.
+
+![Non-Overlapping Segments](midico-sync-screenshots/MidiCo-Synchronizer-2025-12-18-Timeline-With-Non-Overlapping-Segments.png)
+
+In the example above, notice how:
+- "Monica Mountains" (level 0) has text that extends beyond its block
+- "Where she then proceeded to pump her vehicle in and out of turns" (level 1) is on a different vertical level
+- "Sometimes dropping down to fifty miles per hour" (level 0) returns to the top level
+- "Only to immediately gun it back up to 90 again" (level 1) is back on the bottom level
+
+This simple alternating pattern ensures that even long segment text remains fully readable without truncation.
+
+**Edge case:** Overlap can still occur in rare situations - if one segment's text is extremely long AND the segment two positions later (on the same level) is very short/early. But this is uncommon in practice.
 
 #### Word Block Selection
 
@@ -108,6 +124,48 @@ This is particularly useful for:
 - **Click-drag on background**: Creates selection rectangle to select multiple blocks
 
 ![Click Drag Word Selection](midico-sync-screenshots/MidiCo-Synchronizer-2025-12-18-Click-Drag-Word-Selection.png)
+
+#### Word Block Manipulation (Resize & Drag)
+
+Selected word blocks can be manipulated directly on the timeline:
+
+##### Resizing Word Blocks (Change Duration)
+
+When a word block is selected and you hover over it, a **small white dot/handle** appears just inside the right edge of the block. This resize handle allows you to change the word's duration:
+
+1. Select a word block (single click)
+2. Hover over the selected block to reveal the resize handle (white dot on right edge)
+3. Click and drag the handle left/right to shorten/lengthen the word's duration
+4. The word's end time changes; start time remains fixed
+
+This is essential for fine-tuning word durations after initial sync, especially for:
+- Words that were synced too long or too short
+- Adjusting timing to better match the audio
+- Creating smoother transitions between words
+
+##### Dragging Word Blocks (Change Position)
+
+Selected word blocks can be dragged horizontally to change their position in time:
+
+**Single word:**
+1. Select a word block
+2. Click and drag anywhere on the block (not on the resize handle)
+3. The entire word moves earlier/later in time (both start and end times shift)
+
+**Multiple words:**
+1. Drag-select multiple word blocks (or Ctrl/Cmd+click to add to selection)
+2. Click and drag any of the selected blocks
+3. **All selected blocks move together**, maintaining their relative timing
+
+This is particularly useful for:
+- Shifting an entire segment earlier or later when it's consistently off
+- Adjusting groups of words that were synced correctly relative to each other but offset from the audio
+- Fine-tuning timing without having to re-sync
+
+**Example workflow:** If a segment of 10 words all come in 0.2 seconds too late:
+1. Drag-select all 10 word blocks
+2. Drag them 0.2 seconds earlier
+3. All words maintain their relative timing but are now properly aligned with the audio
 
 ### 2.4 Upcoming Words Display
 
@@ -275,3 +333,4 @@ All screenshots are located in: `docs/midico-sync-screenshots/`
 | `MidiCo-Synchronizer-2025-12-18-During-Sync-Showing-Max-Zoom-Level.png` | Maximum zoom level (~4.5 seconds visible) |
 | `MidiCo-Synchronizer-2025-12-18-Click-Drag-Word-Selection.png` | Selection rectangle for multi-word selection |
 | `MidiCo-Synchronizer-2025-12-18-Lyrics-Editor-Modal.png` | Edit Lyrics modal dialog |
+| `MidiCo-Synchronizer-2025-12-18-Timeline-With-Non-Overlapping-Segments.png` | Shows alternating segment levels with long text that doesn't overlap |
