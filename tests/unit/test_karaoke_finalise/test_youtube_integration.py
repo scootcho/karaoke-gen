@@ -299,7 +299,7 @@ def test_check_if_video_title_exists_found_confirm(mock_input, mock_fuzz_ratio, 
     found_video_id = "existing_video_id"
     found_video_title = f"{ARTIST} - {TITLE} (Karaoke) Official"
     mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
-        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title}}]
+        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title, "channelId": "UC_test_channel_id"}}]
     }
     mock_fuzz_ratio.return_value = 85 # High similarity
 
@@ -322,7 +322,7 @@ def test_check_if_video_title_exists_found_reject(mock_input, mock_fuzz_ratio, m
     found_video_id = "existing_video_id"
     found_video_title = f"{ARTIST} - {TITLE} (Karaoke) Official"
     mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
-        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title}}]
+        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title, "channelId": "UC_test_channel_id"}}]
     }
     mock_fuzz_ratio.return_value = 85
 
@@ -344,7 +344,7 @@ def test_check_if_video_title_exists_low_similarity(mock_fuzz_ratio, mock_auth, 
     found_video_id = "existing_video_id"
     found_video_title = "Completely Different Title"
     mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
-        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title}}]
+        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title, "channelId": "UC_test_channel_id"}}]
     }
     mock_fuzz_ratio.return_value = 30 # Low similarity
 
@@ -367,7 +367,7 @@ def test_check_if_video_title_exists_non_interactive(mock_input, mock_fuzz_ratio
     found_video_id = "existing_video_id"
     found_video_title = f"{ARTIST} - {TITLE} (Karaoke) Official"
     mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
-        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title}}]
+        "items": [{"id": {"videoId": found_video_id}, "snippet": {"title": found_video_title, "channelId": "UC_test_channel_id"}}]
     }
     mock_fuzz_ratio.return_value = 85
 
@@ -391,6 +391,63 @@ def test_check_if_video_title_exists_not_found(mock_auth, finaliser_for_yt, mock
     assert not hasattr(finaliser_for_yt, 'youtube_video_id')
     assert finaliser_for_yt.youtube_url is None # Check initial state remains None
     assert finaliser_for_yt.skip_notifications is False
+
+@patch.object(KaraokeFinalise, 'authenticate_youtube')
+@patch('thefuzz.fuzz.ratio')
+@patch('builtins.input')
+def test_check_if_video_title_exists_filters_other_channels(mock_input, mock_fuzz_ratio, mock_auth, finaliser_for_yt, mock_youtube_service):
+    """Test that videos from other channels are filtered out even if returned by search API.
+    
+    The YouTube search API sometimes returns results from other channels even when
+    channelId parameter is specified. This test verifies we filter those out.
+    """
+    mock_auth.return_value = mock_youtube_service
+    youtube_title = f"{ARTIST} - {TITLE} (Karaoke)"
+    
+    # Simulate YouTube API bug: returns videos from other channels despite channelId filter
+    mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
+        "items": [
+            # Video from another channel - should be skipped
+            {"id": {"videoId": "other_channel_video_1"}, "snippet": {"title": f"{ARTIST} - {TITLE}", "channelId": "UC_other_channel_1"}},
+            {"id": {"videoId": "other_channel_video_2"}, "snippet": {"title": f"{ARTIST} - {TITLE} (Official)", "channelId": "UC_other_channel_2"}},
+            # Video from user's channel - should be matched
+            {"id": {"videoId": "my_channel_video"}, "snippet": {"title": f"{ARTIST} - {TITLE} (Karaoke)", "channelId": "UC_test_channel_id"}},
+        ]
+    }
+    mock_fuzz_ratio.return_value = 95
+    mock_input.return_value = 'y'
+
+    exists = finaliser_for_yt.check_if_video_title_exists_on_youtube_channel(youtube_title)
+
+    assert exists is True
+    # Should match the video from our channel, not the ones from other channels
+    assert finaliser_for_yt.youtube_video_id == "my_channel_video"
+    # fuzz.ratio should only be called for videos from our channel (1 video)
+    assert mock_fuzz_ratio.call_count == 1
+
+
+@patch.object(KaraokeFinalise, 'authenticate_youtube')
+@patch('thefuzz.fuzz.ratio')
+def test_check_if_video_title_exists_all_from_other_channels(mock_fuzz_ratio, mock_auth, finaliser_for_yt, mock_youtube_service):
+    """Test that if all returned videos are from other channels, no match is found."""
+    mock_auth.return_value = mock_youtube_service
+    youtube_title = f"{ARTIST} - {TITLE} (Karaoke)"
+    
+    # All results are from other channels
+    mock_youtube_service.search.return_value.list.return_value.execute.return_value = {
+        "items": [
+            {"id": {"videoId": "other_channel_video_1"}, "snippet": {"title": f"{ARTIST} - {TITLE}", "channelId": "UC_other_channel_1"}},
+            {"id": {"videoId": "other_channel_video_2"}, "snippet": {"title": f"{ARTIST} - {TITLE} (Official)", "channelId": "UC_other_channel_2"}},
+        ]
+    }
+
+    exists = finaliser_for_yt.check_if_video_title_exists_on_youtube_channel(youtube_title)
+
+    assert exists is False
+    # fuzz.ratio should never be called since all videos are filtered out
+    mock_fuzz_ratio.assert_not_called()
+    # Should log debug messages about skipping videos from other channels
+    assert finaliser_for_yt.logger.debug.call_count >= 2
 
 # --- Delete / Upload Tests ---
 

@@ -424,6 +424,15 @@ class KaraokeFinalise:
         # Check if any videos were found
         if "items" in response and len(response["items"]) > 0:
             for item in response["items"]:
+                # YouTube search API sometimes returns results from other channels even with channelId filter
+                # Verify the video actually belongs to our channel
+                result_channel_id = item["snippet"]["channelId"]
+                if result_channel_id != channel_id:
+                    self.logger.debug(
+                        f"Skipping video from different channel: {item['snippet']['title']} (channel: {result_channel_id})"
+                    )
+                    continue
+
                 found_title = item["snippet"]["title"]
 
                 # In server-side mode, require an exact match to avoid false positives.
