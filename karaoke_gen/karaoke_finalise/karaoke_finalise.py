@@ -54,6 +54,9 @@ class KaraokeFinalise:
         if logger is None:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(log_level)
+            # Prevent log propagation to root logger to avoid duplicate logs
+            # when external packages (like lyrics_converter) configure root logger handlers
+            self.logger.propagate = False
 
             self.log_handler = logging.StreamHandler()
 

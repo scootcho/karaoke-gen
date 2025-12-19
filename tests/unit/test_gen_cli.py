@@ -130,7 +130,7 @@ def mock_sleep():
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
-async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, mock_base_args, mock_logger, caplog):
+async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, mock_base_args, mock_logger, capsys):
     """Test URL-only argument parsing."""
     mock_base_args.args = ["https://example.com/song.mp3"]
     mock_kprep_instance = MagicMock()
@@ -145,8 +145,9 @@ async def test_arg_parsing_url_only(mock_kprep_class, mock_isfile, mock_isurl, m
     # Verify that input_media=URL is passed
     assert mock_kprep_class.call_args.kwargs["input_media"] == "https://example.com/song.mp3"
     mock_kprep_instance.process.assert_awaited_once()
-    # Verify warning in log
-    assert "Input media provided without Artist and Title" in caplog.text
+    # Verify warning in log (captured in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "Input media provided without Artist and Title" in captured.err
 
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
@@ -194,7 +195,7 @@ async def test_arg_parsing_file_artist_title(mock_kprep_class, mock_isfile, mock
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.os.path.isdir", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
-async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_isfile, mock_isurl, mock_base_args, mock_logger, caplog):
+async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_isfile, mock_isurl, mock_base_args, mock_logger, capsys):
     """Test Artist and Title only argument parsing."""
     mock_base_args.args = ["Test Artist", "Test Title"]
     mock_kprep_instance = MagicMock()
@@ -211,8 +212,9 @@ async def test_arg_parsing_artist_title_only(mock_kprep_class, mock_isdir, mock_
     assert mock_kprep_class.call_args.kwargs["title"] == "Test Title"
     assert mock_kprep_class.call_args.kwargs["input_media"] is None
     mock_kprep_instance.process.assert_awaited_once()
-    # Verify message about flacfetch search is shown
-    assert "flacfetch will search for" in caplog.text
+    # Verify message about flacfetch search is shown (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "flacfetch will search for" in captured.err
 
 @patch("karaoke_gen.utils.gen_cli.is_url", return_value=False)
 @patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
@@ -281,7 +283,8 @@ async def test_workflow_prep_only(mock_kfinalise, mock_kprep_class, mock_base_ar
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Should not be called
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
 @patch("builtins.open", new_callable=mock_open) # Mock open for style JSON if CDG enabled
-async def test_workflow_finalise_only(mock_open, mock_kfinalise, mock_kprep, mock_base_args, mock_logger):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_workflow_finalise_only(mock_run_review, mock_open, mock_kfinalise, mock_kprep, mock_base_args, mock_logger):
     """Test --finalise-only workflow."""
     mock_base_args.finalise_only = True
     mock_kfinalise_instance = mock_kfinalise.return_value
@@ -304,7 +307,8 @@ async def test_workflow_finalise_only(mock_open, mock_kfinalise, mock_kprep, moc
 @patch("karaoke_gen.utils.gen_cli.os.path.basename", return_value="Edit Artist - Edit Title")
 @patch("karaoke_gen.utils.gen_cli.os.getcwd", return_value="/fake/path/Edit Artist - Edit Title")
 @patch("builtins.open", new_callable=mock_open) # Mock open for style JSON if CDG enabled
-async def test_workflow_edit_lyrics(mock_open, mock_getcwd, mock_basename, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_workflow_edit_lyrics(mock_run_review, mock_open, mock_getcwd, mock_basename, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test --edit-lyrics workflow."""
     mock_base_args.edit_lyrics = True
     mock_base_args.enable_cdg = False # Simplify for now
@@ -370,7 +374,8 @@ async def test_workflow_test_email_template(mock_kfinalise, mock_base_args, mock
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
-async def test_workflow_lyrics_only(mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_workflow_lyrics_only(mock_run_review, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test --lyrics-only workflow sets environment variables and skips."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.lyrics_only = True
@@ -404,7 +409,8 @@ async def test_workflow_lyrics_only(mock_kfinalise, mock_kprep_class, mock_base_
 @patch("builtins.open", new_callable=mock_open, read_data=SAMPLE_STYLE_JSON)
 @patch("karaoke_gen.utils.gen_cli.os.chdir") # Mock chdir
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True) # Assume track dir exists
-async def test_finalise_cdg_style_loading(mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_finalise_cdg_style_loading(mock_run_review, mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args):
     """Test that CDG styles are loaded correctly when --enable_cdg is used."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.enable_cdg = True
@@ -437,7 +443,8 @@ async def test_finalise_cdg_style_loading(mock_exists, mock_chdir, mock_open, mo
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.sys.exit")
-async def test_finalise_cdg_style_file_not_found(mock_exit, mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_finalise_cdg_style_file_not_found(mock_run_review, mock_exit, mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test exit if CDG enabled but style file not found."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.enable_cdg = True
@@ -465,7 +472,8 @@ async def test_finalise_cdg_style_file_not_found(mock_exit, mock_exists, mock_ch
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.sys.exit")
-async def test_finalise_cdg_style_invalid_json(mock_exit, mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_finalise_cdg_style_invalid_json(mock_run_review, mock_exit, mock_exists, mock_chdir, mock_open, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test exit if CDG enabled but style file has invalid JSON."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.enable_cdg = True
@@ -490,7 +498,7 @@ async def test_finalise_cdg_style_invalid_json(mock_exit, mock_exists, mock_chdi
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
-async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger):
     """Test error handling if KaraokePrep.process fails."""
     mock_base_args.args = ["Artist", "Title"]
     mock_kprep_instance = MagicMock()
@@ -512,7 +520,8 @@ async def test_error_handling_kprep_failure(mock_kfinalise, mock_kprep_class, mo
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
-async def test_error_handling_kfinalise_failure(mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_error_handling_kfinalise_failure(mock_run_review, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test error handling if KaraokeFinalise.process fails."""
     mock_base_args.args = ["Artist", "Title"]
     mock_kprep_instance = MagicMock()
@@ -533,13 +542,15 @@ async def test_error_handling_kfinalise_failure(mock_exists, mock_chdir, mock_kf
     mock_kfinalise.assert_called_once() # Finalise is called
     mock_kfinalise_instance.process.assert_called_once() # Process is called
     
-    # Check the error message in log
-    assert "An error occurred during finalisation, see stack trace below: KFinalise Failed!" in caplog.text
+    # Check the error message in log (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "An error occurred during finalisation, see stack trace below: KFinalise Failed!" in captured.err
 
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep") # Use default MagicMock for class
 @patch("karaoke_gen.utils.gen_cli.KaraokeFinalise")
-async def test_argument_passthrough(mock_kfinalise, mock_kprep_class, mock_base_args):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_argument_passthrough(mock_run_review, mock_kfinalise, mock_kprep_class, mock_base_args):
     """Test that various arguments are passed correctly to KaraokePrep/Finalise."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.render_bounding_boxes = True
@@ -595,7 +606,8 @@ async def test_argument_passthrough(mock_kfinalise, mock_kprep_class, mock_base_
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.pyperclip.copy")
-async def test_clipboard_copy_success(mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_clipboard_copy_success(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test logging when clipboard copy succeeds."""
     mock_base_args.args = ["Artist", "Title"]
     
@@ -615,9 +627,10 @@ async def test_clipboard_copy_success(mock_copy, mock_exists, mock_chdir, mock_k
         await gen_cli.async_main()
 
     mock_kprep_instance.process.assert_awaited_once()
-    # Check log capture for success messages
-    assert "(Folder link copied to clipboard)" in caplog.text
-    assert "(YouTube URL copied to clipboard)" in caplog.text
+    # Check log capture for success messages (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "(Folder link copied to clipboard)" in captured.err
+    assert "(YouTube URL copied to clipboard)" in captured.err
     
     mock_copy.assert_has_calls([
         call("http://share.link/fake"),
@@ -630,7 +643,8 @@ async def test_clipboard_copy_success(mock_copy, mock_exists, mock_chdir, mock_k
 @patch("karaoke_gen.utils.gen_cli.os.chdir")
 @patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True)
 @patch("karaoke_gen.utils.gen_cli.pyperclip.copy", side_effect=Exception("Clipboard Error"))
-async def test_clipboard_copy_failure(mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, caplog):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_clipboard_copy_failure(mock_run_review, mock_copy, mock_exists, mock_chdir, mock_kfinalise, mock_kprep_class, mock_base_args, mock_logger, capsys):
     """Test logging when clipboard copy fails."""
     mock_base_args.args = ["Artist", "Title"]
     
@@ -650,9 +664,10 @@ async def test_clipboard_copy_failure(mock_copy, mock_exists, mock_chdir, mock_k
         await gen_cli.async_main()
 
     mock_kprep_instance.process.assert_awaited_once()
-    # Check log capture for warning messages
-    assert "Failed to copy folder link to clipboard: Clipboard Error" in caplog.text
-    assert "Failed to copy YouTube URL to clipboard: Clipboard Error" in caplog.text
+    # Check log capture for warning messages (in stderr since logger.propagate = False)
+    captured = capsys.readouterr()
+    assert "Failed to copy folder link to clipboard: Clipboard Error" in captured.err
+    assert "Failed to copy YouTube URL to clipboard: Clipboard Error" in captured.err
     
     # Verify clipboard calls were attempted
     mock_copy.assert_has_calls([
@@ -662,7 +677,8 @@ async def test_clipboard_copy_failure(mock_copy, mock_exists, mock_chdir, mock_k
 
 
 @patch("karaoke_gen.utils.gen_cli.KaraokePrep")
-async def test_style_override_parsing(mock_kprep_class, mock_base_args):
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="selected_instrumental.flac")
+async def test_style_override_parsing(mock_run_review, mock_kprep_class, mock_base_args):
     """Test that --style_override arguments are parsed correctly."""
     mock_base_args.args = ["Artist", "Title"]
     mock_base_args.style_override = ["intro.background_image=new_image.png", "end.video_duration=10"]
@@ -685,3 +701,213 @@ async def test_style_override_parsing(mock_kprep_class, mock_base_args):
         "end.video_duration": "10"
     }
     assert prep_kwargs["style_overrides"] == expected_overrides
+
+
+# --- Test _resolve_path_for_cwd helper function ---
+
+class TestResolvePathForCwd:
+    """Tests for the _resolve_path_for_cwd helper function.
+    
+    This function resolves paths that were created relative to the original working
+    directory after os.chdir(track_dir) has been called.
+    """
+    
+    def test_absolute_path_unchanged(self):
+        """Absolute paths should be returned unchanged."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "/absolute/path/to/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == path
+    
+    def test_relative_path_starting_with_track_dir(self):
+        """Paths starting with track_dir should have track_dir stripped."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Artist - Title/stems/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/file.flac"
+    
+    def test_relative_path_with_different_format(self):
+        """Paths without ./ prefix should also be handled."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "Artist - Title/stems/file.flac"
+        track_dir = "Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/file.flac"
+    
+    def test_path_not_starting_with_track_dir(self):
+        """Paths not starting with track_dir should be returned unchanged."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "different/path/to/file.flac"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == path
+    
+    def test_path_with_complex_track_name(self):
+        """Test with a track name containing special characters."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Four Lanes Male Choir - The White Rose/stems/backing_vocals.flac"
+        track_dir = "./Four Lanes Male Choir - The White Rose"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "stems/backing_vocals.flac"
+    
+    def test_path_exactly_matching_track_dir(self):
+        """Test when path exactly matches track_dir (edge case)."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        path = "./Artist - Title"
+        track_dir = "./Artist - Title"
+        result = _resolve_path_for_cwd(path, track_dir)
+        assert result == "."
+    
+    def test_normalized_path_comparison(self):
+        """Test that path normalization works correctly."""
+        from karaoke_gen.utils.gen_cli import _resolve_path_for_cwd
+        
+        # Paths with extra slashes or dots should be normalized
+        path = "./Artist - Title//stems/./file.flac"
+        track_dir = "./Artist - Title/"
+        result = _resolve_path_for_cwd(path, track_dir)
+        # After normalization: "Artist - Title/stems/file.flac" vs "Artist - Title"
+        assert result == "stems/file.flac"
+
+
+# --- Test auto_select_instrumental helper function ---
+
+class TestAutoSelectInstrumental:
+    """Tests for the auto_select_instrumental function.
+    
+    This function automatically selects the best instrumental file when
+    --skip_instrumental_review is used.
+    """
+    
+    def test_prefers_padded_combined_over_non_padded(self, tmp_path, mock_logger):
+        """Padded combined instrumental should be preferred."""
+        from karaoke_gen.utils.gen_cli import auto_select_instrumental
+        
+        # Create test files
+        combined = tmp_path / "Artist - Title (Instrumental +BV model.ckpt).flac"
+        combined_padded = tmp_path / "Artist - Title (Instrumental +BV model.ckpt) (Padded).flac"
+        combined.touch()
+        combined_padded.touch()
+        
+        track = {
+            "track_output_dir": str(tmp_path),
+            "separated_audio": {
+                "combined_instrumentals": {
+                    "model.ckpt": str(combined)
+                }
+            }
+        }
+        
+        # Change to temp directory (simulating the chdir in gen_cli)
+        original_dir = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = auto_select_instrumental(track, str(tmp_path), mock_logger)
+            assert "(Padded)" in result
+        finally:
+            os.chdir(original_dir)
+    
+    def test_prefers_combined_over_clean(self, tmp_path, mock_logger):
+        """Combined instrumental (+BV) should be preferred over clean."""
+        from karaoke_gen.utils.gen_cli import auto_select_instrumental
+        
+        # Create test files
+        clean = tmp_path / "Artist - Title (Instrumental model.ckpt).flac"
+        combined = tmp_path / "Artist - Title (Instrumental +BV model.ckpt).flac"
+        clean.touch()
+        combined.touch()
+        
+        track = {
+            "track_output_dir": str(tmp_path),
+            "separated_audio": {
+                "clean_instrumental": {
+                    "instrumental": str(clean)
+                },
+                "combined_instrumentals": {
+                    "model.ckpt": str(combined)
+                }
+            }
+        }
+        
+        original_dir = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = auto_select_instrumental(track, str(tmp_path), mock_logger)
+            assert "+BV" in result
+        finally:
+            os.chdir(original_dir)
+    
+    def test_falls_back_to_clean_when_no_combined(self, tmp_path, mock_logger):
+        """Should use clean instrumental if no combined available."""
+        from karaoke_gen.utils.gen_cli import auto_select_instrumental
+        
+        # Create test file
+        clean = tmp_path / "Artist - Title (Instrumental model.ckpt).flac"
+        clean.touch()
+        
+        track = {
+            "track_output_dir": str(tmp_path),
+            "separated_audio": {
+                "clean_instrumental": {
+                    "instrumental": str(clean)
+                },
+                "combined_instrumentals": {}
+            }
+        }
+        
+        original_dir = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = auto_select_instrumental(track, str(tmp_path), mock_logger)
+            assert "Instrumental" in result
+        finally:
+            os.chdir(original_dir)
+    
+    def test_raises_error_when_no_instrumental_found(self, tmp_path, mock_logger):
+        """Should raise FileNotFoundError when no instrumental available."""
+        from karaoke_gen.utils.gen_cli import auto_select_instrumental
+        
+        track = {
+            "track_output_dir": str(tmp_path),
+            "separated_audio": {
+                "clean_instrumental": {},
+                "combined_instrumentals": {}
+            }
+        }
+        
+        original_dir = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            with pytest.raises(FileNotFoundError, match="No instrumental file found"):
+                auto_select_instrumental(track, str(tmp_path), mock_logger)
+        finally:
+            os.chdir(original_dir)
+    
+    def test_searches_directory_as_fallback(self, tmp_path, mock_logger):
+        """Should search directory if separated_audio is missing data."""
+        from karaoke_gen.utils.gen_cli import auto_select_instrumental
+        
+        # Create test file in directory but not in separated_audio
+        instrumental = tmp_path / "Artist - Title (Instrumental model.ckpt).flac"
+        instrumental.touch()
+        
+        track = {
+            "track_output_dir": str(tmp_path),
+            "separated_audio": {}  # Empty - nothing in separated_audio
+        }
+        
+        original_dir = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = auto_select_instrumental(track, str(tmp_path), mock_logger)
+            assert "Instrumental" in result
+        finally:
+            os.chdir(original_dir)

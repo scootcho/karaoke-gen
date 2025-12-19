@@ -629,14 +629,14 @@ class ReviewServer:
                 else ""
             )
             
-            # Use hosted review UI by default, can be overridden with LYRICS_REVIEW_UI_URL env var
-            # Set to "local" to use the bundled local frontend instead
-            review_ui_url = os.environ.get("LYRICS_REVIEW_UI_URL", "https://lyrics.nomadkaraoke.com")
+            # Use bundled local frontend by default for local karaoke-gen runs
+            # Can override with LYRICS_REVIEW_UI_URL env var (e.g., http://localhost:5173 for Vite dev)
+            review_ui_url = os.environ.get("LYRICS_REVIEW_UI_URL", "local")
             if review_ui_url.lower() == "local":
-                # Use the bundled local frontend
+                # Use the bundled local frontend served by this FastAPI server
                 browser_url = f"http://localhost:8000?baseApiUrl={encoded_api_url}{audio_hash_param}"
             else:
-                # Use the hosted/external review UI
+                # Use an external review UI (dev server or hosted)
                 browser_url = f"{review_ui_url}?baseApiUrl={encoded_api_url}{audio_hash_param}"
             
             self.logger.info(f"Opening review UI: {browser_url}")

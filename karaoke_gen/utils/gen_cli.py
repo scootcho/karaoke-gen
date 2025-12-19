@@ -18,12 +18,129 @@ import glob
 import pyperclip
 from karaoke_gen import KaraokePrep
 from karaoke_gen.karaoke_finalise import KaraokeFinalise
+from karaoke_gen.audio_fetcher import UserCancelledError
 from karaoke_gen.instrumental_review import (
     AudioAnalyzer,
     WaveformGenerator,
     InstrumentalReviewServer,
 )
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
+
+
+def _resolve_path_for_cwd(path: str, track_dir: str) -> str:
+    """
+    Resolve a path that may have been created relative to the original working directory.
+    
+    After os.chdir(track_dir), paths like './TrackDir/stems/file.flac' become invalid.
+    This function converts such paths to work from the new current directory.
+    
+    Args:
+        path: The path to resolve (may be relative or absolute)
+        track_dir: The track directory we've chdir'd into
+        
+    Returns:
+        A path that's valid from the current working directory
+    """
+    if os.path.isabs(path):
+        return path
+    
+    # Normalize both paths for comparison
+    norm_path = os.path.normpath(path)
+    norm_track_dir = os.path.normpath(track_dir)
+    
+    # If path starts with track_dir, strip it to get the relative path from within track_dir
+    # e.g., './Four Lanes Male Choir - The White Rose/stems/file.flac' -> 'stems/file.flac'
+    if norm_path.startswith(norm_track_dir + os.sep):
+        return norm_path[len(norm_track_dir) + 1:]
+    elif norm_path.startswith(norm_track_dir):
+        return norm_path[len(norm_track_dir):].lstrip(os.sep) or '.'
+    
+    # If path doesn't start with track_dir, it might already be relative to track_dir
+    # or it's a path that doesn't need transformation
+    return path
+
+
+def auto_select_instrumental(track: dict, track_dir: str, logger: logging.Logger) -> str:
+    """
+    Auto-select the best instrumental file when --skip_instrumental_review is used.
+    
+    Selection priority:
+    1. Padded combined instrumental (+BV) - synchronized with vocals + backing vocals
+    2. Non-padded combined instrumental (+BV) - has backing vocals
+    3. Padded clean instrumental - synchronized with vocals
+    4. Non-padded clean instrumental - basic instrumental
+    
+    Args:
+        track: The track dictionary from KaraokePrep containing separated audio info
+        track_dir: The track output directory (we're already chdir'd into it)
+        logger: Logger instance
+        
+    Returns:
+        Path to the selected instrumental file
+        
+    Raises:
+        FileNotFoundError: If no suitable instrumental file can be found
+    """
+    separated = track.get("separated_audio", {})
+    
+    # Look for combined instrumentals first (they include backing vocals)
+    combined = separated.get("combined_instrumentals", {})
+    for model, path in combined.items():
+        if path:
+            resolved = _resolve_path_for_cwd(path, track_dir)
+            # Prefer padded version if it exists
+            base, ext = os.path.splitext(resolved)
+            padded = f"{base} (Padded){ext}"
+            if os.path.exists(padded):
+                logger.info(f"Auto-selected padded combined instrumental: {padded}")
+                return padded
+            if os.path.exists(resolved):
+                logger.info(f"Auto-selected combined instrumental: {resolved}")
+                return resolved
+    
+    # Fall back to clean instrumental
+    clean = separated.get("clean_instrumental", {})
+    if clean.get("instrumental"):
+        resolved = _resolve_path_for_cwd(clean["instrumental"], track_dir)
+        # Prefer padded version if it exists
+        base, ext = os.path.splitext(resolved)
+        padded = f"{base} (Padded){ext}"
+        if os.path.exists(padded):
+            logger.info(f"Auto-selected padded clean instrumental: {padded}")
+            return padded
+        if os.path.exists(resolved):
+            logger.info(f"Auto-selected clean instrumental: {resolved}")
+            return resolved
+    
+    # If separated_audio doesn't have what we need, search the directory
+    # This handles edge cases and custom instrumentals
+    logger.info("No instrumental found in separated_audio, searching directory...")
+    instrumental_files = glob.glob("*(Instrumental*.flac") + glob.glob("*(Instrumental*.wav")
+    
+    # Sort to prefer padded versions and combined instrumentals
+    padded_combined = [f for f in instrumental_files if "(Padded)" in f and "+BV" in f]
+    if padded_combined:
+        logger.info(f"Auto-selected from directory: {padded_combined[0]}")
+        return padded_combined[0]
+    
+    padded_files = [f for f in instrumental_files if "(Padded)" in f]
+    if padded_files:
+        logger.info(f"Auto-selected from directory: {padded_files[0]}")
+        return padded_files[0]
+    
+    combined_files = [f for f in instrumental_files if "+BV" in f]
+    if combined_files:
+        logger.info(f"Auto-selected from directory: {combined_files[0]}")
+        return combined_files[0]
+    
+    if instrumental_files:
+        logger.info(f"Auto-selected from directory: {instrumental_files[0]}")
+        return instrumental_files[0]
+    
+    raise FileNotFoundError(
+        "No instrumental file found. Audio separation may have failed. "
+        "Check the stems/ directory for separated audio files."
+    )
 
 
 def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
@@ -52,11 +169,13 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         return None
     
     # Find the backing vocals file
+    # Note: Paths in separated_audio may be relative to the original working directory,
+    # but we've already chdir'd into track_dir. Use _resolve_path_for_cwd to fix paths.
     backing_vocals_path = None
     backing_vocals_result = separated.get("backing_vocals", {})
     for model, paths in backing_vocals_result.items():
         if paths.get("backing_vocals"):
-            backing_vocals_path = paths["backing_vocals"]
+            backing_vocals_path = _resolve_path_for_cwd(paths["backing_vocals"], track_dir)
             break
     
     if not backing_vocals_path or not os.path.exists(backing_vocals_path):
@@ -65,7 +184,8 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     
     # Find the clean instrumental file
     clean_result = separated.get("clean_instrumental", {})
-    clean_instrumental_path = clean_result.get("instrumental")
+    raw_clean_path = clean_result.get("instrumental")
+    clean_instrumental_path = _resolve_path_for_cwd(raw_clean_path, track_dir) if raw_clean_path else None
     
     if not clean_instrumental_path or not os.path.exists(clean_instrumental_path):
         logger.info("No clean instrumental file found, skipping instrumental review UI")
@@ -75,8 +195,9 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
     combined_result = separated.get("combined_instrumentals", {})
     with_backing_path = None
     for model, path in combined_result.items():
-        if path and os.path.exists(path):
-            with_backing_path = path
+        resolved_path = _resolve_path_for_cwd(path, track_dir) if path else None
+        if resolved_path and os.path.exists(resolved_path):
+            with_backing_path = resolved_path
             break
     
     try:
@@ -94,19 +215,21 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
         logger.info(f"  Recommendation: {analysis.recommended_selection.value}")
         
         # Generate waveform
+        # Note: We're already in track_dir after chdir, so use current directory
         logger.info("Generating waveform visualization...")
         waveform_generator = WaveformGenerator()
-        waveform_path = os.path.join(track_dir, f"{base_name} (Backing Vocals Waveform).png")
+        waveform_path = f"{base_name} (Backing Vocals Waveform).png"
         waveform_generator.generate(
             audio_path=backing_vocals_path,
             output_path=waveform_path,
-            audible_segments=analysis.audible_segments,
+            segments=analysis.audible_segments,
         )
         
         # Start the review server
+        # Note: We're already in track_dir after chdir, so output_dir is "."
         logger.info("Starting instrumental review UI...")
         server = InstrumentalReviewServer(
-            output_dir=track_dir,
+            output_dir=".",
             base_name=base_name,
             analysis=analysis,
             waveform_path=waveform_path,
@@ -143,6 +266,13 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
                 else:
                     logger.warning("Custom instrumental not found, falling back to clean")
                     return clean_instrumental_path
+            elif selection == "uploaded":
+                uploaded_path = server.get_uploaded_instrumental_path()
+                if uploaded_path and os.path.exists(uploaded_path):
+                    return uploaded_path
+                else:
+                    logger.warning("Uploaded instrumental not found, falling back to clean")
+                    return clean_instrumental_path
             else:
                 logger.warning(f"Unknown selection: {selection}, falling back to numeric selection")
                 return None
@@ -160,6 +290,9 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
 
 async def async_main():
     logger = logging.getLogger(__name__)
+    # Prevent log propagation to root logger to avoid duplicate logs
+    # when external packages (like lyrics_converter) configure root logger handlers
+    logger.propagate = False
     log_handler = logging.StreamHandler()
     log_formatter = logging.Formatter(fmt="%(asctime)s.%(msecs)03d - %(levelname)s - %(module)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
     log_handler.setFormatter(log_formatter)
@@ -169,6 +302,11 @@ async def async_main():
     parser = create_parser(prog="karaoke-gen")
     args = parser.parse_args()
 
+    # Set review UI URL environment variable for the lyrics transcriber review server
+    # This allows development against a local frontend dev server (e.g., http://localhost:5173)
+    if hasattr(args, 'review_ui_url') and args.review_ui_url:
+        os.environ['LYRICS_REVIEW_UI_URL'] = args.review_ui_url
+        
     # Process style overrides
     try:
         style_overrides = process_style_overrides(args.style_override, logger)
@@ -260,7 +398,21 @@ async def async_main():
         kprep.input_media = input_audio_wav
         
         # Run KaraokePrep
-        tracks = await kprep.process()
+        try:
+            tracks = await kprep.process()
+        except UserCancelledError:
+            logger.info("Operation cancelled by user")
+            return
+        except KeyboardInterrupt:
+            logger.info("Operation cancelled by user (Ctrl+C)")
+            return
+        
+        # Filter out None tracks (can happen if prep failed for some tracks)
+        tracks = [t for t in tracks if t is not None] if tracks else []
+        
+        if not tracks:
+            logger.warning("No tracks to process")
+            return
         
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None
@@ -579,7 +731,21 @@ async def async_main():
     kprep = kprep_coroutine
 
     # Create final tracks data structure
-    tracks = await kprep.process()
+    try:
+        tracks = await kprep.process()
+    except UserCancelledError:
+        logger.info("Operation cancelled by user")
+        return
+    except KeyboardInterrupt:
+        logger.info("Operation cancelled by user (Ctrl+C)")
+        return
+
+    # Filter out None tracks (can happen if prep failed for some tracks)
+    tracks = [t for t in tracks if t is not None] if tracks else []
+    
+    if not tracks:
+        logger.warning("No tracks to process")
+        return
 
     # If prep-only mode, we're done
     if args.prep_only:
@@ -599,13 +765,60 @@ async def async_main():
         logger.info(f"Changing to directory: {track_dir}")
         os.chdir(track_dir)
 
-        # Run instrumental review UI if not skipped
+        # Select instrumental file - either via web UI or auto-selection
+        # This ALWAYS produces a selected file - no silent fallback to legacy code
         selected_instrumental_file = None
-        if not getattr(args, 'skip_instrumental_review', False):
+        skip_review = getattr(args, 'skip_instrumental_review', False)
+        
+        if skip_review:
+            # Auto-select instrumental when review is skipped (non-interactive mode)
+            logger.info("Instrumental review skipped (--skip_instrumental_review), auto-selecting instrumental file...")
+            try:
+                selected_instrumental_file = auto_select_instrumental(
+                    track=track,
+                    track_dir=track_dir,
+                    logger=logger,
+                )
+            except FileNotFoundError as e:
+                logger.error(f"Failed to auto-select instrumental: {e}")
+                logger.error("Check that audio separation completed successfully.")
+                sys.exit(1)
+                return  # Explicit return for testing
+        else:
+            # Run instrumental review web UI
             selected_instrumental_file = run_instrumental_review(
                 track=track,
                 logger=logger,
             )
+            
+            # If instrumental review failed/returned None, show error and exit
+            # NO SILENT FALLBACK - we want to know if the new flow has issues
+            if selected_instrumental_file is None:
+                logger.error("")
+                logger.error("=" * 70)
+                logger.error("INSTRUMENTAL SELECTION FAILED")
+                logger.error("=" * 70)
+                logger.error("")
+                logger.error("The instrumental review UI could not find the required files.")
+                logger.error("")
+                logger.error("Common causes:")
+                logger.error("  - No backing vocals file was found (check stems/ directory)")
+                logger.error("  - No clean instrumental was found (audio separation may have failed)")
+                logger.error("  - Path resolution failed after directory change")
+                logger.error("")
+                logger.error("To investigate:")
+                logger.error("  - Check the stems/ directory for: *Backing Vocals*.flac and *Instrumental*.flac")
+                logger.error("  - Look for separation errors earlier in the log")
+                logger.error("  - Verify audio separation completed without errors")
+                logger.error("")
+                logger.error("Workarounds:")
+                logger.error("  - Re-run with --skip_instrumental_review to auto-select an instrumental")
+                logger.error("  - Re-run the full pipeline to regenerate stems")
+                logger.error("")
+                sys.exit(1)
+                return  # Explicit return for testing
+        
+        logger.info(f"Selected instrumental file: {selected_instrumental_file}")
         
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None

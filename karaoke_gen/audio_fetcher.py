@@ -7,10 +7,17 @@ using flacfetch, replacing the previous direct yt-dlp usage.
 
 import logging
 import os
+import signal
+import sys
 import tempfile
+import threading
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from typing import List, Optional
+
+# Global flag to track if user requested cancellation via Ctrl+C
+_interrupt_requested = False
 
 
 @dataclass
@@ -56,6 +63,19 @@ class DownloadError(AudioFetcherError):
     """Raised when download fails."""
 
     pass
+
+
+class UserCancelledError(AudioFetcherError):
+    """Raised when user explicitly cancels the operation (e.g., enters 0 or Ctrl+C)."""
+
+    pass
+
+
+def _check_interrupt():
+    """Check if interrupt was requested and raise UserCancelledError if so."""
+    global _interrupt_requested
+    if _interrupt_requested:
+        raise UserCancelledError("Operation cancelled by user")
 
 
 class AudioFetcher(ABC):
@@ -169,25 +189,38 @@ class FlacFetchAudioFetcher(AudioFetcher):
         if self._manager is None:
             # Import flacfetch here to avoid import errors if not installed
             from flacfetch.core.manager import FetchManager
-            from flacfetch.providers.youtube import YouTubeProvider
+            from flacfetch.providers.youtube import YoutubeProvider
+            from flacfetch.downloaders.youtube import YoutubeDownloader
+
+            # Try to import TorrentDownloader (has optional dependencies)
+            try:
+                from flacfetch.downloaders.torrent import TorrentDownloader
+            except ImportError:
+                TorrentDownloader = None
+                self.logger.debug("TorrentDownloader not available (missing dependencies)")
 
             self._manager = FetchManager()
 
-            # Add providers based on available API keys
+            # Add providers and downloaders based on available API keys
             if self._redacted_api_key:
                 from flacfetch.providers.redacted import RedactedProvider
 
                 self._manager.add_provider(RedactedProvider(api_key=self._redacted_api_key))
+                if TorrentDownloader:
+                    self._manager.register_downloader("Redacted", TorrentDownloader())
                 self.logger.debug("Added Redacted provider")
 
             if self._ops_api_key:
                 from flacfetch.providers.ops import OPSProvider
 
                 self._manager.add_provider(OPSProvider(api_key=self._ops_api_key))
+                if TorrentDownloader:
+                    self._manager.register_downloader("OPS", TorrentDownloader())
                 self.logger.debug("Added OPS provider")
 
-            # Always add YouTube as a fallback provider
-            self._manager.add_provider(YouTubeProvider())
+            # Always add YouTube as a fallback provider with its downloader
+            self._manager.add_provider(YoutubeProvider())
+            self._manager.register_downloader("YouTube", YoutubeDownloader())
             self.logger.debug("Added YouTube provider")
 
         return self._manager
@@ -220,15 +253,19 @@ class FlacFetchAudioFetcher(AudioFetcher):
         # Convert to our AudioSearchResult format
         search_results = []
         for result in results:
+            # Get quality as string if it's a Quality object
+            quality = getattr(result, "quality", None)
+            quality_str = str(quality) if quality else None
+
             search_results.append(
                 AudioSearchResult(
                     title=getattr(result, "title", title),
                     artist=getattr(result, "artist", artist),
-                    url=getattr(result, "url", ""),
-                    provider=getattr(result, "provider", "Unknown"),
-                    duration=getattr(result, "duration", None),
-                    quality=getattr(result, "quality", None),
-                    source_id=getattr(result, "id", None),
+                    url=getattr(result, "download_url", "") or "",
+                    provider=getattr(result, "source_name", "Unknown"),
+                    duration=getattr(result, "duration_seconds", None),
+                    quality=quality_str,
+                    source_id=getattr(result, "info_hash", None),
                     raw_result=result,
                 )
             )
@@ -265,7 +302,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
         if output_filename is None:
             output_filename = f"{result.artist} - {result.title}"
 
-        self.logger.info(f"Downloading: {result.artist} - {result.title} from {result.provider}")
+        self.logger.info(f"Downloading: {result.artist} - {result.title} from {result.provider or 'Unknown'}")
 
         try:
             # Use flacfetch to download
@@ -319,6 +356,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
         Raises:
             NoResultsError: If no results are found
             DownloadError: If download fails
+            UserCancelledError: If user cancels (Ctrl+C or enters 0)
         """
         from flacfetch.core.models import TrackQuery
 
@@ -326,7 +364,9 @@ class FlacFetchAudioFetcher(AudioFetcher):
         query = TrackQuery(artist=artist, title=title)
 
         self.logger.info(f"Searching for: {artist} - {title}")
-        results = manager.search(query)
+        
+        # Run search in a thread so we can handle Ctrl+C
+        results = self._interruptible_search(manager, query)
 
         if not results:
             raise NoResultsError(f"No results found for: {artist} - {title}")
@@ -336,11 +376,13 @@ class FlacFetchAudioFetcher(AudioFetcher):
         if auto_select:
             # Auto mode: select best result based on flacfetch's ranking
             selected = manager.select_best(results)
-            self.logger.info(f"Auto-selected: {getattr(selected, 'title', title)} from {getattr(selected, 'provider', 'Unknown')}")
+            self.logger.info(f"Auto-selected: {getattr(selected, 'title', title)} from {getattr(selected, 'source_name', 'Unknown')}")
         else:
             # Interactive mode: present options to user
             selected = self._interactive_select(results, artist, title)
 
+        # Note: _interactive_select now raises UserCancelledError instead of returning None
+        # This check is kept as a safety net
         if selected is None:
             raise NoResultsError(f"No result selected for: {artist} - {title}")
 
@@ -351,7 +393,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
         if output_filename is None:
             output_filename = f"{artist} - {title}"
 
-        self.logger.info(f"Downloading from {getattr(selected, 'provider', 'Unknown')}...")
+        self.logger.info(f"Downloading from {getattr(selected, 'source_name', 'Unknown')}...")
 
         try:
             filepath = manager.download(
@@ -365,51 +407,169 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
             self.logger.info(f"Downloaded to: {filepath}")
 
+            # Get quality as string if it's a Quality object
+            quality = getattr(selected, "quality", None)
+            quality_str = str(quality) if quality else None
+
             return AudioFetchResult(
                 filepath=filepath,
                 artist=artist,
                 title=title,
-                provider=getattr(selected, "provider", "Unknown"),
-                duration=getattr(selected, "duration", None),
-                quality=getattr(selected, "quality", None),
+                provider=getattr(selected, "source_name", "Unknown"),
+                duration=getattr(selected, "duration_seconds", None),
+                quality=quality_str,
             )
 
+        except (UserCancelledError, KeyboardInterrupt):
+            # Let cancellation exceptions propagate without wrapping
+            raise
         except Exception as e:
             raise DownloadError(f"Failed to download {artist} - {title}: {e}") from e
+
+    def _interruptible_search(self, manager, query) -> list:
+        """
+        Run search in a way that can be interrupted by Ctrl+C.
+        
+        The flacfetch search is a blocking network operation that doesn't
+        respond to SIGINT while running. This method runs it in a background
+        thread and periodically checks for interrupts.
+        
+        Args:
+            manager: The FetchManager instance
+            query: The TrackQuery to search for
+            
+        Returns:
+            List of search results
+            
+        Raises:
+            UserCancelledError: If user presses Ctrl+C during search
+        """
+        global _interrupt_requested
+        _interrupt_requested = False
+        result_container = {"results": None, "error": None}
+        
+        def do_search():
+            try:
+                result_container["results"] = manager.search(query)
+            except Exception as e:
+                result_container["error"] = e
+        
+        # Set up signal handler for immediate response to Ctrl+C
+        original_handler = signal.getsignal(signal.SIGINT)
+        
+        def interrupt_handler(signum, frame):
+            global _interrupt_requested
+            _interrupt_requested = True
+            # Print immediately so user knows it was received
+            print("\nCancelling... please wait", file=sys.stderr)
+        
+        signal.signal(signal.SIGINT, interrupt_handler)
+        
+        try:
+            # Start search in background thread
+            search_thread = threading.Thread(target=do_search, daemon=True)
+            search_thread.start()
+            
+            # Wait for completion with periodic interrupt checks
+            while search_thread.is_alive():
+                search_thread.join(timeout=0.1)  # Check every 100ms
+                if _interrupt_requested:
+                    # Don't wait for thread - it's a daemon and will be killed
+                    raise UserCancelledError("Search cancelled by user (Ctrl+C)")
+            
+            # Check for errors from the search
+            if result_container["error"] is not None:
+                raise result_container["error"]
+                
+            return result_container["results"]
+            
+        finally:
+            # Restore original signal handler
+            signal.signal(signal.SIGINT, original_handler)
+            _interrupt_requested = False
 
     def _interactive_select(self, results: list, artist: str, title: str) -> object:
         """
         Present search results to the user for interactive selection.
 
+        Uses flacfetch's built-in CLIHandler for rich, colorized output.
+
         Args:
-            results: List of search results from flacfetch
+            results: List of Release objects from flacfetch
             artist: The artist name being searched
             title: The track title being searched
 
         Returns:
-            The selected result object
+            The selected Release object
+            
+        Raises:
+            UserCancelledError: If user cancels selection
+        """
+        try:
+            # Use flacfetch's built-in CLIHandler for rich display
+            from flacfetch.interface.cli import CLIHandler
+
+            handler = CLIHandler(target_artist=artist)
+            result = handler.select_release(results)
+            if result is None:
+                # User selected 0 to cancel
+                raise UserCancelledError("Selection cancelled by user")
+            return result
+        except ImportError:
+            # Fallback to basic display if CLIHandler not available
+            return self._basic_interactive_select(results, artist, title)
+        except (KeyboardInterrupt, EOFError):
+            raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
+        except (AttributeError, TypeError):
+            # Fallback if results aren't proper Release objects (e.g., in tests)
+            return self._basic_interactive_select(results, artist, title)
+
+    def _basic_interactive_select(self, results: list, artist: str, title: str) -> object:
+        """
+        Basic fallback for interactive selection without rich formatting.
+
+        Args:
+            results: List of Release objects from flacfetch
+            artist: The artist name being searched
+            title: The track title being searched
+
+        Returns:
+            The selected Release object
+            
+        Raises:
+            UserCancelledError: If user cancels selection
         """
         print(f"\n{'=' * 60}")
         print(f"Search Results for: {artist} - {title}")
         print(f"{'=' * 60}\n")
 
         for i, result in enumerate(results, 1):
-            provider = getattr(result, "provider", "Unknown")
+            # Use correct flacfetch attribute names
+            source_name = getattr(result, "source_name", "Unknown")
             result_title = getattr(result, "title", "Unknown")
             result_artist = getattr(result, "artist", "Unknown")
-            quality = getattr(result, "quality", "")
-            duration = getattr(result, "duration", None)
+            quality = getattr(result, "quality", None)
+            duration_seconds = getattr(result, "duration_seconds", None)
+            seeders = getattr(result, "seeders", None)
+            target_file = getattr(result, "target_file", None)
 
             # Format duration if available
             duration_str = ""
-            if duration:
-                minutes = duration // 60
-                seconds = duration % 60
+            if duration_seconds:
+                minutes = duration_seconds // 60
+                seconds = duration_seconds % 60
                 duration_str = f" [{minutes}:{seconds:02d}]"
 
+            # Format quality - it's a Quality object with __str__
             quality_str = f" ({quality})" if quality else ""
 
-            print(f"  {i}. [{provider}] {result_artist} - {result_title}{quality_str}{duration_str}")
+            # Format seeders for torrent sources
+            seeders_str = f" Seeders: {seeders}" if seeders is not None else ""
+
+            # Format target file
+            file_str = f' "{target_file}"' if target_file else ""
+
+            print(f"  {i}. [{source_name}] {result_artist} - {result_title}{quality_str}{duration_str}{seeders_str}{file_str}")
 
         print()
         print("  0. Cancel")
@@ -421,7 +581,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
                 if choice == "0":
                     self.logger.info("User cancelled selection")
-                    return None
+                    raise UserCancelledError("Selection cancelled by user")
 
                 choice_num = int(choice)
                 if 1 <= choice_num <= len(results):
@@ -435,7 +595,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
                 print("Please enter a valid number")
             except KeyboardInterrupt:
                 print("\nCancelled")
-                return None
+                raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
 
 
 def create_audio_fetcher(
