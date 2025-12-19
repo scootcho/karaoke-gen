@@ -820,6 +820,12 @@ async def async_main():
         
         logger.info(f"Selected instrumental file: {selected_instrumental_file}")
         
+        # Get countdown padding info from track (if vocals were padded, instrumental must match)
+        countdown_padding_seconds = None
+        if track.get("countdown_padding_added", False):
+            countdown_padding_seconds = track.get("countdown_padding_seconds", 3.0)
+            logger.info(f"Countdown padding detected: {countdown_padding_seconds}s (will be applied to instrumental if needed)")
+        
         # Load CDG styles if CDG generation is enabled
         cdg_styles = None
         if args.enable_cdg:
@@ -864,6 +870,7 @@ async def async_main():
             keep_brand_code=getattr(args, 'keep_brand_code', False),
             non_interactive=args.yes,
             selected_instrumental_file=selected_instrumental_file,
+            countdown_padding_seconds=countdown_padding_seconds,
         )
 
         try:

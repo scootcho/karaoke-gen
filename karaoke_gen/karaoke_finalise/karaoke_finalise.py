@@ -47,6 +47,7 @@ class KaraokeFinalise:
         user_youtube_credentials=None,  # Add support for pre-stored credentials
         server_side_mode=False,  # New parameter for server-side deployment
         selected_instrumental_file=None,  # Add support for pre-selected instrumental file
+        countdown_padding_seconds=None,  # Padding applied to vocals; instrumental must match
     ):
         self.log_level = log_level
         self.log_formatter = log_formatter
@@ -108,6 +109,7 @@ class KaraokeFinalise:
         self.user_youtube_credentials = user_youtube_credentials
         self.server_side_mode = server_side_mode
         self.selected_instrumental_file = selected_instrumental_file
+        self.countdown_padding_seconds = countdown_padding_seconds
 
         self.suffixes = {
             "title_mov": " (Title).mov",
@@ -732,6 +734,32 @@ class KaraokeFinalise:
         artist, title = base_name.split(" - ", 1)
         return base_name, artist, title
 
+    def _pad_audio_file(self, input_audio, output_audio, padding_seconds):
+        """
+        Pad an audio file by prepending silence at the beginning.
+        
+        Uses the same ffmpeg approach as LyricsTranscriber's CountdownProcessor
+        to ensure consistent padding behavior.
+        
+        Args:
+            input_audio: Path to input audio file
+            output_audio: Path for the padded output file
+            padding_seconds: Amount of silence to prepend (in seconds)
+        """
+        self.logger.info(f"Padding audio file with {padding_seconds}s of silence")
+        
+        # Use ffmpeg to prepend silence - this matches the approach in audio_processor.py
+        # adelay filter adds delay in milliseconds
+        delay_ms = int(padding_seconds * 1000)
+        
+        ffmpeg_command = (
+            f'{self.ffmpeg_base_command} -i "{input_audio}" '
+            f'-af "adelay={delay_ms}|{delay_ms}" '
+            f'"{output_audio}"'
+        )
+        
+        self.execute_command(ffmpeg_command, f"Padding audio with {padding_seconds}s silence")
+
     def execute_command(self, command, description):
         """Execute a shell command and log the output. For general commands (rclone, etc.)"""
         self.logger.info(f"{description}")
@@ -776,11 +804,32 @@ class KaraokeFinalise:
 
     def remux_with_instrumental(self, with_vocals_file, instrumental_audio, output_file):
         """Remux the video with instrumental audio to create karaoke version"""
+        # Safety net: If countdown padding was applied to vocals, ensure instrumental is padded too
+        actual_instrumental = instrumental_audio
+        if self.countdown_padding_seconds and self.countdown_padding_seconds > 0:
+            # Check if the instrumental file is already padded (has "(Padded)" in name)
+            if "(Padded)" not in instrumental_audio:
+                self.logger.warning(
+                    f"Countdown padding ({self.countdown_padding_seconds}s) was applied to vocals, "
+                    f"but instrumental doesn't appear to be padded. Creating padded version..."
+                )
+                # Create a padded version of the instrumental
+                base, ext = os.path.splitext(instrumental_audio)
+                padded_instrumental = f"{base} (Padded){ext}"
+                
+                if not os.path.exists(padded_instrumental):
+                    self._pad_audio_file(instrumental_audio, padded_instrumental, self.countdown_padding_seconds)
+                    self.logger.info(f"Created padded instrumental: {padded_instrumental}")
+                
+                actual_instrumental = padded_instrumental
+            else:
+                self.logger.info(f"Using already-padded instrumental: {instrumental_audio}")
+        
         # This operation is primarily I/O bound (remuxing), so hardware acceleration doesn't provide significant benefit
         # Keep the existing approach but use the new execute method
         ffmpeg_command = (
             f'{self.ffmpeg_base_command} -an -i "{with_vocals_file}" '
-            f'-vn -i "{instrumental_audio}" -c:v copy -c:a pcm_s16le "{output_file}"'
+            f'-vn -i "{actual_instrumental}" -c:v copy -c:a pcm_s16le "{output_file}"'
         )
         self.execute_command(ffmpeg_command, "Remuxing video with instrumental audio")
 

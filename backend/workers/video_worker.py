@@ -162,6 +162,14 @@ async def generate_video(job_id: str) -> bool:
                 message="Encoding videos (15-20 min)"
             )
             
+            # Get countdown padding info from lyrics metadata
+            # This ensures instrumental is padded to match vocals if countdown was added
+            lyrics_metadata = job.state_data.get('lyrics_metadata', {})
+            countdown_padding_seconds = None
+            if lyrics_metadata.get('has_countdown_padding'):
+                countdown_padding_seconds = lyrics_metadata.get('countdown_padding_seconds', 3.0)
+                job_log.info(f"Countdown padding detected: {countdown_padding_seconds}s - instrumental will be padded if needed")
+            
             # Log finalization parameters
             job_log.info("Creating KaraokeFinalise with parameters:")
             job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
@@ -169,6 +177,7 @@ async def generate_video(job_id: str) -> bool:
             job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
             job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
             job_log.info(f"  instrumental source: {instrumental_source}")
+            job_log.info(f"  countdown_padding_seconds: {countdown_padding_seconds}")
             if existing_instrumental_path:
                 job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
             
@@ -209,6 +218,8 @@ async def generate_video(job_id: str) -> bool:
                 non_interactive=True,
                 server_side_mode=True,
                 selected_instrumental_file=instrumental_file,
+                # Audio synchronization - ensure instrumental matches vocal padding
+                countdown_padding_seconds=countdown_padding_seconds,
             )
             
             # Call process() - this does ALL the work:
