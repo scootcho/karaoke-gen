@@ -741,7 +741,7 @@ class RemoteKaraokeClient:
         if stems_dir.exists():
             for stem_file in stems_dir.iterdir():
                 if 'Instrumental' in stem_file.name and stem_file.suffix.lower() == '.flac':
-                    if 'model_bs_roformer' in stem_file.name or '+BV' not in stem_file.name:
+                    if '+BV' not in stem_file.name:
                         if 'instrumental_clean' not in local_files:
                             files_info.append({
                                 'filename': stem_file.name,
@@ -2087,7 +2087,11 @@ class JobMonitor:
                     self.download_outputs(job_id, job_data)
                     self.logger.info("")
                     self.logger.info("To continue with finalisation, run:")
-                    self.logger.info(f"  karaoke-gen-remote --finalise-only ./<output_folder> \"{artist}\" \"{title}\"")
+                    # Use shlex.quote for proper shell escaping of artist/title
+                    import shlex
+                    escaped_artist = shlex.quote(artist)
+                    escaped_title = shlex.quote(title)
+                    self.logger.info(f"  karaoke-gen-remote --finalise-only ./<output_folder> {escaped_artist} {escaped_title}")
                     return 0
                 
                 elif status in ['failed', 'error']:
@@ -2160,9 +2164,6 @@ def main():
     """Main entry point for the remote CLI."""
     # Set up logging - same format as gen_cli.py
     logger = logging.getLogger(__name__)
-    # Prevent log propagation to root logger to avoid duplicate logs
-    # when external packages (like lyrics_converter) configure root logger handlers
-    logger.propagate = False
     log_handler = logging.StreamHandler()
     log_formatter = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d - %(levelname)s - %(module)s - %(message)s",

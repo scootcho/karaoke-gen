@@ -119,7 +119,7 @@ STATE_TRANSITIONS = {
     JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.PREP_COMPLETE, JobStatus.FAILED],  # PREP_COMPLETE for prep-only jobs
     
     # Video rendering (post-review)
-    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
+    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.PREP_COMPLETE, JobStatus.FAILED],
     
     # Instrumental selection flow
     JobStatus.AWAITING_INSTRUMENTAL_SELECTION: [JobStatus.INSTRUMENTAL_SELECTED, JobStatus.FAILED, JobStatus.CANCELLED],
