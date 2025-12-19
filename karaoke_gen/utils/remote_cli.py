@@ -67,6 +67,7 @@ class JobStatus(str, Enum):
     UPLOADING = "uploading"
     NOTIFYING = "notifying"
     COMPLETE = "complete"
+    PREP_COMPLETE = "prep_complete"  # Batch 6: Prep-only jobs stop here
     FAILED = "failed"
     CANCELLED = "cancelled"
     ERROR = "error"
@@ -272,6 +273,9 @@ class RemoteKaraokeClient:
         clean_instrumental_model: Optional[str] = None,
         backing_vocals_models: Optional[list] = None,
         other_stems_models: Optional[list] = None,
+        # Two-phase workflow (Batch 6)
+        prep_only: bool = False,
+        keep_brand_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job from a YouTube/online URL.
@@ -342,6 +346,11 @@ class RemoteKaraokeClient:
             create_request['backing_vocals_models'] = backing_vocals_models
         if other_stems_models:
             create_request['other_stems_models'] = other_stems_models
+        # Two-phase workflow (Batch 6)
+        if prep_only:
+            create_request['prep_only'] = prep_only
+        if keep_brand_code:
+            create_request['keep_brand_code'] = keep_brand_code
         
         self.logger.info(f"Creating URL-based job at {self.config.service_url}/api/jobs/create-from-url")
         
@@ -397,6 +406,9 @@ class RemoteKaraokeClient:
         other_stems_models: Optional[list] = None,
         # Existing instrumental (Batch 3)
         existing_instrumental: Optional[str] = None,
+        # Two-phase workflow (Batch 6)
+        prep_only: bool = False,
+        keep_brand_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -541,6 +553,11 @@ class RemoteKaraokeClient:
             create_request['backing_vocals_models'] = backing_vocals_models
         if other_stems_models:
             create_request['other_stems_models'] = other_stems_models
+        # Two-phase workflow (Batch 6)
+        if prep_only:
+            create_request['prep_only'] = prep_only
+        if keep_brand_code:
+            create_request['keep_brand_code'] = keep_brand_code
         
         response = self._request('POST', '/api/jobs/create-with-upload-urls', json=create_request)
         
@@ -625,6 +642,255 @@ class RemoteKaraokeClient:
                         self.logger.info(f"  {status} YouTube: enabled")
                     elif service_name == 'discord':
                         self.logger.info(f"  {status} Discord: notifications{default_note}")
+        
+        return result
+    
+    def submit_finalise_only_job(
+        self,
+        prep_folder: str,
+        artist: str,
+        title: str,
+        enable_cdg: bool = True,
+        enable_txt: bool = True,
+        brand_prefix: Optional[str] = None,
+        keep_brand_code: Optional[str] = None,
+        discord_webhook_url: Optional[str] = None,
+        youtube_description: Optional[str] = None,
+        enable_youtube_upload: bool = False,
+        dropbox_path: Optional[str] = None,
+        gdrive_folder_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit a finalise-only job with prep output files.
+        
+        This is used when the user previously ran --prep-only and now wants
+        to continue with the finalisation phase using cloud resources.
+        
+        Args:
+            prep_folder: Path to the prep output folder containing stems, screens, etc.
+            artist: Artist name
+            title: Song title
+            enable_cdg: Generate CDG+MP3 package
+            enable_txt: Generate TXT+MP3 package
+            brand_prefix: Brand code prefix (e.g., "NOMAD")
+            keep_brand_code: Preserve existing brand code from folder name
+            discord_webhook_url: Discord webhook for notifications
+            youtube_description: YouTube video description
+            enable_youtube_upload: Enable YouTube upload
+            dropbox_path: Dropbox folder path for organized output
+            gdrive_folder_id: Google Drive folder ID for public share
+        """
+        prep_path = Path(prep_folder)
+        
+        if not prep_path.exists() or not prep_path.is_dir():
+            raise FileNotFoundError(f"Prep folder not found: {prep_folder}")
+        
+        # Detect files in prep folder
+        files_info = []
+        local_files = {}  # file_type -> local_path
+        
+        base_name = f"{artist} - {title}"
+        
+        # Required files - with_vocals video
+        for ext in ['.mkv', '.mov', '.mp4']:
+            with_vocals_path = prep_path / f"{base_name} (With Vocals){ext}"
+            if with_vocals_path.exists():
+                files_info.append({
+                    'filename': with_vocals_path.name,
+                    'content_type': f'video/{ext[1:]}',
+                    'file_type': 'with_vocals'
+                })
+                local_files['with_vocals'] = str(with_vocals_path)
+                break
+        
+        if 'with_vocals' not in local_files:
+            raise FileNotFoundError(f"with_vocals video not found in {prep_folder}")
+        
+        # Title screen
+        for ext in ['.mov', '.mkv', '.mp4']:
+            title_path = prep_path / f"{base_name} (Title){ext}"
+            if title_path.exists():
+                files_info.append({
+                    'filename': title_path.name,
+                    'content_type': f'video/{ext[1:]}',
+                    'file_type': 'title_screen'
+                })
+                local_files['title_screen'] = str(title_path)
+                break
+        
+        if 'title_screen' not in local_files:
+            raise FileNotFoundError(f"title_screen video not found in {prep_folder}")
+        
+        # End screen
+        for ext in ['.mov', '.mkv', '.mp4']:
+            end_path = prep_path / f"{base_name} (End){ext}"
+            if end_path.exists():
+                files_info.append({
+                    'filename': end_path.name,
+                    'content_type': f'video/{ext[1:]}',
+                    'file_type': 'end_screen'
+                })
+                local_files['end_screen'] = str(end_path)
+                break
+        
+        if 'end_screen' not in local_files:
+            raise FileNotFoundError(f"end_screen video not found in {prep_folder}")
+        
+        # Instrumentals (at least one required)
+        stems_dir = prep_path / 'stems'
+        if stems_dir.exists():
+            for stem_file in stems_dir.iterdir():
+                if 'Instrumental' in stem_file.name and stem_file.suffix.lower() == '.flac':
+                    if '+BV' not in stem_file.name:
+                        if 'instrumental_clean' not in local_files:
+                            files_info.append({
+                                'filename': stem_file.name,
+                                'content_type': 'audio/flac',
+                                'file_type': 'instrumental_clean'
+                            })
+                            local_files['instrumental_clean'] = str(stem_file)
+                    elif '+BV' in stem_file.name:
+                        if 'instrumental_backing' not in local_files:
+                            files_info.append({
+                                'filename': stem_file.name,
+                                'content_type': 'audio/flac',
+                                'file_type': 'instrumental_backing'
+                            })
+                            local_files['instrumental_backing'] = str(stem_file)
+        
+        # Also check root for instrumental files
+        for stem_file in prep_path.iterdir():
+            if 'Instrumental' in stem_file.name and stem_file.suffix.lower() == '.flac':
+                if '+BV' not in stem_file.name and 'instrumental_clean' not in local_files:
+                    files_info.append({
+                        'filename': stem_file.name,
+                        'content_type': 'audio/flac',
+                        'file_type': 'instrumental_clean'
+                    })
+                    local_files['instrumental_clean'] = str(stem_file)
+                elif '+BV' in stem_file.name and 'instrumental_backing' not in local_files:
+                    files_info.append({
+                        'filename': stem_file.name,
+                        'content_type': 'audio/flac',
+                        'file_type': 'instrumental_backing'
+                    })
+                    local_files['instrumental_backing'] = str(stem_file)
+        
+        if 'instrumental_clean' not in local_files and 'instrumental_backing' not in local_files:
+            raise FileNotFoundError(f"No instrumental file found in {prep_folder}")
+        
+        # Optional files - LRC
+        lrc_path = prep_path / f"{base_name} (Karaoke).lrc"
+        if lrc_path.exists():
+            files_info.append({
+                'filename': lrc_path.name,
+                'content_type': 'text/plain',
+                'file_type': 'lrc'
+            })
+            local_files['lrc'] = str(lrc_path)
+        
+        # Optional - Title/End JPG/PNG
+        for img_type, file_type in [('Title', 'title'), ('End', 'end')]:
+            for ext in ['.jpg', '.png']:
+                img_path = prep_path / f"{base_name} ({img_type}){ext}"
+                if img_path.exists():
+                    files_info.append({
+                        'filename': img_path.name,
+                        'content_type': f'image/{ext[1:]}',
+                        'file_type': f'{file_type}_{ext[1:]}'
+                    })
+                    local_files[f'{file_type}_{ext[1:]}'] = str(img_path)
+        
+        self.logger.info(f"Found {len(files_info)} files in prep folder")
+        for file_type in local_files:
+            self.logger.info(f"  {file_type}: {Path(local_files[file_type]).name}")
+        
+        # Create finalise-only job
+        create_request = {
+            'artist': artist,
+            'title': title,
+            'files': files_info,
+            'enable_cdg': enable_cdg,
+            'enable_txt': enable_txt,
+        }
+        
+        if brand_prefix:
+            create_request['brand_prefix'] = brand_prefix
+        if keep_brand_code:
+            create_request['keep_brand_code'] = keep_brand_code
+        if discord_webhook_url:
+            create_request['discord_webhook_url'] = discord_webhook_url
+        if youtube_description:
+            create_request['youtube_description'] = youtube_description
+        if enable_youtube_upload:
+            create_request['enable_youtube_upload'] = enable_youtube_upload
+        if dropbox_path:
+            create_request['dropbox_path'] = dropbox_path
+        if gdrive_folder_id:
+            create_request['gdrive_folder_id'] = gdrive_folder_id
+        
+        self.logger.info(f"Creating finalise-only job at {self.config.service_url}/api/jobs/create-finalise-only")
+        
+        response = self._request('POST', '/api/jobs/create-finalise-only', json=create_request)
+        
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error creating finalise-only job: {error_detail}")
+        
+        create_result = response.json()
+        if create_result.get('status') != 'success':
+            raise RuntimeError(f"Error creating finalise-only job: {create_result}")
+        
+        job_id = create_result['job_id']
+        upload_urls = create_result['upload_urls']
+        
+        self.logger.info(f"Job {job_id} created. Uploading {len(upload_urls)} files directly to storage...")
+        
+        # Upload each file
+        uploaded_files = []
+        for url_info in upload_urls:
+            file_type = url_info['file_type']
+            signed_url = url_info['upload_url']
+            content_type = url_info['content_type']
+            local_path = local_files.get(file_type)
+            
+            if not local_path:
+                self.logger.warning(f"No local file found for file_type: {file_type}")
+                continue
+            
+            file_size = os.path.getsize(local_path)
+            file_size_mb = file_size / (1024 * 1024)
+            self.logger.info(f"  Uploading {file_type} ({file_size_mb:.1f} MB)...")
+            
+            success = self._upload_file_to_signed_url(signed_url, local_path, content_type)
+            if not success:
+                raise RuntimeError(f"Failed to upload {file_type} to storage")
+            
+            uploaded_files.append(file_type)
+            self.logger.info(f"  ✓ Uploaded {file_type}")
+        
+        # Mark uploads complete
+        self.logger.info(f"Notifying backend that uploads are complete...")
+        
+        complete_request = {
+            'uploaded_files': uploaded_files
+        }
+        
+        response = self._request('POST', f'/api/jobs/{job_id}/finalise-uploads-complete', json=complete_request)
+        
+        if response.status_code != 200:
+            try:
+                error_detail = response.json()
+            except Exception:
+                error_detail = response.text
+            raise RuntimeError(f"Error completing finalise-only uploads: {error_detail}")
+        
+        result = response.json()
+        if result.get('status') != 'success':
+            raise RuntimeError(f"Error completing finalise-only uploads: {result}")
         
         return result
     
@@ -1054,6 +1320,7 @@ class JobMonitor:
         'uploading': 'Uploading to distribution services',
         'notifying': 'Sending notifications',
         'complete': 'All processing complete',
+        'prep_complete': 'Prep phase complete - ready for local finalisation',
         'failed': 'Job failed',
         'cancelled': 'Job cancelled',
     }
@@ -1809,6 +2076,24 @@ class JobMonitor:
                     self.download_outputs(job_id, job_data)
                     return 0
                 
+                elif status == 'prep_complete':
+                    self.logger.info("")
+                    self.logger.info("=" * 60)
+                    self.logger.info("PREP PHASE COMPLETE!")
+                    self.logger.info("=" * 60)
+                    self.logger.info(f"Track: {artist} - {title}")
+                    self.logger.info("")
+                    self.logger.info("Downloading all prep outputs...")
+                    self.download_outputs(job_id, job_data)
+                    self.logger.info("")
+                    self.logger.info("To continue with finalisation, run:")
+                    # Use shlex.quote for proper shell escaping of artist/title
+                    import shlex
+                    escaped_artist = shlex.quote(artist)
+                    escaped_title = shlex.quote(title)
+                    self.logger.info(f"  karaoke-gen-remote --finalise-only ./<output_folder> {escaped_artist} {escaped_title}")
+                    return 0
+                
                 elif status in ['failed', 'error']:
                     self.logger.info("")
                     self.logger.error("=" * 60)
@@ -1879,9 +2164,6 @@ def main():
     """Main entry point for the remote CLI."""
     # Set up logging - same format as gen_cli.py
     logger = logging.getLogger(__name__)
-    # Prevent log propagation to root logger to avoid duplicate logs
-    # when external packages (like lyrics_converter) configure root logger handlers
-    logger.propagate = False
     log_handler = logging.StreamHandler()
     log_formatter = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d - %(levelname)s - %(module)s - %(message)s",
@@ -2200,10 +2482,112 @@ def main():
             logger.error(f"Error deleting job: {e}")
             return 1
     
-    # Warn about unsupported features
+    # Handle finalise-only mode (Batch 6)
     if args.finalise_only:
-        logger.error("--finalise-only is not supported in remote mode")
-        return 1
+        logger.info("=" * 60)
+        logger.info("Karaoke Generator (Remote) - Finalise Only Mode")
+        logger.info("=" * 60)
+        
+        # For finalise-only, we expect the current directory to be the prep output folder
+        # OR a folder path as the first argument
+        prep_folder = "."
+        artist_arg_idx = 0
+        
+        if args.args:
+            # Check if first argument is a directory
+            if os.path.isdir(args.args[0]):
+                prep_folder = args.args[0]
+                artist_arg_idx = 1
+            
+            # Get artist and title from arguments
+            if len(args.args) > artist_arg_idx + 1:
+                artist = args.args[artist_arg_idx]
+                title = args.args[artist_arg_idx + 1]
+            elif len(args.args) > artist_arg_idx:
+                logger.error("Finalise-only mode requires both Artist and Title")
+                return 1
+            else:
+                # Try to extract from folder name
+                folder_name = os.path.basename(os.path.abspath(prep_folder))
+                parts = folder_name.split(" - ", 2)
+                if len(parts) >= 2:
+                    # Format: "BRAND-XXXX - Artist - Title" or "Artist - Title"
+                    if "-" in parts[0] and parts[0].split("-")[1].isdigit():
+                        # Has brand code
+                        artist = parts[1] if len(parts) > 2 else "Unknown"
+                        title = parts[2] if len(parts) > 2 else parts[1]
+                    else:
+                        artist = parts[0]
+                        title = parts[1]
+                    logger.info(f"Extracted from folder name: {artist} - {title}")
+                else:
+                    logger.error("Could not extract Artist and Title from folder name")
+                    logger.error("Please provide: karaoke-gen-remote --finalise-only <folder> \"Artist\" \"Title\"")
+                    return 1
+        else:
+            logger.error("Finalise-only mode requires folder path and/or Artist and Title")
+            return 1
+        
+        # Extract brand code from folder name if --keep-brand-code is set
+        keep_brand_code = None
+        if getattr(args, 'keep_brand_code', False):
+            folder_name = os.path.basename(os.path.abspath(prep_folder))
+            parts = folder_name.split(" - ", 1)
+            if parts and "-" in parts[0]:
+                # Check if it's a brand code format (e.g., "NOMAD-1234")
+                potential_brand = parts[0]
+                brand_parts = potential_brand.split("-")
+                if len(brand_parts) == 2 and brand_parts[1].isdigit():
+                    keep_brand_code = potential_brand
+                    logger.info(f"Preserving brand code: {keep_brand_code}")
+        
+        logger.info(f"Prep folder: {os.path.abspath(prep_folder)}")
+        logger.info(f"Artist: {artist}")
+        logger.info(f"Title: {title}")
+        if keep_brand_code:
+            logger.info(f"Brand Code: {keep_brand_code} (preserved)")
+        logger.info("")
+        
+        # Read youtube description from file if provided
+        youtube_description = None
+        if args.youtube_description_file and os.path.isfile(args.youtube_description_file):
+            try:
+                with open(args.youtube_description_file, 'r') as f:
+                    youtube_description = f.read()
+            except Exception as e:
+                logger.warning(f"Failed to read YouTube description file: {e}")
+        
+        try:
+            result = client.submit_finalise_only_job(
+                prep_folder=prep_folder,
+                artist=artist,
+                title=title,
+                enable_cdg=args.enable_cdg,
+                enable_txt=args.enable_txt,
+                brand_prefix=args.brand_prefix,
+                keep_brand_code=keep_brand_code,
+                discord_webhook_url=args.discord_webhook_url,
+                youtube_description=youtube_description,
+                enable_youtube_upload=getattr(args, 'enable_youtube_upload', False),
+                dropbox_path=getattr(args, 'dropbox_path', None),
+                gdrive_folder_id=getattr(args, 'gdrive_folder_id', None),
+            )
+            job_id = result.get('job_id')
+            logger.info(f"Finalise-only job submitted: {job_id}")
+            logger.info("")
+            
+            # Monitor job
+            return monitor.monitor(job_id)
+            
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except RuntimeError as e:
+            logger.error(str(e))
+            return 1
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return 1
     
     if args.edit_lyrics:
         logger.error("--edit-lyrics is not yet supported in remote mode")
@@ -2215,8 +2599,7 @@ def main():
     
     # Warn about features that are not yet supported in remote mode
     ignored_features = []
-    if args.prep_only:
-        ignored_features.append("--prep-only")
+    # Note: --prep-only is now supported in remote mode (Batch 6)
     if args.skip_separation:
         ignored_features.append("--skip-separation")
     if args.skip_transcription:
@@ -2421,6 +2804,8 @@ def main():
         logger.info(f"Other Stems Models: {args.other_stems_models}")
     if getattr(args, 'existing_instrumental', None):
         logger.info(f"Existing Instrumental: {args.existing_instrumental}")
+    if getattr(args, 'prep_only', False):
+        logger.info(f"Mode: prep-only (will stop after review)")
     logger.info(f"Service URL: {config.service_url}")
     logger.info(f"Review UI: {config.review_ui_url}")
     if config.non_interactive:
@@ -2436,6 +2821,18 @@ def main():
             logger.info(f"Loaded YouTube description from: {args.youtube_description_file}")
         except Exception as e:
             logger.warning(f"Failed to read YouTube description file: {e}")
+    
+    # Extract brand code from current directory if --keep-brand-code is set
+    keep_brand_code_value = None
+    if getattr(args, 'keep_brand_code', False):
+        cwd_name = os.path.basename(os.getcwd())
+        parts = cwd_name.split(" - ", 1)
+        if parts and "-" in parts[0]:
+            potential_brand = parts[0]
+            brand_parts = potential_brand.split("-")
+            if len(brand_parts) == 2 and brand_parts[1].isdigit():
+                keep_brand_code_value = potential_brand
+                logger.info(f"Preserving brand code: {keep_brand_code_value}")
     
     try:
         # Submit job - different endpoint for URL vs file
@@ -2469,6 +2866,9 @@ def main():
                 clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
                 backing_vocals_models=getattr(args, 'backing_vocals_models', None),
                 other_stems_models=getattr(args, 'other_stems_models', None),
+                # Two-phase workflow (Batch 6)
+                prep_only=getattr(args, 'prep_only', False),
+                keep_brand_code=keep_brand_code_value,
             )
         else:
             # File-based job submission
@@ -2498,6 +2898,9 @@ def main():
                 other_stems_models=getattr(args, 'other_stems_models', None),
                 # Existing instrumental (Batch 3)
                 existing_instrumental=getattr(args, 'existing_instrumental', None),
+                # Two-phase workflow (Batch 6)
+                prep_only=getattr(args, 'prep_only', False),
+                keep_brand_code=keep_brand_code_value,
             )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])

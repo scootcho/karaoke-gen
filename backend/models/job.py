@@ -73,6 +73,7 @@ class JobStatus(str, Enum):
     
     # Terminal states
     COMPLETE = "complete"                        # All processing finished successfully
+    PREP_COMPLETE = "prep_complete"             # Prep-only job completed (stops after review)
     FAILED = "failed"                           # Unrecoverable error occurred
     CANCELLED = "cancelled"                      # User cancelled the job
     
@@ -86,8 +87,8 @@ class JobStatus(str, Enum):
 
 # Valid state transitions
 STATE_TRANSITIONS = {
-    # PENDING can go to DOWNLOADING (file upload) or SEARCHING_AUDIO (artist+title search)
-    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.SEARCHING_AUDIO, JobStatus.FAILED, JobStatus.CANCELLED],
+    # PENDING can go to DOWNLOADING (file upload), SEARCHING_AUDIO (artist+title search), or AWAITING_INSTRUMENTAL_SELECTION (finalise-only)
+    JobStatus.PENDING: [JobStatus.DOWNLOADING, JobStatus.SEARCHING_AUDIO, JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED, JobStatus.CANCELLED],
     
     # Audio search flow (for artist+title search mode)
     JobStatus.SEARCHING_AUDIO: [JobStatus.AWAITING_AUDIO_SELECTION, JobStatus.DOWNLOADING_AUDIO, JobStatus.FAILED],
@@ -115,10 +116,10 @@ STATE_TRANSITIONS = {
     # AWAITING_REVIEW can go directly to REVIEW_COMPLETE (quick review) or to IN_REVIEW (editing)
     JobStatus.AWAITING_REVIEW: [JobStatus.IN_REVIEW, JobStatus.REVIEW_COMPLETE, JobStatus.FAILED, JobStatus.CANCELLED],
     JobStatus.IN_REVIEW: [JobStatus.REVIEW_COMPLETE, JobStatus.AWAITING_REVIEW, JobStatus.FAILED],
-    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.FAILED],
+    JobStatus.REVIEW_COMPLETE: [JobStatus.RENDERING_VIDEO, JobStatus.PREP_COMPLETE, JobStatus.FAILED],  # PREP_COMPLETE for prep-only jobs
     
     # Video rendering (post-review)
-    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],
+    JobStatus.RENDERING_VIDEO: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.PREP_COMPLETE, JobStatus.FAILED],
     
     # Instrumental selection flow
     JobStatus.AWAITING_INSTRUMENTAL_SELECTION: [JobStatus.INSTRUMENTAL_SELECTED, JobStatus.FAILED, JobStatus.CANCELLED],
@@ -133,9 +134,11 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
     
-    # Terminal states - COMPLETE and CANCELLED have no transitions
+    # Terminal states - COMPLETE, PREP_COMPLETE, and CANCELLED have no transitions
     # FAILED allows retry transitions to resume from checkpoints
+    # PREP_COMPLETE allows finalise-only continuation
     JobStatus.COMPLETE: [],
+    JobStatus.PREP_COMPLETE: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],  # Finalise-only continues from here
     JobStatus.FAILED: [
         JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
         JobStatus.REVIEW_COMPLETE,        # Retry from render stage
@@ -242,6 +245,11 @@ class Job(BaseModel):
     audio_search_artist: Optional[str] = None     # Artist name used for audio search
     audio_search_title: Optional[str] = None      # Title used for audio search
     auto_download: bool = False                    # Auto-select best audio source (skip selection)
+    
+    # Two-phase workflow configuration (Batch 6)
+    prep_only: bool = False                      # Stop after review, don't run finalisation
+    finalise_only: bool = False                  # Skip prep, run only finalisation (requires uploaded prep outputs)
+    keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
@@ -423,6 +431,11 @@ class JobCreate(BaseModel):
     audio_search_artist: Optional[str] = None     # Artist name used for audio search
     audio_search_title: Optional[str] = None      # Title used for audio search
     auto_download: bool = False                    # Auto-select best audio source (skip selection)
+    
+    # Two-phase workflow configuration (Batch 6)
+    prep_only: bool = False                      # Stop after review, don't run finalisation
+    finalise_only: bool = False                  # Skip prep, run only finalisation
+    keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)

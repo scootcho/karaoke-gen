@@ -74,6 +74,7 @@ class TestJobStatus:
         assert JobStatus.UPLOADING == "uploading"
         assert JobStatus.NOTIFYING == "notifying"
         assert JobStatus.COMPLETE == "complete"
+        assert JobStatus.PREP_COMPLETE == "prep_complete"  # Batch 6: Prep-only jobs stop here
         assert JobStatus.FAILED == "failed"
         assert JobStatus.CANCELLED == "cancelled"
         assert JobStatus.ERROR == "error"
@@ -963,10 +964,10 @@ class TestMain:
     @patch('karaoke_gen.utils.remote_cli.create_parser')
     @patch('karaoke_gen.utils.remote_cli.get_auth_token')
     @patch('karaoke_gen.utils.remote_cli.check_prerequisites')
-    def test_main_finalise_only_not_supported(
+    def test_main_finalise_only_requires_folder_and_args(
         self, mock_check, mock_auth, mock_create_parser
     ):
-        """Test main rejects --finalise-only in remote mode."""
+        """Test main --finalise-only requires folder and artist/title args (Batch 6)."""
         mock_parser = MagicMock()
         mock_args = MagicMock()
         mock_args.service_url = "https://api.example.com"
@@ -984,12 +985,14 @@ class TestMain:
         mock_args.filter_client_id = None
         mock_args.environment = ""
         mock_args.client_id = ""
+        mock_args.args = []  # No args provided - should fail
         mock_parser.parse_args.return_value = mock_args
         mock_create_parser.return_value = mock_parser
         mock_auth.return_value = "token"
 
         result = main()
 
+        # Should fail because no folder/artist/title provided
         assert result == 1
 
     @patch('karaoke_gen.utils.remote_cli.create_parser')

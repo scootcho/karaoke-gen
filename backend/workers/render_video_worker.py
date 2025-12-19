@@ -270,16 +270,27 @@ async def process_render_video(job_id: str) -> bool:
                 job_log.info("Analyzing backing vocals for instrumental selection...")
                 await _analyze_backing_vocals(job_id, job_manager, storage, job_log)
                 
-                # 12. Transition to awaiting instrumental selection
-                job_manager.transition_to_state(
-                    job_id=job_id,
-                    new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
-                    progress=80,
-                    message="Video rendered - select your instrumental"
-                )
-                
-                job_log.info("=== RENDER VIDEO WORKER COMPLETE ===")
-                logger.info(f"Job {job_id}: Video render complete, awaiting instrumental selection")
+                # 12. Transition based on prep_only flag
+                if getattr(job, 'prep_only', False):
+                    # Prep-only mode: stop here and mark as prep complete
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.PREP_COMPLETE,
+                        progress=100,
+                        message="Prep phase complete - download outputs to continue locally"
+                    )
+                    job_log.info("=== RENDER VIDEO WORKER COMPLETE (PREP ONLY) ===")
+                    logger.info(f"Job {job_id}: Prep-only video render complete")
+                else:
+                    # Normal mode: proceed to instrumental selection
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.AWAITING_INSTRUMENTAL_SELECTION,
+                        progress=80,
+                        message="Video rendered - select your instrumental"
+                    )
+                    job_log.info("=== RENDER VIDEO WORKER COMPLETE ===")
+                    logger.info(f"Job {job_id}: Video render complete, awaiting instrumental selection")
                 return True
             
     except Exception as e:
