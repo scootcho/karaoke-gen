@@ -447,11 +447,24 @@ async def upload_lyrics_results(
                 corrections_data = json.load(f)
             
             # Store metadata in state_data
-            job_manager.update_state_data(job_id, 'lyrics_metadata', {
+            # Include countdown padding info for instrumental synchronization
+            lyrics_metadata = {
                 'segment_count': len(corrections_data.get('corrected_segments', [])),
                 'has_corrections': True,
-                'ready_for_review': True
-            })
+                'ready_for_review': True,
+            }
+            
+            # Add countdown padding info from transcription result
+            # This is needed by video_worker to pad instrumentals for sync
+            if transcription_result.get("countdown_padding_added"):
+                lyrics_metadata['has_countdown_padding'] = True
+                lyrics_metadata['countdown_padding_seconds'] = transcription_result.get("countdown_padding_seconds", 3.0)
+                logger.info(f"Job {job_id}: Countdown padding detected: {lyrics_metadata['countdown_padding_seconds']}s")
+            else:
+                lyrics_metadata['has_countdown_padding'] = False
+                lyrics_metadata['countdown_padding_seconds'] = 0.0
+            
+            job_manager.update_state_data(job_id, 'lyrics_metadata', lyrics_metadata)
         except Exception as e:
             logger.warning(f"Job {job_id}: Could not parse corrections JSON: {e}")
     else:

@@ -259,6 +259,101 @@ class KaraokePrep:
         self.artist = metadata_result["artist"]
         self.title = metadata_result["title"]
 
+    def _scan_directory_for_instrumentals(self, track_output_dir, artist_title):
+        """
+        Scan the directory for existing instrumental files and build a separated_audio structure.
+        
+        This is used when transcription was skipped (existing files found) but we need to 
+        pad instrumentals due to countdown padding.
+        
+        Args:
+            track_output_dir: The track output directory to scan
+            artist_title: The "{artist} - {title}" string for matching files
+            
+        Returns:
+            Dictionary with separated_audio structure containing found instrumental paths
+        """
+        self.logger.info(f"Scanning directory for existing instrumentals: {track_output_dir}")
+        
+        separated_audio = {
+            "clean_instrumental": {},
+            "backing_vocals": {},
+            "other_stems": {},
+            "combined_instrumentals": {},
+        }
+        
+        # Search patterns for instrumental files
+        # Files are named like: "{artist} - {title} (Instrumental {model}).flac"
+        # Or with backing vocals: "{artist} - {title} (Instrumental +BV {model}).flac"
+        
+        # Look for files in the track output directory
+        search_dir = track_output_dir
+        
+        # Find all instrumental files (not padded ones - we want the originals)
+        instrumental_pattern = os.path.join(search_dir, f"{artist_title} (Instrumental*.flac")
+        instrumental_files = glob.glob(instrumental_pattern)
+        
+        # Also check for wav files
+        instrumental_pattern_wav = os.path.join(search_dir, f"{artist_title} (Instrumental*.wav")
+        instrumental_files.extend(glob.glob(instrumental_pattern_wav))
+        
+        self.logger.debug(f"Found {len(instrumental_files)} instrumental files")
+        
+        for filepath in instrumental_files:
+            filename = os.path.basename(filepath)
+            
+            # Skip already padded files
+            if "(Padded)" in filename:
+                self.logger.debug(f"Skipping already padded file: {filename}")
+                continue
+            
+            # Determine if it's a combined instrumental (+BV) or clean instrumental
+            if "+BV" in filename or "+bv" in filename.lower():
+                # Combined instrumental with backing vocals
+                # Extract model name from filename
+                # Pattern: "(Instrumental +BV {model}).flac"
+                model_match = re.search(r'\(Instrumental \+BV ([^)]+)\)', filename)
+                if model_match:
+                    model_name = model_match.group(1).strip()
+                    separated_audio["combined_instrumentals"][model_name] = filepath
+                    self.logger.info(f"Found combined instrumental: {filename}")
+            else:
+                # Clean instrumental (no backing vocals)
+                # Pattern: "(Instrumental {model}).flac"
+                model_match = re.search(r'\(Instrumental ([^)]+)\)', filename)
+                if model_match:
+                    # Use as clean instrumental if we don't have one yet
+                    if not separated_audio["clean_instrumental"].get("instrumental"):
+                        separated_audio["clean_instrumental"]["instrumental"] = filepath
+                        self.logger.info(f"Found clean instrumental: {filename}")
+                    else:
+                        # Additional clean instrumentals go to combined_instrumentals for padding
+                        model_name = model_match.group(1).strip()
+                        separated_audio["combined_instrumentals"][model_name] = filepath
+                        self.logger.info(f"Found additional instrumental: {filename}")
+        
+        # Also look for backing vocals files
+        backing_vocals_pattern = os.path.join(search_dir, f"{artist_title} (Backing Vocals*.flac")
+        backing_vocals_files = glob.glob(backing_vocals_pattern)
+        backing_vocals_pattern_wav = os.path.join(search_dir, f"{artist_title} (Backing Vocals*.wav")
+        backing_vocals_files.extend(glob.glob(backing_vocals_pattern_wav))
+        
+        for filepath in backing_vocals_files:
+            filename = os.path.basename(filepath)
+            model_match = re.search(r'\(Backing Vocals ([^)]+)\)', filename)
+            if model_match:
+                model_name = model_match.group(1).strip()
+                if model_name not in separated_audio["backing_vocals"]:
+                    separated_audio["backing_vocals"][model_name] = {"backing_vocals": filepath}
+                    self.logger.info(f"Found backing vocals: {filename}")
+        
+        # Log summary
+        clean_count = 1 if separated_audio["clean_instrumental"].get("instrumental") else 0
+        combined_count = len(separated_audio["combined_instrumentals"])
+        self.logger.info(f"Directory scan complete: {clean_count} clean instrumental, {combined_count} combined instrumentals")
+        
+        return separated_audio
+
     async def prep_single_track(self):
         # Add signal handler at the start
         loop = asyncio.get_running_loop()
@@ -766,6 +861,18 @@ class KaraokePrep:
                 self.logger.info(
                     f"Applying {padding_seconds}s padding to all instrumental files to sync with vocal countdown"
                 )
+                
+                # If separated_audio is empty (e.g., transcription was skipped but existing files have countdown),
+                # scan the directory for existing instrumental files
+                has_instrumentals = (
+                    processed_track["separated_audio"].get("clean_instrumental", {}).get("instrumental") or
+                    processed_track["separated_audio"].get("combined_instrumentals")
+                )
+                if not has_instrumentals:
+                    self.logger.info("No instrumentals in separated_audio, scanning directory for existing files...")
+                    processed_track["separated_audio"] = self._scan_directory_for_instrumentals(
+                        track_output_dir, artist_title
+                    )
                 
                 # Apply padding using AudioProcessor
                 padded_separation_result = self.audio_processor.apply_countdown_padding_to_instrumentals(

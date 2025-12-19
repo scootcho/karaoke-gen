@@ -771,8 +771,16 @@ class AudioProcessor:
         padded_result["other_stems"] = separation_result.get("other_stems", {})
         padded_result["backing_vocals"] = separation_result.get("backing_vocals", {})
         
-        self.logger.info(
-            f"✓ Countdown padding applied to {len(padded_result['combined_instrumentals']) + 1} instrumental file(s)"
-        )
+        # Count actual padded files (don't assume clean instrumental was padded)
+        padded_count = (1 if padded_result["clean_instrumental"].get("instrumental") else 0) + len(padded_result["combined_instrumentals"])
+        
+        if padded_count > 0:
+            self.logger.info(
+                f"✓ Countdown padding applied to {padded_count} instrumental file(s)"
+            )
+        else:
+            self.logger.warning(
+                "No instrumental files found to pad. Check that audio separation completed successfully."
+            )
         
         return padded_result

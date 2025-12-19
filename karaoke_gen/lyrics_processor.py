@@ -11,6 +11,9 @@ from .utils import sanitize_filename
 
 # Placeholder class or functions for lyrics processing
 class LyricsProcessor:
+    # Standard countdown padding duration used by LyricsTranscriber
+    COUNTDOWN_PADDING_SECONDS = 3.0
+    
     def __init__(
         self, logger, style_params_json, lyrics_file, skip_transcription, skip_transcription_review, render_video, subtitle_offset_ms
     ):
@@ -21,6 +24,60 @@ class LyricsProcessor:
         self.skip_transcription_review = skip_transcription_review
         self.render_video = render_video
         self.subtitle_offset_ms = subtitle_offset_ms
+
+    def _detect_countdown_padding_from_lrc(self, lrc_filepath):
+        """
+        Detect if countdown padding was applied by checking the first lyric timestamp in the LRC file.
+        
+        LRC format timestamps look like: [mm:ss.xx] or [mm:ss.xxx]
+        If the first lyric timestamp is >= 3.0 seconds, countdown padding was likely applied.
+        
+        Args:
+            lrc_filepath: Path to the LRC file
+            
+        Returns:
+            Tuple of (countdown_padding_added: bool, countdown_padding_seconds: float)
+        """
+        try:
+            with open(lrc_filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Find all timestamp patterns in the LRC file
+            # LRC timestamps: [mm:ss.xx] or [mm:ss.xxx]
+            timestamp_pattern = r'\[(\d{1,2}):(\d{2})\.(\d{2,3})\]'
+            matches = re.findall(timestamp_pattern, content)
+            
+            if not matches:
+                self.logger.debug("No timestamps found in LRC file")
+                return (False, 0.0)
+            
+            # Find the first non-metadata timestamp (metadata like [ar:Artist] doesn't have decimal)
+            # We already filtered for decimal timestamps in our pattern
+            first_timestamp = matches[0]
+            minutes = int(first_timestamp[0])
+            seconds = int(first_timestamp[1])
+            # Handle both .xx and .xxx formats
+            centiseconds = first_timestamp[2]
+            if len(centiseconds) == 2:
+                milliseconds = int(centiseconds) * 10
+            else:
+                milliseconds = int(centiseconds)
+            
+            first_lyric_time = minutes * 60 + seconds + milliseconds / 1000.0
+            
+            self.logger.debug(f"First lyric timestamp in LRC: {first_lyric_time:.3f}s")
+            
+            # If first lyric is at or after 3 seconds, countdown padding was applied
+            # Use a small buffer (2.5s) to account for songs that naturally start a bit late
+            if first_lyric_time >= 2.5:
+                self.logger.info(f"Detected countdown padding from LRC: first lyric at {first_lyric_time:.2f}s")
+                return (True, self.COUNTDOWN_PADDING_SECONDS)
+            
+            return (False, 0.0)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to detect countdown padding from LRC file: {e}")
+            return (False, 0.0)
 
     def find_best_split_point(self, line):
         """
@@ -138,23 +195,43 @@ class LyricsProcessor:
         lyrics_video_path = os.path.join(lyrics_dir, f"{sanitized_artist} - {sanitized_title} (With Vocals).mkv")
         lyrics_lrc_path = os.path.join(lyrics_dir, f"{sanitized_artist} - {sanitized_title} (Karaoke).lrc")
 
-        # If files exist in parent directory, return early
+        # If files exist in parent directory, return early (but detect countdown padding first)
         if os.path.exists(parent_video_path) and os.path.exists(parent_lrc_path):
-            self.logger.info(f"Found existing video and LRC files in parent directory, skipping transcription")
+            self.logger.info("Found existing video and LRC files in parent directory, skipping transcription")
+            
+            # Detect countdown padding from existing LRC file
+            countdown_padding_added, countdown_padding_seconds = self._detect_countdown_padding_from_lrc(parent_lrc_path)
+            
+            if countdown_padding_added:
+                self.logger.info(f"Existing files have countdown padding: {countdown_padding_seconds}s")
+            
             return {
                 "lrc_filepath": parent_lrc_path,
                 "ass_filepath": parent_video_path,
+                "countdown_padding_added": countdown_padding_added,
+                "countdown_padding_seconds": countdown_padding_seconds,
+                "padded_audio_filepath": None,  # Original padded audio may not exist
             }
 
-        # If files exist in lyrics directory, copy to parent and return
+        # If files exist in lyrics directory, copy to parent and return (but detect countdown padding first)
         if os.path.exists(lyrics_video_path) and os.path.exists(lyrics_lrc_path):
-            self.logger.info(f"Found existing video and LRC files in lyrics directory, copying to parent")
+            self.logger.info("Found existing video and LRC files in lyrics directory, copying to parent")
             os.makedirs(track_output_dir, exist_ok=True)
             shutil.copy2(lyrics_video_path, parent_video_path)
             shutil.copy2(lyrics_lrc_path, parent_lrc_path)
+            
+            # Detect countdown padding from existing LRC file
+            countdown_padding_added, countdown_padding_seconds = self._detect_countdown_padding_from_lrc(parent_lrc_path)
+            
+            if countdown_padding_added:
+                self.logger.info(f"Existing files have countdown padding: {countdown_padding_seconds}s")
+            
             return {
                 "lrc_filepath": parent_lrc_path,
                 "ass_filepath": parent_video_path,
+                "countdown_padding_added": countdown_padding_added,
+                "countdown_padding_seconds": countdown_padding_seconds,
+                "padded_audio_filepath": None,  # Original padded audio may not exist
             }
 
         # Create lyrics directory if it doesn't exist

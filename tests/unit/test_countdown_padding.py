@@ -435,6 +435,266 @@ class TestExistingInstrumentalPadding:
             assert '3.0' in call_args or 3.0 in call_args
 
 
+class TestDetectCountdownPaddingFromLRC:
+    """Tests for detecting countdown padding from existing LRC files."""
+    
+    def test_detect_padding_from_lrc_with_padding(self, basic_karaoke_gen, temp_dir):
+        """Test that countdown padding is detected when first lyric is after 3 seconds."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Create an LRC file with first lyric at 3 seconds (padding was applied)
+        lrc_content = """[ti:Test Song]
+[ar:Test Artist]
+[00:03.50]First line of lyrics
+[00:06.20]Second line of lyrics
+[00:10.00]Third line of lyrics
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is True
+        assert padding_seconds == 3.0
+    
+    def test_detect_padding_from_lrc_without_padding(self, basic_karaoke_gen, temp_dir):
+        """Test that no padding is detected when first lyric is before 3 seconds."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Create an LRC file with first lyric at 0.5 seconds (no padding)
+        lrc_content = """[ti:Test Song]
+[ar:Test Artist]
+[00:00.50]First line of lyrics
+[00:03.20]Second line of lyrics
+[00:06.00]Third line of lyrics
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is False
+        assert padding_seconds == 0.0
+    
+    def test_detect_padding_from_lrc_edge_case(self, basic_karaoke_gen, temp_dir):
+        """Test detection at the 2.5 second boundary."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Create an LRC file with first lyric at exactly 2.5 seconds (boundary)
+        lrc_content = """[00:02.50]First line at boundary
+[00:05.00]Second line
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        # 2.5 is the boundary - should be detected as padding
+        assert padding_added is True
+        assert padding_seconds == 3.0
+    
+    def test_detect_padding_from_lrc_just_below_boundary(self, basic_karaoke_gen, temp_dir):
+        """Test detection just below the 2.5 second boundary."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Create an LRC file with first lyric at 2.4 seconds (just below boundary)
+        lrc_content = """[00:02.40]First line just below boundary
+[00:05.00]Second line
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        # 2.4 is below boundary - should NOT be detected as padding
+        assert padding_added is False
+        assert padding_seconds == 0.0
+    
+    def test_detect_padding_from_lrc_empty_file(self, basic_karaoke_gen, temp_dir):
+        """Test handling of empty LRC file."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        with open(lrc_file, 'w') as f:
+            f.write('')
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is False
+        assert padding_seconds == 0.0
+    
+    def test_detect_padding_from_lrc_no_timestamps(self, basic_karaoke_gen, temp_dir):
+        """Test handling of LRC file with no valid timestamps."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        lrc_content = """[ti:Test Song]
+[ar:Test Artist]
+Just text without timestamps
+More text
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is False
+        assert padding_seconds == 0.0
+    
+    def test_detect_padding_from_lrc_missing_file(self, basic_karaoke_gen, temp_dir):
+        """Test handling of missing LRC file."""
+        lrc_file = os.path.join(temp_dir, 'nonexistent.lrc')
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is False
+        assert padding_seconds == 0.0
+    
+    def test_detect_padding_from_lrc_three_digit_milliseconds(self, basic_karaoke_gen, temp_dir):
+        """Test parsing LRC files with three-digit milliseconds."""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Some LRC files use [mm:ss.xxx] format
+        lrc_content = """[00:03.500]First line at 3.5 seconds
+[00:06.200]Second line
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        assert padding_added is True
+        assert padding_seconds == 3.0
+
+
+class TestExistingFilesWithPaddingDetection:
+    """Tests for transcribe_lyrics returning padding info from existing files."""
+    
+    def test_transcribe_lyrics_existing_files_returns_padding_info(self, basic_karaoke_gen, temp_dir):
+        """Test that transcribe_lyrics returns padding info when using existing files."""
+        track_output_dir = temp_dir
+        artist = "Test Artist"
+        title = "Test Title"
+        
+        # Create existing files
+        video_path = os.path.join(track_output_dir, f"{artist} - {title} (With Vocals).mkv")
+        lrc_path = os.path.join(track_output_dir, f"{artist} - {title} (Karaoke).lrc")
+        
+        # Create the video file
+        with open(video_path, 'w') as f:
+            f.write('mock video')
+        
+        # Create LRC file with countdown padding (first lyric at 3.5s)
+        lrc_content = """[00:03.50]First line with padding
+[00:06.00]Second line
+"""
+        with open(lrc_path, 'w') as f:
+            f.write(lrc_content)
+        
+        # Call transcribe_lyrics - it should detect existing files and return padding info
+        result = basic_karaoke_gen.lyrics_processor.transcribe_lyrics(
+            input_audio_wav=None,  # Not needed when existing files found
+            artist=artist,
+            title=title,
+            track_output_dir=track_output_dir,
+        )
+        
+        # Should return padding info from LRC detection
+        assert result['countdown_padding_added'] is True
+        assert result['countdown_padding_seconds'] == 3.0
+        assert result['padded_audio_filepath'] is None  # Original padded audio not available
+    
+    def test_transcribe_lyrics_existing_files_no_padding(self, basic_karaoke_gen, temp_dir):
+        """Test existing files case when there's no countdown padding."""
+        track_output_dir = temp_dir
+        artist = "Test Artist"
+        title = "Test Title"
+        
+        # Create existing files
+        video_path = os.path.join(track_output_dir, f"{artist} - {title} (With Vocals).mkv")
+        lrc_path = os.path.join(track_output_dir, f"{artist} - {title} (Karaoke).lrc")
+        
+        # Create the video file
+        with open(video_path, 'w') as f:
+            f.write('mock video')
+        
+        # Create LRC file WITHOUT countdown padding (first lyric at 0.5s)
+        lrc_content = """[00:00.50]First line starts immediately
+[00:03.00]Second line
+"""
+        with open(lrc_path, 'w') as f:
+            f.write(lrc_content)
+        
+        result = basic_karaoke_gen.lyrics_processor.transcribe_lyrics(
+            input_audio_wav=None,
+            artist=artist,
+            title=title,
+            track_output_dir=track_output_dir,
+        )
+        
+        # Should return no padding info
+        assert result['countdown_padding_added'] is False
+        assert result['countdown_padding_seconds'] == 0.0
+
+
+class TestScanDirectoryForInstrumentals:
+    """Tests for scanning directory for existing instrumentals."""
+    
+    def test_scan_directory_finds_clean_instrumental(self, basic_karaoke_gen, temp_dir):
+        """Test that _scan_directory_for_instrumentals finds clean instrumentals."""
+        artist_title = "Test Artist - Test Song"
+        
+        # Create a clean instrumental file
+        instrumental_file = os.path.join(temp_dir, f"{artist_title} (Instrumental Clean).flac")
+        with open(instrumental_file, 'w') as f:
+            f.write('mock instrumental')
+        
+        result = basic_karaoke_gen._scan_directory_for_instrumentals(temp_dir, artist_title)
+        
+        assert result['clean_instrumental']['instrumental'] == instrumental_file
+    
+    def test_scan_directory_finds_combined_instrumentals(self, basic_karaoke_gen, temp_dir):
+        """Test that _scan_directory_for_instrumentals finds combined instrumentals."""
+        artist_title = "Test Artist - Test Song"
+        
+        # Create combined instrumental files
+        bv_file = os.path.join(temp_dir, f"{artist_title} (Instrumental +BV HTDemucs).flac")
+        with open(bv_file, 'w') as f:
+            f.write('mock instrumental with backing')
+        
+        result = basic_karaoke_gen._scan_directory_for_instrumentals(temp_dir, artist_title)
+        
+        assert 'HTDemucs' in result['combined_instrumentals']
+        assert result['combined_instrumentals']['HTDemucs'] == bv_file
+    
+    def test_scan_directory_skips_padded_files(self, basic_karaoke_gen, temp_dir):
+        """Test that _scan_directory_for_instrumentals skips already-padded files."""
+        artist_title = "Test Artist - Test Song"
+        
+        # Create both original and padded files
+        original_file = os.path.join(temp_dir, f"{artist_title} (Instrumental Clean).flac")
+        padded_file = os.path.join(temp_dir, f"{artist_title} (Instrumental Clean) (Padded).flac")
+        
+        with open(original_file, 'w') as f:
+            f.write('mock original')
+        with open(padded_file, 'w') as f:
+            f.write('mock padded')
+        
+        result = basic_karaoke_gen._scan_directory_for_instrumentals(temp_dir, artist_title)
+        
+        # Should return original, not padded
+        assert result['clean_instrumental']['instrumental'] == original_file
+        assert 'Padded' not in result['clean_instrumental']['instrumental']
+    
+    def test_scan_directory_empty_directory(self, basic_karaoke_gen, temp_dir):
+        """Test _scan_directory_for_instrumentals on empty directory."""
+        artist_title = "Test Artist - Test Song"
+        
+        result = basic_karaoke_gen._scan_directory_for_instrumentals(temp_dir, artist_title)
+        
+        # Should return empty structure
+        assert result['clean_instrumental'].get('instrumental') is None
+        assert len(result['combined_instrumentals']) == 0
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
