@@ -70,7 +70,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
     
     // Audio duration
     const audioDuration = useMemo(() => {
-        if (window.getAudioDuration) {
+        if (typeof window.getAudioDuration === 'function') {
             const duration = window.getAudioDuration()
             return duration > 0 ? duration : 300
         }
@@ -182,7 +182,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
     // Update isPlaying state periodically
     useEffect(() => {
         const checkPlaying = () => {
-            setIsPlaying(window.isAudioPlaying || false)
+            setIsPlaying(typeof window.isAudioPlaying === 'boolean' ? window.isAudioPlaying : false)
         }
         checkPlaying()
         const interval = setInterval(checkPlaying, 100)
@@ -198,7 +198,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
 
     // Stop audio playback - also exits sync mode
     const handleStopAudio = useCallback(() => {
-        if (window.toggleAudioPlayback && window.isAudioPlaying) {
+        if (typeof window.toggleAudioPlayback === 'function' && window.isAudioPlaying) {
             window.toggleAudioPlayback()
         }
         // Also exit sync mode when stopping
@@ -552,7 +552,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
             onPlaySegment(time)
             // Immediately stop playback after seeking
             setTimeout(() => {
-                if (window.toggleAudioPlayback && window.isAudioPlaying) {
+                if (typeof window.toggleAudioPlayback === 'function' && window.isAudioPlaying) {
                     window.toggleAudioPlayback()
                 }
             }, 50)

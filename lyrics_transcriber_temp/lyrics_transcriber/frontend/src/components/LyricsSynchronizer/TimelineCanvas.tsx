@@ -573,10 +573,13 @@ const TimelineCanvas = memo(function TimelineCanvas({
             const updates: Array<{ wordId: string; newStartTime: number; newEndTime: number }> = []
             
             for (const [wordId, originalTimes] of dragOriginalTimesRef.current) {
+                // Ensure end time is always after start time (at least 0.05s duration)
+                const newStartTime = Math.max(0, originalTimes.start + deltaTime)
+                const newEndTime = Math.max(newStartTime + 0.05, originalTimes.end + deltaTime)
                 updates.push({
                     wordId,
-                    newStartTime: Math.max(0, originalTimes.start + deltaTime),
-                    newEndTime: Math.max(0.05, originalTimes.end + deltaTime)
+                    newStartTime,
+                    newEndTime
                 })
             }
             
