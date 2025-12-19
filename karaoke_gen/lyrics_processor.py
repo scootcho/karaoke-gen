@@ -197,7 +197,7 @@ class LyricsProcessor:
 
         # If files exist in parent directory, return early (but detect countdown padding first)
         if os.path.exists(parent_video_path) and os.path.exists(parent_lrc_path):
-            self.logger.info(f"Found existing video and LRC files in parent directory, skipping transcription")
+            self.logger.info("Found existing video and LRC files in parent directory, skipping transcription")
             
             # Detect countdown padding from existing LRC file
             countdown_padding_added, countdown_padding_seconds = self._detect_countdown_padding_from_lrc(parent_lrc_path)
@@ -215,7 +215,7 @@ class LyricsProcessor:
 
         # If files exist in lyrics directory, copy to parent and return (but detect countdown padding first)
         if os.path.exists(lyrics_video_path) and os.path.exists(lyrics_lrc_path):
-            self.logger.info(f"Found existing video and LRC files in lyrics directory, copying to parent")
+            self.logger.info("Found existing video and LRC files in lyrics directory, copying to parent")
             os.makedirs(track_output_dir, exist_ok=True)
             shutil.copy2(lyrics_video_path, parent_video_path)
             shutil.copy2(lyrics_lrc_path, parent_lrc_path)
