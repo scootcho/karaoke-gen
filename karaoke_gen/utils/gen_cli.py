@@ -266,6 +266,13 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
                 else:
                     logger.warning("Custom instrumental not found, falling back to clean")
                     return clean_instrumental_path
+            elif selection == "uploaded":
+                uploaded_path = server.get_uploaded_instrumental_path()
+                if uploaded_path and os.path.exists(uploaded_path):
+                    return uploaded_path
+                else:
+                    logger.warning("Uploaded instrumental not found, falling back to clean")
+                    return clean_instrumental_path
             else:
                 logger.warning(f"Unknown selection: {selection}, falling back to numeric selection")
                 return None
