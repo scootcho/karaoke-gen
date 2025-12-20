@@ -22,6 +22,37 @@ from karaoke_gen.audio_fetcher import (
     create_audio_fetcher,
 )
 
+# Import flacfetch models for creating test Release objects
+from flacfetch.core.models import Release, Quality, AudioFormat, MediaSource
+
+
+def create_test_release(
+    title: str = "Test Song",
+    artist: str = "Test Artist",
+    source_name: str = "YouTube",
+    duration_seconds: int = 180,
+    seeders: int = None,
+    is_lossless: bool = False,
+) -> Release:
+    """Create a real Release object for testing.
+    
+    This is needed because flacfetch's print_releases function does
+    type comparisons that fail with MagicMock objects.
+    """
+    if is_lossless:
+        quality = Quality(format=AudioFormat.FLAC, bit_depth=16, media=MediaSource.CD)
+    else:
+        quality = Quality(format=AudioFormat.MP3, bitrate=320, media=MediaSource.WEB)
+    
+    return Release(
+        title=title,
+        artist=artist,
+        quality=quality,
+        source_name=source_name,
+        duration_seconds=duration_seconds,
+        seeders=seeders,
+    )
+
 
 class TestAudioSearchResult:
     """Tests for AudioSearchResult dataclass."""
@@ -555,17 +586,16 @@ class TestFlacFetchAudioFetcher:
     @patch('builtins.input', return_value='1')
     def test_search_and_download_interactive_select(self, mock_input, mock_get_manager, fetcher, tmp_path, capsys):
         """Test search_and_download with interactive selection."""
-        # Set up mock using correct flacfetch Release attribute names
+        # Use real Release object to avoid MagicMock comparison issues in print_releases
+        test_release = create_test_release(
+            title="Test Song",
+            artist="Test Artist",
+            source_name="YouTube",
+            duration_seconds=180,
+        )
+        
         mock_manager = MagicMock()
-        mock_result = MagicMock()
-        mock_result.title = "Test Song"
-        mock_result.artist = "Test Artist"
-        mock_result.source_name = "YouTube"
-        mock_result.duration_seconds = 180
-        mock_result.quality = MagicMock(__str__=MagicMock(return_value="320kbps"))
-        mock_result.seeders = None
-        mock_result.target_file = None
-        mock_manager.search.return_value = [mock_result]
+        mock_manager.search.return_value = [test_release]
         downloaded_path = str(tmp_path / "song.flac")
         mock_manager.download.return_value = downloaded_path
         mock_get_manager.return_value = mock_manager
@@ -582,9 +612,9 @@ class TestFlacFetchAudioFetcher:
         mock_manager.select_best.assert_not_called()
         assert result.filepath == downloaded_path
         
-        # Check output shows options
+        # Check output shows options (flacfetch uses "Found X releases")
         captured = capsys.readouterr()
-        assert "Search Results" in captured.out
+        assert "Found" in captured.out and "releases" in captured.out
 
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_search_and_download_no_results(self, mock_get_manager, fetcher, tmp_path):
@@ -604,69 +634,42 @@ class TestFlacFetchAudioFetcher:
     @patch('builtins.input', return_value='0')
     def test_interactive_select_cancel(self, mock_input, fetcher):
         """Test interactive selection raises UserCancelledError when user cancels."""
-        # Use correct flacfetch Release attribute names for fallback display
-        mock_result = MagicMock()
-        mock_result.source_name = "YouTube"
-        mock_result.title = "Test"
-        mock_result.artist = "Artist"
-        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
-        mock_result.duration_seconds = 180
-        mock_result.seeders = None
-        mock_result.target_file = None
+        # Use real Release object to avoid MagicMock comparison issues
+        test_release = create_test_release(title="Test", artist="Artist")
 
         with pytest.raises(UserCancelledError):
-            fetcher._interactive_select([mock_result], "Artist", "Test")
+            fetcher._interactive_select([test_release], "Artist", "Test")
 
     @patch('builtins.input', side_effect=['invalid', '1'])
     def test_interactive_select_invalid_then_valid(self, mock_input, fetcher):
         """Test interactive selection handles invalid input gracefully."""
-        mock_result = MagicMock()
-        mock_result.source_name = "YouTube"
-        mock_result.title = "Test"
-        mock_result.artist = "Artist"
-        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
-        mock_result.duration_seconds = 180
-        mock_result.seeders = None
-        mock_result.target_file = None
+        # Use real Release object to avoid MagicMock comparison issues
+        test_release = create_test_release(title="Test", artist="Artist")
 
-        result = fetcher._interactive_select([mock_result], "Artist", "Test")
-        assert result == mock_result
+        result = fetcher._interactive_select([test_release], "Artist", "Test")
+        assert result == test_release
 
     @patch('builtins.input', side_effect=['5', '1'])
     def test_interactive_select_out_of_range_then_valid(self, mock_input, fetcher, capsys):
         """Test interactive selection handles out-of-range input."""
-        mock_result = MagicMock()
-        mock_result.source_name = "YouTube"
-        mock_result.title = "Test"
-        mock_result.artist = "Artist"
-        mock_result.quality = MagicMock(__str__=MagicMock(return_value="FLAC 16bit CD"))
-        mock_result.duration_seconds = 180
-        mock_result.seeders = None
-        mock_result.target_file = None
+        # Use real Release object to avoid MagicMock comparison issues
+        test_release = create_test_release(title="Test", artist="Artist")
 
-        result = fetcher._interactive_select([mock_result], "Artist", "Test")
-        assert result == mock_result
+        result = fetcher._interactive_select([test_release], "Artist", "Test")
+        assert result == test_release
         
         captured = capsys.readouterr()
-        assert "Please enter a number between" in captured.out
+        # flacfetch's CLIHandler outputs "Invalid selection." for out-of-range
+        assert "Invalid selection" in captured.out
 
     @patch('builtins.input', side_effect=KeyboardInterrupt)
-    def test_interactive_select_keyboard_interrupt(self, mock_input, fetcher, capsys):
+    def test_interactive_select_keyboard_interrupt(self, mock_input, fetcher):
         """Test interactive selection raises UserCancelledError on keyboard interrupt."""
-        mock_result = MagicMock()
-        mock_result.source_name = "YouTube"
-        mock_result.title = "Test"
-        mock_result.artist = "Artist"
-        mock_result.quality = None
-        mock_result.duration_seconds = None
-        mock_result.seeders = None
-        mock_result.target_file = None
+        # Use real Release object to avoid MagicMock comparison issues
+        test_release = create_test_release(title="Test", artist="Artist")
 
         with pytest.raises(UserCancelledError):
-            fetcher._interactive_select([mock_result], "Artist", "Test")
-        
-        captured = capsys.readouterr()
-        assert "Cancelled" in captured.out
+            fetcher._interactive_select([test_release], "Artist", "Test")
 
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_select_best_returns_index(self, mock_get_manager, fetcher):
@@ -1067,7 +1070,7 @@ class TestFlacFetchCLIHandlerCompatibility:
         This ensures we're passing proper Release objects, not mocks with wrong attributes.
         """
         from flacfetch.core.models import Release, Quality, AudioFormat, MediaSource
-        from flacfetch.interface.cli import CLIHandler
+        from flacfetch import print_releases, format_release_line
         
         quality = Quality(format=AudioFormat.FLAC, bit_depth=16, media=MediaSource.CD)
         release = Release(
@@ -1078,13 +1081,8 @@ class TestFlacFetchCLIHandlerCompatibility:
             seeders=25,
         )
         
-        handler = CLIHandler(target_artist="Test Artist")
-        
-        # This should not raise any AttributeError
-        # (Previously would fail if quality.is_lossless() didn't exist)
+        # Test format_release_line works with a real Release
         try:
-            # We can't easily test the full select_release without mocking input,
-            # but we can at least verify _print_release works
             import io
             import sys
             
@@ -1092,14 +1090,16 @@ class TestFlacFetchCLIHandlerCompatibility:
             captured = io.StringIO()
             sys.stdout = captured
             try:
-                handler._print_release(1, release)
+                # Test single line formatting
+                line = format_release_line(1, release, target_artist="Test Artist")
+                print(line)
             finally:
                 sys.stdout = sys.__stdout__
             
             output = captured.getvalue()
             assert "Test Artist" in output or "Test Song" in output
         except AttributeError as e:
-            pytest.fail(f"CLIHandler failed with AttributeError: {e}")
+            pytest.fail(f"format_release_line failed with AttributeError: {e}")
 
 
 class TestDownloadWithCustomFilename:
