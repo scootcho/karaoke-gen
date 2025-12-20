@@ -1,8 +1,9 @@
 # Refactor: Unify Audio Fetcher Code
 
 **Created:** 2025-12-20  
+**Completed:** 2025-12-20  
 **Priority:** MEDIUM (prevents future bugs like YouTubeProvider -> YoutubeProvider)  
-**Status:** Proposed
+**Status:** ✅ Completed
 
 ## Problem
 
@@ -112,13 +113,13 @@ class AudioSearchService:
 
 ## Migration Steps
 
-1. [ ] Add `to_dict()` / `from_dict()` to `AudioSearchResult` in karaoke_gen
-2. [ ] Extract `select_best()` as standalone method in FlacFetcher
-3. [ ] Update karaoke_gen `__init__.py` exports
-4. [ ] Refactor backend to import from karaoke_gen
-5. [ ] Update backend tests
-6. [ ] Delete duplicate code from backend
-7. [ ] Add integration test that catches import divergence
+1. [x] Add `to_dict()` / `from_dict()` to `AudioSearchResult` in karaoke_gen
+2. [x] Extract `select_best()` as standalone method in FlacFetcher
+3. [x] Update karaoke_gen `__init__.py` exports (with lazy imports)
+4. [x] Refactor backend to import from karaoke_gen
+5. [x] Update backend tests
+6. [x] Delete duplicate code from backend (~150 lines removed)
+7. [x] Add integration test that catches import divergence
 
 ## Related Files
 
