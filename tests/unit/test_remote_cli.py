@@ -2038,3 +2038,201 @@ class TestSignedUrlUploadFlow:
         assert hasattr(client, '_get_content_type')
         assert callable(client._upload_file_to_signed_url)
         assert callable(client._get_content_type)
+
+
+class TestJobMonitorDownloadProgress:
+    """Tests for JobMonitor download progress display."""
+    
+    @pytest.fixture
+    def config(self):
+        return Config(
+            service_url="https://api.example.com",
+            review_ui_url="https://review.example.com",
+            poll_interval=1,
+            output_dir="/tmp/output"
+        )
+    
+    @pytest.fixture
+    def logger(self):
+        return logging.getLogger("test")
+    
+    @pytest.fixture
+    def monitor(self, config, logger):
+        client = MagicMock()
+        return JobMonitor(client, config, logger)
+    
+    def test_show_download_progress_youtube(self, monitor, caplog):
+        """Test that YouTube downloads show simple message."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'YouTube'
+            }
+        }
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "Downloading from YouTube" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_torrent_with_active_torrents(self, mock_get, monitor, caplog):
+        """Test that active torrents show progress details."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'Redacted'
+            }
+        }
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'dependencies': {
+                'transmission': {
+                    'available': True,
+                    'torrents': [{
+                        'progress': 45.5,
+                        'peers': 3,
+                        'download_speed': 1250.0,
+                        'stalled': False
+                    }]
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "Downloading from Redacted" in caplog.text
+        assert "45.5%" in caplog.text
+        assert "1250.0 KB/s" in caplog.text
+        assert "3 peers" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_torrent_stalled(self, mock_get, monitor, caplog):
+        """Test that stalled torrents show warning."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'OPS'
+            }
+        }
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'dependencies': {
+                'transmission': {
+                    'available': True,
+                    'torrents': [{
+                        'progress': 0.0,
+                        'peers': 0,
+                        'download_speed': 0,
+                        'stalled': True
+                    }]
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "STALLED" in caplog.text
+        assert "no peers" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_no_torrents(self, mock_get, monitor, caplog):
+        """Test message when no active torrents."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'Redacted'
+            }
+        }
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'dependencies': {
+                'transmission': {
+                    'available': True,
+                    'torrents': []
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "Starting download" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_transmission_unavailable(self, mock_get, monitor, caplog):
+        """Test warning when Transmission not available."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'Redacted'
+            }
+        }
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'dependencies': {
+                'transmission': {
+                    'available': False
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "not available" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_request_error(self, mock_get, monitor, caplog):
+        """Test fallback message on request error."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'Redacted'
+            }
+        }
+        
+        mock_get.side_effect = Exception("Connection error")
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "Downloading audio" in caplog.text
+    
+    @patch('karaoke_gen.utils.remote_cli.requests.get')
+    def test_show_download_progress_http_error(self, mock_get, monitor, caplog):
+        """Test fallback on non-200 HTTP response."""
+        job_data = {
+            'state_data': {
+                'selected_audio_provider': 'Redacted'
+            }
+        }
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_get.return_value = mock_response
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        assert "Downloading from Redacted" in caplog.text
+    
+    def test_show_download_progress_missing_provider(self, monitor, caplog):
+        """Test handling of missing provider in state_data."""
+        job_data = {
+            'state_data': {}
+        }
+        
+        with caplog.at_level(logging.INFO):
+            monitor._show_download_progress(job_data)
+        
+        # Should use 'unknown' as default
+        assert "unknown" in caplog.text.lower() or "Downloading" in caplog.text

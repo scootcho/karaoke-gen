@@ -21,6 +21,7 @@ from karaoke_gen.audio_fetcher import (
     FlacFetchAudioFetcher,
     create_audio_fetcher,
 )
+import karaoke_gen.audio_fetcher as audio_fetcher_module
 
 # Import flacfetch models for creating test Release objects
 from flacfetch.core.models import Release, Quality, AudioFormat, MediaSource
@@ -143,6 +144,64 @@ class TestAudioSearchResult:
         # raw_result should NOT be in serialized dict
         assert "raw_result" not in data
 
+    def test_to_dict_with_release_raw_result(self):
+        """Test to_dict when raw_result has to_dict() that returns release fields."""
+        # Create a mock raw_result that mimics flacfetch Release behavior
+        class MockRelease:
+            def to_dict(self):
+                return {
+                    'year': 2024,
+                    'label': 'Test Records',
+                    'edition_info': 'Remastered',
+                    'release_type': 'Album',
+                    'channel': 'TestChannel',
+                    'view_count': 1000000,
+                    'size_bytes': 52428800,
+                    'target_file_size': 26214400,
+                    'track_pattern': 'Test Song',
+                    'match_score': 0.95,
+                    'formatted_size': '50.0 MB',
+                    'formatted_duration': '3:30',
+                    'formatted_views': '1.0M',
+                    'is_lossless': True,
+                    'quality_str': 'FLAC 24bit WEB',
+                    'quality': {'format': 'FLAC', 'bit_depth': 24, 'media': 'WEB'},
+                }
+        
+        result = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="Redacted",
+            raw_result=MockRelease(),
+        )
+        data = result.to_dict()
+        
+        # Basic fields
+        assert data["title"] == "Test Song"
+        assert data["provider"] == "Redacted"
+        
+        # Release-specific fields should be included
+        assert data["year"] == 2024
+        assert data["label"] == "Test Records"
+        assert data["edition_info"] == "Remastered"
+        assert data["release_type"] == "Album"
+        assert data["channel"] == "TestChannel"
+        assert data["view_count"] == 1000000
+        assert data["size_bytes"] == 52428800
+        assert data["target_file_size"] == 26214400
+        assert data["track_pattern"] == "Test Song"
+        assert data["match_score"] == 0.95
+        assert data["formatted_size"] == "50.0 MB"
+        assert data["formatted_duration"] == "3:30"
+        assert data["formatted_views"] == "1.0M"
+        assert data["is_lossless"] == True
+        assert data["quality_str"] == "FLAC 24bit WEB"
+        # quality should be renamed to quality_data
+        assert data["quality_data"] == {'format': 'FLAC', 'bit_depth': 24, 'media': 'WEB'}
+        # raw_result should NOT be in serialized dict
+        assert "raw_result" not in data
+
     def test_from_dict_basic(self):
         """Test from_dict with minimal fields."""
         data = {
@@ -174,6 +233,8 @@ class TestAudioSearchResult:
             "quality": "FLAC 24bit",
             "source_id": "abc123",
             "index": 7,
+            "seeders": 15,
+            "target_file": "02. Test Song.flac",
         }
         result = AudioSearchResult.from_dict(data)
         
@@ -185,6 +246,8 @@ class TestAudioSearchResult:
         assert result.quality == "FLAC 24bit"
         assert result.source_id == "abc123"
         assert result.index == 7
+        assert result.seeders == 15
+        assert result.target_file == "02. Test Song.flac"
         assert result.raw_result is None  # Never restored from dict
 
     def test_from_dict_with_defaults(self):
@@ -400,6 +463,27 @@ class TestExceptions:
         with pytest.raises(UserCancelledError) as exc_info:
             raise UserCancelledError("User cancelled")
         assert str(exc_info.value) == "User cancelled"
+
+
+class TestCheckInterrupt:
+    """Tests for the _check_interrupt function."""
+    
+    def test_check_interrupt_does_nothing_when_not_requested(self):
+        """Test _check_interrupt passes when no interrupt requested."""
+        # Ensure flag is False
+        audio_fetcher_module._interrupt_requested = False
+        # Should not raise
+        audio_fetcher_module._check_interrupt()
+    
+    def test_check_interrupt_raises_when_requested(self):
+        """Test _check_interrupt raises UserCancelledError when interrupt requested."""
+        try:
+            audio_fetcher_module._interrupt_requested = True
+            with pytest.raises(UserCancelledError, match="cancelled by user"):
+                audio_fetcher_module._check_interrupt()
+        finally:
+            # Reset the flag
+            audio_fetcher_module._interrupt_requested = False
 
 
 class TestFlacFetchAudioFetcher:
@@ -670,6 +754,20 @@ class TestFlacFetchAudioFetcher:
 
         with pytest.raises(UserCancelledError):
             fetcher._interactive_select([test_release], "Artist", "Test")
+
+    @patch('flacfetch.interface.cli.CLIHandler')
+    @patch('builtins.input', return_value='1')
+    def test_interactive_select_fallback_on_cli_handler_error(self, mock_input, mock_cli_handler, fetcher):
+        """Test interactive selection falls back to basic when CLIHandler fails."""
+        # Make CLIHandler raise AttributeError to trigger fallback
+        mock_cli_handler.side_effect = AttributeError("CLIHandler error")
+        
+        # Use real Release object
+        test_release = create_test_release(title="Test", artist="Artist")
+        
+        # Should fall back to _basic_interactive_select and succeed
+        result = fetcher._interactive_select([test_release], "Artist", "Test")
+        assert result == test_release
 
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_select_best_returns_index(self, mock_get_manager, fetcher):
