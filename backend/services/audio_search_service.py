@@ -110,7 +110,7 @@ class AudioSearchService:
         if self._manager is None:
             try:
                 from flacfetch.core.manager import FetchManager
-                from flacfetch.providers.youtube import YouTubeProvider
+                from flacfetch.providers.youtube import YoutubeProvider
             except ImportError as e:
                 logger.error(f"flacfetch not installed: {e}")
                 raise AudioSearchError(
@@ -138,7 +138,7 @@ class AudioSearchService:
                     logger.warning("OPS provider not available")
             
             # Always add YouTube as a fallback provider
-            self._manager.add_provider(YouTubeProvider())
+            self._manager.add_provider(YoutubeProvider())
             logger.debug("Added YouTube provider")
         
         return self._manager
