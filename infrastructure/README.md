@@ -94,6 +94,14 @@ echo -n "your-genius-key" | \
 # Add Audio Separator API URL
 echo -n "https://your-modal-url" | \
   gcloud secrets versions add audio-separator-api-url --data-file=-
+
+# Add Redacted API key (for flacfetch audio search - private tracker)
+echo -n "your-redacted-api-key" | \
+  gcloud secrets versions add redacted-api-key --data-file=-
+
+# Add OPS API key (for flacfetch audio search - private tracker)
+echo -n "your-ops-api-key" | \
+  gcloud secrets versions add ops-api-key --data-file=-
 ```
 
 Or use Pulumi config secrets:

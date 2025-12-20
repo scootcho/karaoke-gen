@@ -26,6 +26,9 @@ class AudioSearchResult:
     
     Used by both local CLI and cloud backend. Supports serialization
     for Firestore storage via to_dict()/from_dict().
+    
+    For rich display, this class can serialize the full flacfetch Release
+    data so remote CLIs can use flacfetch's shared display functions.
     """
 
     title: str
@@ -36,15 +39,18 @@ class AudioSearchResult:
     quality: Optional[str] = None  # e.g., "FLAC", "320kbps", etc.
     source_id: Optional[str] = None  # Unique ID from the source
     index: int = 0  # Index in the results list (for API selection)
+    seeders: Optional[int] = None  # Number of seeders (for torrent sources)
+    target_file: Optional[str] = None  # Target filename in the release
     # Raw result object from the provider (for download) - not serialized
     raw_result: Optional[object] = field(default=None, repr=False)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for JSON/Firestore serialization.
         
-        Note: raw_result is excluded as it's not serializable.
+        Includes full flacfetch Release data if available, enabling
+        remote CLIs to use flacfetch's shared display functions.
         """
-        return {
+        result = {
             "title": self.title,
             "artist": self.artist,
             "url": self.url,
@@ -53,7 +59,28 @@ class AudioSearchResult:
             "quality": self.quality,
             "source_id": self.source_id,
             "index": self.index,
+            "seeders": self.seeders,
+            "target_file": self.target_file,
         }
+        
+        # If we have a raw_result (flacfetch Release), include its full data
+        # This enables rich display on the remote CLI
+        if self.raw_result:
+            try:
+                release_dict = self.raw_result.to_dict()
+                # Merge Release fields into result (they may override basic fields)
+                for key in ['year', 'label', 'edition_info', 'release_type', 'channel',
+                           'view_count', 'size_bytes', 'target_file_size', 'track_pattern',
+                           'match_score', 'formatted_size', 'formatted_duration',
+                           'formatted_views', 'is_lossless', 'quality_str', 'quality']:
+                    if key in release_dict:
+                        # Use 'quality_data' for the quality dict to avoid confusion with quality string
+                        result_key = 'quality_data' if key == 'quality' else key
+                        result[result_key] = release_dict[key]
+            except AttributeError:
+                pass  # raw_result doesn't have to_dict() method
+        
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AudioSearchResult":
@@ -67,6 +94,8 @@ class AudioSearchResult:
             quality=data.get("quality"),
             source_id=data.get("source_id"),
             index=data.get("index", 0),
+            seeders=data.get("seeders"),
+            target_file=data.get("target_file"),
             raw_result=None,  # Not stored in serialized form
         )
 
@@ -325,6 +354,8 @@ class FlacFetchAudioFetcher(AudioFetcher):
                     quality=quality_str,
                     source_id=getattr(result, "info_hash", None),
                     index=i,  # Set index for API selection
+                    seeders=getattr(result, "seeders", None),
+                    target_file=getattr(result, "target_file", None),
                     raw_result=result,
                 )
             )
@@ -632,41 +663,9 @@ class FlacFetchAudioFetcher(AudioFetcher):
         Raises:
             UserCancelledError: If user cancels selection
         """
-        print(f"\n{'=' * 60}")
-        print(f"Search Results for: {artist} - {title}")
-        print(f"{'=' * 60}\n")
-
-        for i, result in enumerate(results, 1):
-            # Use correct flacfetch attribute names
-            source_name = getattr(result, "source_name", "Unknown")
-            result_title = getattr(result, "title", "Unknown")
-            result_artist = getattr(result, "artist", "Unknown")
-            quality = getattr(result, "quality", None)
-            duration_seconds = getattr(result, "duration_seconds", None)
-            seeders = getattr(result, "seeders", None)
-            target_file = getattr(result, "target_file", None)
-
-            # Format duration if available
-            duration_str = ""
-            if duration_seconds:
-                minutes = duration_seconds // 60
-                seconds = duration_seconds % 60
-                duration_str = f" [{minutes}:{seconds:02d}]"
-
-            # Format quality - it's a Quality object with __str__
-            quality_str = f" ({quality})" if quality else ""
-
-            # Format seeders for torrent sources
-            seeders_str = f" Seeders: {seeders}" if seeders is not None else ""
-
-            # Format target file
-            file_str = f' "{target_file}"' if target_file else ""
-
-            print(f"  {i}. [{source_name}] {result_artist} - {result_title}{quality_str}{duration_str}{seeders_str}{file_str}")
-
-        print()
-        print("  0. Cancel")
-        print()
+        # Use flacfetch's shared display function
+        from flacfetch import print_releases
+        print_releases(results, target_artist=artist, use_colors=True)
 
         while True:
             try:

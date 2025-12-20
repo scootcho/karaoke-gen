@@ -36,6 +36,8 @@ from typing import Any, Dict, Optional
 import requests
 
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
+# Use flacfetch's shared display functions for consistent formatting
+from flacfetch import print_releases, Release
 
 
 class JobStatus(str, Enum):
@@ -1517,6 +1519,47 @@ class JobMonitor:
         except Exception as e:
             self.logger.error(f"Error submitting selection: {e}")
     
+    def _convert_api_result_to_release_dict(self, result: dict) -> dict:
+        """
+        Convert API search result to a dict compatible with flacfetch's Release.from_dict().
+        
+        This enables using flacfetch's shared display functions for consistent,
+        rich formatting between local and remote CLIs.
+        """
+        # Build quality dict from API response
+        quality_data = result.get('quality_data') or {
+            "format": "OTHER",
+            "media": "OTHER",
+        }
+        
+        return {
+            "title": result.get('title', ''),
+            "artist": result.get('artist', ''),
+            "source_name": result.get('provider', 'Unknown'),
+            "download_url": result.get('url'),
+            "info_hash": result.get('source_id'),
+            "size_bytes": result.get('size_bytes'),
+            "year": result.get('year'),
+            "edition_info": result.get('edition_info'),
+            "label": result.get('label'),
+            "release_type": result.get('release_type'),
+            "seeders": result.get('seeders'),
+            "channel": result.get('channel'),
+            "view_count": result.get('view_count'),
+            "duration_seconds": result.get('duration'),
+            "target_file": result.get('target_file'),
+            "target_file_size": result.get('target_file_size'),
+            "track_pattern": result.get('track_pattern'),
+            "match_score": result.get('match_score', 0.0),
+            "quality": quality_data,
+            # Pre-computed fields
+            "formatted_size": result.get('formatted_size'),
+            "formatted_duration": result.get('formatted_duration'),
+            "formatted_views": result.get('formatted_views'),
+            "is_lossless": result.get('is_lossless', False),
+            "quality_str": result.get('quality_str') or result.get('quality', ''),
+        }
+    
     def handle_audio_selection(self, job_id: str) -> None:
         """Handle audio source selection interaction (Batch 5)."""
         self.logger.info("=" * 60)
@@ -1527,6 +1570,7 @@ class JobMonitor:
             # Get search results
             results_data = self.client.get_audio_search_results(job_id)
             results = results_data.get('results', [])
+            artist = results_data.get('artist', 'Unknown')
             
             if not results:
                 self.logger.error("No search results available")
@@ -1537,42 +1581,27 @@ class JobMonitor:
                 self.logger.info("Non-interactive mode: Auto-selecting first result")
                 selection_index = 0
             else:
-                self.logger.info("")
-                self.logger.info("Choose which audio source to download:")
-                self.logger.info("")
+                # Convert API results to Release-compatible dicts for flacfetch display
+                # This gives us the same rich, colorized output as the local CLI
+                release_dicts = [self._convert_api_result_to_release_dict(r) for r in results]
                 
-                for result in results:
-                    index = result.get('index', 0)
-                    provider = result.get('provider', 'Unknown')
-                    artist = result.get('artist', 'Unknown')
-                    title = result.get('title', 'Unknown')
-                    quality = result.get('quality', '')
-                    duration = result.get('duration')
-                    
-                    # Format duration if available
-                    duration_str = ""
-                    if duration:
-                        minutes = duration // 60
-                        seconds = duration % 60
-                        duration_str = f" [{minutes}:{seconds:02d}]"
-                    
-                    quality_str = f" ({quality})" if quality else ""
-                    
-                    self.logger.info(f"  {index + 1}) [{provider}] {artist} - {title}{quality_str}{duration_str}")
-                
-                self.logger.info("")
+                # Use flacfetch's shared display function
+                print_releases(release_dicts, target_artist=artist, use_colors=True)
                 
                 selection_index = -1
                 while selection_index < 0:
                     try:
-                        choice = input(f"Enter your choice (1-{len(results)}): ").strip()
+                        choice = input(f"\nSelect a release (1-{len(results)}, 0 to cancel): ").strip()
+                        if choice == "0":
+                            self.logger.info("Selection cancelled by user")
+                            raise KeyboardInterrupt
                         choice_num = int(choice)
                         if 1 <= choice_num <= len(results):
                             selection_index = choice_num - 1
                         else:
-                            self.logger.error(f"Please enter a number between 1 and {len(results)}")
+                            print(f"Please enter a number between 0 and {len(results)}")
                     except ValueError:
-                        self.logger.error("Please enter a valid number")
+                        print("Please enter a valid number")
                     except KeyboardInterrupt:
                         print()
                         raise
