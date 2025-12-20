@@ -82,17 +82,40 @@ class AudioSearchRequest(BaseModel):
 
 
 class AudioSearchResultResponse(BaseModel):
-    """A single audio search result."""
+    """A single audio search result.
+    
+    Contains all fields needed for rich display using flacfetch's
+    shared formatting functions.
+    """
     index: int
     title: str
     artist: str
-    provider: str
-    url: str
-    duration: Optional[int] = None
-    quality: Optional[str] = None
-    source_id: Optional[str] = None
+    provider: str  # Maps to source_name in Release
+    url: str  # Maps to download_url in Release
+    duration: Optional[int] = None  # Maps to duration_seconds in Release
+    quality: Optional[str] = None  # Stringified quality
+    source_id: Optional[str] = None  # Maps to info_hash in Release
     seeders: Optional[int] = None
     target_file: Optional[str] = None
+    # Additional fields for rich display (from Release.to_dict())
+    year: Optional[int] = None
+    label: Optional[str] = None
+    edition_info: Optional[str] = None
+    release_type: Optional[str] = None
+    channel: Optional[str] = None  # For YouTube
+    view_count: Optional[int] = None  # For YouTube
+    size_bytes: Optional[int] = None
+    target_file_size: Optional[int] = None
+    track_pattern: Optional[str] = None
+    match_score: Optional[float] = None
+    # Pre-computed display fields
+    formatted_size: Optional[str] = None
+    formatted_duration: Optional[str] = None
+    formatted_views: Optional[str] = None
+    is_lossless: Optional[bool] = None
+    quality_str: Optional[str] = None
+    # Full quality object for Release.from_dict()
+    quality_data: Optional[Dict[str, Any]] = None
 
 
 class AudioSearchResponse(BaseModel):
@@ -420,20 +443,50 @@ async def search_audio(
             message=f"Found {len(search_results)} audio sources. Waiting for selection."
         )
         
-        # Convert to response format
-        result_responses = [
-            AudioSearchResultResponse(
-                index=r.index,
-                title=r.title,
-                artist=r.artist,
-                provider=r.provider,
-                url=r.url,
-                duration=r.duration,
-                quality=r.quality,
-                source_id=r.source_id,
+        # Convert to response format with full Release data for rich display
+        result_responses = []
+        for r in search_results:
+            # Get full serialized data from raw_result if available
+            raw_dict = {}
+            if r.raw_result:
+                try:
+                    raw_dict = r.raw_result.to_dict()
+                except AttributeError:
+                    pass  # Not a Release object
+            
+            result_responses.append(
+                AudioSearchResultResponse(
+                    index=r.index,
+                    title=r.title,
+                    artist=r.artist,
+                    provider=r.provider,
+                    url=r.url,
+                    duration=r.duration,
+                    quality=r.quality,
+                    source_id=r.source_id,
+                    seeders=raw_dict.get('seeders') or r.seeders,
+                    target_file=raw_dict.get('target_file') or r.target_file,
+                    # Additional fields for rich display
+                    year=raw_dict.get('year'),
+                    label=raw_dict.get('label'),
+                    edition_info=raw_dict.get('edition_info'),
+                    release_type=raw_dict.get('release_type'),
+                    channel=raw_dict.get('channel'),
+                    view_count=raw_dict.get('view_count'),
+                    size_bytes=raw_dict.get('size_bytes'),
+                    target_file_size=raw_dict.get('target_file_size'),
+                    track_pattern=raw_dict.get('track_pattern'),
+                    match_score=raw_dict.get('match_score'),
+                    # Pre-computed display fields
+                    formatted_size=raw_dict.get('formatted_size'),
+                    formatted_duration=raw_dict.get('formatted_duration'),
+                    formatted_views=raw_dict.get('formatted_views'),
+                    is_lossless=raw_dict.get('is_lossless'),
+                    quality_str=raw_dict.get('quality_str'),
+                    # Full quality object for Release.from_dict()
+                    quality_data=raw_dict.get('quality'),
+                )
             )
-            for r in search_results
-        ]
         
         return AudioSearchResponse(
             status="awaiting_selection",

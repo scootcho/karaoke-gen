@@ -26,6 +26,9 @@ class AudioSearchResult:
     
     Used by both local CLI and cloud backend. Supports serialization
     for Firestore storage via to_dict()/from_dict().
+    
+    For rich display, this class can serialize the full flacfetch Release
+    data so remote CLIs can use flacfetch's shared display functions.
     """
 
     title: str
@@ -44,9 +47,10 @@ class AudioSearchResult:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dict for JSON/Firestore serialization.
         
-        Note: raw_result is excluded as it's not serializable.
+        Includes full flacfetch Release data if available, enabling
+        remote CLIs to use flacfetch's shared display functions.
         """
-        return {
+        result = {
             "title": self.title,
             "artist": self.artist,
             "url": self.url,
@@ -58,6 +62,25 @@ class AudioSearchResult:
             "seeders": self.seeders,
             "target_file": self.target_file,
         }
+        
+        # If we have a raw_result (flacfetch Release), include its full data
+        # This enables rich display on the remote CLI
+        if self.raw_result:
+            try:
+                release_dict = self.raw_result.to_dict()
+                # Merge Release fields into result (they may override basic fields)
+                for key in ['year', 'label', 'edition_info', 'release_type', 'channel',
+                           'view_count', 'size_bytes', 'target_file_size', 'track_pattern',
+                           'match_score', 'formatted_size', 'formatted_duration',
+                           'formatted_views', 'is_lossless', 'quality_str', 'quality']:
+                    if key in release_dict:
+                        # Use 'quality_data' for the quality dict to avoid confusion with quality string
+                        result_key = 'quality_data' if key == 'quality' else key
+                        result[result_key] = release_dict[key]
+            except AttributeError:
+                pass  # raw_result doesn't have to_dict() method
+        
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AudioSearchResult":
@@ -140,151 +163,27 @@ def _check_interrupt():
         raise UserCancelledError("Operation cancelled by user")
 
 
-def format_search_result_line(
-    result: Any,
-    index: int,
-    use_colors: bool = True,
-) -> str:
+# Re-export flacfetch's display functions for backwards compatibility
+# These are the canonical implementations - no need to duplicate
+from flacfetch import format_release_line, print_releases
+
+# Alias for backwards compatibility with existing code that imports these names
+def format_search_result_line(result, index, use_colors=True):
     """
     Format a single search result for display.
     
-    This is the shared formatting function used by both local CLI and remote CLI
-    to ensure consistent, informative output.
-    
-    Args:
-        result: Can be AudioSearchResult, dict, or raw Release object from flacfetch
-        index: 1-based display index for the result
-        use_colors: Whether to use ANSI color codes (default True)
-        
-    Returns:
-        Formatted string for display
+    This is a wrapper around flacfetch's format_release_line for backwards compatibility.
     """
-    # Extract fields - handle AudioSearchResult, dict, or raw Release object
-    if isinstance(result, dict):
-        provider = result.get('provider', 'Unknown')
-        artist = result.get('artist', 'Unknown')
-        title = result.get('title', 'Unknown')
-        quality = result.get('quality', '')
-        duration = result.get('duration')
-        seeders = result.get('seeders')
-        target_file = result.get('target_file')
-    elif isinstance(result, AudioSearchResult):
-        provider = result.provider or 'Unknown'
-        artist = result.artist or 'Unknown'
-        title = result.title or 'Unknown'
-        quality = result.quality or ''
-        duration = result.duration
-        seeders = result.seeders
-        target_file = result.target_file
-    else:
-        # Raw Release object from flacfetch
-        provider = getattr(result, 'source_name', 'Unknown')
-        artist = getattr(result, 'artist', 'Unknown')
-        title = getattr(result, 'title', 'Unknown')
-        quality = getattr(result, 'quality', None)
-        quality = str(quality) if quality else ''
-        duration = getattr(result, 'duration_seconds', None)
-        seeders = getattr(result, 'seeders', None)
-        target_file = getattr(result, 'target_file', None)
-    
-    # Color codes
-    if use_colors:
-        RESET = '\033[0m'
-        BOLD = '\033[1m'
-        DIM = '\033[2m'
-        CYAN = '\033[36m'
-        YELLOW = '\033[33m'
-        GREEN = '\033[32m'
-        MAGENTA = '\033[35m'
-        WHITE = '\033[37m'
-    else:
-        RESET = BOLD = DIM = CYAN = YELLOW = GREEN = MAGENTA = WHITE = ''
-    
-    # Format index
-    idx_str = f"{BOLD}{index:>3}{RESET}"
-    
-    # Format provider with color based on type
-    provider_colors = {
-        'Redacted': MAGENTA,
-        'OPS': CYAN,
-        'YouTube': YELLOW,
-    }
-    provider_color = provider_colors.get(provider, WHITE)
-    provider_str = f"{provider_color}[{provider}]{RESET}"
-    
-    # Format artist and title
-    artist_title_str = f"{WHITE}{artist}{RESET} - {BOLD}{title}{RESET}"
-    
-    # Format quality (often includes bit depth and format)
-    quality_str = f" {DIM}({quality}){RESET}" if quality else ""
-    
-    # Format duration
-    duration_str = ""
-    if duration:
-        minutes = duration // 60
-        seconds = duration % 60
-        duration_str = f" {DIM}[{minutes}:{seconds:02d}]{RESET}"
-    
-    # Format seeders (important for torrent sources)
-    seeders_str = ""
-    if seeders is not None:
-        if seeders >= 10:
-            seeders_str = f" {GREEN}↑{seeders}{RESET}"
-        elif seeders >= 1:
-            seeders_str = f" {YELLOW}↑{seeders}{RESET}"
-        else:
-            seeders_str = f" {DIM}↑{seeders}{RESET}"
-    
-    # Format target file (useful to see exact track)
-    file_str = ""
-    if target_file:
-        # Truncate long filenames
-        if len(target_file) > 50:
-            target_file = target_file[:47] + "..."
-        file_str = f" {DIM}\"{target_file}\"{RESET}"
-    
-    return f"  {idx_str}) {provider_str} {artist_title_str}{quality_str}{duration_str}{seeders_str}{file_str}"
+    return format_release_line(index, result, target_artist=None, use_colors=use_colors)
 
 
-def print_search_results(
-    results: List[Any],
-    artist: str,
-    title: str,
-    use_colors: bool = True,
-    output_func: callable = print,
-) -> None:
+def print_search_results(results, artist, title, use_colors=True, output_func=print):
     """
     Print formatted search results for user selection.
     
-    This is the shared display function used by both local CLI and remote CLI.
-    
-    Args:
-        results: List of AudioSearchResult, dict, or raw Release objects
-        artist: The artist name being searched (for header)
-        title: The track title being searched (for header)
-        use_colors: Whether to use ANSI color codes (default True)
-        output_func: Function to use for output (default print, can use logger.info)
+    This is a wrapper around flacfetch's print_releases for backwards compatibility.
     """
-    if use_colors:
-        RESET = '\033[0m'
-        BOLD = '\033[1m'
-        CYAN = '\033[36m'
-    else:
-        RESET = BOLD = CYAN = ''
-    
-    output_func("")
-    output_func(f"{BOLD}{'=' * 70}{RESET}")
-    output_func(f"{BOLD}Search Results for:{RESET} {CYAN}{artist}{RESET} - {BOLD}{title}{RESET}")
-    output_func(f"{BOLD}{'=' * 70}{RESET}")
-    output_func("")
-    
-    for i, result in enumerate(results, 1):
-        line = format_search_result_line(result, i, use_colors=use_colors)
-        output_func(line)
-    
-    output_func("")
-    output_func(f"  {BOLD}  0){RESET} Cancel")
-    output_func("")
+    print_releases(results, target_artist=artist, use_colors=use_colors, output_func=output_func)
 
 
 class AudioFetcher(ABC):
