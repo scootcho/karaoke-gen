@@ -1310,3 +1310,223 @@ class TestOutputDirectoryCreation:
         assert not new_dir.exists()
         result = fetcher.download(search_result, str(new_dir))
         assert new_dir.exists()
+
+
+class TestInterruptibleDownload:
+    """Tests for the interruptible download functionality."""
+
+    def test_interruptible_download_returns_filepath_on_success(self):
+        """Test that _interruptible_download returns filepath when download succeeds."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_manager = MagicMock()
+        mock_manager.download.return_value = "/path/to/downloaded.flac"
+        mock_selected = MagicMock()
+        
+        result = fetcher._interruptible_download(
+            mock_manager, mock_selected, "/output", "filename"
+        )
+        
+        assert result == "/path/to/downloaded.flac"
+        mock_manager.download.assert_called_once_with(
+            mock_selected,
+            output_path="/output",
+            output_filename="filename",
+        )
+
+    def test_interruptible_download_propagates_errors(self):
+        """Test that _interruptible_download raises DownloadError on failure."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = Exception("Download failed")
+        mock_selected = MagicMock()
+        
+        with pytest.raises(Exception, match="Download failed"):
+            fetcher._interruptible_download(
+                mock_manager, mock_selected, "/output", "filename"
+            )
+
+    def test_interruptible_download_handles_interrupt(self):
+        """Test that _interruptible_download handles Ctrl+C gracefully."""
+        import signal
+        import threading
+        import time
+        
+        fetcher = FlacFetchAudioFetcher()
+        
+        # Create a mock download that takes a long time
+        def slow_download(*args, **kwargs):
+            time.sleep(10)  # Simulate slow download
+            return "/path/to/file.flac"
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = slow_download
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Release"
+        
+        # Mock the cleanup to avoid needing real transmission
+        with patch.object(fetcher, '_cleanup_transmission_torrents'):
+            # Start download in a thread and send interrupt
+            def send_interrupt():
+                time.sleep(0.3)  # Wait for download to start
+                # Simulate Ctrl+C by setting the global flag
+                import karaoke_gen.audio_fetcher as af
+                af._interrupt_requested = True
+            
+            interrupt_thread = threading.Thread(target=send_interrupt, daemon=True)
+            interrupt_thread.start()
+            
+            with pytest.raises(UserCancelledError, match="cancelled by user"):
+                fetcher._interruptible_download(
+                    mock_manager, mock_selected, "/output", "filename"
+                )
+
+    def test_interruptible_download_calls_cleanup_on_cancel(self):
+        """Test that cleanup is called when download is cancelled."""
+        import threading
+        import time
+        
+        fetcher = FlacFetchAudioFetcher()
+        
+        def slow_download(*args, **kwargs):
+            time.sleep(10)
+            return "/path/to/file.flac"
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = slow_download
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Release"
+        
+        with patch.object(fetcher, '_cleanup_transmission_torrents') as mock_cleanup:
+            def send_interrupt():
+                time.sleep(0.3)
+                import karaoke_gen.audio_fetcher as af
+                af._interrupt_requested = True
+            
+            interrupt_thread = threading.Thread(target=send_interrupt, daemon=True)
+            interrupt_thread.start()
+            
+            with pytest.raises(UserCancelledError):
+                fetcher._interruptible_download(
+                    mock_manager, mock_selected, "/output", "filename"
+                )
+            
+            # Verify cleanup was called with the selected release
+            mock_cleanup.assert_called_once_with(mock_selected)
+
+
+class TestTransmissionCleanup:
+    """Tests for Transmission torrent cleanup functionality."""
+
+    def test_cleanup_removes_matching_incomplete_torrent(self):
+        """Test that cleanup removes incomplete torrents matching the release name."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Artist - Test Song"
+        
+        # Create mock torrents
+        incomplete_torrent = MagicMock()
+        incomplete_torrent.id = 1
+        incomplete_torrent.name = "Test Artist - Test Song [FLAC]"
+        incomplete_torrent.progress = 50.0
+        
+        complete_torrent = MagicMock()
+        complete_torrent.id = 2
+        complete_torrent.name = "Other Album"
+        complete_torrent.progress = 100.0
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [incomplete_torrent, complete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should only remove the matching incomplete torrent
+        mock_client.remove_torrent.assert_called_once_with(1, delete_data=True)
+
+    def test_cleanup_does_not_remove_complete_torrents(self):
+        """Test that cleanup only removes incomplete torrents."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Artist - Test Song"
+        
+        complete_torrent = MagicMock()
+        complete_torrent.id = 1
+        complete_torrent.name = "Test Artist - Test Song [FLAC]"
+        complete_torrent.progress = 100.0  # Complete
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [complete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should not remove complete torrents
+        mock_client.remove_torrent.assert_not_called()
+
+    def test_cleanup_handles_connection_errors_gracefully(self):
+        """Test that cleanup doesn't raise if Transmission connection fails."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Song"
+        
+        with patch('transmission_rpc.Client', side_effect=Exception("Connection refused")):
+            # Should not raise - cleanup failures are non-fatal
+            fetcher._cleanup_transmission_torrents(mock_selected)
+
+    def test_cleanup_handles_missing_release_name(self):
+        """Test that cleanup handles releases without a name attribute."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock(spec=[])  # No attributes
+        
+        mock_client = MagicMock()
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            # Should not raise - just return early
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should not even try to get torrents if no name
+        mock_client.get_torrents.assert_not_called()
+
+    def test_cleanup_uses_title_as_fallback_for_name(self):
+        """Test that cleanup falls back to 'title' if 'name' not present."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        del mock_selected.name  # Remove name attribute
+        mock_selected.title = "Test Title"
+        
+        incomplete_torrent = MagicMock()
+        incomplete_torrent.id = 1
+        incomplete_torrent.name = "Test Title [FLAC]"
+        incomplete_torrent.progress = 25.0
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [incomplete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should match on title and remove
+        mock_client.remove_torrent.assert_called_once_with(1, delete_data=True)
+
+    def test_cleanup_uses_environment_variables(self):
+        """Test that cleanup uses TRANSMISSION_HOST/PORT env vars."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test"
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = []
+        
+        with patch.dict(os.environ, {'TRANSMISSION_HOST': 'remote-host', 'TRANSMISSION_PORT': '9999'}):
+            with patch('transmission_rpc.Client', return_value=mock_client) as mock_constructor:
+                fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        mock_constructor.assert_called_once_with(host='remote-host', port=9999, timeout=5)

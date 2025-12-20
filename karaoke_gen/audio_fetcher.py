@@ -577,13 +577,15 @@ class FlacFetchAudioFetcher(AudioFetcher):
         self.logger.info(f"Downloading from {getattr(selected, 'source_name', 'Unknown')}...")
 
         try:
-            filepath = manager.download(
+            # Use interruptible download so Ctrl+C works during torrent downloads
+            filepath = self._interruptible_download(
+                manager,
                 selected,
                 output_path=output_dir,
                 output_filename=output_filename,
             )
 
-            if filepath is None:
+            if not filepath:
                 raise DownloadError(f"Download returned no file path for: {artist} - {title}")
 
             self.logger.info(f"Downloaded to: {filepath}")
@@ -668,6 +670,111 @@ class FlacFetchAudioFetcher(AudioFetcher):
             # Restore original signal handler
             signal.signal(signal.SIGINT, original_handler)
             _interrupt_requested = False
+
+    def _interruptible_download(self, manager, selected, output_path: str, output_filename: str) -> str:
+        """
+        Run download in a way that can be interrupted by Ctrl+C.
+        
+        The flacfetch/transmission download is a blocking operation that doesn't
+        respond to SIGINT while running (especially for torrent downloads).
+        This method runs it in a background thread and periodically checks for interrupts.
+        
+        Args:
+            manager: The FetchManager instance
+            selected: The selected result to download
+            output_path: Directory to save the file
+            output_filename: Filename to save as
+            
+        Returns:
+            Path to the downloaded file
+            
+        Raises:
+            UserCancelledError: If user presses Ctrl+C during download
+            DownloadError: If download fails
+        """
+        global _interrupt_requested
+        _interrupt_requested = False
+        result_container = {"filepath": None, "error": None}
+        was_cancelled = False
+        
+        def do_download():
+            try:
+                result_container["filepath"] = manager.download(
+                    selected,
+                    output_path=output_path,
+                    output_filename=output_filename,
+                )
+            except Exception as e:
+                result_container["error"] = e
+        
+        # Set up signal handler for immediate response to Ctrl+C
+        original_handler = signal.getsignal(signal.SIGINT)
+        
+        def interrupt_handler(signum, frame):
+            global _interrupt_requested
+            _interrupt_requested = True
+            # Print immediately so user knows it was received
+            print("\nCancelling download... please wait (may take a few seconds)", file=sys.stderr)
+        
+        signal.signal(signal.SIGINT, interrupt_handler)
+        
+        try:
+            # Start download in background thread
+            download_thread = threading.Thread(target=do_download, daemon=True)
+            download_thread.start()
+            
+            # Wait for completion with periodic interrupt checks
+            while download_thread.is_alive():
+                download_thread.join(timeout=0.2)  # Check every 200ms
+                if _interrupt_requested:
+                    was_cancelled = True
+                    # Clean up any pending torrents before raising
+                    self._cleanup_transmission_torrents(selected)
+                    raise UserCancelledError("Download cancelled by user (Ctrl+C)")
+            
+            # Check for errors from the download
+            if result_container["error"] is not None:
+                raise result_container["error"]
+                
+            return result_container["filepath"]
+            
+        finally:
+            # Restore original signal handler
+            signal.signal(signal.SIGINT, original_handler)
+            _interrupt_requested = False
+
+    def _cleanup_transmission_torrents(self, selected) -> None:
+        """
+        Clean up any torrents in Transmission that were started for this download.
+        
+        Called when a download is cancelled to remove incomplete torrents and their data.
+        
+        Args:
+            selected: The selected result that was being downloaded
+        """
+        try:
+            import transmission_rpc
+            host = os.environ.get("TRANSMISSION_HOST", "localhost")
+            port = int(os.environ.get("TRANSMISSION_PORT", "9091"))
+            client = transmission_rpc.Client(host=host, port=port, timeout=5)
+            
+            # Get the release name to match against torrents
+            release_name = getattr(selected, 'name', None) or getattr(selected, 'title', None)
+            if not release_name:
+                self.logger.debug("[Transmission] No release name to match for cleanup")
+                return
+            
+            # Find and remove matching incomplete torrents
+            torrents = client.get_torrents()
+            for torrent in torrents:
+                # Match by name similarity and incomplete status
+                if torrent.progress < 100 and release_name.lower() in torrent.name.lower():
+                    self.logger.info(f"[Transmission] Removing cancelled torrent: {torrent.name}")
+                    client.remove_torrent(torrent.id, delete_data=True)
+                    
+        except Exception as e:
+            # Don't fail the cancellation if cleanup fails
+            self.logger.debug(f"[Transmission] Cleanup failed (non-fatal): {e}")
 
     def _interactive_select(self, results: list, artist: str, title: str) -> object:
         """

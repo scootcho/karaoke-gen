@@ -11,7 +11,9 @@
 #   gcloud builds submit --config=cloudbuild-base.yaml --project=nomadkaraoke
 
 # Use pre-built base image with all dependencies
-FROM us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest
+# Override with --build-arg BASE_IMAGE=karaoke-backend-base:local for local testing
+ARG BASE_IMAGE=us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest
+FROM ${BASE_IMAGE}
 
 # Set working directory (should already exist from base)
 WORKDIR /app
