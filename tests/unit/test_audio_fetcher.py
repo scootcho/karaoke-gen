@@ -917,17 +917,19 @@ class TestGetManagerIntegration:
         assert "YouTube" in manager._downloader_map, \
             "YouTube downloader must be registered to download from YouTube"
 
-    def test_get_manager_registers_redacted_with_api_key(self):
-        """Test that Redacted provider and downloader are registered when API key is provided."""
+    def test_get_manager_registers_redacted_with_api_key_and_transmission(self):
+        """Test that Redacted provider is registered when API key AND Transmission are available."""
         fetcher = FlacFetchAudioFetcher(redacted_api_key="test_key")
-        manager = fetcher._get_manager()
+        
+        # Mock Transmission as available
+        with patch.object(fetcher, '_check_transmission_available', return_value=True):
+            manager = fetcher._get_manager()
         
         # Verify Redacted provider is registered
         provider_names = [p.name for p in manager.providers]
         assert "Redacted" in provider_names
         
         # Verify Redacted downloader is registered (if TorrentDownloader is available)
-        # Note: TorrentDownloader may not be available in all environments
         try:
             from flacfetch.downloaders.torrent import TorrentDownloader
             assert "Redacted" in manager._downloader_map, \
@@ -936,10 +938,29 @@ class TestGetManagerIntegration:
             # TorrentDownloader not available, which is okay
             pass
 
-    def test_get_manager_registers_ops_with_api_key(self):
-        """Test that OPS provider and downloader are registered when API key is provided."""
+    def test_get_manager_skips_redacted_without_transmission(self):
+        """Test that Redacted provider is NOT registered when Transmission is unavailable."""
+        fetcher = FlacFetchAudioFetcher(redacted_api_key="test_key")
+        
+        # Mock Transmission as unavailable (the default on Cloud Run)
+        with patch.object(fetcher, '_check_transmission_available', return_value=False):
+            manager = fetcher._get_manager()
+        
+        # Verify Redacted provider is NOT registered (can't download from it)
+        provider_names = [p.name for p in manager.providers]
+        assert "Redacted" not in provider_names, \
+            "Redacted provider should NOT be registered when Transmission is unavailable"
+        
+        # YouTube should still be registered
+        assert "YouTube" in provider_names
+
+    def test_get_manager_registers_ops_with_api_key_and_transmission(self):
+        """Test that OPS provider is registered when API key AND Transmission are available."""
         fetcher = FlacFetchAudioFetcher(ops_api_key="test_key")
-        manager = fetcher._get_manager()
+        
+        # Mock Transmission as available
+        with patch.object(fetcher, '_check_transmission_available', return_value=True):
+            manager = fetcher._get_manager()
         
         # Verify OPS provider is registered
         provider_names = [p.name for p in manager.providers]
@@ -953,23 +974,121 @@ class TestGetManagerIntegration:
         except ImportError:
             pass
 
-    def test_get_manager_with_all_providers(self):
-        """Test manager setup with all providers configured."""
+    def test_get_manager_skips_ops_without_transmission(self):
+        """Test that OPS provider is NOT registered when Transmission is unavailable."""
+        fetcher = FlacFetchAudioFetcher(ops_api_key="test_key")
+        
+        # Mock Transmission as unavailable
+        with patch.object(fetcher, '_check_transmission_available', return_value=False):
+            manager = fetcher._get_manager()
+        
+        # Verify OPS provider is NOT registered
+        provider_names = [p.name for p in manager.providers]
+        assert "OPS" not in provider_names, \
+            "OPS provider should NOT be registered when Transmission is unavailable"
+        
+        # YouTube should still be registered
+        assert "YouTube" in provider_names
+
+    def test_get_manager_with_all_providers_and_transmission(self):
+        """Test manager setup with all providers configured when Transmission is available."""
         fetcher = FlacFetchAudioFetcher(
             redacted_api_key="red_key",
             ops_api_key="ops_key",
         )
-        manager = fetcher._get_manager()
+        
+        # Mock Transmission as available
+        with patch.object(fetcher, '_check_transmission_available', return_value=True):
+            manager = fetcher._get_manager()
         
         provider_names = [p.name for p in manager.providers]
         
-        # All three providers should be registered
+        # All three providers should be registered when Transmission is available
         assert "Redacted" in provider_names
         assert "OPS" in provider_names
         assert "YouTube" in provider_names
         
         # YouTube downloader should always be registered
         assert "YouTube" in manager._downloader_map
+
+    def test_get_manager_only_youtube_without_transmission(self):
+        """Test that only YouTube is registered when Transmission is unavailable."""
+        fetcher = FlacFetchAudioFetcher(
+            redacted_api_key="red_key",
+            ops_api_key="ops_key",
+        )
+        
+        # Mock Transmission as unavailable (simulates Cloud Run environment)
+        with patch.object(fetcher, '_check_transmission_available', return_value=False):
+            manager = fetcher._get_manager()
+        
+        provider_names = [p.name for p in manager.providers]
+        
+        # Only YouTube should be registered
+        assert "Redacted" not in provider_names
+        assert "OPS" not in provider_names
+        assert "YouTube" in provider_names
+        
+        # YouTube downloader should always be registered
+        assert "YouTube" in manager._downloader_map
+
+
+class TestTransmissionAvailabilityCheck:
+    """Tests for the Transmission daemon availability check."""
+
+    def test_check_transmission_available_returns_true_when_connected(self):
+        """Test that check returns True when Transmission is responsive."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_client = MagicMock()
+        mock_client.session_stats.return_value = {}  # Successful response
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            result = fetcher._check_transmission_available()
+        
+        assert result is True
+        # Result should be cached
+        assert fetcher._transmission_available is True
+
+    def test_check_transmission_available_returns_false_on_connection_error(self):
+        """Test that check returns False when Transmission connection fails."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        with patch('transmission_rpc.Client', side_effect=Exception("Cannot connect")):
+            result = fetcher._check_transmission_available()
+        
+        assert result is False
+        # Result should be cached
+        assert fetcher._transmission_available is False
+
+    def test_check_transmission_available_caches_result(self):
+        """Test that Transmission availability is only checked once."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_client = MagicMock()
+        
+        with patch('transmission_rpc.Client', return_value=mock_client) as mock_constructor:
+            # First call - should connect
+            result1 = fetcher._check_transmission_available()
+            # Second call - should use cache
+            result2 = fetcher._check_transmission_available()
+        
+        # Should only create client once (cached after first call)
+        assert mock_constructor.call_count == 1
+        assert result1 == result2
+
+    def test_check_transmission_uses_environment_variables(self):
+        """Test that Transmission host/port can be configured via env vars."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_client = MagicMock()
+        
+        with patch.dict(os.environ, {'TRANSMISSION_HOST': 'custom-host', 'TRANSMISSION_PORT': '9999'}):
+            with patch('transmission_rpc.Client', return_value=mock_client) as mock_constructor:
+                fetcher._check_transmission_available()
+        
+        # Verify custom host/port were used
+        mock_constructor.assert_called_once_with(host='custom-host', port=9999, timeout=5)
 
 
 class TestFlacFetchReleaseModelCompatibility:
