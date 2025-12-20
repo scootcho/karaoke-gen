@@ -13,7 +13,31 @@ RUN apt-get update && apt-get install -y \
     libsox-dev \
     sox \
     build-essential \
+    curl \
+    # Transmission daemon for torrent downloads (flacfetch tracker support)
+    transmission-daemon \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure Transmission for headless operation
+# - Disable authentication (internal use only)
+# - Set download directory to /tmp/downloads
+# - Enable RPC on default port 9091
+RUN mkdir -p /var/lib/transmission-daemon/.config/transmission-daemon /tmp/downloads && \
+    echo '{ \
+        "download-dir": "/tmp/downloads", \
+        "incomplete-dir": "/tmp/downloads/.incomplete", \
+        "incomplete-dir-enabled": true, \
+        "rpc-authentication-required": false, \
+        "rpc-bind-address": "127.0.0.1", \
+        "rpc-enabled": true, \
+        "rpc-port": 9091, \
+        "rpc-whitelist-enabled": false, \
+        "speed-limit-down": 0, \
+        "speed-limit-down-enabled": false, \
+        "speed-limit-up": 0, \
+        "speed-limit-up-enabled": false, \
+        "umask": 2 \
+    }' > /var/lib/transmission-daemon/.config/transmission-daemon/settings.json
 
 # Set working directory
 WORKDIR /app

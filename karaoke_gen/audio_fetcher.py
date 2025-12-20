@@ -270,6 +270,47 @@ class FlacFetchAudioFetcher(AudioFetcher):
         self._ops_api_key = ops_api_key or os.environ.get("OPS_API_KEY")
         self._provider_priority = provider_priority
         self._manager = None
+        self._transmission_available = None  # Cached result of Transmission check
+
+    def _check_transmission_available(self) -> bool:
+        """
+        Check if Transmission daemon is available for torrent downloads.
+        
+        This prevents adding tracker providers (Redacted/OPS) when Transmission
+        isn't running, which would result in search results that can't be downloaded.
+        
+        Returns:
+            True if Transmission is available and responsive, False otherwise.
+        """
+        if self._transmission_available is not None:
+            self.logger.info(f"[Transmission] Using cached status: available={self._transmission_available}")
+            return self._transmission_available
+        
+        host = os.environ.get("TRANSMISSION_HOST", "localhost")
+        port = int(os.environ.get("TRANSMISSION_PORT", "9091"))
+        self.logger.info(f"[Transmission] Checking availability at {host}:{port}")
+        
+        try:
+            import transmission_rpc
+            self.logger.info(f"[Transmission] transmission_rpc imported successfully")
+            
+            client = transmission_rpc.Client(host=host, port=port, timeout=5)
+            self.logger.info(f"[Transmission] Client created, calling session_stats()...")
+            
+            # Simple test to verify connection works
+            stats = client.session_stats()
+            self.logger.info(f"[Transmission] Connected! Download dir: {getattr(stats, 'download_dir', 'unknown')}")
+            
+            self._transmission_available = True
+        except ImportError as e:
+            self._transmission_available = False
+            self.logger.warning(f"[Transmission] transmission_rpc not installed: {e}")
+        except Exception as e:
+            self._transmission_available = False
+            self.logger.warning(f"[Transmission] Connection failed to {host}:{port}: {type(e).__name__}: {e}")
+        
+        self.logger.info(f"[Transmission] Final status: available={self._transmission_available}")
+        return self._transmission_available
 
     def _get_manager(self):
         """Lazily initialize and return the FetchManager."""
@@ -280,30 +321,46 @@ class FlacFetchAudioFetcher(AudioFetcher):
             from flacfetch.downloaders.youtube import YoutubeDownloader
 
             # Try to import TorrentDownloader (has optional dependencies)
+            TorrentDownloader = None
             try:
                 from flacfetch.downloaders.torrent import TorrentDownloader
             except ImportError:
-                TorrentDownloader = None
                 self.logger.debug("TorrentDownloader not available (missing dependencies)")
 
             self._manager = FetchManager()
 
+            # Only add tracker providers if we can actually download from them
+            # This requires both TorrentDownloader and a running Transmission daemon
+            has_torrent_downloader = TorrentDownloader is not None
+            transmission_available = self._check_transmission_available()
+            can_use_trackers = has_torrent_downloader and transmission_available
+            
+            self.logger.info(
+                f"[FlacFetcher] Provider setup: TorrentDownloader={has_torrent_downloader}, "
+                f"Transmission={transmission_available}, can_use_trackers={can_use_trackers}"
+            )
+            
+            if not can_use_trackers and (self._redacted_api_key or self._ops_api_key):
+                self.logger.warning(
+                    "[FlacFetcher] Tracker providers (Redacted/OPS) DISABLED: "
+                    f"TorrentDownloader={has_torrent_downloader}, Transmission={transmission_available}. "
+                    "Only YouTube sources will be used."
+                )
+
             # Add providers and downloaders based on available API keys
-            if self._redacted_api_key:
+            if self._redacted_api_key and can_use_trackers:
                 from flacfetch.providers.redacted import RedactedProvider
 
                 self._manager.add_provider(RedactedProvider(api_key=self._redacted_api_key))
-                if TorrentDownloader:
-                    self._manager.register_downloader("Redacted", TorrentDownloader())
-                self.logger.debug("Added Redacted provider")
+                self._manager.register_downloader("Redacted", TorrentDownloader())
+                self.logger.info("[FlacFetcher] Added Redacted provider with TorrentDownloader")
 
-            if self._ops_api_key:
+            if self._ops_api_key and can_use_trackers:
                 from flacfetch.providers.ops import OPSProvider
 
                 self._manager.add_provider(OPSProvider(api_key=self._ops_api_key))
-                if TorrentDownloader:
-                    self._manager.register_downloader("OPS", TorrentDownloader())
-                self.logger.debug("Added OPS provider")
+                self._manager.register_downloader("OPS", TorrentDownloader())
+                self.logger.info("[FlacFetcher] Added OPS provider with TorrentDownloader")
 
             # Always add YouTube as a fallback provider with its downloader
             self._manager.add_provider(YoutubeProvider())
