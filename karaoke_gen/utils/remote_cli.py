@@ -1571,7 +1571,6 @@ class JobMonitor:
             results_data = self.client.get_audio_search_results(job_id)
             results = results_data.get('results', [])
             artist = results_data.get('artist', 'Unknown')
-            title = results_data.get('title', 'Unknown')
             
             if not results:
                 self.logger.error("No search results available")

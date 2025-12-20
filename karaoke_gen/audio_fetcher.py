@@ -663,8 +663,9 @@ class FlacFetchAudioFetcher(AudioFetcher):
         Raises:
             UserCancelledError: If user cancels selection
         """
-        # Use shared display function for consistent formatting
-        print_search_results(results, artist, title, use_colors=True)
+        # Use flacfetch's shared display function
+        from flacfetch import print_releases
+        print_releases(results, target_artist=artist, use_colors=True)
 
         while True:
             try:
