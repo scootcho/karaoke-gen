@@ -384,3 +384,42 @@ class TestGetAudioSearchService:
         assert service1 is service2
 
 
+class TestFlacfetchIntegration:
+    """
+    Integration tests that verify flacfetch imports work correctly.
+    
+    These tests ensure the backend code is compatible with the installed
+    flacfetch version and would catch issues like renamed classes.
+    """
+    
+    def test_flacfetch_imports_work(self):
+        """Test that all flacfetch imports in audio_search_service work.
+        
+        This test would have caught the YouTubeProvider -> YoutubeProvider rename.
+        """
+        # These imports match what audio_search_service.py does
+        from flacfetch.core.manager import FetchManager
+        from flacfetch.providers.youtube import YoutubeProvider
+        from flacfetch.core.models import TrackQuery
+        
+        # Verify the classes exist and are callable
+        assert FetchManager is not None
+        assert YoutubeProvider is not None
+        assert TrackQuery is not None
+    
+    def test_audio_search_service_can_initialize_manager(self):
+        """Test AudioSearchService can initialize its FetchManager.
+        
+        This verifies the actual initialization code path works.
+        """
+        service = AudioSearchService(
+            redacted_api_key=None,
+            ops_api_key=None,
+        )
+        
+        # This calls _get_manager() which does the actual imports
+        manager = service._get_manager()
+        
+        assert manager is not None
+
+
