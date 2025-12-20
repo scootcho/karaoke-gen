@@ -9,7 +9,13 @@ This is a thin wrapper that adds backend-specific functionality:
 - Caching raw results for API-based selection flow
 - Firestore-compatible serialization
 - Singleton pattern for service lifecycle
+- Remote flacfetch service integration for torrent downloads
+
+When FLACFETCH_API_URL is configured, this service uses the remote flacfetch
+HTTP API for search and download operations. This is required for torrent
+downloads since Cloud Run doesn't support BitTorrent peer connections.
 """
+import asyncio
 import logging
 import os
 from typing import List, Optional
@@ -25,6 +31,8 @@ from karaoke_gen.audio_fetcher import (
     NoResultsError,
     DownloadError,
 )
+
+from .flacfetch_client import get_flacfetch_client, FlacfetchServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +54,11 @@ class AudioSearchService:
     - Caches raw results for API-based selection (client picks by index)
     - Provides Firestore-compatible serialization
     - Manages service lifecycle as singleton
+    - Remote flacfetch service integration for torrent downloads
+    
+    When FLACFETCH_API_URL is configured, this service uses the remote flacfetch
+    HTTP API for search and download operations. This enables torrent downloads
+    which are not possible in Cloud Run due to network restrictions.
     
     The actual flacfetch integration is in karaoke_gen.audio_fetcher.FlacFetcher,
     which is shared between local CLI and cloud backend.
@@ -73,7 +86,16 @@ class AudioSearchService:
         if ops_api_key is self._USE_ENV:
             ops_api_key = os.environ.get("OPS_API_KEY")
         
-        # Delegate to shared FlacFetcher implementation
+        # Check for remote flacfetch client
+        self._remote_client = get_flacfetch_client()
+        
+        # Log which mode we're using
+        if self._remote_client:
+            logger.info("AudioSearchService using REMOTE flacfetch service (torrent downloads enabled)")
+        else:
+            logger.info("AudioSearchService using LOCAL flacfetch (YouTube only in Cloud Run)")
+        
+        # Delegate to shared FlacFetcher implementation (for local mode or fallback)
         self._fetcher = FlacFetcher(
             redacted_api_key=redacted_api_key,
             ops_api_key=ops_api_key,
@@ -82,12 +104,18 @@ class AudioSearchService:
         # Cache search results for API-based selection flow
         # Key: index, Value: AudioSearchResult (with raw_result)
         self._cached_results: List[AudioSearchResult] = []
+        
+        # Cache for remote search results (search_id -> results)
+        self._remote_search_id: Optional[str] = None
     
     def search(self, artist: str, title: str) -> List[AudioSearchResult]:
         """
         Search for audio matching the given artist and title.
         
         Results are cached internally for later download via download().
+        
+        If a remote flacfetch service is configured (FLACFETCH_API_URL), uses that
+        for better torrent download support. Otherwise falls back to local flacfetch.
         
         Args:
             artist: The artist name to search for
@@ -101,11 +129,16 @@ class AudioSearchService:
             AudioSearchError: For other errors (e.g., flacfetch not installed)
         """
         try:
-            # Delegate to shared FlacFetcher
+            # Try remote flacfetch service first if configured
+            if self._remote_client:
+                return self._search_remote(artist, title)
+            
+            # Fallback to local flacfetch
             results = self._fetcher.search(artist, title)
             
             # Cache results for later download
             self._cached_results = results
+            self._remote_search_id = None
             
             logger.info(f"Found {len(results)} results for: {artist} - {title}")
             return results
@@ -116,6 +149,67 @@ class AudioSearchService:
         except Exception as e:
             logger.error(f"Search failed: {e}")
             raise AudioSearchError(f"Search failed: {e}") from e
+    
+    def _search_remote(self, artist: str, title: str) -> List[AudioSearchResult]:
+        """
+        Search using the remote flacfetch service.
+        
+        Runs async code in a sync context for compatibility with existing API.
+        """
+        try:
+            # Run async search in sync context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                response = loop.run_until_complete(
+                    self._remote_client.search(artist, title)
+                )
+            finally:
+                loop.close()
+            
+            # Check for empty results
+            if not response.get("results"):
+                raise NoResultsError(f"No results found for: {artist} - {title}")
+            
+            # Store search_id for download
+            self._remote_search_id = response.get("search_id")
+            
+            # Convert remote results to AudioSearchResult objects
+            results = []
+            for item in response.get("results", []):
+                result = AudioSearchResult(
+                    title=item.get("title", "Unknown"),
+                    artist=item.get("artist", "Unknown"),
+                    provider=item.get("provider", "Unknown"),
+                    quality=item.get("quality", ""),
+                    size_bytes=item.get("size_bytes"),
+                    duration_seconds=item.get("duration_seconds"),
+                    is_lossless=item.get("is_lossless", False),
+                    seeders=item.get("seeders"),
+                    year=item.get("year"),
+                    extra_info={
+                        "index": item.get("index"),
+                        "target_file": item.get("target_file"),
+                        "view_count": item.get("view_count"),
+                        "channel": item.get("channel"),
+                        "remote": True,  # Flag for download logic
+                    },
+                )
+                results.append(result)
+            
+            # Cache results
+            self._cached_results = results
+            
+            logger.info(f"Found {len(results)} results from remote flacfetch for: {artist} - {title}")
+            return results
+            
+        except FlacfetchServiceError as e:
+            logger.warning(f"Remote flacfetch search failed, falling back to local: {e}")
+            # Fallback to local search
+            self._remote_search_id = None
+            results = self._fetcher.search(artist, title)
+            self._cached_results = results
+            return results
     
     def select_best(self, results: List[AudioSearchResult]) -> int:
         """
@@ -136,6 +230,7 @@ class AudioSearchService:
         result_index: int,
         output_dir: str,
         output_filename: Optional[str] = None,
+        gcs_path: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Download audio from a cached search result.
@@ -146,10 +241,14 @@ class AudioSearchService:
         2. Client picks an index
         3. Client calls download(index) -> gets downloaded file
         
+        If a remote flacfetch service is configured and the search was performed
+        remotely (for torrent sources), uses the remote service for download.
+        
         Args:
             result_index: Index of the result to download (from search results)
             output_dir: Directory to save the downloaded file
             output_filename: Optional filename (without extension)
+            gcs_path: Optional GCS path for remote uploads (e.g., "uploads/job123/audio/")
             
         Returns:
             AudioDownloadResult with the downloaded file path
@@ -168,12 +267,92 @@ class AudioSearchService:
         
         logger.info(f"Downloading: {result.artist} - {result.title} from {result.provider}")
         
-        # Delegate to shared FlacFetcher
+        # Check if this was a remote search (torrent sources need remote download)
+        if self._remote_search_id and self._remote_client:
+            # Check if this is a torrent source that needs remote handling
+            is_remote = result.extra_info.get("remote", False) if result.extra_info else False
+            is_torrent = result.provider in ["Redacted", "OPS"]
+            
+            if is_remote or is_torrent:
+                return self._download_remote(result_index, output_dir, output_filename, gcs_path)
+        
+        # Delegate to shared FlacFetcher (local download)
         fetch_result = self._fetcher.download(result, output_dir, output_filename)
         
         logger.info(f"Downloaded to: {fetch_result.filepath}")
         
         return fetch_result
+    
+    def _download_remote(
+        self,
+        result_index: int,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> AudioDownloadResult:
+        """
+        Download using the remote flacfetch service.
+        
+        The remote service downloads via torrent and optionally uploads to GCS.
+        """
+        if not self._remote_search_id:
+            raise DownloadError("No remote search ID - run search() first")
+        
+        result = self._cached_results[result_index]
+        
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # Start download
+                download_id = loop.run_until_complete(
+                    self._remote_client.download(
+                        search_id=self._remote_search_id,
+                        result_index=result_index,
+                        output_filename=output_filename,
+                        gcs_path=gcs_path,
+                    )
+                )
+                
+                logger.info(f"Remote download started: {download_id}")
+                
+                # Wait for completion with progress logging
+                def log_progress(status):
+                    progress = status.get("progress", 0)
+                    speed = status.get("download_speed_kbps", 0)
+                    logger.debug(f"Download progress: {progress:.1f}% ({speed:.1f} KB/s)")
+                
+                final_status = loop.run_until_complete(
+                    self._remote_client.wait_for_download(
+                        download_id,
+                        timeout=600,  # 10 minute timeout
+                        progress_callback=log_progress,
+                    )
+                )
+            finally:
+                loop.close()
+            
+            # Determine file path
+            filepath = final_status.get("gcs_path") or final_status.get("output_path")
+            
+            if not filepath:
+                raise DownloadError("Remote download completed but no file path returned")
+            
+            logger.info(f"Remote download complete: {filepath}")
+            
+            return AudioDownloadResult(
+                filepath=filepath,
+                artist=result.artist,
+                title=result.title,
+                provider=result.provider,
+                quality=result.quality,
+            )
+            
+        except FlacfetchServiceError as e:
+            raise DownloadError(f"Remote download failed: {e}") from e
+        except Exception as e:
+            logger.error(f"Remote download error: {e}")
+            raise DownloadError(f"Remote download failed: {e}") from e
     
     def search_and_download_auto(
         self,
@@ -181,6 +360,7 @@ class AudioSearchService:
         title: str,
         output_dir: str,
         output_filename: Optional[str] = None,
+        gcs_path: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Search for audio and automatically download the best result.
@@ -193,6 +373,7 @@ class AudioSearchService:
             title: The track title to search for
             output_dir: Directory to save the downloaded file
             output_filename: Optional filename (without extension)
+            gcs_path: Optional GCS path for remote uploads
             
         Returns:
             AudioDownloadResult with the downloaded file path
@@ -213,7 +394,57 @@ class AudioSearchService:
         )
         
         # Download
-        return self.download(best_index, output_dir, output_filename)
+        return self.download(best_index, output_dir, output_filename, gcs_path)
+    
+    async def search_async(self, artist: str, title: str) -> List[AudioSearchResult]:
+        """
+        Async version of search for use in async routes.
+        
+        Note: Currently wraps sync search in executor. Future optimization
+        could make this fully async.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.search, artist, title)
+    
+    async def download_async(
+        self,
+        result_index: int,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> AudioDownloadResult:
+        """
+        Async version of download for use in async routes.
+        
+        Note: Currently wraps sync download in executor. Future optimization
+        could make this fully async.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, 
+            lambda: self.download(result_index, output_dir, output_filename, gcs_path)
+        )
+    
+    def is_remote_enabled(self) -> bool:
+        """Check if remote flacfetch service is configured."""
+        return self._remote_client is not None
+    
+    async def check_remote_health(self) -> Optional[dict]:
+        """
+        Check health of remote flacfetch service.
+        
+        Returns:
+            Health status dict if remote service is configured and healthy,
+            None if not configured or unhealthy.
+        """
+        if not self._remote_client:
+            return None
+        
+        try:
+            return await self._remote_client.health_check()
+        except Exception as e:
+            logger.warning(f"Remote flacfetch health check failed: {e}")
+            return None
 
 
 # Singleton instance
