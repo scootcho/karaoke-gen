@@ -99,7 +99,11 @@ class TestJobStatusAudioSearchStates:
 
 
 class TestAudioSearchResult:
-    """Test AudioSearchResult dataclass."""
+    """Test AudioSearchResult dataclass.
+    
+    AudioSearchResult is now imported from karaoke_gen.audio_fetcher.
+    These tests verify the backend can use it correctly.
+    """
     
     def test_create_audio_search_result(self):
         """Test creating an AudioSearchResult."""
@@ -140,6 +144,8 @@ class TestAudioSearchResult:
         assert data['provider'] == "YouTube"
         assert data['url'] == "https://youtube.com/watch?v=abc123"
         assert data['index'] == 0
+        # raw_result should NOT be in serialized dict
+        assert 'raw_result' not in data
     
     def test_from_dict(self):
         """Test creating from dict."""
@@ -160,6 +166,7 @@ class TestAudioSearchResult:
         assert result.artist == "ABBA"
         assert result.provider == "YouTube"
         assert result.index == 0
+        assert result.raw_result is None  # Not set from dict
 
 
 class TestAudioSearchServiceInit:
@@ -171,10 +178,9 @@ class TestAudioSearchServiceInit:
         # Pass explicit None to override environment
         service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
         
-        # When explicitly passed None, it should be None (not from env)
-        assert service._redacted_api_key is None
-        assert service._ops_api_key is None
-        assert service._manager is None
+        # Service should have a FlacFetcher internally
+        assert service._fetcher is not None
+        assert service._cached_results == []
     
     def test_init_with_keys(self):
         """Test initialization with API keys."""
@@ -183,41 +189,40 @@ class TestAudioSearchServiceInit:
             ops_api_key="test_ops_key",
         )
         
-        assert service._redacted_api_key == "test_redacted_key"
-        assert service._ops_api_key == "test_ops_key"
+        # Keys are passed to FlacFetcher
+        assert service._fetcher._redacted_api_key == "test_redacted_key"
+        assert service._fetcher._ops_api_key == "test_ops_key"
     
     def test_init_reads_from_environment(self):
         """Test initialization reads keys from environment variables."""
-        import os
-        
         # Just test that the service can be initialized
         service = AudioSearchService()
         
-        # The service should have API keys from env or None
-        assert service._manager is None  # Not yet initialized
+        # The service should have a FlacFetcher
+        assert service._fetcher is not None
 
 
 class TestAudioSearchServiceSearch:
     """Test AudioSearchService.search() method."""
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_search_returns_results(self, mock_get_manager):
+    def test_search_returns_results(self):
         """Test search returns AudioSearchResult list."""
-        # Mock the flacfetch result
-        mock_result = Mock()
-        mock_result.title = "Waterloo"
-        mock_result.artist = "ABBA"
-        mock_result.provider = "YouTube"
-        mock_result.url = "https://youtube.com/watch?v=abc123"
-        mock_result.duration = 180
-        mock_result.quality = "FLAC"
-        mock_result.id = "abc123"
+        # Create mock result
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="YouTube",
+            url="https://youtube.com/watch?v=abc123",
+            duration=180,
+            quality="FLAC",
+            source_id="abc123",
+            index=0,
+        )
         
-        mock_manager = Mock()
-        mock_manager.search.return_value = [mock_result]
-        mock_get_manager.return_value = mock_manager
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.search.return_value = [mock_result]
         
-        service = AudioSearchService()
         results = service.search("ABBA", "Waterloo")
         
         assert len(results) == 1
@@ -226,40 +231,36 @@ class TestAudioSearchServiceSearch:
         assert results[0].provider == "YouTube"
         assert results[0].index == 0
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_search_no_results_raises_error(self, mock_get_manager):
+    def test_search_no_results_raises_error(self):
         """Test search raises NoResultsError when no results."""
-        mock_manager = Mock()
-        mock_manager.search.return_value = []
-        mock_get_manager.return_value = mock_manager
-        
-        service = AudioSearchService()
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.search.side_effect = NoResultsError("No results found")
         
         with pytest.raises(NoResultsError) as exc_info:
             service.search("Unknown Artist", "Unknown Song")
         
         assert "No results found" in str(exc_info.value)
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_search_multiple_results(self, mock_get_manager):
+    def test_search_multiple_results(self):
         """Test search returns multiple results with correct indices."""
         mock_results = []
         for i in range(3):
-            mock_result = Mock()
-            mock_result.title = f"Song {i}"
-            mock_result.artist = "Artist"
-            mock_result.provider = ["YouTube", "Redacted", "OPS"][i]
-            mock_result.url = f"https://example.com/{i}"
-            mock_result.duration = 180 + i * 10
-            mock_result.quality = ["320kbps", "FLAC", "FLAC"][i]
-            mock_result.id = str(i)
-            mock_results.append(mock_result)
+            mock_results.append(AudioSearchResult(
+                title=f"Song {i}",
+                artist="Artist",
+                provider=["YouTube", "Redacted", "OPS"][i],
+                url=f"https://example.com/{i}",
+                duration=180 + i * 10,
+                quality=["320kbps", "FLAC", "FLAC"][i],
+                source_id=str(i),
+                index=i,
+            ))
         
-        mock_manager = Mock()
-        mock_manager.search.return_value = mock_results
-        mock_get_manager.return_value = mock_manager
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.search.return_value = mock_results
         
-        service = AudioSearchService()
         results = service.search("Artist", "Song")
         
         assert len(results) == 3
@@ -271,34 +272,39 @@ class TestAudioSearchServiceSearch:
 class TestAudioSearchServiceSelectBest:
     """Test AudioSearchService.select_best() method."""
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_select_best_uses_manager(self, mock_get_manager):
-        """Test select_best uses flacfetch's select_best."""
-        # First need to do a search to populate cache
-        mock_result = Mock()
-        mock_result.title = "Waterloo"
-        mock_result.artist = "ABBA"
-        mock_result.provider = "YouTube"
-        mock_result.url = "https://youtube.com/watch?v=abc123"
-        mock_result.duration = 180
-        mock_result.quality = "FLAC"
-        mock_result.id = "abc123"
+    def test_select_best_delegates_to_fetcher(self):
+        """Test select_best uses FlacFetcher's select_best."""
+        mock_results = [
+            AudioSearchResult(
+                title="Waterloo",
+                artist="ABBA",
+                provider="YouTube",
+                url="https://youtube.com/watch?v=abc123",
+                index=0,
+            ),
+            AudioSearchResult(
+                title="Waterloo",
+                artist="ABBA",
+                provider="Redacted",
+                url="https://example.com/456",
+                index=1,
+            ),
+        ]
         
-        mock_manager = Mock()
-        mock_manager.search.return_value = [mock_result]
-        mock_manager.select_best.return_value = mock_result
-        mock_get_manager.return_value = mock_manager
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.select_best.return_value = 1
         
-        service = AudioSearchService()
-        results = service.search("ABBA", "Waterloo")
+        best_index = service.select_best(mock_results)
         
-        best_index = service.select_best(results)
-        
-        assert best_index == 0
+        assert best_index == 1
+        service._fetcher.select_best.assert_called_once_with(mock_results)
     
     def test_select_best_empty_list_returns_zero(self):
         """Test select_best returns 0 for empty list."""
-        service = AudioSearchService()
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.select_best.return_value = 0
         
         best_index = service.select_best([])
         
@@ -308,24 +314,18 @@ class TestAudioSearchServiceSelectBest:
 class TestAudioSearchServiceDownload:
     """Test AudioSearchService.download() method."""
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_download_without_search_raises_error(self, mock_get_manager):
+    def test_download_without_search_raises_error(self):
         """Test download without prior search raises error."""
-        mock_manager = Mock()
-        mock_get_manager.return_value = mock_manager
-        
-        service = AudioSearchService()
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
         
         with pytest.raises(DownloadError) as exc_info:
             service.download(0, "/tmp")
         
         assert "No cached result" in str(exc_info.value)
     
-    @patch('backend.services.audio_search_service.AudioSearchService._get_manager')
-    def test_download_after_search(self, mock_get_manager):
+    def test_download_after_search(self):
         """Test download after search works."""
         import tempfile
-        import os
         
         # Create a temp file to simulate downloaded file
         temp_dir = tempfile.mkdtemp()
@@ -333,23 +333,32 @@ class TestAudioSearchServiceDownload:
         with open(temp_file, 'w') as f:
             f.write("test")
         
-        mock_result = Mock()
-        mock_result.title = "Waterloo"
-        mock_result.artist = "ABBA"
-        mock_result.provider = "YouTube"
-        mock_result.url = "https://youtube.com/watch?v=abc123"
-        mock_result.duration = 180
-        mock_result.quality = "FLAC"
-        mock_result.id = "abc123"
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="YouTube",
+            url="https://youtube.com/watch?v=abc123",
+            duration=180,
+            quality="FLAC",
+            source_id="abc123",
+            index=0,
+        )
         
-        mock_manager = Mock()
-        mock_manager.search.return_value = [mock_result]
-        mock_manager.download.return_value = temp_file
-        mock_get_manager.return_value = mock_manager
+        mock_fetch_result = AudioDownloadResult(
+            filepath=temp_file,
+            artist="ABBA",
+            title="Waterloo",
+            provider="YouTube",
+            duration=180,
+            quality="FLAC",
+        )
         
-        service = AudioSearchService()
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.search.return_value = [mock_result]
+        service._fetcher.download.return_value = mock_fetch_result
+        
         service.search("ABBA", "Waterloo")
-        
         result = service.download(0, temp_dir)
         
         assert result.filepath == temp_file
@@ -360,6 +369,27 @@ class TestAudioSearchServiceDownload:
         # Cleanup
         os.remove(temp_file)
         os.rmdir(temp_dir)
+    
+    def test_download_invalid_index_raises_error(self):
+        """Test download with invalid index raises error."""
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="YouTube",
+            url="https://youtube.com/watch?v=abc123",
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._fetcher.search.return_value = [mock_result]
+        
+        service.search("ABBA", "Waterloo")
+        
+        with pytest.raises(DownloadError) as exc_info:
+            service.download(99, "/tmp")
+        
+        assert "No cached result for index 99" in str(exc_info.value)
 
 
 class TestGetAudioSearchService:
@@ -390,6 +420,9 @@ class TestFlacfetchIntegration:
     
     These tests ensure the backend code is compatible with the installed
     flacfetch version and would catch issues like renamed classes.
+    
+    Note: Some tests are marked with pytest.importorskip for flacfetch
+    since it may not be installed in all test environments (e.g., CI).
     """
     
     def test_flacfetch_imports_work(self):
@@ -397,7 +430,9 @@ class TestFlacfetchIntegration:
         
         This test would have caught the YouTubeProvider -> YoutubeProvider rename.
         """
-        # These imports match what audio_search_service.py does
+        flacfetch = pytest.importorskip("flacfetch")
+        
+        # These imports match what karaoke_gen.audio_fetcher does
         from flacfetch.core.manager import FetchManager
         from flacfetch.providers.youtube import YoutubeProvider
         from flacfetch.core.models import TrackQuery
@@ -407,19 +442,58 @@ class TestFlacfetchIntegration:
         assert YoutubeProvider is not None
         assert TrackQuery is not None
     
-    def test_audio_search_service_can_initialize_manager(self):
-        """Test AudioSearchService can initialize its FetchManager.
+    def test_karaoke_gen_audio_fetcher_imports_work(self):
+        """Test that karaoke_gen.audio_fetcher imports work.
+        
+        Since backend now imports from karaoke_gen, this is the critical test.
+        This should work even without flacfetch installed (lazy import).
+        """
+        from karaoke_gen.audio_fetcher import (
+            FlacFetcher,
+            AudioSearchResult,
+            AudioFetchResult,
+            AudioFetcherError,
+            NoResultsError,
+            DownloadError,
+        )
+        
+        assert FlacFetcher is not None
+        assert AudioSearchResult is not None
+        assert AudioFetchResult is not None
+        assert AudioFetcherError is not None
+        assert NoResultsError is not None
+        assert DownloadError is not None
+    
+    def test_audio_search_service_can_initialize_fetcher(self):
+        """Test AudioSearchService can initialize its FlacFetcher.
         
         This verifies the actual initialization code path works.
         """
+        pytest.importorskip("flacfetch")
+        
         service = AudioSearchService(
             redacted_api_key=None,
             ops_api_key=None,
         )
         
-        # This calls _get_manager() which does the actual imports
-        manager = service._get_manager()
+        # Verify FlacFetcher was initialized
+        assert service._fetcher is not None
         
+        # FlacFetcher can initialize its manager (tests actual flacfetch)
+        manager = service._fetcher._get_manager()
         assert manager is not None
-
-
+    
+    def test_shared_classes_are_same_as_karaoke_gen(self):
+        """Verify backend uses the same classes as karaoke_gen."""
+        from karaoke_gen.audio_fetcher import (
+            AudioSearchResult as KGAudioSearchResult,
+            AudioFetchResult as KGAudioFetchResult,
+            NoResultsError as KGNoResultsError,
+            DownloadError as KGDownloadError,
+        )
+        
+        # These should be the exact same classes, not copies
+        assert AudioSearchResult is KGAudioSearchResult
+        assert AudioDownloadResult is KGAudioFetchResult
+        assert NoResultsError is KGNoResultsError
+        assert DownloadError is KGDownloadError
