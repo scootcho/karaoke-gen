@@ -1331,6 +1331,54 @@ class JobMonitor:
         """Get user-friendly description for a status."""
         return self.STATUS_DESCRIPTIONS.get(status, status)
     
+    def _show_download_progress(self, job_data: Dict[str, Any]) -> None:
+        """Show detailed download progress during audio download."""
+        try:
+            # Get provider from job state_data
+            state_data = job_data.get('state_data', {})
+            provider = state_data.get('selected_audio_provider', 'unknown')
+            
+            # For non-torrent providers (YouTube), just show simple message
+            if provider.lower() == 'youtube':
+                self.logger.info(f"  [Downloading from YouTube...]")
+                return
+            
+            # Query health endpoint for transmission status (torrent providers)
+            health_url = f"{self.config.service_url}/api/health/detailed"
+            response = requests.get(health_url, timeout=5)
+            
+            if response.status_code == 200:
+                health = response.json()
+                transmission = health.get('dependencies', {}).get('transmission', {})
+                
+                if transmission.get('available'):
+                    torrents = transmission.get('torrents', [])
+                    if torrents:
+                        # Show info about active torrents
+                        for t in torrents:
+                            progress = t.get('progress', 0)
+                            peers = t.get('peers', 0)
+                            speed = t.get('download_speed', 0)
+                            stalled = t.get('stalled', False)
+                            
+                            if stalled:
+                                self.logger.info(f"  [Downloading from {provider}] {progress:.1f}% - STALLED (no peers)")
+                            elif progress < 100:
+                                self.logger.info(f"  [Downloading from {provider}] {progress:.1f}% @ {speed:.1f} KB/s ({peers} peers)")
+                            else:
+                                self.logger.info(f"  [Downloading from {provider}] Complete, processing...")
+                    else:
+                        # No torrents - might be starting or YouTube download
+                        self.logger.info(f"  [Downloading from {provider}] Starting download...")
+                else:
+                    self.logger.info(f"  [Downloading from {provider}] Transmission not available - download may fail")
+            else:
+                self.logger.info(f"  [Downloading from {provider}]...")
+                
+        except Exception as e:
+            # Fall back to simple message
+            self.logger.info(f"  [Downloading audio...]")
+    
     def open_browser(self, url: str) -> None:
         """Open URL in the default browser."""
         system = platform.system()
@@ -2067,9 +2115,15 @@ class JobMonitor:
                     self._polls_without_updates = 0
                 else:
                     self._polls_without_updates += 1
-                    if self._polls_without_updates >= self._heartbeat_interval:
-                        description = self._get_status_description(status)
-                        self.logger.info(f"  [Still processing: {description}]")
+                    # More frequent updates during audio download (every poll)
+                    heartbeat_threshold = 1 if status == 'downloading_audio' else self._heartbeat_interval
+                    if self._polls_without_updates >= heartbeat_threshold:
+                        if status == 'downloading_audio':
+                            # Show detailed download progress including transmission status
+                            self._show_download_progress(job_data)
+                        else:
+                            description = self._get_status_description(status)
+                            self.logger.info(f"  [Still processing: {description}]")
                         self._polls_without_updates = 0
                 
                 # Handle human interaction points

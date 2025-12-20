@@ -21,6 +21,7 @@ from karaoke_gen.audio_fetcher import (
     FlacFetchAudioFetcher,
     create_audio_fetcher,
 )
+import karaoke_gen.audio_fetcher as audio_fetcher_module
 
 # Import flacfetch models for creating test Release objects
 from flacfetch.core.models import Release, Quality, AudioFormat, MediaSource
@@ -143,6 +144,64 @@ class TestAudioSearchResult:
         # raw_result should NOT be in serialized dict
         assert "raw_result" not in data
 
+    def test_to_dict_with_release_raw_result(self):
+        """Test to_dict when raw_result has to_dict() that returns release fields."""
+        # Create a mock raw_result that mimics flacfetch Release behavior
+        class MockRelease:
+            def to_dict(self):
+                return {
+                    'year': 2024,
+                    'label': 'Test Records',
+                    'edition_info': 'Remastered',
+                    'release_type': 'Album',
+                    'channel': 'TestChannel',
+                    'view_count': 1000000,
+                    'size_bytes': 52428800,
+                    'target_file_size': 26214400,
+                    'track_pattern': 'Test Song',
+                    'match_score': 0.95,
+                    'formatted_size': '50.0 MB',
+                    'formatted_duration': '3:30',
+                    'formatted_views': '1.0M',
+                    'is_lossless': True,
+                    'quality_str': 'FLAC 24bit WEB',
+                    'quality': {'format': 'FLAC', 'bit_depth': 24, 'media': 'WEB'},
+                }
+        
+        result = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="Redacted",
+            raw_result=MockRelease(),
+        )
+        data = result.to_dict()
+        
+        # Basic fields
+        assert data["title"] == "Test Song"
+        assert data["provider"] == "Redacted"
+        
+        # Release-specific fields should be included
+        assert data["year"] == 2024
+        assert data["label"] == "Test Records"
+        assert data["edition_info"] == "Remastered"
+        assert data["release_type"] == "Album"
+        assert data["channel"] == "TestChannel"
+        assert data["view_count"] == 1000000
+        assert data["size_bytes"] == 52428800
+        assert data["target_file_size"] == 26214400
+        assert data["track_pattern"] == "Test Song"
+        assert data["match_score"] == 0.95
+        assert data["formatted_size"] == "50.0 MB"
+        assert data["formatted_duration"] == "3:30"
+        assert data["formatted_views"] == "1.0M"
+        assert data["is_lossless"] == True
+        assert data["quality_str"] == "FLAC 24bit WEB"
+        # quality should be renamed to quality_data
+        assert data["quality_data"] == {'format': 'FLAC', 'bit_depth': 24, 'media': 'WEB'}
+        # raw_result should NOT be in serialized dict
+        assert "raw_result" not in data
+
     def test_from_dict_basic(self):
         """Test from_dict with minimal fields."""
         data = {
@@ -174,6 +233,8 @@ class TestAudioSearchResult:
             "quality": "FLAC 24bit",
             "source_id": "abc123",
             "index": 7,
+            "seeders": 15,
+            "target_file": "02. Test Song.flac",
         }
         result = AudioSearchResult.from_dict(data)
         
@@ -185,6 +246,8 @@ class TestAudioSearchResult:
         assert result.quality == "FLAC 24bit"
         assert result.source_id == "abc123"
         assert result.index == 7
+        assert result.seeders == 15
+        assert result.target_file == "02. Test Song.flac"
         assert result.raw_result is None  # Never restored from dict
 
     def test_from_dict_with_defaults(self):
@@ -400,6 +463,27 @@ class TestExceptions:
         with pytest.raises(UserCancelledError) as exc_info:
             raise UserCancelledError("User cancelled")
         assert str(exc_info.value) == "User cancelled"
+
+
+class TestCheckInterrupt:
+    """Tests for the _check_interrupt function."""
+    
+    def test_check_interrupt_does_nothing_when_not_requested(self):
+        """Test _check_interrupt passes when no interrupt requested."""
+        # Ensure flag is False
+        audio_fetcher_module._interrupt_requested = False
+        # Should not raise
+        audio_fetcher_module._check_interrupt()
+    
+    def test_check_interrupt_raises_when_requested(self):
+        """Test _check_interrupt raises UserCancelledError when interrupt requested."""
+        try:
+            audio_fetcher_module._interrupt_requested = True
+            with pytest.raises(UserCancelledError, match="cancelled by user"):
+                audio_fetcher_module._check_interrupt()
+        finally:
+            # Reset the flag
+            audio_fetcher_module._interrupt_requested = False
 
 
 class TestFlacFetchAudioFetcher:
@@ -670,6 +754,20 @@ class TestFlacFetchAudioFetcher:
 
         with pytest.raises(UserCancelledError):
             fetcher._interactive_select([test_release], "Artist", "Test")
+
+    @patch('flacfetch.interface.cli.CLIHandler')
+    @patch('builtins.input', return_value='1')
+    def test_interactive_select_fallback_on_cli_handler_error(self, mock_input, mock_cli_handler, fetcher):
+        """Test interactive selection falls back to basic when CLIHandler fails."""
+        # Make CLIHandler raise AttributeError to trigger fallback
+        mock_cli_handler.side_effect = AttributeError("CLIHandler error")
+        
+        # Use real Release object
+        test_release = create_test_release(title="Test", artist="Artist")
+        
+        # Should fall back to _basic_interactive_select and succeed
+        result = fetcher._interactive_select([test_release], "Artist", "Test")
+        assert result == test_release
 
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_select_best_returns_index(self, mock_get_manager, fetcher):
@@ -1310,3 +1408,223 @@ class TestOutputDirectoryCreation:
         assert not new_dir.exists()
         result = fetcher.download(search_result, str(new_dir))
         assert new_dir.exists()
+
+
+class TestInterruptibleDownload:
+    """Tests for the interruptible download functionality."""
+
+    def test_interruptible_download_returns_filepath_on_success(self):
+        """Test that _interruptible_download returns filepath when download succeeds."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_manager = MagicMock()
+        mock_manager.download.return_value = "/path/to/downloaded.flac"
+        mock_selected = MagicMock()
+        
+        result = fetcher._interruptible_download(
+            mock_manager, mock_selected, "/output", "filename"
+        )
+        
+        assert result == "/path/to/downloaded.flac"
+        mock_manager.download.assert_called_once_with(
+            mock_selected,
+            output_path="/output",
+            output_filename="filename",
+        )
+
+    def test_interruptible_download_propagates_errors(self):
+        """Test that _interruptible_download raises DownloadError on failure."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = Exception("Download failed")
+        mock_selected = MagicMock()
+        
+        with pytest.raises(Exception, match="Download failed"):
+            fetcher._interruptible_download(
+                mock_manager, mock_selected, "/output", "filename"
+            )
+
+    def test_interruptible_download_handles_interrupt(self):
+        """Test that _interruptible_download handles Ctrl+C gracefully."""
+        import signal
+        import threading
+        import time
+        
+        fetcher = FlacFetchAudioFetcher()
+        
+        # Create a mock download that takes a long time
+        def slow_download(*args, **kwargs):
+            time.sleep(10)  # Simulate slow download
+            return "/path/to/file.flac"
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = slow_download
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Release"
+        
+        # Mock the cleanup to avoid needing real transmission
+        with patch.object(fetcher, '_cleanup_transmission_torrents'):
+            # Start download in a thread and send interrupt
+            def send_interrupt():
+                time.sleep(0.3)  # Wait for download to start
+                # Simulate Ctrl+C by setting the global flag
+                import karaoke_gen.audio_fetcher as af
+                af._interrupt_requested = True
+            
+            interrupt_thread = threading.Thread(target=send_interrupt, daemon=True)
+            interrupt_thread.start()
+            
+            with pytest.raises(UserCancelledError, match="cancelled by user"):
+                fetcher._interruptible_download(
+                    mock_manager, mock_selected, "/output", "filename"
+                )
+
+    def test_interruptible_download_calls_cleanup_on_cancel(self):
+        """Test that cleanup is called when download is cancelled."""
+        import threading
+        import time
+        
+        fetcher = FlacFetchAudioFetcher()
+        
+        def slow_download(*args, **kwargs):
+            time.sleep(10)
+            return "/path/to/file.flac"
+        
+        mock_manager = MagicMock()
+        mock_manager.download.side_effect = slow_download
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Release"
+        
+        with patch.object(fetcher, '_cleanup_transmission_torrents') as mock_cleanup:
+            def send_interrupt():
+                time.sleep(0.3)
+                import karaoke_gen.audio_fetcher as af
+                af._interrupt_requested = True
+            
+            interrupt_thread = threading.Thread(target=send_interrupt, daemon=True)
+            interrupt_thread.start()
+            
+            with pytest.raises(UserCancelledError):
+                fetcher._interruptible_download(
+                    mock_manager, mock_selected, "/output", "filename"
+                )
+            
+            # Verify cleanup was called with the selected release
+            mock_cleanup.assert_called_once_with(mock_selected)
+
+
+class TestTransmissionCleanup:
+    """Tests for Transmission torrent cleanup functionality."""
+
+    def test_cleanup_removes_matching_incomplete_torrent(self):
+        """Test that cleanup removes incomplete torrents matching the release name."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Artist - Test Song"
+        
+        # Create mock torrents
+        incomplete_torrent = MagicMock()
+        incomplete_torrent.id = 1
+        incomplete_torrent.name = "Test Artist - Test Song [FLAC]"
+        incomplete_torrent.progress = 50.0
+        
+        complete_torrent = MagicMock()
+        complete_torrent.id = 2
+        complete_torrent.name = "Other Album"
+        complete_torrent.progress = 100.0
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [incomplete_torrent, complete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should only remove the matching incomplete torrent
+        mock_client.remove_torrent.assert_called_once_with(1, delete_data=True)
+
+    def test_cleanup_does_not_remove_complete_torrents(self):
+        """Test that cleanup only removes incomplete torrents."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Artist - Test Song"
+        
+        complete_torrent = MagicMock()
+        complete_torrent.id = 1
+        complete_torrent.name = "Test Artist - Test Song [FLAC]"
+        complete_torrent.progress = 100.0  # Complete
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [complete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should not remove complete torrents
+        mock_client.remove_torrent.assert_not_called()
+
+    def test_cleanup_handles_connection_errors_gracefully(self):
+        """Test that cleanup doesn't raise if Transmission connection fails."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test Song"
+        
+        with patch('transmission_rpc.Client', side_effect=Exception("Connection refused")):
+            # Should not raise - cleanup failures are non-fatal
+            fetcher._cleanup_transmission_torrents(mock_selected)
+
+    def test_cleanup_handles_missing_release_name(self):
+        """Test that cleanup handles releases without a name attribute."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock(spec=[])  # No attributes
+        
+        mock_client = MagicMock()
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            # Should not raise - just return early
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should not even try to get torrents if no name
+        mock_client.get_torrents.assert_not_called()
+
+    def test_cleanup_uses_title_as_fallback_for_name(self):
+        """Test that cleanup falls back to 'title' if 'name' not present."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        del mock_selected.name  # Remove name attribute
+        mock_selected.title = "Test Title"
+        
+        incomplete_torrent = MagicMock()
+        incomplete_torrent.id = 1
+        incomplete_torrent.name = "Test Title [FLAC]"
+        incomplete_torrent.progress = 25.0
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = [incomplete_torrent]
+        
+        with patch('transmission_rpc.Client', return_value=mock_client):
+            fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        # Should match on title and remove
+        mock_client.remove_torrent.assert_called_once_with(1, delete_data=True)
+
+    def test_cleanup_uses_environment_variables(self):
+        """Test that cleanup uses TRANSMISSION_HOST/PORT env vars."""
+        fetcher = FlacFetchAudioFetcher()
+        
+        mock_selected = MagicMock()
+        mock_selected.name = "Test"
+        
+        mock_client = MagicMock()
+        mock_client.get_torrents.return_value = []
+        
+        with patch.dict(os.environ, {'TRANSMISSION_HOST': 'remote-host', 'TRANSMISSION_PORT': '9999'}):
+            with patch('transmission_rpc.Client', return_value=mock_client) as mock_constructor:
+                fetcher._cleanup_transmission_torrents(mock_selected)
+        
+        mock_constructor.assert_called_once_with(host='remote-host', port=9999, timeout=5)
