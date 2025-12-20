@@ -36,6 +36,8 @@ class AudioSearchResult:
     quality: Optional[str] = None  # e.g., "FLAC", "320kbps", etc.
     source_id: Optional[str] = None  # Unique ID from the source
     index: int = 0  # Index in the results list (for API selection)
+    seeders: Optional[int] = None  # Number of seeders (for torrent sources)
+    target_file: Optional[str] = None  # Target filename in the release
     # Raw result object from the provider (for download) - not serialized
     raw_result: Optional[object] = field(default=None, repr=False)
     
@@ -53,6 +55,8 @@ class AudioSearchResult:
             "quality": self.quality,
             "source_id": self.source_id,
             "index": self.index,
+            "seeders": self.seeders,
+            "target_file": self.target_file,
         }
     
     @classmethod
@@ -67,6 +71,8 @@ class AudioSearchResult:
             quality=data.get("quality"),
             source_id=data.get("source_id"),
             index=data.get("index", 0),
+            seeders=data.get("seeders"),
+            target_file=data.get("target_file"),
             raw_result=None,  # Not stored in serialized form
         )
 
@@ -132,6 +138,153 @@ def _check_interrupt():
     global _interrupt_requested
     if _interrupt_requested:
         raise UserCancelledError("Operation cancelled by user")
+
+
+def format_search_result_line(
+    result: Any,
+    index: int,
+    use_colors: bool = True,
+) -> str:
+    """
+    Format a single search result for display.
+    
+    This is the shared formatting function used by both local CLI and remote CLI
+    to ensure consistent, informative output.
+    
+    Args:
+        result: Can be AudioSearchResult, dict, or raw Release object from flacfetch
+        index: 1-based display index for the result
+        use_colors: Whether to use ANSI color codes (default True)
+        
+    Returns:
+        Formatted string for display
+    """
+    # Extract fields - handle AudioSearchResult, dict, or raw Release object
+    if isinstance(result, dict):
+        provider = result.get('provider', 'Unknown')
+        artist = result.get('artist', 'Unknown')
+        title = result.get('title', 'Unknown')
+        quality = result.get('quality', '')
+        duration = result.get('duration')
+        seeders = result.get('seeders')
+        target_file = result.get('target_file')
+    elif isinstance(result, AudioSearchResult):
+        provider = result.provider or 'Unknown'
+        artist = result.artist or 'Unknown'
+        title = result.title or 'Unknown'
+        quality = result.quality or ''
+        duration = result.duration
+        seeders = result.seeders
+        target_file = result.target_file
+    else:
+        # Raw Release object from flacfetch
+        provider = getattr(result, 'source_name', 'Unknown')
+        artist = getattr(result, 'artist', 'Unknown')
+        title = getattr(result, 'title', 'Unknown')
+        quality = getattr(result, 'quality', None)
+        quality = str(quality) if quality else ''
+        duration = getattr(result, 'duration_seconds', None)
+        seeders = getattr(result, 'seeders', None)
+        target_file = getattr(result, 'target_file', None)
+    
+    # Color codes
+    if use_colors:
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+        DIM = '\033[2m'
+        CYAN = '\033[36m'
+        YELLOW = '\033[33m'
+        GREEN = '\033[32m'
+        MAGENTA = '\033[35m'
+        WHITE = '\033[37m'
+    else:
+        RESET = BOLD = DIM = CYAN = YELLOW = GREEN = MAGENTA = WHITE = ''
+    
+    # Format index
+    idx_str = f"{BOLD}{index:>3}{RESET}"
+    
+    # Format provider with color based on type
+    provider_colors = {
+        'Redacted': MAGENTA,
+        'OPS': CYAN,
+        'YouTube': YELLOW,
+    }
+    provider_color = provider_colors.get(provider, WHITE)
+    provider_str = f"{provider_color}[{provider}]{RESET}"
+    
+    # Format artist and title
+    artist_title_str = f"{WHITE}{artist}{RESET} - {BOLD}{title}{RESET}"
+    
+    # Format quality (often includes bit depth and format)
+    quality_str = f" {DIM}({quality}){RESET}" if quality else ""
+    
+    # Format duration
+    duration_str = ""
+    if duration:
+        minutes = duration // 60
+        seconds = duration % 60
+        duration_str = f" {DIM}[{minutes}:{seconds:02d}]{RESET}"
+    
+    # Format seeders (important for torrent sources)
+    seeders_str = ""
+    if seeders is not None:
+        if seeders >= 10:
+            seeders_str = f" {GREEN}↑{seeders}{RESET}"
+        elif seeders >= 1:
+            seeders_str = f" {YELLOW}↑{seeders}{RESET}"
+        else:
+            seeders_str = f" {DIM}↑{seeders}{RESET}"
+    
+    # Format target file (useful to see exact track)
+    file_str = ""
+    if target_file:
+        # Truncate long filenames
+        if len(target_file) > 50:
+            target_file = target_file[:47] + "..."
+        file_str = f" {DIM}\"{target_file}\"{RESET}"
+    
+    return f"  {idx_str}) {provider_str} {artist_title_str}{quality_str}{duration_str}{seeders_str}{file_str}"
+
+
+def print_search_results(
+    results: List[Any],
+    artist: str,
+    title: str,
+    use_colors: bool = True,
+    output_func: callable = print,
+) -> None:
+    """
+    Print formatted search results for user selection.
+    
+    This is the shared display function used by both local CLI and remote CLI.
+    
+    Args:
+        results: List of AudioSearchResult, dict, or raw Release objects
+        artist: The artist name being searched (for header)
+        title: The track title being searched (for header)
+        use_colors: Whether to use ANSI color codes (default True)
+        output_func: Function to use for output (default print, can use logger.info)
+    """
+    if use_colors:
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+        CYAN = '\033[36m'
+    else:
+        RESET = BOLD = CYAN = ''
+    
+    output_func("")
+    output_func(f"{BOLD}{'=' * 70}{RESET}")
+    output_func(f"{BOLD}Search Results for:{RESET} {CYAN}{artist}{RESET} - {BOLD}{title}{RESET}")
+    output_func(f"{BOLD}{'=' * 70}{RESET}")
+    output_func("")
+    
+    for i, result in enumerate(results, 1):
+        line = format_search_result_line(result, i, use_colors=use_colors)
+        output_func(line)
+    
+    output_func("")
+    output_func(f"  {BOLD}  0){RESET} Cancel")
+    output_func("")
 
 
 class AudioFetcher(ABC):
@@ -325,6 +478,8 @@ class FlacFetchAudioFetcher(AudioFetcher):
                     quality=quality_str,
                     source_id=getattr(result, "info_hash", None),
                     index=i,  # Set index for API selection
+                    seeders=getattr(result, "seeders", None),
+                    target_file=getattr(result, "target_file", None),
                     raw_result=result,
                 )
             )
@@ -632,41 +787,8 @@ class FlacFetchAudioFetcher(AudioFetcher):
         Raises:
             UserCancelledError: If user cancels selection
         """
-        print(f"\n{'=' * 60}")
-        print(f"Search Results for: {artist} - {title}")
-        print(f"{'=' * 60}\n")
-
-        for i, result in enumerate(results, 1):
-            # Use correct flacfetch attribute names
-            source_name = getattr(result, "source_name", "Unknown")
-            result_title = getattr(result, "title", "Unknown")
-            result_artist = getattr(result, "artist", "Unknown")
-            quality = getattr(result, "quality", None)
-            duration_seconds = getattr(result, "duration_seconds", None)
-            seeders = getattr(result, "seeders", None)
-            target_file = getattr(result, "target_file", None)
-
-            # Format duration if available
-            duration_str = ""
-            if duration_seconds:
-                minutes = duration_seconds // 60
-                seconds = duration_seconds % 60
-                duration_str = f" [{minutes}:{seconds:02d}]"
-
-            # Format quality - it's a Quality object with __str__
-            quality_str = f" ({quality})" if quality else ""
-
-            # Format seeders for torrent sources
-            seeders_str = f" Seeders: {seeders}" if seeders is not None else ""
-
-            # Format target file
-            file_str = f' "{target_file}"' if target_file else ""
-
-            print(f"  {i}. [{source_name}] {result_artist} - {result_title}{quality_str}{duration_str}{seeders_str}{file_str}")
-
-        print()
-        print("  0. Cancel")
-        print()
+        # Use shared display function for consistent formatting
+        print_search_results(results, artist, title, use_colors=True)
 
         while True:
             try:

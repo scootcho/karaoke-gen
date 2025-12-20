@@ -36,6 +36,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
+from karaoke_gen.audio_fetcher import print_search_results, format_search_result_line
 
 
 class JobStatus(str, Enum):
@@ -1527,6 +1528,8 @@ class JobMonitor:
             # Get search results
             results_data = self.client.get_audio_search_results(job_id)
             results = results_data.get('results', [])
+            artist = results_data.get('artist', 'Unknown')
+            title = results_data.get('title', 'Unknown')
             
             if not results:
                 self.logger.error("No search results available")
@@ -1537,42 +1540,24 @@ class JobMonitor:
                 self.logger.info("Non-interactive mode: Auto-selecting first result")
                 selection_index = 0
             else:
-                self.logger.info("")
-                self.logger.info("Choose which audio source to download:")
-                self.logger.info("")
-                
-                for result in results:
-                    index = result.get('index', 0)
-                    provider = result.get('provider', 'Unknown')
-                    artist = result.get('artist', 'Unknown')
-                    title = result.get('title', 'Unknown')
-                    quality = result.get('quality', '')
-                    duration = result.get('duration')
-                    
-                    # Format duration if available
-                    duration_str = ""
-                    if duration:
-                        minutes = duration // 60
-                        seconds = duration % 60
-                        duration_str = f" [{minutes}:{seconds:02d}]"
-                    
-                    quality_str = f" ({quality})" if quality else ""
-                    
-                    self.logger.info(f"  {index + 1}) [{provider}] {artist} - {title}{quality_str}{duration_str}")
-                
-                self.logger.info("")
+                # Use shared formatting function for consistent, colorized output
+                # This matches the local CLI display format with all info (seeders, target file, etc.)
+                print_search_results(results, artist, title, use_colors=True)
                 
                 selection_index = -1
                 while selection_index < 0:
                     try:
-                        choice = input(f"Enter your choice (1-{len(results)}): ").strip()
+                        choice = input(f"Enter your choice (1-{len(results)}, or 0 to cancel): ").strip()
+                        if choice == "0":
+                            self.logger.info("Selection cancelled by user")
+                            raise KeyboardInterrupt
                         choice_num = int(choice)
                         if 1 <= choice_num <= len(results):
                             selection_index = choice_num - 1
                         else:
-                            self.logger.error(f"Please enter a number between 1 and {len(results)}")
+                            print(f"Please enter a number between 0 and {len(results)}")
                     except ValueError:
-                        self.logger.error("Please enter a valid number")
+                        print("Please enter a valid number")
                     except KeyboardInterrupt:
                         print()
                         raise

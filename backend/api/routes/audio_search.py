@@ -91,6 +91,8 @@ class AudioSearchResultResponse(BaseModel):
     duration: Optional[int] = None
     quality: Optional[str] = None
     source_id: Optional[str] = None
+    seeders: Optional[int] = None
+    target_file: Optional[str] = None
 
 
 class AudioSearchResponse(BaseModel):
@@ -473,6 +475,8 @@ async def get_audio_search_results(job_id: str):
         "status": "success",
         "job_id": job_id,
         "job_status": job.status,
+        "artist": job.audio_search_artist or job.artist,
+        "title": job.audio_search_title or job.title,
         "results": search_results,
         "results_count": len(search_results),
     }

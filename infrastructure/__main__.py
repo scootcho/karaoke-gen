@@ -428,6 +428,24 @@ audio_separator_secret = secretmanager.Secret(
     ),
 )
 
+# Redacted API Key Secret (for flacfetch audio search)
+redacted_api_key_secret = secretmanager.Secret(
+    "redacted-api-key",
+    secret_id="redacted-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# OPS API Key Secret (for flacfetch audio search)
+ops_api_key_secret = secretmanager.Secret(
+    "ops-api-key",
+    secret_id="ops-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
 # Create Cloud Run Domain Mapping
 # Maps api.nomadkaraoke.com to the karaoke-backend service
 domain_mapping = cloudrun.DomainMapping(
