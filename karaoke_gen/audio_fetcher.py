@@ -163,29 +163,6 @@ def _check_interrupt():
         raise UserCancelledError("Operation cancelled by user")
 
 
-# Re-export flacfetch's display functions for backwards compatibility
-# These are the canonical implementations - no need to duplicate
-from flacfetch import format_release_line, print_releases
-
-# Alias for backwards compatibility with existing code that imports these names
-def format_search_result_line(result, index, use_colors=True):
-    """
-    Format a single search result for display.
-    
-    This is a wrapper around flacfetch's format_release_line for backwards compatibility.
-    """
-    return format_release_line(index, result, target_artist=None, use_colors=use_colors)
-
-
-def print_search_results(results, artist, title, use_colors=True, output_func=print):
-    """
-    Print formatted search results for user selection.
-    
-    This is a wrapper around flacfetch's print_releases for backwards compatibility.
-    """
-    print_releases(results, target_artist=artist, use_colors=use_colors, output_func=output_func)
-
-
 class AudioFetcher(ABC):
     """Abstract base class for audio fetching implementations."""
 
