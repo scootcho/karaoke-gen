@@ -41,6 +41,7 @@ class TestAudioSearchResult:
         assert result.duration is None
         assert result.quality is None
         assert result.source_id is None
+        assert result.index == 0  # Default index
         assert result.raw_result is None
 
     def test_full_creation(self):
@@ -54,12 +55,146 @@ class TestAudioSearchResult:
             duration=240,
             quality="FLAC",
             source_id="123456",
+            index=5,
             raw_result=raw,
         )
         assert result.duration == 240
         assert result.quality == "FLAC"
         assert result.source_id == "123456"
+        assert result.index == 5
         assert result.raw_result == raw
+
+    def test_to_dict_basic(self):
+        """Test to_dict with minimal fields."""
+        result = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="YouTube",
+        )
+        data = result.to_dict()
+        
+        assert data["title"] == "Test Song"
+        assert data["artist"] == "Test Artist"
+        assert data["url"] == "https://example.com/song"
+        assert data["provider"] == "YouTube"
+        assert data["duration"] is None
+        assert data["quality"] is None
+        assert data["source_id"] is None
+        assert data["index"] == 0
+        # raw_result should NOT be in serialized dict
+        assert "raw_result" not in data
+
+    def test_to_dict_full(self):
+        """Test to_dict with all fields populated."""
+        raw = {"some": "data"}
+        result = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="Redacted",
+            duration=240,
+            quality="FLAC 24bit",
+            source_id="abc123",
+            index=3,
+            raw_result=raw,
+        )
+        data = result.to_dict()
+        
+        assert data["title"] == "Test Song"
+        assert data["artist"] == "Test Artist"
+        assert data["url"] == "https://example.com/song"
+        assert data["provider"] == "Redacted"
+        assert data["duration"] == 240
+        assert data["quality"] == "FLAC 24bit"
+        assert data["source_id"] == "abc123"
+        assert data["index"] == 3
+        # raw_result should NOT be in serialized dict
+        assert "raw_result" not in data
+
+    def test_from_dict_basic(self):
+        """Test from_dict with minimal fields."""
+        data = {
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "url": "https://example.com/song",
+            "provider": "YouTube",
+        }
+        result = AudioSearchResult.from_dict(data)
+        
+        assert result.title == "Test Song"
+        assert result.artist == "Test Artist"
+        assert result.url == "https://example.com/song"
+        assert result.provider == "YouTube"
+        assert result.duration is None
+        assert result.quality is None
+        assert result.source_id is None
+        assert result.index == 0  # Default
+        assert result.raw_result is None  # Always None from dict
+
+    def test_from_dict_full(self):
+        """Test from_dict with all fields."""
+        data = {
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "url": "https://example.com/song",
+            "provider": "Redacted",
+            "duration": 240,
+            "quality": "FLAC 24bit",
+            "source_id": "abc123",
+            "index": 7,
+        }
+        result = AudioSearchResult.from_dict(data)
+        
+        assert result.title == "Test Song"
+        assert result.artist == "Test Artist"
+        assert result.url == "https://example.com/song"
+        assert result.provider == "Redacted"
+        assert result.duration == 240
+        assert result.quality == "FLAC 24bit"
+        assert result.source_id == "abc123"
+        assert result.index == 7
+        assert result.raw_result is None  # Never restored from dict
+
+    def test_from_dict_with_defaults(self):
+        """Test from_dict uses defaults for missing fields."""
+        data = {}
+        result = AudioSearchResult.from_dict(data)
+        
+        assert result.title == ""
+        assert result.artist == ""
+        assert result.url == ""
+        assert result.provider == "Unknown"
+        assert result.index == 0
+        assert result.raw_result is None
+
+    def test_roundtrip_serialization(self):
+        """Test to_dict -> from_dict roundtrip preserves data."""
+        original = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="Redacted",
+            duration=240,
+            quality="FLAC",
+            source_id="abc123",
+            index=2,
+            raw_result={"will": "be lost"},
+        )
+        
+        data = original.to_dict()
+        restored = AudioSearchResult.from_dict(data)
+        
+        assert restored.title == original.title
+        assert restored.artist == original.artist
+        assert restored.url == original.url
+        assert restored.provider == original.provider
+        assert restored.duration == original.duration
+        assert restored.quality == original.quality
+        assert restored.source_id == original.source_id
+        assert restored.index == original.index
+        # raw_result is NOT preserved
+        assert restored.raw_result is None
 
 
 class TestAudioFetchResult:
@@ -92,6 +227,111 @@ class TestAudioFetchResult:
         )
         assert result.duration == 180
         assert result.quality == "FLAC 24bit"
+
+    def test_to_dict_basic(self):
+        """Test to_dict with minimal fields."""
+        result = AudioFetchResult(
+            filepath="/path/to/song.flac",
+            artist="Test Artist",
+            title="Test Song",
+            provider="YouTube",
+        )
+        data = result.to_dict()
+        
+        assert data["filepath"] == "/path/to/song.flac"
+        assert data["artist"] == "Test Artist"
+        assert data["title"] == "Test Song"
+        assert data["provider"] == "YouTube"
+        assert data["duration"] is None
+        assert data["quality"] is None
+
+    def test_to_dict_full(self):
+        """Test to_dict with all fields populated."""
+        result = AudioFetchResult(
+            filepath="/path/to/song.flac",
+            artist="Test Artist",
+            title="Test Song",
+            provider="Redacted",
+            duration=180,
+            quality="FLAC 24bit",
+        )
+        data = result.to_dict()
+        
+        assert data["filepath"] == "/path/to/song.flac"
+        assert data["artist"] == "Test Artist"
+        assert data["title"] == "Test Song"
+        assert data["provider"] == "Redacted"
+        assert data["duration"] == 180
+        assert data["quality"] == "FLAC 24bit"
+
+    def test_from_dict_basic(self):
+        """Test from_dict with minimal fields."""
+        data = {
+            "filepath": "/path/to/song.flac",
+            "artist": "Test Artist",
+            "title": "Test Song",
+            "provider": "YouTube",
+        }
+        result = AudioFetchResult.from_dict(data)
+        
+        assert result.filepath == "/path/to/song.flac"
+        assert result.artist == "Test Artist"
+        assert result.title == "Test Song"
+        assert result.provider == "YouTube"
+        assert result.duration is None
+        assert result.quality is None
+
+    def test_from_dict_full(self):
+        """Test from_dict with all fields."""
+        data = {
+            "filepath": "/path/to/song.flac",
+            "artist": "Test Artist",
+            "title": "Test Song",
+            "provider": "Redacted",
+            "duration": 180,
+            "quality": "FLAC 24bit",
+        }
+        result = AudioFetchResult.from_dict(data)
+        
+        assert result.filepath == "/path/to/song.flac"
+        assert result.artist == "Test Artist"
+        assert result.title == "Test Song"
+        assert result.provider == "Redacted"
+        assert result.duration == 180
+        assert result.quality == "FLAC 24bit"
+
+    def test_from_dict_with_defaults(self):
+        """Test from_dict uses defaults for missing fields."""
+        data = {}
+        result = AudioFetchResult.from_dict(data)
+        
+        assert result.filepath == ""
+        assert result.artist == ""
+        assert result.title == ""
+        assert result.provider == "Unknown"
+        assert result.duration is None
+        assert result.quality is None
+
+    def test_roundtrip_serialization(self):
+        """Test to_dict -> from_dict roundtrip preserves data."""
+        original = AudioFetchResult(
+            filepath="/path/to/song.flac",
+            artist="Test Artist",
+            title="Test Song",
+            provider="Redacted",
+            duration=180,
+            quality="FLAC 24bit",
+        )
+        
+        data = original.to_dict()
+        restored = AudioFetchResult.from_dict(data)
+        
+        assert restored.filepath == original.filepath
+        assert restored.artist == original.artist
+        assert restored.title == original.title
+        assert restored.provider == original.provider
+        assert restored.duration == original.duration
+        assert restored.quality == original.quality
 
 
 class TestExceptions:
@@ -427,6 +667,167 @@ class TestFlacFetchAudioFetcher:
         
         captured = capsys.readouterr()
         assert "Cancelled" in captured.out
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_select_best_returns_index(self, mock_get_manager, fetcher):
+        """Test select_best returns the index of the best result."""
+        # Create mock raw results
+        raw_result_1 = MagicMock()
+        raw_result_2 = MagicMock()
+        raw_result_3 = MagicMock()
+        
+        # Create AudioSearchResults with raw_result
+        results = [
+            AudioSearchResult(
+                title="Song 1", artist="Artist", url="url1", provider="YouTube",
+                index=0, raw_result=raw_result_1,
+            ),
+            AudioSearchResult(
+                title="Song 2", artist="Artist", url="url2", provider="Redacted",
+                index=1, raw_result=raw_result_2,
+            ),
+            AudioSearchResult(
+                title="Song 3", artist="Artist", url="url3", provider="OPS",
+                index=2, raw_result=raw_result_3,
+            ),
+        ]
+        
+        # Mock manager.select_best to return the second raw result (index 1)
+        mock_manager = MagicMock()
+        mock_manager.select_best.return_value = raw_result_2
+        mock_get_manager.return_value = mock_manager
+        
+        # Execute
+        best_index = fetcher.select_best(results)
+        
+        # Verify
+        assert best_index == 1
+        mock_manager.select_best.assert_called_once()
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_select_best_empty_list(self, mock_get_manager, fetcher):
+        """Test select_best returns 0 for empty list."""
+        best_index = fetcher.select_best([])
+        assert best_index == 0
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_select_best_single_result(self, mock_get_manager, fetcher):
+        """Test select_best returns 0 for single result."""
+        raw_result = MagicMock()
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube",
+                index=0, raw_result=raw_result,
+            ),
+        ]
+        
+        mock_manager = MagicMock()
+        mock_manager.select_best.return_value = raw_result
+        mock_get_manager.return_value = mock_manager
+        
+        best_index = fetcher.select_best(results)
+        
+        assert best_index == 0
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_select_best_without_raw_results(self, mock_get_manager, fetcher):
+        """Test select_best returns 0 when results have no raw_result."""
+        results = [
+            AudioSearchResult(
+                title="Song 1", artist="Artist", url="url1", provider="YouTube",
+                index=0, raw_result=None,
+            ),
+            AudioSearchResult(
+                title="Song 2", artist="Artist", url="url2", provider="Redacted",
+                index=1, raw_result=None,
+            ),
+        ]
+        
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        
+        best_index = fetcher.select_best(results)
+        
+        # Should return 0 as fallback since no raw results
+        assert best_index == 0
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_select_best_handles_exception(self, mock_get_manager, fetcher):
+        """Test select_best returns 0 when manager.select_best raises exception."""
+        raw_result = MagicMock()
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube",
+                index=0, raw_result=raw_result,
+            ),
+        ]
+        
+        mock_manager = MagicMock()
+        mock_manager.select_best.side_effect = Exception("Some error")
+        mock_get_manager.return_value = mock_manager
+        
+        # Should not raise, should return 0 as fallback
+        best_index = fetcher.select_best(results)
+        
+        assert best_index == 0
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_search_sets_index_on_results(self, mock_get_manager, fetcher):
+        """Test search() sets the correct index on each result."""
+        # Create multiple mock results
+        mock_results = []
+        for i in range(3):
+            mock_result = MagicMock()
+            mock_result.title = f"Song {i}"
+            mock_result.artist = "Artist"
+            mock_result.download_url = f"https://example.com/{i}"
+            mock_result.source_name = "YouTube"
+            mock_result.duration_seconds = 180
+            mock_result.quality = None
+            mock_result.info_hash = str(i)
+            mock_results.append(mock_result)
+        
+        mock_manager = MagicMock()
+        mock_manager.search.return_value = mock_results
+        mock_get_manager.return_value = mock_manager
+        
+        results = fetcher.search("Artist", "Song")
+        
+        # Verify indices are set correctly
+        assert len(results) == 3
+        assert results[0].index == 0
+        assert results[1].index == 1
+        assert results[2].index == 2
+
+
+class TestFlacFetcherAlias:
+    """Tests for FlacFetcher alias."""
+    
+    def test_flacfetcher_alias_exists(self):
+        """Test FlacFetcher alias is available."""
+        from karaoke_gen.audio_fetcher import FlacFetcher
+        assert FlacFetcher is not None
+
+    def test_flacfetcher_is_flacfetchaudiofetcher(self):
+        """Test FlacFetcher is the same as FlacFetchAudioFetcher."""
+        from karaoke_gen.audio_fetcher import FlacFetcher
+        assert FlacFetcher is FlacFetchAudioFetcher
+
+    def test_flacfetcher_can_instantiate(self):
+        """Test FlacFetcher alias can be used to create instances."""
+        from karaoke_gen.audio_fetcher import FlacFetcher
+        fetcher = FlacFetcher()
+        assert isinstance(fetcher, FlacFetchAudioFetcher)
+
+    def test_flacfetcher_with_parameters(self):
+        """Test FlacFetcher alias passes parameters correctly."""
+        from karaoke_gen.audio_fetcher import FlacFetcher
+        fetcher = FlacFetcher(
+            redacted_api_key="test_key",
+            ops_api_key="ops_key",
+        )
+        assert fetcher._redacted_api_key == "test_key"
+        assert fetcher._ops_api_key == "ops_key"
 
 
 class TestCreateAudioFetcher:
