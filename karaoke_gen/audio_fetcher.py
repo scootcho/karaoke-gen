@@ -13,8 +13,8 @@ import tempfile
 import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, asdict, field
+from typing import List, Optional, Dict, Any
 
 # Global flag to track if user requested cancellation via Ctrl+C
 _interrupt_requested = False
@@ -22,7 +22,11 @@ _interrupt_requested = False
 
 @dataclass
 class AudioSearchResult:
-    """Represents a single search result for audio."""
+    """Represents a single search result for audio.
+    
+    Used by both local CLI and cloud backend. Supports serialization
+    for Firestore storage via to_dict()/from_dict().
+    """
 
     title: str
     artist: str
@@ -31,13 +35,49 @@ class AudioSearchResult:
     duration: Optional[int] = None  # Duration in seconds
     quality: Optional[str] = None  # e.g., "FLAC", "320kbps", etc.
     source_id: Optional[str] = None  # Unique ID from the source
-    # Raw result object from the provider (for download)
-    raw_result: Optional[object] = None
+    index: int = 0  # Index in the results list (for API selection)
+    # Raw result object from the provider (for download) - not serialized
+    raw_result: Optional[object] = field(default=None, repr=False)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for JSON/Firestore serialization.
+        
+        Note: raw_result is excluded as it's not serializable.
+        """
+        return {
+            "title": self.title,
+            "artist": self.artist,
+            "url": self.url,
+            "provider": self.provider,
+            "duration": self.duration,
+            "quality": self.quality,
+            "source_id": self.source_id,
+            "index": self.index,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AudioSearchResult":
+        """Create from dict (e.g., from Firestore)."""
+        return cls(
+            title=data.get("title", ""),
+            artist=data.get("artist", ""),
+            url=data.get("url", ""),
+            provider=data.get("provider", "Unknown"),
+            duration=data.get("duration"),
+            quality=data.get("quality"),
+            source_id=data.get("source_id"),
+            index=data.get("index", 0),
+            raw_result=None,  # Not stored in serialized form
+        )
 
 
 @dataclass
 class AudioFetchResult:
-    """Result of an audio fetch operation."""
+    """Result of an audio fetch operation.
+    
+    Used by both local CLI and cloud backend. Supports serialization
+    for Firestore storage via to_dict()/from_dict().
+    """
 
     filepath: str
     artist: str
@@ -45,6 +85,22 @@ class AudioFetchResult:
     provider: str
     duration: Optional[int] = None
     quality: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for JSON/Firestore serialization."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AudioFetchResult":
+        """Create from dict (e.g., from Firestore)."""
+        return cls(
+            filepath=data.get("filepath", ""),
+            artist=data.get("artist", ""),
+            title=data.get("title", ""),
+            provider=data.get("provider", "Unknown"),
+            duration=data.get("duration"),
+            quality=data.get("quality"),
+        )
 
 
 class AudioFetcherError(Exception):
@@ -160,6 +216,8 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
     This provides access to multiple audio sources including private music trackers
     and YouTube, with intelligent prioritization of high-quality sources.
+    
+    Also exported as FlacFetcher for shorter name.
     """
 
     def __init__(
@@ -252,7 +310,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
         # Convert to our AudioSearchResult format
         search_results = []
-        for result in results:
+        for i, result in enumerate(results):
             # Get quality as string if it's a Quality object
             quality = getattr(result, "quality", None)
             quality_str = str(quality) if quality else None
@@ -266,6 +324,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
                     duration=getattr(result, "duration_seconds", None),
                     quality=quality_str,
                     source_id=getattr(result, "info_hash", None),
+                    index=i,  # Set index for API selection
                     raw_result=result,
                 )
             )
@@ -328,6 +387,40 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
         except Exception as e:
             raise DownloadError(f"Failed to download {result.artist} - {result.title}: {e}") from e
+
+    def select_best(self, results: List[AudioSearchResult]) -> int:
+        """
+        Select the best result from a list of search results.
+        
+        Uses flacfetch's built-in quality ranking to determine the best source.
+        This is useful for automated/non-interactive usage.
+        
+        Args:
+            results: List of AudioSearchResult objects from search()
+            
+        Returns:
+            Index of the best result in the list
+        """
+        if not results:
+            return 0
+        
+        manager = self._get_manager()
+        
+        # Get raw results that have raw_result set
+        raw_results = [r.raw_result for r in results if r.raw_result is not None]
+        
+        if raw_results:
+            try:
+                best = manager.select_best(raw_results)
+                # Find index of best result
+                for i, r in enumerate(results):
+                    if r.raw_result == best:
+                        return i
+            except Exception as e:
+                self.logger.warning(f"select_best failed, using first result: {e}")
+        
+        # Fallback: return first result
+        return 0
 
     def search_and_download(
         self,
@@ -596,6 +689,10 @@ class FlacFetchAudioFetcher(AudioFetcher):
             except KeyboardInterrupt:
                 print("\nCancelled")
                 raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
+
+
+# Alias for shorter name - used by backend and other consumers
+FlacFetcher = FlacFetchAudioFetcher
 
 
 def create_audio_fetcher(
