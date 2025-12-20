@@ -415,8 +415,9 @@ jobs:
         run: |
           echo "🔍 Checking if base image needs rebuild..."
 
-          CURRENT_HASH=$(sha256sum poetry.lock | cut -d' ' -f1)
-          echo "Current poetry.lock hash: $CURRENT_HASH"
+          # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
+          CURRENT_HASH=$(cat poetry.lock backend/Dockerfile.base | sha256sum | cut -d' ' -f1)
+          echo "Current combined hash (poetry.lock + Dockerfile.base): $CURRENT_HASH"
 
           gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
@@ -424,14 +425,18 @@ jobs:
           EXISTING_HASH=""
 
           if docker pull $BASE_IMAGE 2>/dev/null; then
-            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
+            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
+            # Fallback to old label name for backwards compatibility
+            if [ -z "$EXISTING_HASH" ]; then
+              EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
+            fi
             echo "Existing base image hash: $EXISTING_HASH"
           else
             echo "⚠️ No existing base image found"
           fi
 
           if [ "$CURRENT_HASH" != "$EXISTING_HASH" ]; then
-            echo "🔄 Base image needs rebuild (poetry.lock changed)"
+            echo "🔄 Base image needs rebuild (poetry.lock or Dockerfile.base changed)"
             echo "needs_rebuild=true" >> $GITHUB_OUTPUT
           else
             echo "✅ Base image is up to date"

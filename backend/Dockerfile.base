@@ -58,9 +58,9 @@ RUN python -m spacy download en_core_web_sm
 # Label with build info
 ARG BUILD_DATE
 ARG BUILD_ID
-ARG POETRY_LOCK_HASH
+ARG BASE_CONTENT_HASH
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${BUILD_ID}"
 LABEL org.opencontainers.image.title="karaoke-backend-base"
-LABEL org.opencontainers.image.description="Base image with Python dependencies for karaoke-backend"
-LABEL poetry.lock.hash="${POETRY_LOCK_HASH}"
+LABEL org.opencontainers.image.description="Base image with Python dependencies and system tools for karaoke-backend"
+LABEL base.content.hash="${BASE_CONTENT_HASH}"
