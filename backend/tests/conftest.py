@@ -35,6 +35,26 @@ from backend.models.job import Job, JobStatus, JobCreate
 
 
 @pytest.fixture
+def mock_auth_service():
+    """Mock AuthService to accept test tokens."""
+    with patch('backend.api.dependencies.get_auth_service') as mock_get_service:
+        mock_service = MagicMock()
+        # Accept "test-admin-token" as valid admin token
+        mock_service.validate_token.return_value = (True, 'admin', 999, 'Valid token')
+        mock_get_service.return_value = mock_service
+        yield mock_service
+
+
+@pytest.fixture
+def auth_headers():
+    """Get authentication headers for test requests."""
+    return {
+        "Authorization": "Bearer test-admin-token",
+        "Content-Type": "application/json"
+    }
+
+
+@pytest.fixture
 def mock_firestore():
     """Mock Firestore client for unit tests."""
     # Mock at module level for unit tests
