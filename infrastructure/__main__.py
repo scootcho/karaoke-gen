@@ -98,6 +98,14 @@ secrets_write_iam = gcp.projects.IAMMember(
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant Cloud Trace write permissions (for OpenTelemetry tracing)
+cloud_trace_iam = gcp.projects.IAMMember(
+    "karaoke-backend-cloudtrace-agent",
+    project=project_id,
+    role="roles/cloudtrace.agent",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Grant Cloud Build service accounts access to Artifact Registry
 # Cloud Build uses multiple service accounts depending on the context
 cloudbuild_service_accounts = [
@@ -346,6 +354,15 @@ cloud_tasks_enqueuer = gcp.projects.IAMMember(
     project=project_id,
     role="roles/cloudtasks.enqueuer",
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant backend service account permission to "act as" itself for Cloud Tasks OIDC authentication
+# This is required when creating Cloud Tasks with oidc_token that specifies this service account
+backend_sa_act_as_self = gcp.serviceaccount.IAMBinding(
+    "karaoke-backend-act-as-self",
+    service_account_id=service_account.name,
+    role="roles/iam.serviceAccountUser",
+    members=[service_account.email.apply(lambda email: f"serviceAccount:{email}")],
 )
 
 # ==================== Cloud Run Job for Video Encoding (Phase 2 Scalability) ====================
