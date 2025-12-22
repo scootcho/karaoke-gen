@@ -598,7 +598,22 @@
         let animationFrameId = null;
         let currentAudioElement = null;  // Track audio element reference for listener management
         
-        const API_BASE = '/api/jobs/local';
+        // Parse URL parameters for cloud mode
+        const urlParams = new URLSearchParams(window.location.search);
+        const encodedBaseApiUrl = urlParams.get('baseApiUrl');
+        const instrumentalToken = urlParams.get('instrumentalToken');
+        
+        // Determine API base URL - cloud mode uses provided URL, local mode uses default
+        const API_BASE = encodedBaseApiUrl 
+            ? decodeURIComponent(encodedBaseApiUrl)
+            : '/api/jobs/local';
+        
+        // Helper to add token to URL if available
+        function addTokenToUrl(url) {
+            if (!instrumentalToken) return url;
+            const separator = url.includes('?') ? '&' : '?';
+            return `${url}${separator}instrumental_token=${encodeURIComponent(instrumentalToken)}`;
+        }
         
         // HTML escape helper to prevent XSS
         function escapeHtml(str) {
@@ -617,8 +632,8 @@
         async function init() {
             try {
                 const [analysisRes, waveformRes] = await Promise.all([
-                    fetch(`${API_BASE}/instrumental-analysis`),
-                    fetch(`${API_BASE}/waveform-data?num_points=1000`)
+                    fetch(addTokenToUrl(`${API_BASE}/instrumental-analysis`)),
+                    fetch(addTokenToUrl(`${API_BASE}/waveform-data?num_points=1000`))
                 ]);
                 
                 if (!analysisRes.ok) throw new Error('Failed to load analysis');
@@ -1120,15 +1135,23 @@
         }
         
         function getAudioUrl() {
-            const urls = {
-                original: '/api/audio/original',
-                backing: '/api/audio/backing_vocals',
-                clean: '/api/audio/clean_instrumental',
-                with_backing: '/api/audio/with_backing',
-                custom: '/api/audio/custom_instrumental',
-                uploaded: '/api/audio/uploaded_instrumental'
+            const stemTypes = {
+                original: 'original',
+                backing: 'backing_vocals',
+                clean: 'clean_instrumental',
+                with_backing: 'with_backing',
+                custom: 'custom_instrumental',
+                uploaded: 'uploaded_instrumental'
             };
-            return urls[activeAudio] || urls.backing;
+            const stemType = stemTypes[activeAudio] || stemTypes.backing;
+            
+            // Cloud mode uses /audio-stream/{stem_type}, local mode uses /api/audio/{stem_type}
+            const isCloudMode = !!encodedBaseApiUrl;
+            const url = isCloudMode 
+                ? `${API_BASE}/audio-stream/${stemType}`
+                : `/api/audio/${stemType}`;
+            
+            return addTokenToUrl(url);
         }
         
         function formatTime(seconds) {
@@ -1295,7 +1318,7 @@
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                const response = await fetch(`${API_BASE}/upload-instrumental`, {
+                const response = await fetch(addTokenToUrl(`${API_BASE}/upload-instrumental`), {
                     method: 'POST',
                     body: formData
                 });
@@ -1354,7 +1377,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/create-custom-instrumental`, {
+                const response = await fetch(addTokenToUrl(`${API_BASE}/create-custom-instrumental`), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ mute_regions: muteRegions })
@@ -1404,7 +1427,7 @@
             }
             
             try {
-                const response = await fetch(`${API_BASE}/select-instrumental`, {
+                const response = await fetch(addTokenToUrl(`${API_BASE}/select-instrumental`), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ selection: selectedOption })

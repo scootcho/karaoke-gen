@@ -400,6 +400,12 @@ jobs:
           mkdir -p frontend/out/lyrics
           cp -r lyrics_transcriber_temp/lyrics_transcriber/frontend/dist/* frontend/out/lyrics/
 
+      # ===== Copy Instrumental Review UI (Static HTML) =====
+      - name: Copy instrumental review UI to main output
+        run: |
+          mkdir -p frontend/out/instrumental
+          cp karaoke_gen/instrumental_review/static/index.html frontend/out/instrumental/
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

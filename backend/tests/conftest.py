@@ -50,7 +50,7 @@ def mock_auth_dependency(request):
         return
     
     from backend.services.auth_service import UserType
-    from backend.api.dependencies import require_auth, require_admin, require_review_auth
+    from backend.api.dependencies import require_auth, require_admin, require_review_auth, require_instrumental_auth
     from backend.main import app
     
     # Create mock auth functions
@@ -66,10 +66,15 @@ def mock_auth_dependency(request):
         """Mock require_review_auth to always return valid review access."""
         return (job_id, "full")
     
+    async def mock_require_instrumental_auth(job_id: str = "test123"):
+        """Mock require_instrumental_auth to always return valid instrumental review access."""
+        return (job_id, "full")
+    
     # Use FastAPI's dependency override system
     app.dependency_overrides[require_auth] = mock_require_auth
     app.dependency_overrides[require_admin] = mock_require_admin
     app.dependency_overrides[require_review_auth] = mock_require_review_auth
+    app.dependency_overrides[require_instrumental_auth] = mock_require_instrumental_auth
     
     yield
     

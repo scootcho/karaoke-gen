@@ -289,6 +289,15 @@ class JobManager:
             updates['review_token_expires_at'] = review_token_expires
             logger.info(f"Generated review token for job {job_id}, expires in 48 hours")
         
+        # Generate instrumental token when entering AWAITING_INSTRUMENTAL_SELECTION state
+        if new_status == JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
+            from backend.api.dependencies import generate_review_token, get_review_token_expiry
+            instrumental_token = generate_review_token()  # Reuse same token generator
+            instrumental_token_expires = get_review_token_expiry(hours=48)  # 48 hour expiry
+            updates['instrumental_token'] = instrumental_token
+            updates['instrumental_token_expires_at'] = instrumental_token_expires
+            logger.info(f"Generated instrumental token for job {job_id}, expires in 48 hours")
+        
         # If we have state_data_updates, merge them with existing state_data
         merged_state_data = None
         if state_data_updates:
@@ -318,6 +327,13 @@ class JobManager:
             self.firestore.update_job(job_id, {
                 'review_token': updates['review_token'],
                 'review_token_expires_at': updates['review_token_expires_at']
+            })
+        
+        # Apply instrumental token update separately if generated
+        if new_status == JobStatus.AWAITING_INSTRUMENTAL_SELECTION and 'instrumental_token' in updates:
+            self.firestore.update_job(job_id, {
+                'instrumental_token': updates['instrumental_token'],
+                'instrumental_token_expires_at': updates['instrumental_token_expires_at']
             })
         
         logger.info(f"Job {job_id} transitioned to {new_status}")

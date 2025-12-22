@@ -252,8 +252,10 @@ class Job(BaseModel):
     keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
     # Review authentication (Batch 7)
-    review_token: Optional[str] = None           # Job-scoped token for review UI access (generated when entering AWAITING_REVIEW)
+    review_token: Optional[str] = None           # Job-scoped token for lyrics review UI access (generated when entering AWAITING_REVIEW)
     review_token_expires_at: Optional[datetime] = None  # Token expiry time (optional, for extra security)
+    instrumental_token: Optional[str] = None     # Job-scoped token for instrumental review UI access (generated when entering AWAITING_INSTRUMENTAL_SELECTION)
+    instrumental_token_expires_at: Optional[datetime] = None  # Token expiry time
     
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)

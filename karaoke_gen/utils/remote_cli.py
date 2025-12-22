@@ -1675,7 +1675,25 @@ class JobMonitor:
 
     def _open_instrumental_review_and_wait(self, job_id: str) -> None:
         """Open browser to instrumental review UI and wait for selection."""
-        review_url = f"{self.config.review_ui_url}/jobs/{job_id}/instrumental-review"
+        # Get instrumental token from job data
+        instrumental_token = ''
+        try:
+            job_data = self.client.get_job(job_id)
+            instrumental_token = job_data.get('instrumental_token', '')
+        except Exception:
+            pass
+        
+        # Build the review URL with API endpoint and token
+        # The instrumental UI is hosted at /instrumental/ on the frontend domain
+        base_api_url = f"{self.config.service_url}/api/jobs/{job_id}"
+        encoded_api_url = urllib.parse.quote(base_api_url, safe='')
+        
+        # Use /instrumental/ path on the frontend (same domain as review_ui_url but different path)
+        # review_ui_url is like https://gen.nomadkaraoke.com/lyrics, we want /instrumental/
+        frontend_base = self.config.review_ui_url.rsplit('/', 1)[0]  # Remove /lyrics
+        review_url = f"{frontend_base}/instrumental/?baseApiUrl={encoded_api_url}"
+        if instrumental_token:
+            review_url += f"&instrumentalToken={instrumental_token}"
         
         self.logger.info("")
         self.logger.info("=" * 60)

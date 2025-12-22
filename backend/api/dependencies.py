@@ -253,3 +253,93 @@ def require_review_auth_factory(job_id_param: str = "job_id"):
 
 # Default instance for most review endpoints
 require_review_auth = require_review_auth_factory()
+
+
+def require_instrumental_auth_factory(job_id_param: str = "job_id"):
+    """
+    Factory to create an instrumental review authentication dependency.
+    
+    Accepts either:
+    1. Full user authentication (admin/user token)
+    2. Job-specific instrumental token (only valid for the specific job)
+    
+    Args:
+        job_id_param: Name of the path parameter containing the job ID
+    
+    Returns:
+        Dependency function that validates instrumental review access
+    """
+    async def require_instrumental_auth(
+        request: Request,
+        job_id: str = Path(...),
+        instrumental_token: Optional[str] = Query(None, description="Job-specific instrumental review token"),
+        auth_service: AuthService = Depends(get_auth_service),
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+        token: Optional[str] = Query(None, alias="token", description="Full access token")
+    ) -> Tuple[str, str]:
+        """
+        Validate instrumental review access for a job.
+        
+        Returns:
+            (job_id, auth_type) where auth_type is "full" or "instrumental_token"
+            
+        Raises:
+            HTTPException: 401 if authentication fails
+        """
+        # Import here to avoid circular dependency
+        from backend.services.job_manager import JobManager
+        
+        # Try full authentication first
+        full_token = None
+        if credentials:
+            full_token = credentials.credentials
+        elif token:
+            full_token = token
+        
+        if full_token:
+            is_valid, user_type, remaining_uses, message = auth_service.validate_token(full_token)
+            if is_valid:
+                logger.info(f"Instrumental access granted via full auth ({user_type}) for job {job_id}")
+                return job_id, "full"
+        
+        # Try instrumental token
+        if instrumental_token:
+            job_manager = JobManager()
+            job = job_manager.get_job(job_id)
+            
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+            
+            # Validate instrumental token matches
+            if job.instrumental_token and secrets.compare_digest(job.instrumental_token, instrumental_token):
+                # Check expiry if set
+                if job.instrumental_token_expires_at:
+                    now = datetime.now(UTC)
+                    # Handle timezone-naive datetimes from Firestore
+                    expiry = job.instrumental_token_expires_at
+                    if expiry.tzinfo is None:
+                        expiry = expiry.replace(tzinfo=UTC)
+                    
+                    if now > expiry:
+                        logger.warning(f"Instrumental token expired for job {job_id}")
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Instrumental review token has expired. Please request a new review link."
+                        )
+                
+                logger.info(f"Instrumental access granted via instrumental_token for job {job_id}")
+                return job_id, "instrumental_token"
+            else:
+                logger.warning(f"Invalid instrumental token for job {job_id}")
+        
+        # No valid authentication
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Provide either a full access token or a valid instrumental_token for this job."
+        )
+    
+    return require_instrumental_auth
+
+
+# Default instance for most instrumental review endpoints
+require_instrumental_auth = require_instrumental_auth_factory()
