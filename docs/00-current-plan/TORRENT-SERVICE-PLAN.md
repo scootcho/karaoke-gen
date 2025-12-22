@@ -1,10 +1,10 @@
 # Flacfetch HTTP API Service Implementation Plan
 
 **Created:** 2025-12-20  
-**Updated:** 2025-12-20  
-**Status:** In Progress  
+**Updated:** 2025-12-22  
+**Status:** Complete ✅  
 **Priority:** Medium  
-**Estimated Effort:** 3-4 days
+**Estimated Effort:** 3-4 days (actual: ~3 days)
 
 ## Problem Statement
 
@@ -701,14 +701,14 @@ If flacfetch service fails:
 
 ## Success Criteria
 
-- [ ] Flacfetch HTTP API accepts search requests and returns results
-- [ ] Downloads complete successfully for Redacted/OPS sources
-- [ ] Downloaded files upload to GCS automatically
-- [ ] Torrents continue seeding after download
-- [ ] Disk cleanup triggers automatically when space is low
-- [ ] Remote CLI shows download progress from flacfetch service
-- [ ] Fallback to local flacfetch works when service unavailable
-- [ ] Static IP can be whitelisted on tracker accounts
+- [x] Flacfetch HTTP API accepts search requests and returns results
+- [x] Downloads complete successfully for Redacted/OPS sources
+- [x] Downloaded files upload to GCS automatically
+- [x] Torrents continue seeding after download
+- [x] Disk cleanup triggers automatically when space is low
+- [x] Remote CLI shows download progress from flacfetch service
+- [x] Fallback to local flacfetch works when service unavailable
+- [x] Static IP can be whitelisted on tracker accounts
 
 ## Timeline
 
@@ -720,6 +720,111 @@ If flacfetch service fails:
 | Phase 4: Monitoring | 0.5 day | Phase 2 |
 | Phase 5: Testing & Docs | 0.5 day | Phase 1-3 |
 | **Total** | **3.5 days** | |
+
+## Implementation Status (2025-12-22)
+
+### Completed Work
+
+#### Phase 1: Flacfetch HTTP API ✅
+- Full HTTP API implemented in `flacfetch/flacfetch/api/`
+- Endpoints: `/search`, `/download`, `/download/{id}/status`, `/download/{id}/file`, `/torrents`, `/health`
+- API key authentication via `X-API-Key` header
+- Disk manager with automatic cleanup when space < 5GB
+- Download manager with search caching and progress tracking
+- Dynamic version reporting via `importlib.metadata`
+- **Current Version:** 0.7.3
+
+#### Phase 2: Infrastructure ✅
+- Pulumi infrastructure in `infrastructure/__main__.py`
+- GCP VM: `flacfetch-service` (e2-small, us-central1-a)
+- Static IP: `104.198.214.26` (whitelisted with trackers)
+- Firewall rules: TCP/UDP 51413 (BitTorrent), TCP 8080 (API)
+- Secrets: `flacfetch-api-key`, `redacted-api-key`, `ops-api-key`, `flacfetch-api-url`
+- GitHub Actions deployer has `compute.admin` and `compute.osLogin` roles
+
+#### Phase 3: Backend Integration ✅
+- `FlacfetchClient` in `backend/services/flacfetch_client.py`
+- `AudioSearchService` updated to use remote flacfetch when configured
+- Cloud Run configured with `FLACFETCH_API_URL` and `FLACFETCH_API_KEY` from Secret Manager
+- `--loop asyncio` added to uvicorn CMD (required for `nest_asyncio` compatibility)
+- `nest_asyncio` applied only when async loop is running (not at import time)
+
+#### Phase 4: Monitoring ✅
+- Health endpoint reports Transmission status, disk usage, provider availability
+- Version verification in deployment workflows
+- Automatic deployment on release via GitHub Actions
+
+#### Phase 5: CLI & Testing ✅
+- `flacfetch-remote` CLI added for testing remote API
+- Downloads file locally with descriptive filenames (e.g., `Artist - Title (Album, 2022, CD, 16bit, Redacted).flac`)
+- 70%+ unit test coverage requirement enforced
+- Integration tests for API routes
+
+### Deployment Automation
+
+#### Flacfetch VM (automatic)
+- `.github/workflows/release-on-version-bump.yml` in flacfetch repo
+- Triggers on version bump in `pyproject.toml`
+- Runs tests → Creates GitHub release → SSHs to VM → Pulls latest → Restarts service
+- Verifies deployed version matches release version
+
+#### Karaoke-gen Backend (version-gated)
+- `.github/workflows/ci.yml` deploy-backend job
+- Only deploys if version tag doesn't exist (requires version bump)
+- Verifies deployed version via `/api/health/detailed` endpoint
+- Retries version check with backoff for Cloud Run routing delays
+
+### Key Files Modified
+
+**Flacfetch repo (`./flacfetch/`):**
+- `flacfetch/api/` - New HTTP API module
+- `flacfetch/interface/cli_remote.py` - New remote CLI
+- `flacfetch/core/manager.py` - Improved sorting (artist match, release type, seeders)
+- `flacfetch/downloaders/torrent.py` - Keep-seeding mode, file permissions fix
+- `.github/workflows/release-on-version-bump.yml` - Auto-deploy to VM
+
+**Karaoke-gen repo:**
+- `backend/services/flacfetch_client.py` - Remote API client
+- `backend/services/audio_search_service.py` - Remote integration with nest_asyncio
+- `backend/Dockerfile` - `--loop asyncio` for uvicorn
+- `infrastructure/__main__.py` - VM, firewall, secrets, WIF bindings
+- `cloudbuild.yaml` - FLACFETCH_API_URL/KEY from Secret Manager
+- `.github/workflows/ci.yml` - Version-gated deployments
+
+### Testing the Integration
+
+```bash
+# Test flacfetch-remote CLI (requires env vars)
+export FLACFETCH_API_URL=http://104.198.214.26:8080
+export FLACFETCH_API_KEY=<from-secret-manager>
+flacfetch-remote "Avril Lavigne" "Unwanted"
+
+# Test backend health
+curl -s https://api.nomadkaraoke.com/api/health/detailed | jq '.dependencies.flacfetch_remote'
+
+# Test backend search
+curl -s -X POST https://api.nomadkaraoke.com/api/audio-search/search \
+  -H "Content-Type: application/json" \
+  -d '{"artist": "Avril Lavigne", "title": "Unwanted"}' | jq '.results | length'
+```
+
+### Known Issues / Future Work
+
+1. **Transmission removal from Cloud Run**: Transmission daemon and startup script removed from Docker images as torrent downloads are now handled by dedicated VM.
+
+2. **URL field in search results**: Made optional in `AudioSearchResultResponse` since remote results don't have direct download URLs.
+
+3. **Sorting improvements**: Results now prioritize:
+   - Lossless first
+   - Artist name match (exact match wins)
+   - Release type (Album > Single > EP > Compilation > Anthology > Remix)
+   - Seeders (more = higher)
+   - Quality (24bit > 16bit, FLAC > MP3)
+
+4. **Future enhancements**:
+   - Cloud Monitoring alerts for disk/CPU/memory
+   - Grafana dashboard for torrent stats
+   - Web UI for manual torrent management
 
 ## References
 
