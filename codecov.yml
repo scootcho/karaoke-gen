@@ -21,6 +21,7 @@ coverage:
       default:
         target: 70%        # New code should also meet 70%
         threshold: 5%      # More lenient for patches
+        only_pulls: true   # Only run on PRs, not on main branch pushes
 
 # Disable PR comments entirely since we're satisfied with 70%+ coverage
 # Status checks will still appear on the PR
