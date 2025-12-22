@@ -2,7 +2,40 @@
  * API client for karaoke-gen backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gen.nomadkaraoke.com';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com';
+
+// Token management - stored in localStorage (client-side only)
+let accessToken: string | null = null;
+
+if (typeof window !== 'undefined') {
+  accessToken = localStorage.getItem('karaoke_access_token');
+}
+
+export function setAccessToken(token: string) {
+  accessToken = token;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('karaoke_access_token', token);
+  }
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export function clearAccessToken() {
+  accessToken = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('karaoke_access_token');
+  }
+}
+
+function getAuthHeaders(): HeadersInit {
+  const headers: HeadersInit = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  return headers;
+}
 
 export interface Job {
   job_id: string;
@@ -125,7 +158,9 @@ export const api = {
     if (params?.limit) searchParams.set('limit', String(params.limit));
     
     const url = `${API_BASE_URL}/api/jobs${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: getAuthHeaders()
+    });
     return handleResponse<Job[]>(response);
   },
   
@@ -133,7 +168,9 @@ export const api = {
    * Get a single job by ID
    */
   async getJob(jobId: string): Promise<Job> {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`);
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
+      headers: getAuthHeaders()
+    });
     return handleResponse<Job>(response);
   },
   
@@ -171,6 +208,7 @@ export const api = {
     
     const response = await fetch(`${API_BASE_URL}/api/jobs/upload`, {
       method: 'POST',
+      headers: getAuthHeaders(),
       body: formData,
     });
     
@@ -201,7 +239,10 @@ export const api = {
     
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-from-url`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(body),
     });
     
