@@ -131,6 +131,16 @@ cloudbuild_logging_iam = gcp.projects.IAMMember(
     member=f"serviceAccount:{project.number}-compute@developer.gserviceaccount.com",
 )
 
+# Grant Cloud Build compute service account permission to deploy as karaoke-backend SA
+# This is required for Cloud Build to deploy Cloud Run services that use the backend service account
+# Without this, gcloud run deploy fails with: PERMISSION_DENIED: Permission 'iam.serviceaccounts.actAs' denied
+cloudbuild_deploy_as_backend = gcp.serviceaccount.IAMMember(
+    "cloudbuild-deploy-as-backend",
+    service_account_id=service_account.name,
+    role="roles/iam.serviceAccountUser",
+    member=f"serviceAccount:{project.number}-compute@developer.gserviceaccount.com",
+)
+
 # ==================== GitHub Actions Deployer Service Account ====================
 # This service account is used by GitHub Actions CI/CD via Workload Identity Federation
 
