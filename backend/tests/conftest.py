@@ -37,8 +37,15 @@ from backend.models.job import Job, JobStatus, JobCreate
 @pytest.fixture(autouse=True)
 def mock_auth_dependency(request):
     """Mock the require_auth dependency for all tests using FastAPI's dependency override system."""
-    # Skip for emulator tests which have their own auth setup
-    if 'emulator' in str(request.fspath):
+    # Skip for emulator tests and integration tests which use real auth
+    test_path = str(request.fspath)
+    if 'emulator' in test_path or 'integration' in test_path:
+        yield
+        return
+    
+    # Skip if FIRESTORE_EMULATOR_HOST is set (running in emulator environment)
+    import os
+    if os.environ.get('FIRESTORE_EMULATOR_HOST'):
         yield
         return
     
