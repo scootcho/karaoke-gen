@@ -39,4 +39,5 @@ EXPOSE 8080
 # Run uvicorn directly
 # Note: Transmission daemon removed - torrent downloads now handled by
 # dedicated flacfetch VM service (see docs/00-current-plan/TORRENT-SERVICE-PLAN.md)
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Using --loop asyncio (instead of uvloop) to support nest_asyncio for remote flacfetch calls
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080", "--loop", "asyncio"]

@@ -91,7 +91,7 @@ class AudioSearchResultResponse(BaseModel):
     title: str
     artist: str
     provider: str  # Maps to source_name in Release
-    url: str  # Maps to download_url in Release
+    url: Optional[str] = None  # Maps to download_url in Release (may be None for remote)
     duration: Optional[int] = None  # Maps to duration_seconds in Release
     quality: Optional[str] = None  # Stringified quality
     source_id: Optional[str] = None  # Maps to info_hash in Release

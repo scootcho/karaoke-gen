@@ -20,10 +20,7 @@ import logging
 import os
 from typing import List, Optional
 
-# Enable nested event loops for FastAPI compatibility
-# This allows sync methods to create event loops even when an async loop is running
 import nest_asyncio
-nest_asyncio.apply()
 
 # Import shared classes from karaoke_gen.audio_fetcher - single source of truth
 # Note: Import directly from audio_fetcher module, not karaoke_gen.__init__
@@ -162,6 +159,14 @@ class AudioSearchService:
         Runs async code in a sync context for compatibility with existing API.
         """
         try:
+            # Enable nested event loops (needed when called from FastAPI async context)
+            # Apply to the current loop if one exists, otherwise it's a no-op
+            try:
+                loop = asyncio.get_running_loop()
+                nest_asyncio.apply(loop)
+            except RuntimeError:
+                pass  # No running loop, nest_asyncio not needed
+            
             # Run async search in sync context
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -185,20 +190,16 @@ class AudioSearchService:
                 result = AudioSearchResult(
                     title=item.get("title", "Unknown"),
                     artist=item.get("artist", "Unknown"),
+                    url=item.get("download_url", ""),  # May be empty for remote
                     provider=item.get("provider", "Unknown"),
+                    duration=item.get("duration_seconds"),
                     quality=item.get("quality", ""),
-                    size_bytes=item.get("size_bytes"),
-                    duration_seconds=item.get("duration_seconds"),
-                    is_lossless=item.get("is_lossless", False),
+                    source_id=item.get("info_hash"),
+                    index=item.get("index", 0),
                     seeders=item.get("seeders"),
-                    year=item.get("year"),
-                    extra_info={
-                        "index": item.get("index"),
-                        "target_file": item.get("target_file"),
-                        "view_count": item.get("view_count"),
-                        "channel": item.get("channel"),
-                        "remote": True,  # Flag for download logic
-                    },
+                    target_file=item.get("target_file"),
+                    # Store full remote data in raw_result for rich display
+                    raw_result=item,
                 )
                 results.append(result)
             
@@ -306,6 +307,13 @@ class AudioSearchService:
         result = self._cached_results[result_index]
         
         try:
+            # Enable nested event loops (needed when called from FastAPI async context)
+            try:
+                running_loop = asyncio.get_running_loop()
+                nest_asyncio.apply(running_loop)
+            except RuntimeError:
+                pass  # No running loop, nest_asyncio not needed
+            
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
