@@ -70,7 +70,15 @@ async def require_auth(
     is_valid, user_type, remaining_uses, message = auth_service.validate_token(token_str)
     
     if not is_valid:
-        logger.warning(f"Authentication failed: {message}")
+        # Log more details for debugging token issues
+        auth_header = request.headers.get("Authorization", "")
+        logger.warning(
+            f"Authentication failed: {message}. "
+            f"Token provided: {bool(token_str)}, "
+            f"Token length: {len(token_str) if token_str else 0}, "
+            f"Auth header present: {bool(auth_header)}, "
+            f"Header prefix: {auth_header[:20] if auth_header else 'none'}..."
+        )
         raise HTTPException(
             status_code=401,
             detail=f"Authentication failed: {message}"

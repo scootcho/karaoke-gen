@@ -68,6 +68,16 @@ class AuthService:
             logger.info("Admin token validated")
             return True, UserType.ADMIN, -1, "Admin access granted"
         
+        # Debug: Log token comparison info (only first/last few chars for security)
+        if self.admin_tokens:
+            expected_prefix = self.admin_tokens[0][:8] if len(self.admin_tokens[0]) >= 8 else self.admin_tokens[0]
+            provided_prefix = token[:8] if len(token) >= 8 else token
+            logger.debug(
+                f"Token mismatch: expected prefix '{expected_prefix}...', "
+                f"got '{provided_prefix}...', "
+                f"expected len={len(self.admin_tokens[0])}, got len={len(token)}"
+            )
+        
         # Check stored tokens in Firestore
         token_data = self.firestore.get_token(token)
         
