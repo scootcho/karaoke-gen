@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Karaoke Job Inspector</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding-top: 40px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+        }
+        .input-group {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 1.5rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            border: 2px solid #333;
+            border-radius: 10px;
+            background: #0d0d1a;
+            color: #00d4ff;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus {
+            border-color: #00d4ff;
+        }
+        input[type="text"]::placeholder {
+            color: #444;
+        }
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 16px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid #444;
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+            box-shadow: 0 4px 20px rgba(255,255,255,0.1);
+        }
+        .quick-links {
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            padding: 20px 30px;
+        }
+        .quick-links h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #666;
+            margin: 0 0 15px 0;
+        }
+        .quick-links a {
+            display: block;
+            color: #00d4ff;
+            text-decoration: none;
+            padding: 10px 0;
+            border-bottom: 1px solid #222;
+            transition: color 0.2s;
+        }
+        .quick-links a:last-child {
+            border-bottom: none;
+        }
+        .quick-links a:hover {
+            color: #fff;
+        }
+        .hint {
+            text-align: center;
+            color: #555;
+            font-size: 0.85rem;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Karaoke Job Inspector</h1>
+        <p class="subtitle">Debug failed jobs in seconds</p>
+        
+        <div class="input-group">
+            <label for="jobId">Enter Job ID</label>
+            <input 
+                type="text" 
+                id="jobId" 
+                placeholder="e.g. 8f03f0ac-1234-5678-abcd"
+                autofocus
+                autocomplete="off"
+            >
+            <div class="buttons">
+                <button class="btn-primary" onclick="openLogs()">
+                    📋 View Logs
+                </button>
+                <button class="btn-secondary" onclick="openTrace()">
+                    🔍 View Trace
+                </button>
+            </div>
+        </div>
+        
+        <div class="quick-links">
+            <h3>Quick Links</h3>
+            <a href="https://console.cloud.google.com/monitoring/dashboards/builder/0ea8ed34-409c-4fa4-b663-d8e282f3b3a2?project=nomadkaraoke" target="_blank">
+                📊 System Dashboard
+            </a>
+            <a href="https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22karaoke-backend%22%0Aseverity%3E%3DERROR;duration=PT1H?project=nomadkaraoke" target="_blank">
+                🚨 Recent Errors
+            </a>
+            <a href="https://console.cloud.google.com/cloudtasks?project=nomadkaraoke" target="_blank">
+                📥 Cloud Tasks Queues
+            </a>
+            <a href="https://console.cloud.google.com/run/detail/us-central1/karaoke-backend/metrics?project=nomadkaraoke" target="_blank">
+                ☁️ Cloud Run Service
+            </a>
+        </div>
+        
+        <p class="hint">
+            Tip: Press Enter after typing the job ID to view logs
+        </p>
+    </div>
+
+    <script>
+        const PROJECT = 'nomadkaraoke';
+        const SERVICE = 'karaoke-backend';
+        
+        function getJobId() {
+            const jobId = document.getElementById('jobId').value.trim();
+            if (!jobId) {
+                alert('Please enter a Job ID');
+                return null;
+            }
+            return jobId;
+        }
+        
+        function openLogs() {
+            const jobId = getJobId();
+            if (!jobId) return;
+            
+            // Build the Logs Explorer query
+            const query = `resource.type="cloud_run_revision"
+resource.labels.service_name="${SERVICE}"
+"[job:${jobId}"`;
+            
+            const encodedQuery = encodeURIComponent(query);
+            const url = `https://console.cloud.google.com/logs/query;query=${encodedQuery};duration=PT6H?project=${PROJECT}`;
+            
+            window.open(url, '_blank');
+        }
+        
+        function openTrace() {
+            const jobId = getJobId();
+            if (!jobId) return;
+            
+            // Cloud Trace search by job_id attribute
+            const url = `https://console.cloud.google.com/traces/list?project=${PROJECT}&pageState=("traceFilter":("chips":"job_id:${jobId}"))`;
+            
+            window.open(url, '_blank');
+        }
+        
+        // Handle Enter key
+        document.getElementById('jobId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                openLogs();
+            }
+        });
+    </script>
+</body>
+</html>
+
