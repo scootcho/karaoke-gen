@@ -16,9 +16,9 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, Tuple
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 
@@ -27,6 +27,8 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.job_logging import job_log_context, JobLogger
 from backend.services.tracing import create_span, add_span_attribute, add_span_event
+from backend.api.dependencies import require_auth
+from backend.services.auth_service import UserType
 
 # LyricsTranscriber imports for preview generation
 from lyrics_transcriber.types import CorrectionResult
@@ -63,7 +65,10 @@ async def ping(job_id: str):
 
 
 @router.get("/{job_id}/correction-data")
-async def get_correction_data(job_id: str):
+async def get_correction_data(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Get correction data for the review interface.
     
@@ -189,7 +194,11 @@ async def _stream_audio(job_id: str):
 
 
 @router.post("/{job_id}/complete")
-async def complete_review(job_id: str, updated_data: Dict[str, Any]):
+async def complete_review(
+    job_id: str,
+    updated_data: Dict[str, Any],
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Complete the review and save corrected lyrics.
     
@@ -256,7 +265,11 @@ async def update_handlers(job_id: str, enabled_handlers: list):
 
 
 @router.post("/{job_id}/add-lyrics")
-async def add_lyrics(job_id: str, data: Dict[str, str]):
+async def add_lyrics(
+    job_id: str,
+    data: Dict[str, str],
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Add custom lyrics source and rerun correction.
     
@@ -354,7 +367,11 @@ async def add_lyrics(job_id: str, data: Dict[str, str]):
 
 
 @router.post("/{job_id}/preview-video")
-async def generate_preview_video(job_id: str, updated_data: Dict[str, Any]):
+async def generate_preview_video(
+    job_id: str,
+    updated_data: Dict[str, Any],
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Generate a preview video with the current corrections.
     

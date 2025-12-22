@@ -34,6 +34,53 @@ if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
 from backend.models.job import Job, JobStatus, JobCreate
 
 
+@pytest.fixture(autouse=True)
+def mock_auth_dependency(request):
+    """Mock the require_auth dependency for all tests using FastAPI's dependency override system."""
+    # Skip for emulator tests and integration tests which use real auth
+    test_path = str(request.fspath)
+    if 'emulator' in test_path or 'integration' in test_path:
+        yield
+        return
+    
+    # Skip if FIRESTORE_EMULATOR_HOST is set (running in emulator environment)
+    import os
+    if os.environ.get('FIRESTORE_EMULATOR_HOST'):
+        yield
+        return
+    
+    from backend.services.auth_service import UserType
+    from backend.api.dependencies import require_auth, require_admin
+    from backend.main import app
+    
+    # Create mock auth functions
+    async def mock_require_auth():
+        """Mock require_auth to always return valid admin credentials."""
+        return ("test-admin-token", UserType.ADMIN, 999)
+    
+    async def mock_require_admin():
+        """Mock require_admin to always return valid admin credentials."""
+        return ("test-admin-token", UserType.ADMIN, 999)
+    
+    # Use FastAPI's dependency override system
+    app.dependency_overrides[require_auth] = mock_require_auth
+    app.dependency_overrides[require_admin] = mock_require_admin
+    
+    yield
+    
+    # Clean up after test
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_headers():
+    """Get authentication headers for test requests."""
+    return {
+        "Authorization": "Bearer test-admin-token",
+        "Content-Type": "application/json"
+    }
+
+
 @pytest.fixture
 def mock_firestore():
     """Mock Firestore client for unit tests."""

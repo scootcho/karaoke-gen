@@ -32,7 +32,7 @@ def _create_mock_job(job_id: str = "test123") -> Job:
 
 
 @pytest.fixture
-def client():
+def client(mock_auth_service):
     """Create TestClient with mocked workers and job manager."""
     mock_creds = MagicMock()
     mock_creds.universe_domain = 'googleapis.com'
@@ -98,7 +98,7 @@ class TestAudioWorkerEndpoint:
         )
         assert response.status_code == 422
     
-    def test_audio_worker_requires_auth(self, client):
+    def test_audio_worker_requires_auth(self, client, auth_headers):
         """Test audio worker requires authentication."""
         response = client.post(
             "/api/internal/workers/audio",
@@ -128,7 +128,7 @@ class TestLyricsWorkerEndpoint:
         )
         assert response.status_code == 422
     
-    def test_lyrics_worker_requires_auth(self, client):
+    def test_lyrics_worker_requires_auth(self, client, auth_headers):
         """Test lyrics worker requires authentication."""
         response = client.post(
             "/api/internal/workers/lyrics",
@@ -158,7 +158,7 @@ class TestScreensWorkerEndpoint:
         )
         assert response.status_code == 422
     
-    def test_screens_worker_requires_auth(self, client):
+    def test_screens_worker_requires_auth(self, client, auth_headers):
         """Test screens worker requires authentication."""
         response = client.post(
             "/api/internal/workers/screens",
@@ -188,7 +188,7 @@ class TestVideoWorkerEndpoint:
         )
         assert response.status_code == 422
     
-    def test_video_worker_requires_auth(self, client):
+    def test_video_worker_requires_auth(self, client, auth_headers):
         """Test video worker requires authentication."""
         response = client.post(
             "/api/internal/workers/video",
@@ -218,7 +218,7 @@ class TestRenderVideoWorkerEndpoint:
         )
         assert response.status_code == 422
     
-    def test_render_video_worker_requires_auth(self, client):
+    def test_render_video_worker_requires_auth(self, client, auth_headers):
         """Test render-video worker requires authentication."""
         response = client.post(
             "/api/internal/workers/render-video",
