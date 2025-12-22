@@ -28,20 +28,20 @@ class TestHealthRoutes:
             from backend.main import app
             return TestClient(app)
     
-    def test_health_endpoint_returns_200(self, client):
+    def test_health_endpoint_returns_200(self, client, auth_headers):
         """Test /api/health returns 200 OK."""
-        response = client.get("/api/health")
+        response = client.get("/api/health", )
         assert response.status_code == 200
     
-    def test_health_endpoint_returns_healthy_status(self, client):
+    def test_health_endpoint_returns_healthy_status(self, client, auth_headers):
         """Test health endpoint returns healthy status."""
-        response = client.get("/api/health")
+        response = client.get("/api/health", )
         data = response.json()
         assert data["status"] == "healthy"
     
-    def test_root_endpoint_returns_200(self, client):
+    def test_root_endpoint_returns_200(self, client, auth_headers):
         """Test root endpoint returns 200."""
-        response = client.get("/")
+        response = client.get("/", )
         assert response.status_code == 200
 
 

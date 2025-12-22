@@ -15,9 +15,9 @@ import asyncio
 import logging
 import os
 import tempfile
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
 from pydantic import BaseModel, Field
 
 from backend.models.job import JobCreate, JobStatus

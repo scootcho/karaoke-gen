@@ -15,7 +15,7 @@ import json
 import logging
 import tempfile
 import os
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body, Depends
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 

@@ -68,14 +68,14 @@ def client(mock_job_manager, mock_worker_service):
 class TestGetJob:
     """Tests for GET /api/jobs/{job_id}."""
     
-    def test_get_job_returns_200(self, client, mock_job_manager, mock_job):
+    def test_get_job_returns_200(self, client, mock_job_manager, mock_job, auth_headers):
         """Test getting an existing job returns 200."""
-        response = client.get("/api/jobs/test123")
+        response = client.get("/api/jobs/test123", headers=auth_headers)
         assert response.status_code == 200
     
-    def test_get_job_returns_job_data(self, client, mock_job_manager, mock_job):
+    def test_get_job_returns_job_data(self, client, mock_job_manager, mock_job, auth_headers):
         """Test response contains job data."""
-        response = client.get("/api/jobs/test123")
+        response = client.get("/api/jobs/test123", headers=auth_headers)
         data = response.json()
         assert data["job_id"] == "test123"
         assert data["status"] == "pending"
@@ -95,41 +95,41 @@ class TestGetJob:
              patch('google.auth.default', return_value=(mock_creds, 'test-project')):
             from backend.main import app
             client = TestClient(app)
-            response = client.get("/api/jobs/nonexistent")
+            response = client.get("/api/jobs/nonexistent", headers=auth_headers)
             assert response.status_code == 404
 
 
 class TestListJobs:
     """Tests for GET /api/jobs."""
     
-    def test_list_jobs_returns_200(self, client):
+    def test_list_jobs_returns_200(self, client, auth_headers):
         """Test listing jobs returns 200."""
-        response = client.get("/api/jobs")
+        response = client.get("/api/jobs", headers=auth_headers)
         assert response.status_code == 200
     
-    def test_list_jobs_returns_array(self, client, mock_job_manager):
+    def test_list_jobs_returns_array(self, client, mock_job_manager, auth_headers):
         """Test response is an array of jobs."""
-        response = client.get("/api/jobs")
+        response = client.get("/api/jobs", headers=auth_headers)
         data = response.json()
         assert isinstance(data, list)
         assert len(data) == 1
         assert data[0]["job_id"] == "test123"
     
-    def test_list_jobs_with_status_filter(self, client, mock_job_manager):
+    def test_list_jobs_with_status_filter(self, client, mock_job_manager, auth_headers):
         """Test listing jobs with status filter."""
-        response = client.get("/api/jobs?status=pending")
+        response = client.get("/api/jobs?status=pending", headers=auth_headers)
         assert response.status_code == 200
     
-    def test_list_jobs_with_limit(self, client, mock_job_manager):
+    def test_list_jobs_with_limit(self, client, mock_job_manager, auth_headers):
         """Test listing jobs with limit."""
-        response = client.get("/api/jobs?limit=10")
+        response = client.get("/api/jobs?limit=10", headers=auth_headers)
         assert response.status_code == 200
 
 
 class TestCreateJob:
     """Tests for POST /api/jobs."""
     
-    def test_create_job_with_url_returns_200(self, client, mock_job_manager):
+    def test_create_job_with_url_returns_200(self, client, mock_job_manager, auth_headers):
         """Test creating job with URL returns 200."""
         response = client.post(
             "/api/jobs",
@@ -137,7 +137,7 @@ class TestCreateJob:
         )
         assert response.status_code == 200
     
-    def test_create_job_returns_job_id(self, client, mock_job_manager):
+    def test_create_job_returns_job_id(self, client, mock_job_manager, auth_headers):
         """Test create response contains job_id."""
         response = client.post(
             "/api/jobs",
@@ -146,7 +146,7 @@ class TestCreateJob:
         data = response.json()
         assert "job_id" in data
     
-    def test_create_job_with_artist_title(self, client, mock_job_manager):
+    def test_create_job_with_artist_title(self, client, mock_job_manager, auth_headers):
         """Test creating job with artist and title."""
         response = client.post(
             "/api/jobs",
@@ -162,9 +162,9 @@ class TestCreateJob:
 class TestDeleteJob:
     """Tests for DELETE /api/jobs/{job_id}."""
     
-    def test_delete_job_returns_200(self, client, mock_job_manager):
+    def test_delete_job_returns_200(self, client, mock_job_manager, auth_headers):
         """Test deleting job returns 200."""
-        response = client.delete("/api/jobs/test123")
+        response = client.delete("/api/jobs/test123", headers=auth_headers)
         assert response.status_code == 200
     
     def test_delete_nonexistent_job(self, mock_worker_service):
@@ -181,7 +181,7 @@ class TestDeleteJob:
              patch('google.auth.default', return_value=(mock_creds, 'test-project')):
             from backend.main import app
             client = TestClient(app)
-            response = client.delete("/api/jobs/nonexistent")
+            response = client.delete("/api/jobs/nonexistent", headers=auth_headers)
             # Either 200 or 404 depending on implementation
             assert response.status_code in [200, 404]
 
@@ -189,7 +189,7 @@ class TestDeleteJob:
 class TestCancelJob:
     """Tests for POST /api/jobs/{job_id}/cancel."""
     
-    def test_cancel_job_returns_200(self, client, mock_job_manager, mock_job):
+    def test_cancel_job_returns_200(self, client, mock_job_manager, mock_job, auth_headers):
         """Test cancelling job returns 200."""
         mock_job_manager.cancel_job.return_value = mock_job
         response = client.post(
@@ -202,7 +202,7 @@ class TestCancelJob:
 class TestSubmitCorrections:
     """Tests for POST /api/jobs/{job_id}/corrections."""
     
-    def test_submit_corrections_returns_200(self, client, mock_job_manager, mock_job):
+    def test_submit_corrections_returns_200(self, client, mock_job_manager, mock_job, auth_headers):
         """Test submitting corrections returns 200."""
         # Job needs to be in AWAITING_REVIEW or IN_REVIEW status
         review_job = Job(
@@ -231,7 +231,7 @@ class TestSubmitCorrections:
 class TestSelectInstrumental:
     """Tests for POST /api/jobs/{job_id}/select-instrumental."""
     
-    def test_select_instrumental_requires_selection_field(self, client, mock_job_manager, mock_job):
+    def test_select_instrumental_requires_selection_field(self, client, mock_job_manager, mock_job, auth_headers):
         """Test instrumental selection requires selection field."""
         response = client.post(
             "/api/jobs/test123/select-instrumental",
@@ -244,9 +244,9 @@ class TestSelectInstrumental:
 class TestStartReview:
     """Tests for POST /api/jobs/{job_id}/start-review."""
     
-    def test_start_review_endpoint_exists(self, client, mock_job_manager, mock_job):
+    def test_start_review_endpoint_exists(self, client, mock_job_manager, mock_job, auth_headers):
         """Test start review endpoint exists."""
-        response = client.post("/api/jobs/test123/start-review")
+        response = client.post("/api/jobs/test123/start-review", headers=auth_headers)
         # Should not be 404 or 405
         assert response.status_code not in [404, 405]
 
