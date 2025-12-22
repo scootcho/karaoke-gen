@@ -20,6 +20,11 @@ import logging
 import os
 from typing import List, Optional
 
+# Enable nested event loops for FastAPI compatibility
+# This allows sync methods to create event loops even when an async loop is running
+import nest_asyncio
+nest_asyncio.apply()
+
 # Import shared classes from karaoke_gen.audio_fetcher - single source of truth
 # Note: Import directly from audio_fetcher module, not karaoke_gen.__init__
 # to avoid pulling in heavier dependencies like lyrics_transcriber
