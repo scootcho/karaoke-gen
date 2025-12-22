@@ -888,11 +888,11 @@ service_unavailable_alert = gcp.monitoring.AlertPolicy(
     conditions=[
         gcp.monitoring.AlertPolicyConditionArgs(
             display_name="No healthy instances",
-            condition_absence=gcp.monitoring.AlertPolicyConditionConditionAbsenceArgs(
+            condition_absent=gcp.monitoring.AlertPolicyConditionConditionAbsentArgs(
                 filter='resource.type="cloud_run_revision" AND resource.labels.service_name="karaoke-backend" AND metric.type="run.googleapis.com/container/instance_count"',
                 duration="300s",  # Alert if no instances for 5 minutes
                 aggregations=[
-                    gcp.monitoring.AlertPolicyConditionConditionAbsenceAggregationArgs(
+                    gcp.monitoring.AlertPolicyConditionConditionAbsentAggregationArgs(
                         alignment_period="60s",
                         per_series_aligner="ALIGN_MEAN",
                         cross_series_reducer="REDUCE_SUM",
@@ -902,7 +902,7 @@ service_unavailable_alert = gcp.monitoring.AlertPolicy(
         ),
     ],
     alert_strategy=gcp.monitoring.AlertPolicyAlertStrategyArgs(
-        auto_close="600s",
+        auto_close="1800s",  # Minimum 30 minutes required by GCP
     ),
     documentation=gcp.monitoring.AlertPolicyDocumentationArgs(
         content="Karaoke backend service appears to be down - no healthy Cloud Run instances detected.\n\nImmediate actions:\n1. Check Cloud Run logs for crash reasons\n2. Verify recent deployments\n3. Check external dependencies (Modal, AudioShake)\n\nService URL: https://api.nomadkaraoke.com/api/health",
