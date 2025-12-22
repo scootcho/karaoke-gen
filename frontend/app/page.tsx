@@ -1,143 +1,116 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/lib/auth"
-import { Logo } from "@/components/logo"
+import { useState, useEffect } from "react"
+import { api, Job } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Sparkles } from "lucide-react"
+import { Music2, RefreshCw, Loader2 } from "lucide-react"
+import { JobCard } from "@/components/job"
+import { JobSubmission } from "@/components/job/JobSubmission"
 
-export default function LandingPage() {
-  const [token, setToken] = useState("")
-  const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
-  const router = useRouter()
+export default function HomePage() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [isLoadingJobs, setIsLoadingJobs] = useState(true)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setIsLoading(true)
+  // Load jobs on mount
+  useEffect(() => {
+    loadJobs()
+    // Poll for updates every 10 seconds
+    const interval = setInterval(loadJobs, 10000)
+    return () => clearInterval(interval)
+  }, [])
 
-    if (!token.trim()) {
-      setError("Please enter your access token")
-      setIsLoading(false)
-      return
-    }
-
-    const success = await login(token)
-    setIsLoading(false)
-
-    if (success) {
-      router.push("/dashboard")
-    } else {
-      setError("Invalid token. Please try again.")
+  async function loadJobs() {
+    try {
+      const data = await api.listJobs({ limit: 20 })
+      setJobs(data)
+    } catch (err) {
+      console.error("Failed to load jobs:", err)
+    } finally {
+      setIsLoadingJobs(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-card">
-      {/* Animated background effects */}
-      <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-1000" />
-      </div>
-
-      <div className="container mx-auto px-4 py-8 lg:py-12">
-        {/* Hero Section - horizontal layout on desktop */}
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left: Hero Content */}
-            <div className="text-center lg:text-left">
-              <Logo size="lg" className="mb-8 justify-center lg:justify-start" />
-
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
-                <Sparkles className="w-4 h-4 text-primary" />
-                <span className="text-sm text-primary font-medium">AI-Powered Karaoke Generation</span>
-              </div>
-
-              <h1 className="text-4xl md:text-4xl lg:text-4xl font-bold mb-4 text-balance leading-tight">
-                Wherever you are, <span className="text-primary">sing!</span>
-              </h1>
-
-              <p className="text-base md:text-lg text-muted-foreground text-pretty leading-relaxed">
-                Transform any song into professional karaoke videos with AI-powered vocal separation, synchronized
-                lyrics, and stunning visuals.
-              </p>
-            </div>
-
-            {/* Right: Login Card */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Header */}
+      <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Music2 className="w-8 h-8 text-amber-500" />
             <div>
-              <Card className="border-border/50 backdrop-blur">
-                <CardHeader>
-                  <CardTitle className="text-2xl">Get Started</CardTitle>
-                  <CardDescription>Enter your access token to begin creating karaoke videos</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleLogin} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="token">Access Token</Label>
-                      <Input
-                        id="token"
-                        type="text"
-                        placeholder="Enter your token"
-                        value={token}
-                        onChange={(e) => setToken(e.target.value)}
-                        className="bg-background"
-                      />
-                      {error && <p className="text-sm text-destructive">{error}</p>}
-                    </div>
-
-                    <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
-                      {isLoading ? "Logging in..." : "Login"}
-                    </Button>
-
-                    <div className="text-center text-sm text-muted-foreground">
-                      Don't have access?{" "}
-                      <a href="#" className="text-primary hover:underline">
-                        Request a token
-                      </a>{" "}
-                      or{" "}
-                      <a href="#" className="text-primary hover:underline">
-                        purchase access
-                      </a>
-                    </div>
-
-                    <div className="pt-4 border-t border-border">
-                      <p className="text-xs text-muted-foreground mb-2">Demo tokens:</p>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs bg-transparent"
-                          onClick={() => setToken("demo-user-token")}
-                        >
-                          User Demo
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs bg-transparent"
-                          onClick={() => setToken("demo-admin-token")}
-                        >
-                          Admin Demo
-                        </Button>
-                      </div>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
+              <h1 className="text-xl font-bold text-white">Karaoke Generator</h1>
+              <p className="text-xs text-slate-400">by Nomad Karaoke</p>
             </div>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadJobs}
+            disabled={isLoadingJobs}
+            className="text-slate-400 hover:text-white"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
-      </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-8 max-w-5xl">
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Submit Job Card */}
+          <Card className="border-slate-800 bg-slate-900/50 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-white">Create Karaoke Video</CardTitle>
+              <CardDescription className="text-slate-400">
+                Upload an audio file, provide a YouTube URL, or search for audio by artist & title
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <JobSubmission onJobCreated={loadJobs} />
+            </CardContent>
+          </Card>
+
+          {/* Jobs List Card */}
+          <Card className="border-slate-800 bg-slate-900/50 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center justify-between">
+                Recent Jobs
+                {isLoadingJobs && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                {jobs.length} job{jobs.length !== 1 ? 's' : ''} found
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {jobs.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <Music2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No jobs yet. Create one to get started!</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                  {jobs.map((job) => (
+                    <JobCard key={job.job_id} job={job} onRefresh={loadJobs} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-800 mt-12 py-6">
+        <div className="container mx-auto px-4 text-center text-sm text-slate-500">
+          <p>
+            Powered by{" "}
+            <a href="https://github.com/nomadkaraoke/karaoke-gen" className="text-amber-500 hover:underline">
+              karaoke-gen
+            </a>
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }
