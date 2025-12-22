@@ -281,7 +281,7 @@ class TestReviewEndpoints:
         time.sleep(0.2)
         
         # Should fail - job not in AWAITING_REVIEW status
-        response = client.get(f"/api/review/{job_id}/correction-data")
+        response = client.get(f"/api/review/{job_id}/correction-data", headers=auth_headers)
         assert response.status_code == 400
         assert "not ready for review" in response.json()["detail"].lower()
     
@@ -303,6 +303,7 @@ class TestReviewEndpoints:
         # Preview video should return error since job not ready
         response = client.post(
             f"/api/review/{job_id}/preview-video",
+            headers=auth_headers,
             json={"corrections": [], "corrected_segments": []}
         )
         # Should return 400 (job not in AWAITING_REVIEW state)
