@@ -58,6 +58,11 @@ def main():
         help="Optional: Path to instrumental with backing vocals file"
     )
     parser.add_argument(
+        "--original",
+        default=None,
+        help="Optional: Path to original audio file (with vocals) for comparison"
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8765,
@@ -82,6 +87,9 @@ def main():
     if args.with_backing and not os.path.exists(args.with_backing):
         logger.error(f"With backing file not found: {args.with_backing}")
         sys.exit(1)
+    if args.original and not os.path.exists(args.original):
+        logger.error(f"Original audio file not found: {args.original}")
+        sys.exit(1)
     
     # Extract base name from backing vocals file
     base_name = os.path.basename(args.backing_vocals)
@@ -102,6 +110,8 @@ def main():
     logger.info(f"Clean instrumental: {args.clean_instrumental}")
     if args.with_backing:
         logger.info(f"With backing: {args.with_backing}")
+    if args.original:
+        logger.info(f"Original audio: {args.original}")
     logger.info(f"Base name: {base_name}")
     logger.info(f"Output dir: {output_dir}")
     logger.info("")
@@ -161,6 +171,7 @@ def main():
         backing_vocals_path=args.backing_vocals,
         clean_instrumental_path=args.clean_instrumental,
         with_backing_path=args.with_backing,
+        original_audio_path=args.original,
     )
     
     try:
