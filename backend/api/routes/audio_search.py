@@ -193,6 +193,10 @@ async def _download_and_start_processing(
     This is called either:
     - Immediately after search if auto_download=True
     - When user calls the select endpoint
+    
+    For remote flacfetch downloads (torrent sources), the file is downloaded
+    on the flacfetch VM and uploaded directly to GCS. For local downloads
+    (YouTube), the file is downloaded locally and then uploaded to GCS.
     """
     job = job_manager.get_job(job_id)
     if not job:
@@ -224,33 +228,71 @@ async def _download_and_start_processing(
     )
     
     try:
-        # Download to temp directory
-        temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
+        # Determine if this is a remote torrent download
+        is_torrent_source = selected.get('provider') in ['Redacted', 'OPS']
+        is_remote_enabled = audio_search_service.is_remote_enabled()
         
-        result = audio_search_service.download(
-            result_index=selection_index,
-            output_dir=temp_dir,
-        )
-        
-        # Upload to GCS
-        filename = os.path.basename(result.filepath)
-        audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
-        
-        with open(result.filepath, 'rb') as f:
-            storage_service.upload_fileobj(
-                f,
-                audio_gcs_path,
-                content_type='audio/flac'  # flacfetch typically returns FLAC
+        # For remote torrent downloads, have flacfetch VM upload directly to GCS
+        if is_torrent_source and is_remote_enabled:
+            # Generate GCS path for remote upload
+            gcs_destination = f"uploads/{job_id}/audio/"
+            
+            logger.info(f"Using remote download with GCS upload to: {gcs_destination}")
+            
+            result = audio_search_service.download(
+                result_index=selection_index,
+                output_dir="",  # Not used for remote
+                gcs_path=gcs_destination,
             )
-        
-        logger.info(f"Uploaded audio to GCS: {audio_gcs_path}")
-        
-        # Clean up temp file
-        try:
-            os.remove(result.filepath)
-            os.rmdir(temp_dir)
-        except Exception as e:
-            logger.warning(f"Failed to clean up temp files: {e}")
+            
+            # For remote downloads, filepath is already the GCS path
+            if result.filepath.startswith("gs://"):
+                # Extract the path portion after the bucket name
+                # Format: gs://bucket/uploads/job_id/audio/filename.flac
+                parts = result.filepath.replace("gs://", "").split("/", 1)
+                if len(parts) == 2:
+                    audio_gcs_path = parts[1]
+                else:
+                    audio_gcs_path = result.filepath
+                filename = os.path.basename(result.filepath)
+            else:
+                # Fallback: treat as local path (shouldn't happen for remote)
+                filename = os.path.basename(result.filepath)
+                audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
+                
+                logger.warning(f"Remote download returned local path: {result.filepath}, uploading manually")
+                with open(result.filepath, 'rb') as f:
+                    storage_service.upload_fileobj(f, audio_gcs_path, content_type='audio/flac')
+            
+            logger.info(f"Remote download complete, GCS path: {audio_gcs_path}")
+        else:
+            # Local download (YouTube or fallback)
+            temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
+            
+            result = audio_search_service.download(
+                result_index=selection_index,
+                output_dir=temp_dir,
+            )
+            
+            # Upload to GCS
+            filename = os.path.basename(result.filepath)
+            audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
+            
+            with open(result.filepath, 'rb') as f:
+                storage_service.upload_fileobj(
+                    f,
+                    audio_gcs_path,
+                    content_type='audio/flac'  # flacfetch typically returns FLAC
+                )
+            
+            logger.info(f"Uploaded audio to GCS: {audio_gcs_path}")
+            
+            # Clean up temp file
+            try:
+                os.remove(result.filepath)
+                os.rmdir(temp_dir)
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp files: {e}")
         
         # Update job with GCS path and transition to DOWNLOADING
         job_manager.update_job(job_id, {

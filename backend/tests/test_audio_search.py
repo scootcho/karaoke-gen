@@ -800,3 +800,267 @@ class TestFlacfetchIntegration:
         assert AudioDownloadResult is KGAudioFetchResult
         assert NoResultsError is KGNoResultsError
         assert DownloadError is KGDownloadError
+
+
+class TestAudioSearchApiRouteDownload:
+    """
+    Tests for _download_and_start_processing function in audio_search routes.
+    
+    This tests the API layer's handling of the download flow, including:
+    - Correct routing between local and remote downloads
+    - GCS path handling for remote downloads
+    - Error handling
+    """
+    
+    @pytest.fixture
+    def mock_job_manager(self):
+        """Mock the job manager singleton."""
+        with patch('backend.api.routes.audio_search.job_manager') as mock:
+            yield mock
+    
+    @pytest.fixture
+    def mock_storage_service(self):
+        """Mock the storage service singleton."""
+        with patch('backend.api.routes.audio_search.storage_service') as mock:
+            yield mock
+    
+    def test_remote_download_passes_gcs_path(self, mock_job_manager, mock_storage_service):
+        """
+        Test that remote torrent downloads include GCS path for direct upload.
+        
+        This was the bug: we were calling download() without gcs_path for
+        torrent sources, causing flacfetch VM to return a local path that
+        Cloud Run couldn't access.
+        """
+        from backend.api.routes.audio_search import _download_and_start_processing
+        import asyncio
+        
+        # Setup mock job with Redacted search result
+        mock_job = Mock()
+        mock_job.state_data = {
+            'audio_search_results': [{
+                'title': 'Unwanted',
+                'artist': 'Avril Lavigne',
+                'provider': 'Redacted',  # Torrent source
+                'quality': 'FLAC 16bit CD',
+            }]
+        }
+        mock_job.audio_search_artist = 'Avril Lavigne'
+        mock_job.audio_search_title = 'Unwanted'
+        mock_job_manager.get_job.return_value = mock_job
+        
+        # Create mock audio search service with remote client
+        mock_audio_service = Mock()
+        mock_audio_service.is_remote_enabled.return_value = True
+        
+        # Mock download to return GCS path
+        mock_download_result = Mock()
+        mock_download_result.filepath = "gs://bucket/uploads/job123/audio/Avril Lavigne - Unwanted.flac"
+        mock_audio_service.download.return_value = mock_download_result
+        
+        # Create mock background tasks
+        mock_bg_tasks = Mock()
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                _download_and_start_processing(
+                    job_id="job123",
+                    selection_index=0,
+                    audio_search_service=mock_audio_service,
+                    background_tasks=mock_bg_tasks,
+                )
+            )
+        finally:
+            loop.close()
+        
+        # CRITICAL: Verify download was called with gcs_path for remote torrent source
+        mock_audio_service.download.assert_called_once()
+        call_kwargs = mock_audio_service.download.call_args.kwargs
+        
+        # The gcs_path should be set for remote torrent downloads
+        assert 'gcs_path' in call_kwargs
+        assert call_kwargs['gcs_path'] == "uploads/job123/audio/"
+    
+    def test_local_youtube_download_does_not_pass_gcs_path(self, mock_job_manager, mock_storage_service):
+        """Test that YouTube downloads don't use gcs_path (download locally, upload manually)."""
+        from backend.api.routes.audio_search import _download_and_start_processing
+        import asyncio
+        import tempfile
+        
+        # Setup mock job with YouTube search result
+        mock_job = Mock()
+        mock_job.state_data = {
+            'audio_search_results': [{
+                'title': 'Unwanted',
+                'artist': 'Avril Lavigne',
+                'provider': 'YouTube',  # NOT a torrent source
+                'quality': 'Opus 128kbps',
+            }]
+        }
+        mock_job.audio_search_artist = 'Avril Lavigne'
+        mock_job.audio_search_title = 'Unwanted'
+        mock_job_manager.get_job.return_value = mock_job
+        
+        # Create mock audio search service with remote client (but YouTube doesn't use it)
+        mock_audio_service = Mock()
+        mock_audio_service.is_remote_enabled.return_value = True
+        
+        # Create a temp file to simulate downloaded file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.opus', delete=False)
+        temp_file.write(b'fake audio data')
+        temp_file.close()
+        
+        try:
+            # Mock download to return local path
+            mock_download_result = Mock()
+            mock_download_result.filepath = temp_file.name
+            mock_audio_service.download.return_value = mock_download_result
+            
+            # Create mock background tasks
+            mock_bg_tasks = Mock()
+            
+            # Run the async function
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(
+                    _download_and_start_processing(
+                        job_id="job456",
+                        selection_index=0,
+                        audio_search_service=mock_audio_service,
+                        background_tasks=mock_bg_tasks,
+                    )
+                )
+            finally:
+                loop.close()
+            
+            # YouTube should NOT have gcs_path in kwargs
+            mock_audio_service.download.assert_called_once()
+            call_kwargs = mock_audio_service.download.call_args.kwargs
+            
+            # For YouTube, gcs_path should NOT be set (or should be None)
+            assert call_kwargs.get('gcs_path') is None
+            
+            # Instead, storage service should be called to upload
+            mock_storage_service.upload_fileobj.assert_called_once()
+        finally:
+            import os
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
+    
+    def test_handles_gcs_path_response_correctly(self, mock_job_manager, mock_storage_service):
+        """Test that GCS path responses are parsed correctly."""
+        from backend.api.routes.audio_search import _download_and_start_processing
+        import asyncio
+        
+        # Setup mock job with Redacted search result
+        mock_job = Mock()
+        mock_job.state_data = {
+            'audio_search_results': [{
+                'title': 'Test',
+                'artist': 'Test Artist',
+                'provider': 'Redacted',
+                'quality': 'FLAC',
+            }]
+        }
+        mock_job_manager.get_job.return_value = mock_job
+        
+        # Create mock audio search service
+        mock_audio_service = Mock()
+        mock_audio_service.is_remote_enabled.return_value = True
+        
+        # Mock download to return full GCS path
+        mock_download_result = Mock()
+        mock_download_result.filepath = "gs://karaoke-gen-bucket/uploads/job789/audio/test.flac"
+        mock_audio_service.download.return_value = mock_download_result
+        
+        # Run the async function
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(
+                _download_and_start_processing(
+                    job_id="job789",
+                    selection_index=0,
+                    audio_search_service=mock_audio_service,
+                    background_tasks=Mock(),
+                )
+            )
+        finally:
+            loop.close()
+        
+        # Verify job was updated with correct GCS path (without gs://bucket/ prefix)
+        update_calls = mock_job_manager.update_job.call_args_list
+        
+        # Find the call that sets input_media_gcs_path
+        gcs_path_set = False
+        for call in update_calls:
+            if 'input_media_gcs_path' in call.args[1]:
+                gcs_path = call.args[1]['input_media_gcs_path']
+                # The path stored should be the relative path, not the full gs:// URL
+                assert gcs_path == "uploads/job789/audio/test.flac"
+                gcs_path_set = True
+                break
+        
+        assert gcs_path_set, "input_media_gcs_path was not set in job update"
+    
+    def test_remote_disabled_always_uses_local(self, mock_job_manager, mock_storage_service):
+        """Test that when remote is disabled, even torrent sources use local download."""
+        from backend.api.routes.audio_search import _download_and_start_processing
+        import asyncio
+        import tempfile
+        
+        # Setup mock job with Redacted search result
+        mock_job = Mock()
+        mock_job.state_data = {
+            'audio_search_results': [{
+                'title': 'Test',
+                'artist': 'Test',
+                'provider': 'Redacted',  # Torrent source, but remote is disabled
+                'quality': 'FLAC',
+            }]
+        }
+        mock_job_manager.get_job.return_value = mock_job
+        
+        # Create temp file
+        temp_file = tempfile.NamedTemporaryFile(suffix='.flac', delete=False)
+        temp_file.write(b'fake')
+        temp_file.close()
+        
+        try:
+            # Create mock audio search service WITHOUT remote client
+            mock_audio_service = Mock()
+            mock_audio_service.is_remote_enabled.return_value = False  # REMOTE DISABLED
+            
+            mock_download_result = Mock()
+            mock_download_result.filepath = temp_file.name
+            mock_audio_service.download.return_value = mock_download_result
+            
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(
+                    _download_and_start_processing(
+                        job_id="job_no_remote",
+                        selection_index=0,
+                        audio_search_service=mock_audio_service,
+                        background_tasks=Mock(),
+                    )
+                )
+            finally:
+                loop.close()
+            
+            # When remote is disabled, gcs_path should NOT be passed
+            mock_audio_service.download.assert_called_once()
+            call_kwargs = mock_audio_service.download.call_args.kwargs
+            assert call_kwargs.get('gcs_path') is None
+            
+            # And storage should upload manually
+            mock_storage_service.upload_fileobj.assert_called_once()
+        finally:
+            import os
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
