@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Music2, RefreshCw, Loader2 } from "lucide-react"
 import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
+import { AuthBanner } from "@/components/auth-banner"
 
 export default function HomePage() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -56,7 +57,10 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-5xl">
+      <main className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
+        {/* Authentication Banner */}
+        <AuthBanner />
+        
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Submit Job Card */}
           <Card className="border-slate-800 bg-slate-900/50 backdrop-blur">
