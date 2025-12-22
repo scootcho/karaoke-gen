@@ -218,12 +218,15 @@ class WorkerService:
                 "Content-Type": "application/json",
             }
             
-            # Add admin auth header if available
-            # This is needed for the internal endpoint's require_admin dependency
+            # Add admin auth via custom header
+            # NOTE: We use X-Admin-Token instead of Authorization because Cloud Tasks
+            # OIDC token overwrites the Authorization header when oidc_token is specified.
+            # The OIDC token handles Cloud Run authentication (allows Cloud Tasks to invoke
+            # the service), while X-Admin-Token handles application-level authentication.
             if self._admin_token:
-                headers["Authorization"] = f"Bearer {self._admin_token}"
+                headers["X-Admin-Token"] = self._admin_token
                 logger.debug(
-                    f"[job:{job_id}] Using admin token for Cloud Task auth, "
+                    f"[job:{job_id}] Using admin token for Cloud Task auth via X-Admin-Token, "
                     f"token prefix: {self._admin_token[:8]}..., len={len(self._admin_token)}"
                 )
             

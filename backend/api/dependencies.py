@@ -24,14 +24,21 @@ async def get_token_from_request(
     """
     Extract access token from request.
     
-    Supports two methods:
-    1. Authorization header: Authorization: Bearer <token>
-    2. Query parameter: ?token=<token> (for download links)
+    Supports three methods (in priority order):
+    1. X-Admin-Token header: Used by Cloud Tasks (since OIDC overwrites Authorization)
+    2. Authorization header: Authorization: Bearer <token>
+    3. Query parameter: ?token=<token> (for download links)
     
     Returns:
         Token string or None
     """
-    # Try Authorization header first
+    # Check X-Admin-Token header first (used by Cloud Tasks)
+    # Cloud Tasks OIDC token overwrites Authorization header, so we use a custom header
+    admin_token = request.headers.get("X-Admin-Token")
+    if admin_token:
+        return admin_token
+    
+    # Try Authorization header
     if credentials:
         return credentials.credentials
     

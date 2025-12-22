@@ -200,10 +200,10 @@
             const jobId = getJobId();
             if (!jobId) return;
             
-            // Build the Logs Explorer query
+            // Build the Logs Explorer query - search both structured (jsonPayload) and text formats
             const query = `resource.type="cloud_run_revision"
 resource.labels.service_name="${SERVICE}"
-"[job:${jobId}"`;
+("${jobId}" OR jsonPayload.job_id="${jobId}")`;
             
             const encodedQuery = encodeURIComponent(query);
             const url = `https://console.cloud.google.com/logs/query;query=${encodedQuery};duration=PT6H?project=${PROJECT}`;
@@ -215,8 +215,9 @@ resource.labels.service_name="${SERVICE}"
             const jobId = getJobId();
             if (!jobId) return;
             
-            // Cloud Trace search by job_id attribute
-            const url = `https://console.cloud.google.com/traces/list?project=${PROJECT}&pageState=("traceFilter":("chips":"job_id:${jobId}"))`;
+            // Cloud Trace search - filter spans containing job_id in the name or attributes
+            const filter = encodeURIComponent(`+span_name:${jobId}`);
+            const url = `https://console.cloud.google.com/traces/list?project=${PROJECT}&filter=${filter}`;
             
             window.open(url, '_blank');
         }
