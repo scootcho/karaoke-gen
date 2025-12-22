@@ -15,11 +15,17 @@ The worker's job is simply to:
 4. Upload results back to GCS
 
 This reuses 100% of the existing karaoke_gen functionality.
+
+Observability:
+- All operations wrapped in tracing spans for Cloud Trace visibility
+- Logs include [job:ID] prefix for easy filtering in Cloud Logging
+- Worker start/end timing logged with WORKER_START/WORKER_END markers
 """
 import logging
 import os
 import shutil
 import tempfile
+import time
 import json
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -32,6 +38,7 @@ from backend.services.youtube_service import get_youtube_service
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
+from backend.services.tracing import job_span, add_span_event, add_span_attribute
 
 # Import from karaoke_gen package - reuse existing implementation
 from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
@@ -61,6 +68,7 @@ async def generate_video(job_id: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    start_time = time.time()
     job_manager = JobManager()
     storage = StorageService()
     settings = get_settings()
@@ -68,17 +76,20 @@ async def generate_video(job_id: str) -> bool:
     # Create job logger for remote debugging
     job_log = create_job_logger(job_id, "video")
     
+    # Log with structured markers for easy Cloud Logging queries
+    logger.info(f"[job:{job_id}] WORKER_START worker=video")
+    
     # Set up log capture for KaraokeFinalise
     log_handler = setup_job_logging(job_id, "video", *VIDEO_WORKER_LOGGERS)
     
     job = job_manager.get_job(job_id)
     if not job:
-        logger.error(f"Job {job_id} not found")
+        logger.error(f"[job:{job_id}] Job not found")
         return False
     
     # Validate prerequisites
     if not _validate_prerequisites(job):
-        logger.error(f"Job {job_id}: Prerequisites not met for video generation")
+        logger.error(f"[job:{job_id}] Prerequisites not met for video generation")
         return False
     
     # Create temporary working directory
@@ -105,12 +116,14 @@ async def generate_video(job_id: str) -> bool:
             job_log.warning("YouTube credentials not available - upload will be skipped")
     
     try:
-        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
-        # This ensures logs from third-party libraries (karaoke_gen.karaoke_finalise) are only
-        # captured by this job's handler, not handlers from other concurrent jobs
-        with job_logging_context(job_id):
-            job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
-            logger.info(f"Starting video generation for job {job_id}")
+        # Wrap entire worker in a tracing span
+        with job_span("video-worker", job_id, {"artist": job.artist, "title": job.title}) as root_span:
+            # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+            # This ensures logs from third-party libraries (karaoke_gen.karaoke_finalise) are only
+            # captured by this job's handler, not handlers from other concurrent jobs
+            with job_logging_context(job_id):
+                job_log.info(f"Starting video finalization for {job.artist} - {job.title}")
+                logger.info(f"[job:{job_id}] Starting video generation for {job.artist} - {job.title}")
             
             # Transition to GENERATING_VIDEO state
             job_manager.transition_to_state(
@@ -120,11 +133,12 @@ async def generate_video(job_id: str) -> bool:
                 message="Preparing files for video generation"
             )
             
-            # Download and set up files in the format KaraokeFinalise expects
-            base_name = f"{job.artist} - {job.title}"
-            job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
-            await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
-            job_log.info("All files downloaded successfully")
+                # Download and set up files in the format KaraokeFinalise expects
+                base_name = f"{job.artist} - {job.title}"
+                with job_span("download-files", job_id):
+                    job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
+                    await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
+                    job_log.info("All files downloaded successfully")
             
             # Load style config for CDG styles
             job_log.info("Loading CDG style configuration...")
@@ -222,63 +236,78 @@ async def generate_video(job_id: str) -> bool:
                 countdown_padding_seconds=countdown_padding_seconds,
             )
             
-            # Call process() - this does ALL the work:
-            # - Encodes to 4 video formats
-            # - Generates CDG/TXT packages if enabled
-            # - Posts Discord notification if configured
-            # - Handles brand code generation
-            job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
-            logger.info(f"Job {job_id}: Starting KaraokeFinalise.process()")
-            result = finalise.process()
+                # Call process() - this does ALL the work:
+                # - Encodes to 4 video formats
+                # - Generates CDG/TXT packages if enabled
+                # - Posts Discord notification if configured
+                # - Handles brand code generation
+                with job_span("karaoke-finalise", job_id) as finalise_span:
+                    finalise_start = time.time()
+                    job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
+                    logger.info(f"[job:{job_id}] Starting KaraokeFinalise.process()")
+                    add_span_event("finalise_started")
+                    
+                    result = finalise.process()
+                    
+                    finalise_duration = time.time() - finalise_start
+                    finalise_span.set_attribute("duration_seconds", finalise_duration)
+                    add_span_event("finalise_completed", {"duration_seconds": finalise_duration})
+                    
+                job_log.info("KaraokeFinalise.process() complete!")
+                if result.get('brand_code'):
+                    job_log.info(f"Brand code: {result.get('brand_code')}")
+                logger.info(f"[job:{job_id}] KaraokeFinalise.process() complete in {finalise_duration:.1f}s")
+                logger.info(f"[job:{job_id}] Brand code: {result.get('brand_code')}")
             
-            job_log.info("KaraokeFinalise.process() complete!")
-            if result.get('brand_code'):
-                job_log.info(f"Brand code: {result.get('brand_code')}")
-            logger.info(f"Job {job_id}: KaraokeFinalise.process() complete")
-            logger.info(f"Job {job_id}: Brand code: {result.get('brand_code')}")
+                # Native API distribution uploads (used by remote CLI instead of rclone)
+                with job_span("distribution", job_id):
+                    await _handle_native_distribution(
+                        job_id=job_id,
+                        job=job,
+                        job_log=job_log,
+                        job_manager=job_manager,
+                        temp_dir=temp_dir,
+                        result=result,
+                    )
+                
+                # Upload generated files to GCS
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.PACKAGING,
+                    progress=95,
+                    message="Uploading final files"
+                )
+                
+                with job_span("upload-results", job_id):
+                    await _upload_results(job_id, job_manager, storage, temp_dir, result)
             
-            # Native API distribution uploads (used by remote CLI instead of rclone)
-            await _handle_native_distribution(
-                job_id=job_id,
-                job=job,
-                job_log=job_log,
-                job_manager=job_manager,
-                temp_dir=temp_dir,
-                result=result,
-            )
-            
-            # Upload generated files to GCS
-            job_manager.transition_to_state(
-                job_id=job_id,
-                new_status=JobStatus.PACKAGING,
-                progress=95,
-                message="Uploading final files"
-            )
-            
-            await _upload_results(job_id, job_manager, storage, temp_dir, result)
-            
-            # Mark job as complete
-            logger.info(f"Job {job_id}: Video generation complete")
-            job_manager.transition_to_state(
-                job_id=job_id,
-                new_status=JobStatus.COMPLETE,
-                progress=100,
-                message="Karaoke generation complete!"
-            )
-            
-            # Store result metadata in job
-            job_manager.update_job(job_id, {
-                'state_data': {
-                    **job.state_data,
-                    'brand_code': result.get('brand_code'),
-                    'youtube_url': result.get('youtube_url'),
-                }
-            })
-            
-            return True
+                # Mark job as complete
+                logger.info(f"[job:{job_id}] Video generation complete")
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.COMPLETE,
+                    progress=100,
+                    message="Karaoke generation complete!"
+                )
+                
+                # Store result metadata in job
+                job_manager.update_job(job_id, {
+                    'state_data': {
+                        **job.state_data,
+                        'brand_code': result.get('brand_code'),
+                        'youtube_url': result.get('youtube_url'),
+                    }
+                })
+                
+                duration = time.time() - start_time
+                root_span.set_attribute("duration_seconds", duration)
+                root_span.set_attribute("brand_code", result.get('brand_code', ''))
+                logger.info(f"[job:{job_id}] WORKER_END worker=video status=success duration={duration:.1f}s")
+                return True
         
     except Exception as e:
-        logger.error(f"Job {job_id}: Video generation failed: {e}", exc_info=True)
+        duration = time.time() - start_time
+        logger.error(f"[job:{job_id}] WORKER_END worker=video status=error duration={duration:.1f}s error={e}")
         job_manager.mark_job_failed(
             job_id=job_id,
             error_message=f"Video generation failed: {str(e)}",

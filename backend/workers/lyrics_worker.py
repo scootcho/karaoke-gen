@@ -12,12 +12,18 @@ Handles the lyrics processing track of parallel processing:
 Re-uses:
 - karaoke_gen.lyrics_processor.LyricsProcessor for lyrics fetching and orchestration
 - lyrics_transcriber library (submodule) for transcription and correction
+
+Observability:
+- All operations wrapped in tracing spans for Cloud Trace visibility
+- Logs include [job:ID] prefix for easy filtering in Cloud Logging
+- Worker start/end timing logged with WORKER_START/WORKER_END markers
 """
 import asyncio
 import logging
 import os
 import shutil
 import tempfile
+import time
 import json
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -28,6 +34,8 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 from backend.workers.style_helper import load_style_config
+from backend.services.tracing import job_span, add_span_event, add_span_attribute
+from backend.services.metrics import metrics
 
 # Import from karaoke_gen package
 from karaoke_gen.lyrics_processor import LyricsProcessor
@@ -108,13 +116,15 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    start_time = time.time()
     job_manager = JobManager()
     storage = StorageService()
     
     # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "lyrics")
     
-    # Log immediately to verify logging is working
+    # Log with structured markers for easy Cloud Logging queries
+    logger.info(f"[job:{job_id}] WORKER_START worker=lyrics")
     job_log.info("=== LYRICS WORKER STARTED ===")
     job_log.info(f"Job ID: {job_id}")
     
@@ -127,166 +137,188 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     temp_dir = None
     
     try:
-        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
-        # This ensures logs from third-party libraries (lyrics_transcriber) are only captured
-        # by this job's handler, not handlers from other concurrent jobs
-        with job_logging_context(job_id):
-            job = job_manager.get_job(job_id)
-            if not job:
-                logger.error(f"Job {job_id} not found")
-                job_log.error(f"Job {job_id} not found in Firestore!")
-                return False
-            
-            # Create temporary working directory
-            temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
-            job_log.info(f"Created temp directory: {temp_dir}")
-            job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")
-            job_log.info(f"Log capture enabled for: {', '.join(LYRICS_WORKER_LOGGERS)}")
-            logger.info(f"Starting lyrics transcription for job {job_id}")
-            
-            # Log environment configuration
-            job_log.info("Checking API configuration...")
-            if os.environ.get("GENIUS_API_TOKEN"):
-                job_log.info("  Genius API: configured")
-            else:
-                job_log.warning("  Genius API: NOT configured")
-            if os.environ.get("SPOTIFY_COOKIE_SP_DC"):
-                job_log.info("  Spotify: configured")
-            else:
-                job_log.warning("  Spotify: NOT configured")
-            if os.environ.get("RAPIDAPI_KEY"):
-                job_log.info("  Musixmatch (RapidAPI): configured")
-            else:
-                job_log.warning("  Musixmatch (RapidAPI): NOT configured")
-            
-            # Ensure required environment variables are set
-            if not os.environ.get("AUDIOSHAKE_API_TOKEN"):
-                job_log.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
-                logger.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
-            
-            # Download audio file from GCS (waits for audio worker if URL job)
-            job_log.info("Downloading audio file from GCS...")
-            audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager)
-            if not audio_path:
-                raise Exception("Failed to download audio file")
-            job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
-            
-            # Update progress using state_data (don't change status during parallel processing)
-            # The status is managed at a higher level - workers just track their progress
-            job_manager.update_state_data(job_id, 'lyrics_progress', {
-                'stage': 'transcribing',
-                'progress': 10,
-                'message': 'Starting lyrics transcription via AudioShake'
-            })
-            
-            # Load style configuration (downloads assets from GCS if available)
-            # This is needed for max_line_length and other style settings in LyricsTranscriber
-            job_log.info("Loading style configuration for lyrics processing...")
-            style_config = await load_style_config(job, storage, temp_dir)
-            style_params_json_path = style_config.get_style_params_path() if style_config.has_custom_styles() else None
-            
-            if style_params_json_path:
-                job_log.info(f"Using custom style params: {style_params_json_path}")
-                # Log the contents of the style params for debugging
-                try:
-                    with open(style_params_json_path, 'r') as f:
-                        style_content = json.load(f)
-                    job_log.info(f"Style params sections: {list(style_content.keys())}")
-                    if 'karaoke' in style_content:
-                        karaoke_style = style_content['karaoke']
-                        job_log.info(f"  karaoke.background_image: {karaoke_style.get('background_image', 'NOT SET')}")
-                        job_log.info(f"  karaoke.font_path: {karaoke_style.get('font_path', 'NOT SET')}")
-                except Exception as e:
-                    job_log.warning(f"Could not read style params for logging: {e}")
-            else:
-                job_log.info("No custom style params found, using defaults")
-            
-            # Download user-provided lyrics file if available
-            lyrics_file_path = None
-            if hasattr(job, 'lyrics_file_gcs_path') and job.lyrics_file_gcs_path:
-                lyrics_file_path = os.path.join(temp_dir, "user_lyrics.txt")
-                job_log.info(f"Downloading user-provided lyrics file: {job.lyrics_file_gcs_path}")
-                storage.download_file(job.lyrics_file_gcs_path, lyrics_file_path)
-                job_log.info(f"User lyrics file downloaded to: {lyrics_file_path}")
-            
-            # Get lyrics configuration from job
-            subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
-            if subtitle_offset != 0:
-                job_log.info(f"Subtitle offset: {subtitle_offset}ms")
-            
-            # Create LyricsProcessor instance (reuses karaoke_gen code)
-            job_log.info("Creating LyricsProcessor instance...")
-            job_log.info(f"  style_params_json: {style_params_json_path}")
-            job_log.info(f"  lyrics_file: {lyrics_file_path}")
-            job_log.info(f"  subtitle_offset_ms: {subtitle_offset}")
-            lyrics_processor = create_lyrics_processor(
-                style_params_json=style_params_json_path,
-                lyrics_file=lyrics_file_path,
-                subtitle_offset_ms=subtitle_offset
-            )
-            
-            # Run transcription + correction
-            # This will:
-            # 1. Fetch reference lyrics from Genius/Spotify/Musixmatch/LRCLib
-            # 2. Transcribe audio via AudioShake API
-            # 3. Run automatic correction with lyrics_transcriber
-            # 4. Generate corrections JSON (no interactive review)
-            # 5. Skip video generation (render_video=False)
-            
-            # Use lyrics_artist/lyrics_title overrides if provided, else fall back to job artist/title
-            lyrics_search_artist = getattr(job, 'lyrics_artist', None) or job.artist
-            lyrics_search_title = getattr(job, 'lyrics_title', None) or job.title
-            
-            job_log.info("Starting LyricsTranscriber processing...")
-            job_log.info(f"  Artist: {job.artist}")
-            job_log.info(f"  Title: {job.title}")
-            if lyrics_search_artist != job.artist:
-                job_log.info(f"  Lyrics search artist override: {lyrics_search_artist}")
-            if lyrics_search_title != job.title:
-                job_log.info(f"  Lyrics search title override: {lyrics_search_title}")
-            logger.info(f"Job {job_id}: Calling lyrics_processor.transcribe_lyrics()")
-            
-            # Run transcription in thread pool to avoid blocking the event loop
-            # (transcribe_lyrics is synchronous and takes 1-2 minutes)
-            # Note: We pass the original artist/title for file naming, but the LyricsProcessor
-            # will use lyrics_artist/lyrics_title for the search (set via constructor args)
-            result = await asyncio.to_thread(
-                lyrics_processor.transcribe_lyrics,
-                input_audio_wav=audio_path,
-                artist=job.artist,  # Original artist for file naming
-                title=job.title,    # Original title for file naming
-                track_output_dir=temp_dir,
-                lyrics_artist=lyrics_search_artist,  # Override for lyrics search
-                lyrics_title=lyrics_search_title     # Override for lyrics search
-            )
-            
-            job_log.info("Transcription processing complete")
-            logger.info(f"Job {job_id}: Transcription complete, uploading results")
-            
-            # Upload lyrics results to GCS
-            job_log.info("Uploading lyrics results to GCS...")
-            await upload_lyrics_results(job_id, temp_dir, result, storage, job_manager, job_log)
-            
-            job_log.info("All lyrics data uploaded successfully")
-            logger.info(f"Job {job_id}: All lyrics data uploaded successfully")
-            
-            # Update progress using state_data (don't change status during parallel processing)
-            job_manager.update_state_data(job_id, 'lyrics_progress', {
-                'stage': 'lyrics_complete',
-                'progress': 45,
-                'message': 'Lyrics transcription complete'
-            })
-            
-            # Mark lyrics processing complete
-            # This will check if audio is also complete and transition to next stage if so
-            job_log.info("Lyrics worker complete, checking if audio is also done...")
-            job_manager.mark_lyrics_complete(job_id)
-            
-            return True
+        # Wrap entire worker in a tracing span
+        with job_span("lyrics-worker", job_id) as root_span:
+            # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+            # This ensures logs from third-party libraries (lyrics_transcriber) are only captured
+            # by this job's handler, not handlers from other concurrent jobs
+            with job_logging_context(job_id):
+                job = job_manager.get_job(job_id)
+                if not job:
+                    logger.error(f"[job:{job_id}] Job not found in Firestore")
+                    job_log.error(f"Job {job_id} not found in Firestore!")
+                    return False
+                
+                add_span_attribute("artist", job.artist)
+                add_span_attribute("title", job.title)
+                
+                # Create temporary working directory
+                temp_dir = tempfile.mkdtemp(prefix=f"karaoke_lyrics_{job_id}_")
+                job_log.info(f"Created temp directory: {temp_dir}")
+                job_log.info(f"Starting lyrics transcription for {job.artist} - {job.title}")
+                job_log.info(f"Log capture enabled for: {', '.join(LYRICS_WORKER_LOGGERS)}")
+                logger.info(f"[job:{job_id}] Starting lyrics transcription for {job.artist} - {job.title}")
+                
+                # Log environment configuration
+                with job_span("check-api-config", job_id):
+                    job_log.info("Checking API configuration...")
+                    apis_configured = []
+                    if os.environ.get("GENIUS_API_TOKEN"):
+                        job_log.info("  Genius API: configured")
+                        apis_configured.append("genius")
+                    else:
+                        job_log.warning("  Genius API: NOT configured")
+                    if os.environ.get("SPOTIFY_COOKIE_SP_DC"):
+                        job_log.info("  Spotify: configured")
+                        apis_configured.append("spotify")
+                    else:
+                        job_log.warning("  Spotify: NOT configured")
+                    if os.environ.get("RAPIDAPI_KEY"):
+                        job_log.info("  Musixmatch (RapidAPI): configured")
+                        apis_configured.append("musixmatch")
+                    else:
+                        job_log.warning("  Musixmatch (RapidAPI): NOT configured")
+                    add_span_attribute("lyrics_apis", ",".join(apis_configured))
+                
+                # Ensure required environment variables are set
+                if not os.environ.get("AUDIOSHAKE_API_TOKEN"):
+                    job_log.warning("AUDIOSHAKE_API_TOKEN not set - transcription may fail")
+                    logger.warning(f"[job:{job_id}] AUDIOSHAKE_API_TOKEN not set - transcription may fail")
+                
+                # Download audio file from GCS (waits for audio worker if URL job)
+                with job_span("download-audio", job_id) as download_span:
+                    job_log.info("Downloading audio file from GCS...")
+                    audio_path = await download_audio(job_id, temp_dir, storage, job, job_manager)
+                    if not audio_path:
+                        raise Exception("Failed to download audio file")
+                    job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
+                    download_span.set_attribute("audio_file", os.path.basename(audio_path))
+                
+                # Update progress using state_data (don't change status during parallel processing)
+                # The status is managed at a higher level - workers just track their progress
+                job_manager.update_state_data(job_id, 'lyrics_progress', {
+                    'stage': 'transcribing',
+                    'progress': 10,
+                    'message': 'Starting lyrics transcription via AudioShake'
+                })
+                
+                # Load style configuration (downloads assets from GCS if available)
+                # This is needed for max_line_length and other style settings in LyricsTranscriber
+                with job_span("load-style-config", job_id):
+                    job_log.info("Loading style configuration for lyrics processing...")
+                    style_config = await load_style_config(job, storage, temp_dir)
+                    style_params_json_path = style_config.get_style_params_path() if style_config.has_custom_styles() else None
+                    
+                    if style_params_json_path:
+                        job_log.info(f"Using custom style params: {style_params_json_path}")
+                        # Log the contents of the style params for debugging
+                        try:
+                            with open(style_params_json_path, 'r') as f:
+                                style_content = json.load(f)
+                            job_log.info(f"Style params sections: {list(style_content.keys())}")
+                            if 'karaoke' in style_content:
+                                karaoke_style = style_content['karaoke']
+                                job_log.info(f"  karaoke.background_image: {karaoke_style.get('background_image', 'NOT SET')}")
+                                job_log.info(f"  karaoke.font_path: {karaoke_style.get('font_path', 'NOT SET')}")
+                        except Exception as e:
+                            job_log.warning(f"Could not read style params for logging: {e}")
+                    else:
+                        job_log.info("No custom style params found, using defaults")
+                
+                # Download user-provided lyrics file if available
+                lyrics_file_path = None
+                if hasattr(job, 'lyrics_file_gcs_path') and job.lyrics_file_gcs_path:
+                    with job_span("download-user-lyrics", job_id):
+                        lyrics_file_path = os.path.join(temp_dir, "user_lyrics.txt")
+                        job_log.info(f"Downloading user-provided lyrics file: {job.lyrics_file_gcs_path}")
+                        storage.download_file(job.lyrics_file_gcs_path, lyrics_file_path)
+                        job_log.info(f"User lyrics file downloaded to: {lyrics_file_path}")
+                
+                # Get lyrics configuration from job
+                subtitle_offset = getattr(job, 'subtitle_offset_ms', 0) or 0
+                if subtitle_offset != 0:
+                    job_log.info(f"Subtitle offset: {subtitle_offset}ms")
+                    add_span_attribute("subtitle_offset_ms", subtitle_offset)
+                
+                # Create LyricsProcessor instance (reuses karaoke_gen code)
+                job_log.info("Creating LyricsProcessor instance...")
+                job_log.info(f"  style_params_json: {style_params_json_path}")
+                job_log.info(f"  lyrics_file: {lyrics_file_path}")
+                job_log.info(f"  subtitle_offset_ms: {subtitle_offset}")
+                lyrics_processor = create_lyrics_processor(
+                    style_params_json=style_params_json_path,
+                    lyrics_file=lyrics_file_path,
+                    subtitle_offset_ms=subtitle_offset
+                )
+                
+                # Use lyrics_artist/lyrics_title overrides if provided, else fall back to job artist/title
+                lyrics_search_artist = getattr(job, 'lyrics_artist', None) or job.artist
+                lyrics_search_title = getattr(job, 'lyrics_title', None) or job.title
+                
+                job_log.info("Starting LyricsTranscriber processing...")
+                job_log.info(f"  Artist: {job.artist}")
+                job_log.info(f"  Title: {job.title}")
+                if lyrics_search_artist != job.artist:
+                    job_log.info(f"  Lyrics search artist override: {lyrics_search_artist}")
+                if lyrics_search_title != job.title:
+                    job_log.info(f"  Lyrics search title override: {lyrics_search_title}")
+                logger.info(f"[job:{job_id}] Calling lyrics_processor.transcribe_lyrics()")
+                
+                # Run transcription + correction
+                with job_span("audioshake-transcription", job_id) as trans_span:
+                    trans_start = time.time()
+                    add_span_event("transcription_started")
+                    
+                    # Run transcription in thread pool to avoid blocking the event loop
+                    # (transcribe_lyrics is synchronous and takes 1-2 minutes)
+                    # Note: transcribe_lyrics internally calls AudioShake and lyrics APIs
+                    with metrics.time_external_api("audioshake", job_id):
+                        result = await asyncio.to_thread(
+                            lyrics_processor.transcribe_lyrics,
+                            input_audio_wav=audio_path,
+                            artist=job.artist,  # Original artist for file naming
+                            title=job.title,    # Original title for file naming
+                            track_output_dir=temp_dir,
+                            lyrics_artist=lyrics_search_artist,  # Override for lyrics search
+                            lyrics_title=lyrics_search_title     # Override for lyrics search
+                        )
+                    
+                    trans_duration = time.time() - trans_start
+                    trans_span.set_attribute("duration_seconds", trans_duration)
+                    add_span_event("transcription_completed", {"duration_seconds": trans_duration})
+                
+                job_log.info("Transcription processing complete")
+                logger.info(f"[job:{job_id}] Transcription complete, uploading results")
+                
+                # Upload lyrics results to GCS
+                with job_span("upload-lyrics-results", job_id):
+                    job_log.info("Uploading lyrics results to GCS...")
+                    await upload_lyrics_results(job_id, temp_dir, result, storage, job_manager, job_log)
+                
+                job_log.info("All lyrics data uploaded successfully")
+                logger.info(f"[job:{job_id}] All lyrics data uploaded successfully")
+                
+                # Update progress using state_data (don't change status during parallel processing)
+                job_manager.update_state_data(job_id, 'lyrics_progress', {
+                    'stage': 'lyrics_complete',
+                    'progress': 45,
+                    'message': 'Lyrics transcription complete'
+                })
+                
+                # Mark lyrics processing complete
+                # This will check if audio is also complete and transition to next stage if so
+                job_log.info("Lyrics worker complete, checking if audio is also done...")
+                job_manager.mark_lyrics_complete(job_id)
+                
+                duration = time.time() - start_time
+                root_span.set_attribute("duration_seconds", duration)
+                logger.info(f"[job:{job_id}] WORKER_END worker=lyrics status=success duration={duration:.1f}s")
+                return True
         
     except Exception as e:
+        duration = time.time() - start_time
         job_log.error(f"Lyrics transcription failed: {str(e)}", exc_info=True)
-        logger.error(f"Job {job_id}: Lyrics transcription failed: {e}", exc_info=True)
+        logger.error(f"[job:{job_id}] WORKER_END worker=lyrics status=error duration={duration:.1f}s error={e}")
         job_manager.mark_job_failed(
             job_id=job_id,
             error_message=f"Lyrics transcription failed: {str(e)}",
@@ -305,7 +337,7 @@ async def process_lyrics_transcription(job_id: str) -> bool:
         # Cleanup temporary directory (only if it was created)
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
-            logger.debug(f"Cleaned up temp directory: {temp_dir}")
+            logger.debug(f"[job:{job_id}] Cleaned up temp directory: {temp_dir}")
 
 
 async def download_audio(

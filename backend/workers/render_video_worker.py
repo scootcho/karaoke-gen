@@ -14,10 +14,16 @@ This worker:
 Key insight: We use OutputGenerator from lyrics_transcriber library
 WITHOUT using its blocking ReviewServer. This allows async operation
 in Cloud Run.
+
+Observability:
+- All operations wrapped in tracing spans for Cloud Trace visibility
+- Logs include [job:ID] prefix for easy filtering in Cloud Logging
+- Worker start/end timing logged with WORKER_START/WORKER_END markers
 """
 import logging
 import os
 import tempfile
+import time
 import json
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
@@ -27,6 +33,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
+from backend.services.tracing import job_span, add_span_event, add_span_attribute
 
 # Import from lyrics_transcriber (submodule)
 from lyrics_transcriber.output.generator import OutputGenerator
@@ -62,12 +69,16 @@ async def process_render_video(job_id: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
+    start_time = time.time()
     job_manager = JobManager()
     storage = StorageService()
     settings = get_settings()
     
     # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "render_video")
+    
+    # Log with structured markers for easy Cloud Logging queries
+    logger.info(f"[job:{job_id}] WORKER_START worker=render-video")
     job_log.info("=== RENDER VIDEO WORKER STARTED ===")
     job_log.info(f"Job ID: {job_id}")
     
@@ -77,30 +88,32 @@ async def process_render_video(job_id: str) -> bool:
     
     job = job_manager.get_job(job_id)
     if not job:
-        logger.error(f"Job {job_id} not found")
+        logger.error(f"[job:{job_id}] Job not found in Firestore")
         job_log.error(f"Job {job_id} not found in Firestore!")
         return False
     
     job_log.info(f"Starting video render for {job.artist} - {job.title}")
-    logger.info(f"Job {job_id}: Starting video render (post-review)")
+    logger.info(f"[job:{job_id}] Starting video render (post-review)")
     
     try:
-        # Use job_logging_context for proper log isolation when multiple jobs run concurrently
-        # This ensures logs from third-party libraries (lyrics_transcriber.output) are only
-        # captured by this job's handler, not handlers from other concurrent jobs
-        with job_logging_context(job_id):
-            # Transition to RENDERING_VIDEO
-            job_manager.transition_to_state(
-                job_id=job_id,
-                new_status=JobStatus.RENDERING_VIDEO,
-                progress=75,
-                message="Rendering karaoke video with corrected lyrics"
-            )
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                job_log.info(f"Created temp directory: {temp_dir}")
-                # 1. Download corrected corrections data
-                corrections_path = os.path.join(temp_dir, "corrections.json")
+        # Wrap entire worker in a tracing span
+        with job_span("render-video-worker", job_id, {"artist": job.artist, "title": job.title}) as root_span:
+            # Use job_logging_context for proper log isolation when multiple jobs run concurrently
+            # This ensures logs from third-party libraries (lyrics_transcriber.output) are only
+            # captured by this job's handler, not handlers from other concurrent jobs
+            with job_logging_context(job_id):
+                # Transition to RENDERING_VIDEO
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.RENDERING_VIDEO,
+                    progress=75,
+                    message="Rendering karaoke video with corrected lyrics"
+                )
+                
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    job_log.info(f"Created temp directory: {temp_dir}")
+                    # 1. Download corrected corrections data
+                    corrections_path = os.path.join(temp_dir, "corrections.json")
                 
                 # Try updated corrections first (from human review), fall back to original
                 corrections_gcs_updated = f"jobs/{job_id}/lyrics/corrections_updated.json"
@@ -280,7 +293,10 @@ async def process_render_video(job_id: str) -> bool:
                         message="Prep phase complete - download outputs to continue locally"
                     )
                     job_log.info("=== RENDER VIDEO WORKER COMPLETE (PREP ONLY) ===")
-                    logger.info(f"Job {job_id}: Prep-only video render complete")
+                    duration = time.time() - start_time
+                    root_span.set_attribute("duration_seconds", duration)
+                    root_span.set_attribute("prep_only", True)
+                    logger.info(f"[job:{job_id}] WORKER_END worker=render-video status=success duration={duration:.1f}s prep_only=true")
                 else:
                     # Normal mode: proceed to instrumental selection
                     job_manager.transition_to_state(
@@ -290,12 +306,15 @@ async def process_render_video(job_id: str) -> bool:
                         message="Video rendered - select your instrumental"
                     )
                     job_log.info("=== RENDER VIDEO WORKER COMPLETE ===")
-                    logger.info(f"Job {job_id}: Video render complete, awaiting instrumental selection")
+                    duration = time.time() - start_time
+                    root_span.set_attribute("duration_seconds", duration)
+                    logger.info(f"[job:{job_id}] WORKER_END worker=render-video status=success duration={duration:.1f}s")
                 return True
             
     except Exception as e:
+        duration = time.time() - start_time
         job_log.error(f"Video render failed: {e}")
-        logger.error(f"Job {job_id}: Video render failed: {e}", exc_info=True)
+        logger.error(f"[job:{job_id}] WORKER_END worker=render-video status=error duration={duration:.1f}s error={e}")
         job_manager.fail_job(job_id, f"Video render failed: {str(e)}")
         return False
 

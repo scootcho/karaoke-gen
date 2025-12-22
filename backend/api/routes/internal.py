@@ -6,11 +6,17 @@ They are protected by admin authentication.
 
 With Cloud Tasks integration, these endpoints may be called multiple times
 (retry on failure). Idempotency checks prevent duplicate processing.
+
+Observability:
+- Extracts trace context from incoming requests (propagated via Cloud Tasks)
+- Creates worker spans linked to the original request trace
+- All logs include job_id for easy filtering in Cloud Logging
 """
 import logging
 import asyncio
+import time
 from typing import Tuple, Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from pydantic import BaseModel
 
 from backend.workers.audio_worker import process_audio_separation
@@ -21,6 +27,12 @@ from backend.workers.render_video_worker import process_render_video
 from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
 from backend.services.job_manager import JobManager
+from backend.services.tracing import (
+    extract_trace_context,
+    start_span_with_context,
+    add_span_attribute,
+    add_span_event,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -57,7 +69,7 @@ def _check_worker_idempotency(job_id: str, worker_name: str) -> Optional[WorkerR
     job = job_manager.get_job(job_id)
     
     if not job:
-        logger.warning(f"Job {job_id} not found for {worker_name} worker")
+        logger.warning(f"[job:{job_id}] Job not found for {worker_name} worker")
         return WorkerResponse(
             status="not_found",
             job_id=job_id,
@@ -70,7 +82,7 @@ def _check_worker_idempotency(job_id: str, worker_name: str) -> Optional[WorkerR
     stage = worker_progress.get('stage')
     
     if stage == 'running':
-        logger.info(f"{worker_name.capitalize()} worker already running for job {job_id}, skipping")
+        logger.info(f"[job:{job_id}] {worker_name.capitalize()} worker already running, skipping")
         return WorkerResponse(
             status="already_running",
             job_id=job_id,
@@ -78,7 +90,7 @@ def _check_worker_idempotency(job_id: str, worker_name: str) -> Optional[WorkerR
         )
     
     if stage == 'complete':
-        logger.info(f"{worker_name.capitalize()} worker already complete for job {job_id}, skipping")
+        logger.info(f"[job:{job_id}] {worker_name.capitalize()} worker already complete, skipping")
         return WorkerResponse(
             status="already_complete",
             job_id=job_id,
@@ -93,6 +105,7 @@ def _check_worker_idempotency(job_id: str, worker_name: str) -> Optional[WorkerR
 @router.post("/workers/audio", response_model=WorkerResponse)
 async def trigger_audio_worker(
     request: WorkerRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
@@ -107,11 +120,18 @@ async def trigger_audio_worker(
     The worker runs in the background and updates job state as it progresses.
     """
     job_id = request.job_id
-    logger.info(f"Triggering audio worker for job {job_id}")
+    
+    # Extract trace context from incoming request (propagated via Cloud Tasks)
+    trace_context = extract_trace_context(dict(http_request.headers))
+    
+    logger.info(f"[job:{job_id}] WORKER_TRIGGER worker=audio")
+    add_span_attribute("job_id", job_id)
+    add_span_attribute("worker", "audio")
     
     # Idempotency check
     skip_response = _check_worker_idempotency(job_id, "audio")
     if skip_response:
+        add_span_event("worker_skipped", {"reason": skip_response.status})
         return skip_response
     
     # Add task to background tasks
@@ -119,6 +139,7 @@ async def trigger_audio_worker(
     # while the worker continues processing
     background_tasks.add_task(process_audio_separation, job_id)
     
+    add_span_event("worker_started")
     return WorkerResponse(
         status="started",
         job_id=job_id,
@@ -129,6 +150,7 @@ async def trigger_audio_worker(
 @router.post("/workers/lyrics", response_model=WorkerResponse)
 async def trigger_lyrics_worker(
     request: WorkerRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
@@ -143,16 +165,24 @@ async def trigger_lyrics_worker(
     The worker runs in the background and updates job state as it progresses.
     """
     job_id = request.job_id
-    logger.info(f"Triggering lyrics worker for job {job_id}")
+    
+    # Extract trace context from incoming request
+    trace_context = extract_trace_context(dict(http_request.headers))
+    
+    logger.info(f"[job:{job_id}] WORKER_TRIGGER worker=lyrics")
+    add_span_attribute("job_id", job_id)
+    add_span_attribute("worker", "lyrics")
     
     # Idempotency check
     skip_response = _check_worker_idempotency(job_id, "lyrics")
     if skip_response:
+        add_span_event("worker_skipped", {"reason": skip_response.status})
         return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(process_lyrics_transcription, job_id)
     
+    add_span_event("worker_started")
     return WorkerResponse(
         status="started",
         job_id=job_id,
@@ -163,6 +193,7 @@ async def trigger_lyrics_worker(
 @router.post("/workers/screens", response_model=WorkerResponse)
 async def trigger_screens_worker(
     request: WorkerRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
@@ -174,16 +205,24 @@ async def trigger_screens_worker(
     Idempotency: If worker is already running or complete, returns early.
     """
     job_id = request.job_id
-    logger.info(f"Triggering screens worker for job {job_id}")
+    
+    # Extract trace context from incoming request
+    trace_context = extract_trace_context(dict(http_request.headers))
+    
+    logger.info(f"[job:{job_id}] WORKER_TRIGGER worker=screens")
+    add_span_attribute("job_id", job_id)
+    add_span_attribute("worker", "screens")
     
     # Idempotency check
     skip_response = _check_worker_idempotency(job_id, "screens")
     if skip_response:
+        add_span_event("worker_skipped", {"reason": skip_response.status})
         return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(generate_screens, job_id)
     
+    add_span_event("worker_started")
     return WorkerResponse(
         status="started",
         job_id=job_id,
@@ -194,6 +233,7 @@ async def trigger_screens_worker(
 @router.post("/workers/video", response_model=WorkerResponse)
 async def trigger_video_worker(
     request: WorkerRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
@@ -206,16 +246,24 @@ async def trigger_video_worker(
     Idempotency: If worker is already running or complete, returns early.
     """
     job_id = request.job_id
-    logger.info(f"Triggering video worker for job {job_id}")
+    
+    # Extract trace context from incoming request
+    trace_context = extract_trace_context(dict(http_request.headers))
+    
+    logger.info(f"[job:{job_id}] WORKER_TRIGGER worker=video")
+    add_span_attribute("job_id", job_id)
+    add_span_attribute("worker", "video")
     
     # Idempotency check
     skip_response = _check_worker_idempotency(job_id, "video")
     if skip_response:
+        add_span_event("worker_skipped", {"reason": skip_response.status})
         return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(generate_video, job_id)
     
+    add_span_event("worker_started")
     return WorkerResponse(
         status="started",
         job_id=job_id,
@@ -226,6 +274,7 @@ async def trigger_video_worker(
 @router.post("/workers/render-video", response_model=WorkerResponse)
 async def trigger_render_video_worker(
     request: WorkerRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)
 ):
@@ -242,16 +291,24 @@ async def trigger_render_video_worker(
     Next state: AWAITING_INSTRUMENTAL_SELECTION
     """
     job_id = request.job_id
-    logger.info(f"Triggering render-video worker for job {job_id}")
+    
+    # Extract trace context from incoming request
+    trace_context = extract_trace_context(dict(http_request.headers))
+    
+    logger.info(f"[job:{job_id}] WORKER_TRIGGER worker=render-video")
+    add_span_attribute("job_id", job_id)
+    add_span_attribute("worker", "render-video")
     
     # Idempotency check
     skip_response = _check_worker_idempotency(job_id, "render")
     if skip_response:
+        add_span_event("worker_skipped", {"reason": skip_response.status})
         return skip_response
     
     # Add task to background tasks
     background_tasks.add_task(process_render_video, job_id)
     
+    add_span_event("worker_started")
     return WorkerResponse(
         status="started",
         job_id=job_id,

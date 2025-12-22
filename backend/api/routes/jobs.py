@@ -28,6 +28,7 @@ from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
+from backend.services.metrics import metrics
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,9 @@ async def create_job(
             user_email=request.user_email
         )
         job = job_manager.create_job(job_create)
+        
+        # Record job creation metric
+        metrics.record_job_created(job.job_id, source="url")
         
         # Trigger both workers in parallel using asyncio.gather
         # (FastAPI's BackgroundTasks runs async tasks sequentially)

@@ -9,16 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
 from backend.api.routes import health, jobs, internal, file_upload, review, auth, audio_search
 from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
+from backend.services.structured_logging import setup_structured_logging
 
 
 from backend.version import VERSION
 
 
-# Configure logging with trace ID support
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure structured logging (JSON in Cloud Run, human-readable locally)
+# This must happen before any logging calls
+setup_structured_logging()
 logger = logging.getLogger(__name__)
 
 # Initialize OpenTelemetry tracing (must happen before app creation)

@@ -19,6 +19,25 @@ Usage:
     with tracer.start_as_current_span("my-operation") as span:
         span.set_attribute("job_id", job_id)
         # ... do work ...
+    
+    # For job-specific spans with automatic job_id attribute
+    from backend.services.tracing import job_span
+    
+    with job_span("audio-worker", job_id) as span:
+        # job_id is automatically set as an attribute
+        span.set_attribute("stage", "separation")
+        # ... do work ...
+    
+    # For propagating trace context through Cloud Tasks
+    from backend.services.tracing import inject_trace_context, extract_trace_context
+    
+    # In worker_service.py (when creating task):
+    headers = inject_trace_context({})
+    
+    # In internal.py (when receiving task):
+    context = extract_trace_context(request.headers)
+    with tracer.start_as_current_span("worker", context=context):
+        ...
 """
 import os
 import logging
@@ -380,3 +399,145 @@ def get_current_span_id() -> Optional[str]:
         if ctx.is_valid:
             return format(ctx.span_id, '016x')
     return None
+
+
+# =====================================================
+# Job-Aware Tracing Utilities
+# =====================================================
+
+@contextmanager
+def job_span(
+    name: str,
+    job_id: str,
+    attributes: Optional[Dict[str, Any]] = None,
+    kind: trace.SpanKind = trace.SpanKind.INTERNAL,
+):
+    """
+    Create a traced span with job_id automatically set as an attribute.
+    
+    This is the preferred way to create spans in job processing workers.
+    The job_id attribute enables filtering spans by job in Cloud Trace.
+    
+    Usage:
+        with job_span("audio-separation", job_id) as span:
+            span.set_attribute("stage", "clean_instrumental")
+            # ... do work ...
+    
+    Args:
+        name: Span name (appears in Cloud Trace)
+        job_id: Job ID to attach to the span
+        attributes: Additional span attributes
+        kind: Span kind (INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER)
+        
+    Yields:
+        The active span
+    """
+    all_attributes = {
+        "job_id": job_id,
+        "service.operation": name,
+    }
+    if attributes:
+        all_attributes.update(attributes)
+    
+    with create_span(name, all_attributes, kind) as span:
+        yield span
+
+
+def inject_trace_context(headers: Dict[str, str]) -> Dict[str, str]:
+    """
+    Inject current trace context into HTTP headers.
+    
+    Use this when creating Cloud Tasks or making HTTP calls to propagate
+    the trace context so child spans link to the parent trace.
+    
+    Usage:
+        headers = inject_trace_context({
+            "Content-Type": "application/json",
+            "Authorization": "Bearer token",
+        })
+        # Use headers in HTTP request or Cloud Task
+    
+    Args:
+        headers: Existing headers dict to add trace context to
+        
+    Returns:
+        Headers dict with traceparent/tracestate headers added
+    """
+    propagator = TraceContextTextMapPropagator()
+    carrier = dict(headers)  # Make a copy
+    propagator.inject(carrier)
+    return carrier
+
+
+def extract_trace_context(headers: Dict[str, str]) -> Optional[trace.Context]:
+    """
+    Extract trace context from HTTP headers.
+    
+    Use this when receiving Cloud Tasks or HTTP requests to continue
+    the trace from the parent span.
+    
+    Usage:
+        context = extract_trace_context(request.headers)
+        with tracer.start_as_current_span("worker", context=context):
+            # ... processing ...
+    
+    Args:
+        headers: HTTP headers containing traceparent/tracestate
+        
+    Returns:
+        Context object for use with start_as_current_span, or None
+    """
+    propagator = TraceContextTextMapPropagator()
+    return propagator.extract(headers)
+
+
+def start_span_with_context(
+    name: str,
+    context: Optional[trace.Context],
+    job_id: Optional[str] = None,
+    attributes: Optional[Dict[str, Any]] = None,
+):
+    """
+    Start a span as child of the given context (or current context if None).
+    
+    This is useful for starting worker spans that should link to the
+    trace from the original API request.
+    
+    Usage:
+        context = extract_trace_context(request.headers)
+        with start_span_with_context("audio-worker", context, job_id) as span:
+            # ... processing ...
+    
+    Args:
+        name: Span name
+        context: Parent context (from extract_trace_context) or None
+        job_id: Optional job ID to set as attribute
+        attributes: Additional span attributes
+        
+    Returns:
+        Context manager yielding the span
+    """
+    tracer = get_tracer()
+    
+    all_attributes = attributes or {}
+    if job_id:
+        all_attributes["job_id"] = job_id
+        all_attributes["service.operation"] = name
+    
+    @contextmanager
+    def _span():
+        kwargs = {"kind": trace.SpanKind.INTERNAL}
+        if context is not None:
+            kwargs["context"] = context
+        
+        with tracer.start_as_current_span(name, **kwargs) as span:
+            for key, value in all_attributes.items():
+                span.set_attribute(key, value)
+            try:
+                yield span
+            except Exception as e:
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                raise
+    
+    return _span()

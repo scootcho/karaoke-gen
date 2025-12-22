@@ -28,6 +28,7 @@ from backend.services.worker_service import get_worker_service
 from backend.services.credential_manager import get_credential_manager, CredentialStatus
 from backend.config import get_settings
 from backend.version import VERSION
+from backend.services.metrics import metrics
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
@@ -427,6 +428,9 @@ async def upload_and_create_job(
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
+        
+        # Record job creation metric
+        metrics.record_job_created(job_id, source="upload")
         
         logger.info(f"Created job {job_id} for {artist} - {title}")
         
@@ -882,6 +886,9 @@ async def create_job_with_upload_urls(
         job = job_manager.create_job(job_create)
         job_id = job.job_id
         
+        # Record job creation metric
+        metrics.record_job_created(job_id, source="upload")
+        
         logger.info(f"Created job {job_id} for {body.artist} - {body.title} (signed URL upload flow)")
         
         # Generate signed upload URLs for each file
@@ -1265,6 +1272,9 @@ async def create_job_from_url(
         job = job_manager.create_job(job_create)
         job_id = job.job_id
         
+        # Record job creation metric
+        metrics.record_job_created(job_id, source="url")
+        
         logger.info(f"Created URL-based job {job_id} for URL: {body.url}")
         if artist:
             logger.info(f"  Artist: {artist}")
@@ -1465,6 +1475,9 @@ async def create_finalise_only_job(
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
+        
+        # Record job creation metric
+        metrics.record_job_created(job_id, source="finalise")
         
         logger.info(f"Created finalise-only job {job_id} for {body.artist} - {body.title}")
         

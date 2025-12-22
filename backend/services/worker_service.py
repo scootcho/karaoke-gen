@@ -10,6 +10,10 @@ SOLID Principles:
 - Single Responsibility: Only handles worker coordination
 - Dependency Inversion: Depends on HTTP abstraction, not implementation
 - Open/Closed: Can add new workers without modifying existing code
+
+Observability:
+- Propagates trace context through Cloud Tasks for distributed tracing
+- All worker invocations create spans linked to original request trace
 """
 import logging
 import os
@@ -18,6 +22,7 @@ from typing import Optional
 import httpx
 
 from backend.config import get_settings
+from backend.services.tracing import inject_trace_context
 
 
 logger = logging.getLogger(__name__)
@@ -180,6 +185,9 @@ class WorkerService:
         - Deduplication (via task name if needed)
         - OIDC authentication for Cloud Run
         
+        Observability:
+        - Injects trace context headers so worker spans link to parent trace
+        
         Args:
             worker_type: Worker type
             job_id: Job ID to process
@@ -205,14 +213,30 @@ class WorkerService:
             # Build queue path
             parent = self.tasks_client.queue_path(project, location, queue_name)
             
+            # Build base headers
+            headers = {
+                "Content-Type": "application/json",
+            }
+            
+            # Add admin auth header if available
+            # This is needed for the internal endpoint's require_admin dependency
+            if self._admin_token:
+                headers["Authorization"] = f"Bearer {self._admin_token}"
+                logger.debug(
+                    f"[job:{job_id}] Using admin token for Cloud Task auth, "
+                    f"token prefix: {self._admin_token[:8]}..., len={len(self._admin_token)}"
+                )
+            
+            # Inject trace context for distributed tracing
+            # This allows worker spans to link back to the original request trace
+            headers = inject_trace_context(headers)
+            
             # Build task payload
             task = {
                 "http_request": {
                     "http_method": tasks_v2.HttpMethod.POST,
                     "url": f"{self._base_url}/api/internal/workers/{worker_type}",
-                    "headers": {
-                        "Content-Type": "application/json",
-                    },
+                    "headers": headers,
                     "body": json.dumps({"job_id": job_id}).encode(),
                     # Use OIDC token for Cloud Run authentication
                     # This allows Cloud Tasks to invoke the Cloud Run service
@@ -222,23 +246,18 @@ class WorkerService:
                 },
             }
             
-            # Add admin auth header if available
-            # This is needed for the internal endpoint's require_admin dependency
-            if self._admin_token:
-                task["http_request"]["headers"]["Authorization"] = f"Bearer {self._admin_token}"
-            
             # Create task
             # Note: We don't set a task name, allowing Cloud Tasks to generate one
             # This prevents duplicate task errors on retries
             response = self.tasks_client.create_task(parent=parent, task=task)
             logger.info(
-                f"Created Cloud Task for {worker_type} worker, job {job_id}: {response.name}"
+                f"[job:{job_id}] Created Cloud Task for {worker_type} worker: {response.name}"
             )
             return True
             
         except Exception as e:
             logger.error(
-                f"Failed to enqueue Cloud Task for {worker_type}/{job_id}: {e}",
+                f"[job:{job_id}] Failed to enqueue Cloud Task for {worker_type}: {e}",
                 exc_info=True
             )
             return False
@@ -255,6 +274,9 @@ class WorkerService:
         This is the original implementation - direct HTTP POST to internal endpoint.
         The endpoint adds the worker function to FastAPI BackgroundTasks.
         
+        Observability:
+        - Injects trace context headers so worker spans link to parent trace
+        
         Args:
             worker_type: Worker type
             job_id: Job ID to process
@@ -269,6 +291,9 @@ class WorkerService:
             if self._admin_token:
                 headers["Authorization"] = f"Bearer {self._admin_token}"
             
+            # Inject trace context for distributed tracing
+            headers = inject_trace_context(headers)
+            
             async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 url = f"{self._base_url}/api/internal/workers/{worker_type}"
                 
@@ -279,22 +304,22 @@ class WorkerService:
                 )
                 
                 if response.status_code == 200:
-                    logger.info(f"Successfully triggered {worker_type} worker for job {job_id}")
+                    logger.info(f"[job:{job_id}] Successfully triggered {worker_type} worker")
                     return True
                 else:
                     logger.error(
-                        f"Failed to trigger {worker_type} worker for job {job_id}: "
+                        f"[job:{job_id}] Failed to trigger {worker_type} worker: "
                         f"HTTP {response.status_code} - {response.text}"
                     )
                     return False
                     
         except httpx.TimeoutException:
-            logger.error(f"Timeout triggering {worker_type} worker for job {job_id}")
+            logger.error(f"[job:{job_id}] Timeout triggering {worker_type} worker")
             return False
             
         except Exception as e:
             logger.error(
-                f"Error triggering {worker_type} worker for job {job_id}: {e}",
+                f"[job:{job_id}] Error triggering {worker_type} worker: {e}",
                 exc_info=True
             )
             return False
