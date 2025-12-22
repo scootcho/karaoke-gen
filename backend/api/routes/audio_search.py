@@ -34,6 +34,8 @@ from backend.services.audio_search_service import (
 )
 from backend.config import get_settings
 from backend.version import VERSION
+from backend.api.dependencies import require_auth
+from backend.services.auth_service import UserType
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["audio-search"])
@@ -330,6 +332,7 @@ async def search_audio(
     request: Request,
     background_tasks: BackgroundTasks,
     body: AudioSearchRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Search for audio by artist and title, creating a new job.
@@ -548,7 +551,10 @@ async def search_audio(
 
 
 @router.get("/audio-search/{job_id}/results")
-async def get_audio_search_results(job_id: str):
+async def get_audio_search_results(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Get audio search results for a job.
     
@@ -582,6 +588,7 @@ async def select_audio_source(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: AudioSelectRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Select an audio source and start job processing.

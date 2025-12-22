@@ -26,7 +26,7 @@ from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.api.dependencies import require_admin
+from backend.api.dependencies import require_admin, require_auth
 from backend.services.auth_service import UserType
 from backend.services.metrics import metrics
 
@@ -56,7 +56,8 @@ async def _trigger_workers_parallel(job_id: str) -> None:
 @router.post("", response_model=JobResponse)
 async def create_job(
     request: URLSubmissionRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> JobResponse:
     """
     Create a new karaoke generation job from a URL.
@@ -106,7 +107,10 @@ async def create_job(
 
 
 @router.get("/{job_id}", response_model=Job)
-async def get_job(job_id: str) -> Job:
+async def get_job(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> Job:
     """Get job status and details."""
     job = job_manager.get_job(job_id)
     if not job:
@@ -126,7 +130,8 @@ async def list_jobs(
     client_id: Optional[str] = None,
     created_after: Optional[str] = None,
     created_before: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> List[Job]:
     """
     List jobs with optional filters.
@@ -178,7 +183,11 @@ async def list_jobs(
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str, delete_files: bool = True) -> dict:
+async def delete_job(
+    job_id: str,
+    delete_files: bool = True,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> dict:
     """Delete a job and optionally its output files."""
     try:
         job = job_manager.get_job(job_id)
@@ -305,7 +314,10 @@ async def bulk_delete_jobs(
 # ============================================================================
 
 @router.get("/{job_id}/review-data")
-async def get_review_data(job_id: str) -> Dict[str, Any]:
+async def get_review_data(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> Dict[str, Any]:
     """
     Get data needed for lyrics review interface.
     
@@ -346,7 +358,11 @@ async def get_review_data(job_id: str) -> Dict[str, Any]:
 
 
 @router.post("/{job_id}/start-review")
-async def start_review(job_id: str, request: StartReviewRequest) -> dict:
+async def start_review(
+    job_id: str,
+    request: StartReviewRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> dict:
     """
     Mark job as IN_REVIEW (user opened review interface).
     
@@ -368,7 +384,8 @@ async def start_review(job_id: str, request: StartReviewRequest) -> dict:
 async def submit_corrections(
     job_id: str,
     submission: CorrectionsSubmission,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> dict:
     """
     Save corrected lyrics during human review.
@@ -426,7 +443,8 @@ async def submit_corrections(
 @router.post("/{job_id}/complete-review")
 async def complete_review(
     job_id: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> dict:
     """
     Complete the human review and trigger video rendering.
@@ -474,7 +492,10 @@ async def complete_review(
 
 
 @router.get("/{job_id}/instrumental-options")
-async def get_instrumental_options(job_id: str) -> Dict[str, Any]:
+async def get_instrumental_options(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> Dict[str, Any]:
     """
     Get instrumental audio options for user selection.
     
@@ -529,7 +550,10 @@ async def get_instrumental_options(job_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{job_id}/instrumental-analysis")
-async def get_instrumental_analysis(job_id: str) -> Dict[str, Any]:
+async def get_instrumental_analysis(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> Dict[str, Any]:
     """
     Get audio analysis data for instrumental selection.
     
@@ -603,7 +627,11 @@ async def get_instrumental_analysis(job_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{job_id}/audio-stream/{stem_type}")
-async def stream_audio(job_id: str, stem_type: str):
+async def stream_audio(
+    job_id: str,
+    stem_type: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Stream an audio file for playback in the browser.
     
@@ -780,7 +808,11 @@ async def create_custom_instrumental(
 
 
 @router.get("/{job_id}/waveform-data")
-async def get_waveform_data(job_id: str, num_points: int = 500) -> Dict[str, Any]:
+async def get_waveform_data(
+    job_id: str,
+    num_points: int = 500,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> Dict[str, Any]:
     """
     Get waveform amplitude data for client-side rendering.
     
@@ -837,7 +869,8 @@ async def get_waveform_data(job_id: str, num_points: int = 500) -> Dict[str, Any
 async def select_instrumental(
     job_id: str,
     selection: InstrumentalSelection,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> dict:
     """
     Submit instrumental selection.
@@ -885,7 +918,10 @@ async def select_instrumental(
 
 
 @router.get("/{job_id}/download-urls")
-async def get_download_urls(job_id: str) -> dict:
+async def get_download_urls(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> dict:
     """
     Get download URLs for all job output files.
     
@@ -927,7 +963,12 @@ async def get_download_urls(job_id: str) -> dict:
 
 
 @router.get("/{job_id}/download/{category}/{file_key}")
-async def download_file(job_id: str, category: str, file_key: str):
+async def download_file(
+    job_id: str,
+    category: str,
+    file_key: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+):
     """
     Stream download a specific file from a completed job.
     
@@ -1014,7 +1055,11 @@ async def download_file(job_id: str, category: str, file_key: str):
 
 
 @router.post("/{job_id}/cancel")
-async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
+async def cancel_job(
+    job_id: str,
+    request: CancelJobRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+) -> dict:
     """
     Cancel a job.
     
@@ -1035,7 +1080,8 @@ async def cancel_job(job_id: str, request: CancelJobRequest) -> dict:
 @router.post("/{job_id}/retry")
 async def retry_job(
     job_id: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> dict:
     """
     Retry a failed job from the last successful checkpoint.
@@ -1189,7 +1235,8 @@ async def retry_job(
 async def get_worker_logs(
     job_id: str,
     since_index: int = 0,
-    worker: Optional[str] = None
+    worker: Optional[str] = None,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> Dict[str, Any]:
     """
     Get worker logs for debugging.

@@ -29,6 +29,8 @@ from backend.services.credential_manager import get_credential_manager, Credenti
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.services.metrics import metrics
+from backend.api.dependencies import require_auth
+from backend.services.auth_service import UserType
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
@@ -238,6 +240,7 @@ async def _trigger_workers_parallel(job_id: str) -> None:
 async def upload_and_create_job(
     request: Request,
     background_tasks: BackgroundTasks,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth),
     # Required fields
     file: UploadFile = File(..., description="Audio file to process"),
     artist: str = Form(..., description="Artist name"),
@@ -774,6 +777,7 @@ def _get_gcs_path_for_file(job_id: str, file_type: str, filename: str) -> str:
 async def create_job_with_upload_urls(
     request: Request,
     body: CreateJobWithUploadUrlsRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Create a karaoke generation job and return signed URLs for direct file upload to GCS.
@@ -932,6 +936,7 @@ async def mark_uploads_complete(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: UploadsCompleteRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Mark file uploads as complete and start job processing.
@@ -1177,6 +1182,7 @@ async def create_job_from_url(
     request: Request,
     background_tasks: BackgroundTasks,
     body: CreateJobFromUrlRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Create a karaoke generation job from a YouTube or other online video URL.
@@ -1354,6 +1360,7 @@ def _get_gcs_path_for_finalise_file(job_id: str, file_type: str, filename: str) 
 async def create_finalise_only_job(
     request: Request,
     body: CreateFinaliseOnlyJobRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Create a finalise-only job for continuing from a local prep phase.
@@ -1522,6 +1529,7 @@ async def mark_finalise_uploads_complete(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: UploadsCompleteRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ):
     """
     Mark finalise-only file uploads as complete and start video generation.
