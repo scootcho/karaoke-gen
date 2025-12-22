@@ -2,6 +2,64 @@
 
 This directory contains Cloud Monitoring dashboard and alerting configurations for the karaoke-gen backend.
 
+---
+
+## 🎯 Quick Start: Debug a Failed Job
+
+**Bookmark this URL:**
+```
+https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22karaoke-backend%22;duration=PT6H?project=nomadkaraoke
+```
+
+### How to investigate a job:
+
+1. **Open the bookmarked URL** (Logs Explorer)
+
+2. **Add your job ID to the query.** In the query box, add a third line with your job ID:
+   ```
+   resource.type="cloud_run_revision"
+   resource.labels.service_name="karaoke-backend"
+   "[job:YOUR_JOB_ID"
+   ```
+   (Replace `YOUR_JOB_ID` with the actual ID, e.g. `"[job:8f03f0ac"`)
+
+3. **Click "Run query"** or press `Shift+Enter`
+
+4. **Enable "Stream logs"** (toggle at top right) for real-time updates
+
+### What you'll see:
+- `WORKER_START` - When each worker (audio/lyrics/screens/video) begins
+- `WORKER_END status=success/error` - When it finishes with duration
+- All log messages from that job's processing
+- Any error tracebacks
+
+### Example queries:
+
+**All logs for job `8f03f0ac`:**
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="karaoke-backend"
+"[job:8f03f0ac"
+```
+
+**Only errors for a job:**
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="karaoke-backend"
+"[job:8f03f0ac"
+severity>=ERROR
+```
+
+**Only worker start/end events:**
+```
+resource.type="cloud_run_revision"
+resource.labels.service_name="karaoke-backend"
+"[job:8f03f0ac"
+("WORKER_START" OR "WORKER_END")
+```
+
+---
+
 ## Dashboard
 
 The `dashboard.json` file defines a Cloud Monitoring dashboard with the following panels:
