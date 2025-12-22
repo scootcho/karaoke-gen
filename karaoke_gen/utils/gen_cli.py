@@ -200,6 +200,15 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
             with_backing_path = resolved_path
             break
     
+    # Find the original audio file (with vocals)
+    original_audio_path = None
+    raw_original_path = track.get("input_audio_wav")
+    if raw_original_path:
+        original_audio_path = _resolve_path_for_cwd(raw_original_path, track_dir)
+        if not os.path.exists(original_audio_path):
+            logger.warning(f"Original audio file not found: {original_audio_path}")
+            original_audio_path = None
+    
     try:
         logger.info("=== Starting Instrumental Review ===")
         logger.info(f"Analyzing backing vocals: {backing_vocals_path}")
@@ -236,6 +245,7 @@ def run_instrumental_review(track: dict, logger: logging.Logger) -> str | None:
             backing_vocals_path=backing_vocals_path,
             clean_instrumental_path=clean_instrumental_path,
             with_backing_path=with_backing_path,
+            original_audio_path=original_audio_path,
         )
         
         # Start server and open browser, wait for selection

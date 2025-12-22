@@ -146,6 +146,23 @@ class TestServerInitialization:
         
         assert server.with_backing_path == str(with_backing)
     
+    def test_server_initialization_with_original_audio(self, mock_analysis, temp_files):
+        """Test server initializes with optional original_audio_path."""
+        original_audio = Path(temp_files["output_dir"]) / "original.wav"
+        original_audio.write_bytes(b"fake audio")
+        
+        server = InstrumentalReviewServer(
+            output_dir=temp_files["output_dir"],
+            base_name="Artist - Title",
+            analysis=mock_analysis,
+            waveform_path=temp_files["waveform_path"],
+            backing_vocals_path=temp_files["backing_vocals_path"],
+            clean_instrumental_path=temp_files["clean_instrumental_path"],
+            original_audio_path=str(original_audio),
+        )
+        
+        assert server.original_audio_path == str(original_audio)
+    
     def test_get_selection_raises_without_selection(self, mock_analysis, temp_files):
         """Test get_selection raises when no selection made."""
         server = InstrumentalReviewServer(
@@ -525,6 +542,44 @@ class TestServerAPIEndpoints:
         assert len(data["analysis"]["audible_segments"]) == 1
         assert data["audio_urls"]["backing_vocals"] is not None
         assert data["audio_urls"]["clean_instrumental"] is not None
+    
+    def test_get_analysis_with_original_audio(self, tmp_path, mock_analysis):
+        """Test analysis endpoint includes has_original flag when original audio is provided."""
+        from fastapi.testclient import TestClient
+        from pydub import AudioSegment
+        from pydub.generators import Sine
+        
+        # Create real audio files for testing
+        audio = Sine(440).to_audio_segment(duration=1000)  # 1 second of 440Hz sine
+        
+        backing = tmp_path / "backing.flac"
+        clean = tmp_path / "clean.flac"
+        original = tmp_path / "original.wav"
+        waveform = tmp_path / "waveform.png"
+        
+        audio.export(str(backing), format="flac")
+        audio.export(str(clean), format="flac")
+        audio.export(str(original), format="wav")
+        waveform.write_bytes(b"\x89PNG\r\n\x1a\n")  # PNG magic bytes
+        
+        # Create server with original audio
+        server = InstrumentalReviewServer(
+            output_dir=str(tmp_path),
+            base_name="Artist - Title",
+            analysis=mock_analysis,
+            waveform_path=str(waveform),
+            backing_vocals_path=str(backing),
+            clean_instrumental_path=str(clean),
+            original_audio_path=str(original),
+        )
+        
+        client = TestClient(server._create_app())
+        response = client.get("/api/jobs/local/instrumental-analysis")
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["has_original"] == True
+        assert data["audio_urls"]["original"] == "/api/audio/original"
     
     def test_get_waveform_data_returns_amplitudes(self, client):
         """Test waveform data endpoint returns amplitudes."""
