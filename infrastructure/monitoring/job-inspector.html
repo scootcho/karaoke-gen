@@ -104,6 +104,32 @@
             background: rgba(255,255,255,0.15);
             box-shadow: 0 4px 20px rgba(255,255,255,0.1);
         }
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        .settings-row label {
+            margin: 0;
+            flex-shrink: 0;
+        }
+        select {
+            flex: 1;
+            padding: 10px 14px;
+            font-size: 0.95rem;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #0d0d1a;
+            color: #00d4ff;
+            outline: none;
+            cursor: pointer;
+        }
+        select:focus {
+            border-color: #00d4ff;
+        }
         .quick-links {
             background: rgba(255,255,255,0.03);
             border-radius: 16px;
@@ -123,6 +149,7 @@
             padding: 10px 0;
             border-bottom: 1px solid #222;
             transition: color 0.2s;
+            cursor: pointer;
         }
         .quick-links a:last-child {
             border-bottom: none;
@@ -144,6 +171,18 @@
         <p class="subtitle">Debug failed jobs in seconds</p>
         
         <div class="input-group">
+            <div class="settings-row">
+                <label for="authUser">Google Account</label>
+                <select id="authUser" onchange="saveAuthUser()">
+                    <option value="0">Account 0 (default)</option>
+                    <option value="1" selected>Account 1</option>
+                    <option value="2">Account 2</option>
+                    <option value="3">Account 3</option>
+                    <option value="4">Account 4</option>
+                    <option value="5">Account 5</option>
+                </select>
+            </div>
+            
             <label for="jobId">Enter Job ID</label>
             <input 
                 type="text" 
@@ -164,16 +203,16 @@
         
         <div class="quick-links">
             <h3>Quick Links</h3>
-            <a href="https://console.cloud.google.com/monitoring/dashboards/builder/0ea8ed34-409c-4fa4-b663-d8e282f3b3a2?project=nomadkaraoke" target="_blank">
+            <a onclick="openLink('monitoring/dashboards/builder/0ea8ed34-409c-4fa4-b663-d8e282f3b3a2')">
                 📊 System Dashboard
             </a>
-            <a href="https://console.cloud.google.com/logs/query;query=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22karaoke-backend%22%0Aseverity%3E%3DERROR;duration=PT1H?project=nomadkaraoke" target="_blank">
+            <a onclick="openLink('logs/query;query=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22karaoke-backend%22%0Aseverity%3E%3DERROR;duration=PT1H')">
                 🚨 Recent Errors
             </a>
-            <a href="https://console.cloud.google.com/cloudtasks?project=nomadkaraoke" target="_blank">
+            <a onclick="openLink('cloudtasks')">
                 📥 Cloud Tasks Queues
             </a>
-            <a href="https://console.cloud.google.com/run/detail/us-central1/karaoke-backend/metrics?project=nomadkaraoke" target="_blank">
+            <a onclick="openLink('run/detail/us-central1/karaoke-backend/metrics')">
                 ☁️ Cloud Run Service
             </a>
         </div>
@@ -186,6 +225,33 @@
     <script>
         const PROJECT = 'nomadkaraoke';
         const SERVICE = 'karaoke-backend';
+        const STORAGE_KEY = 'karaoke-inspector-authuser';
+        
+        // Load saved authUser on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved !== null) {
+                document.getElementById('authUser').value = saved;
+            }
+        });
+        
+        function saveAuthUser() {
+            const value = document.getElementById('authUser').value;
+            localStorage.setItem(STORAGE_KEY, value);
+        }
+        
+        function getAuthUser() {
+            return document.getElementById('authUser').value;
+        }
+        
+        function buildUrl(path) {
+            const authUser = getAuthUser();
+            return `https://console.cloud.google.com/${path}?project=${PROJECT}&authuser=${authUser}`;
+        }
+        
+        function openLink(path) {
+            window.open(buildUrl(path), '_blank');
+        }
         
         function getJobId() {
             const jobId = document.getElementById('jobId').value.trim();
@@ -200,13 +266,15 @@
             const jobId = getJobId();
             if (!jobId) return;
             
+            const authUser = getAuthUser();
+            
             // Build the Logs Explorer query - search both structured (jsonPayload) and text formats
             const query = `resource.type="cloud_run_revision"
 resource.labels.service_name="${SERVICE}"
 ("${jobId}" OR jsonPayload.job_id="${jobId}")`;
             
             const encodedQuery = encodeURIComponent(query);
-            const url = `https://console.cloud.google.com/logs/query;query=${encodedQuery};duration=PT6H?project=${PROJECT}`;
+            const url = `https://console.cloud.google.com/logs/query;query=${encodedQuery};duration=PT6H?project=${PROJECT}&authuser=${authUser}`;
             
             window.open(url, '_blank');
         }
@@ -215,9 +283,11 @@ resource.labels.service_name="${SERVICE}"
             const jobId = getJobId();
             if (!jobId) return;
             
+            const authUser = getAuthUser();
+            
             // Cloud Trace search - filter spans containing job_id in the name or attributes
             const filter = encodeURIComponent(`+span_name:${jobId}`);
-            const url = `https://console.cloud.google.com/traces/list?project=${PROJECT}&filter=${filter}`;
+            const url = `https://console.cloud.google.com/traces/list?project=${PROJECT}&filter=${filter}&authuser=${authUser}`;
             
             window.open(url, '_blank');
         }
@@ -231,4 +301,3 @@ resource.labels.service_name="${SERVICE}"
     </script>
 </body>
 </html>
-
