@@ -552,6 +552,16 @@ flacfetch_api_key_secret = secretmanager.Secret(
     ),
 )
 
+# Flacfetch API URL secret (the static IP address of the flacfetch VM)
+# This is stored as a secret to avoid committing infrastructure IPs to the repo
+flacfetch_api_url_secret = secretmanager.Secret(
+    "flacfetch-api-url",
+    secret_id="flacfetch-api-url",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
 # Startup script for the flacfetch VM
 # This installs and configures Transmission daemon and the flacfetch service
 FLACFETCH_STARTUP_SCRIPT = """#!/bin/bash
