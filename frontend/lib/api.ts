@@ -1,0 +1,366 @@
+/**
+ * API client for karaoke-gen backend
+ */
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gen.nomadkaraoke.com';
+
+export interface Job {
+  job_id: string;
+  status: string;
+  progress: number;
+  created_at: string;
+  updated_at: string;
+  url?: string;
+  artist?: string;
+  title?: string;
+  filename?: string;
+  error_message?: string;
+  file_urls?: Record<string, any>;
+  state_data?: Record<string, any>;
+  timeline?: Array<{
+    status: string;
+    timestamp: string;
+    progress?: number;
+    message?: string;
+  }>;
+}
+
+export interface UploadJobResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  filename?: string;
+  style_assets_uploaded?: string[];
+  server_version?: string;
+  distribution_services?: Record<string, any>;
+}
+
+export interface InstrumentalOption {
+  id: string;
+  label: string;
+  audio_url: string;
+  duration_seconds?: number;
+}
+
+export interface InstrumentalOptionsResponse {
+  options: InstrumentalOption[];
+  status: string;
+  artist?: string;
+  title?: string;
+}
+
+export interface DownloadUrlsResponse {
+  job_id: string;
+  artist?: string;
+  title?: string;
+  download_urls: Record<string, any>;
+}
+
+export interface AudioSearchResult {
+  index: number;
+  title: string;
+  artist: string;
+  provider: string;
+  url?: string;
+  duration?: number;
+  quality?: string;
+  source_id?: string;
+  seeders?: number;
+  is_lossless?: boolean;
+  year?: number;
+  album?: string;
+}
+
+export interface AudioSearchResponse {
+  status: string;
+  job_id: string;
+  results: AudioSearchResult[];
+  total_results: number;
+  message?: string;
+}
+
+export interface JobLog {
+  timestamp: string;
+  level: string;
+  message: string;
+  details?: Record<string, any>;
+}
+
+class ApiError extends Error {
+  status: number;
+  data?: any;
+  
+  constructor(message: string, status: number, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      data = { detail: response.statusText };
+    }
+    throw new ApiError(
+      data.detail || data.message || 'API request failed',
+      response.status,
+      data
+    );
+  }
+  return response.json();
+}
+
+export const api = {
+  /**
+   * List all jobs
+   */
+  async listJobs(params?: { status?: string; limit?: number }): Promise<Job[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    
+    const url = `${API_BASE_URL}/api/jobs${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    const response = await fetch(url);
+    return handleResponse<Job[]>(response);
+  },
+  
+  /**
+   * Get a single job by ID
+   */
+  async getJob(jobId: string): Promise<Job> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`);
+    return handleResponse<Job>(response);
+  },
+  
+  /**
+   * Upload a file and create a new job
+   */
+  async uploadJob(
+    file: File,
+    artist: string,
+    title: string,
+    options?: {
+      enable_cdg?: boolean;
+      enable_txt?: boolean;
+      brand_prefix?: string;
+      enable_youtube_upload?: boolean;
+    }
+  ): Promise<UploadJobResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('artist', artist);
+    formData.append('title', title);
+    
+    if (options?.enable_cdg !== undefined) {
+      formData.append('enable_cdg', String(options.enable_cdg));
+    }
+    if (options?.enable_txt !== undefined) {
+      formData.append('enable_txt', String(options.enable_txt));
+    }
+    if (options?.brand_prefix) {
+      formData.append('brand_prefix', options.brand_prefix);
+    }
+    if (options?.enable_youtube_upload !== undefined) {
+      formData.append('enable_youtube_upload', String(options.enable_youtube_upload));
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/jobs/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    return handleResponse<UploadJobResponse>(response);
+  },
+  
+  /**
+   * Create a job from a URL (YouTube, etc.)
+   */
+  async createJobFromUrl(
+    url: string,
+    artist?: string,
+    title?: string,
+    options?: {
+      enable_cdg?: boolean;
+      enable_txt?: boolean;
+      brand_prefix?: string;
+      enable_youtube_upload?: boolean;
+    }
+  ): Promise<{ status: string; job_id: string; message: string }> {
+    const body: Record<string, any> = { url };
+    if (artist) body.artist = artist;
+    if (title) body.title = title;
+    if (options?.enable_cdg !== undefined) body.enable_cdg = options.enable_cdg;
+    if (options?.enable_txt !== undefined) body.enable_txt = options.enable_txt;
+    if (options?.brand_prefix) body.brand_prefix = options.brand_prefix;
+    if (options?.enable_youtube_upload !== undefined) body.enable_youtube_upload = options.enable_youtube_upload;
+    
+    const response = await fetch(`${API_BASE_URL}/api/jobs/create-from-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get review data for lyrics review
+   */
+  async getReviewData(jobId: string): Promise<{
+    corrections_url: string;
+    audio_url: string;
+    status: string;
+    artist?: string;
+    title?: string;
+  }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/review-data`);
+    return handleResponse(response);
+  },
+  
+  /**
+   * Complete the lyrics review
+   */
+  async completeReview(jobId: string): Promise<{ status: string; job_status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/complete-review`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get instrumental options
+   */
+  async getInstrumentalOptions(jobId: string): Promise<InstrumentalOptionsResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/instrumental-options`);
+    return handleResponse(response);
+  },
+  
+  /**
+   * Select an instrumental
+   */
+  async selectInstrumental(
+    jobId: string,
+    selection: 'clean' | 'with_backing' | 'custom'
+  ): Promise<{ status: string; job_status: string; selection: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/select-instrumental`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selection }),
+    });
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get download URLs for completed job
+   */
+  async getDownloadUrls(jobId: string): Promise<DownloadUrlsResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/download-urls`);
+    return handleResponse(response);
+  },
+  
+  /**
+   * Cancel a job
+   */
+  async cancelJob(jobId: string, reason?: string): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason || 'Cancelled by user' }),
+    });
+    return handleResponse(response);
+  },
+  
+  /**
+   * Delete a job
+   */
+  async deleteJob(jobId: string, deleteFiles: boolean = true): Promise<{ status: string; message: string }> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/jobs/${jobId}?delete_files=${deleteFiles}`,
+      { method: 'DELETE' }
+    );
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get the base download URL for a file
+   */
+  getDownloadUrl(jobId: string, category: string, fileKey: string): string {
+    return `${API_BASE_URL}/api/jobs/${jobId}/download/${category}/${fileKey}`;
+  },
+  
+  /**
+   * Search for audio by artist and title
+   */
+  async searchAudio(
+    artist: string,
+    title: string,
+    autoDownload: boolean = false,
+    options?: {
+      enable_cdg?: boolean;
+      enable_txt?: boolean;
+      brand_prefix?: string;
+      enable_youtube_upload?: boolean;
+    }
+  ): Promise<AudioSearchResponse> {
+    const body: Record<string, any> = { artist, title, auto_download: autoDownload };
+    if (options?.enable_cdg !== undefined) body.enable_cdg = options.enable_cdg;
+    if (options?.enable_txt !== undefined) body.enable_txt = options.enable_txt;
+    if (options?.brand_prefix) body.brand_prefix = options.brand_prefix;
+    if (options?.enable_youtube_upload !== undefined) body.enable_youtube_upload = options.enable_youtube_upload;
+    
+    const response = await fetch(`${API_BASE_URL}/api/audio-search/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get audio search results for a job
+   */
+  async getAudioSearchResults(jobId: string): Promise<AudioSearchResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/results`);
+    return handleResponse(response);
+  },
+  
+  /**
+   * Select an audio search result
+   */
+  async selectAudioResult(jobId: string, index: number): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index }),
+    });
+    return handleResponse(response);
+  },
+  
+  /**
+   * Get job logs
+   */
+  async getJobLogs(jobId: string, limit: number = 100): Promise<JobLog[]> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/logs?limit=${limit}`);
+    const data = await handleResponse<{ logs: JobLog[] }>(response);
+    return data.logs || [];
+  },
+  
+  /**
+   * Retry a failed job
+   */
+  async retryJob(jobId: string): Promise<{ status: string; job_id: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/retry`, {
+      method: 'POST',
+    });
+    return handleResponse(response);
+  },
+};
+
+export { ApiError };
+
