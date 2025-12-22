@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")
     
+    # Flacfetch remote service (for torrent downloads)
+    # When configured, audio search uses the remote flacfetch HTTP API instead of local flacfetch.
+    # This is required for torrent downloads since Cloud Run doesn't support BitTorrent.
+    flacfetch_api_url: Optional[str] = os.getenv("FLACFETCH_API_URL")  # e.g., http://10.0.0.5:8080
+    flacfetch_api_key: Optional[str] = os.getenv("FLACFETCH_API_KEY")
+    
     # Default distribution settings (can be overridden per-request)
     default_dropbox_path: Optional[str] = os.getenv("DEFAULT_DROPBOX_PATH")
     default_gdrive_folder_id: Optional[str] = os.getenv("DEFAULT_GDRIVE_FOLDER_ID")

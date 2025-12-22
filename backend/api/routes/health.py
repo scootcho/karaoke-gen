@@ -4,9 +4,10 @@ Health check routes.
 import os
 import logging
 from fastapi import APIRouter
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from backend.version import VERSION
+from backend.services.flacfetch_client import get_flacfetch_client
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -69,27 +70,63 @@ async def health_check() -> Dict[str, str]:
     }
 
 
+async def check_flacfetch_service_status() -> Dict[str, Any]:
+    """Check if remote flacfetch service is available and healthy."""
+    client = get_flacfetch_client()
+    
+    if not client:
+        return {
+            "configured": False,
+            "message": "Remote flacfetch service not configured (FLACFETCH_API_URL not set)",
+        }
+    
+    try:
+        health = await client.health_check()
+        return {
+            "configured": True,
+            "available": True,
+            "status": health.get("status"),
+            "version": health.get("version"),
+            "transmission": health.get("transmission", {}),
+            "disk": health.get("disk", {}),
+            "providers": health.get("providers", {}),
+        }
+    except Exception as e:
+        return {
+            "configured": True,
+            "available": False,
+            "error": str(e),
+        }
+
+
 @router.get("/health/detailed")
 async def detailed_health_check() -> Dict[str, Any]:
     """
     Detailed health check including dependencies.
     
-    Use this to debug issues with Transmission, etc.
+    Use this to debug issues with Transmission, flacfetch service, etc.
     """
     transmission_status = check_transmission_status()
+    flacfetch_status = await check_flacfetch_service_status()
     
     # Log for debugging
     if not transmission_status.get("available"):
-        logger.warning(f"Transmission not available: {transmission_status.get('error')}")
+        logger.warning(f"Local Transmission not available: {transmission_status.get('error')}")
     else:
-        logger.info(f"Transmission available at {transmission_status.get('host')}:{transmission_status.get('port')}")
+        logger.info(f"Local Transmission available at {transmission_status.get('host')}:{transmission_status.get('port')}")
+    
+    if flacfetch_status.get("configured") and not flacfetch_status.get("available"):
+        logger.warning(f"Remote flacfetch service not available: {flacfetch_status.get('error')}")
+    elif flacfetch_status.get("available"):
+        logger.info(f"Remote flacfetch service healthy: {flacfetch_status.get('status')}")
     
     return {
         "status": "healthy",
         "service": "karaoke-gen-backend",
         "version": VERSION,
         "dependencies": {
-            "transmission": transmission_status,
+            "transmission_local": transmission_status,
+            "flacfetch_remote": flacfetch_status,
         }
     }
 

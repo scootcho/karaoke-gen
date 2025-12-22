@@ -497,3 +497,234 @@ domain_mapping.statuses.apply(
     })
 )
 
+# ==================== Flacfetch Service (Torrent Downloads) ====================
+# A dedicated VM running flacfetch with Transmission daemon for BitTorrent downloads.
+# This is required because Cloud Run doesn't support inbound peer connections for torrents.
+# The VM has a static IP for tracker whitelist and runs indefinitely for seeding.
+
+# Static IP for flacfetch (for tracker account whitelist)
+flacfetch_ip = gcp.compute.Address(
+    "flacfetch-ip",
+    name="flacfetch-static-ip",
+    region="us-central1",
+    address_type="EXTERNAL",
+    description="Static IP for flacfetch service (torrent downloads)",
+)
+
+# Service account for flacfetch VM
+flacfetch_sa = serviceaccount.Account(
+    "flacfetch-sa",
+    account_id="flacfetch-service",
+    display_name="Flacfetch Service Account",
+    description="Service account for flacfetch torrent/audio download VM",
+)
+
+# Grant flacfetch service account GCS write permissions
+flacfetch_storage_iam = gcp.storage.BucketIAMMember(
+    "flacfetch-storage-writer",
+    bucket=bucket.name,
+    role="roles/storage.objectCreator",
+    member=flacfetch_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant flacfetch service account GCS read permissions (for uploads folder)
+flacfetch_storage_reader_iam = gcp.storage.BucketIAMMember(
+    "flacfetch-storage-reader",
+    bucket=bucket.name,
+    role="roles/storage.objectViewer",
+    member=flacfetch_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant flacfetch service account Secret Manager access
+flacfetch_secrets_iam = gcp.projects.IAMMember(
+    "flacfetch-secrets-access",
+    project=project_id,
+    role="roles/secretmanager.secretAccessor",
+    member=flacfetch_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Flacfetch API key secret (for authenticating API requests)
+flacfetch_api_key_secret = secretmanager.Secret(
+    "flacfetch-api-key",
+    secret_id="flacfetch-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Startup script for the flacfetch VM
+# This installs and configures Transmission daemon and the flacfetch service
+FLACFETCH_STARTUP_SCRIPT = """#!/bin/bash
+set -e
+
+# Log to a file for debugging
+exec > >(tee /var/log/flacfetch-startup.log) 2>&1
+echo "Starting flacfetch setup at $(date)"
+
+# Install dependencies
+apt-get update
+apt-get install -y python3-pip python3-venv transmission-daemon ffmpeg git curl
+
+# Configure Transmission
+echo "Configuring Transmission daemon..."
+systemctl stop transmission-daemon || true
+
+# Create transmission directories
+mkdir -p /var/lib/transmission-daemon/downloads
+mkdir -p /var/lib/transmission-daemon/.config/transmission-daemon
+chown -R debian-transmission:debian-transmission /var/lib/transmission-daemon
+
+# Configure transmission settings
+cat > /var/lib/transmission-daemon/.config/transmission-daemon/settings.json << 'SETTINGS'
+{
+    "download-dir": "/var/lib/transmission-daemon/downloads",
+    "incomplete-dir": "/var/lib/transmission-daemon/.incomplete",
+    "incomplete-dir-enabled": true,
+    "rpc-authentication-required": false,
+    "rpc-bind-address": "127.0.0.1",
+    "rpc-enabled": true,
+    "rpc-port": 9091,
+    "rpc-whitelist-enabled": false,
+    "peer-port": 51413,
+    "port-forwarding-enabled": false,
+    "speed-limit-down": 0,
+    "speed-limit-down-enabled": false,
+    "speed-limit-up": 0,
+    "speed-limit-up-enabled": false,
+    "ratio-limit-enabled": false,
+    "umask": 2,
+    "encryption": 1
+}
+SETTINGS
+
+chown debian-transmission:debian-transmission /var/lib/transmission-daemon/.config/transmission-daemon/settings.json
+systemctl start transmission-daemon
+echo "Transmission daemon started"
+
+# Install flacfetch
+echo "Installing flacfetch..."
+cd /opt
+
+# Clone flacfetch (we'll use the repo from GitHub)
+if [ ! -d "flacfetch" ]; then
+    git clone https://github.com/nomadkaraoke/flacfetch.git
+fi
+cd flacfetch
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install flacfetch with API dependencies
+pip install -e ".[api]"
+
+# Get secrets from Secret Manager
+echo "Fetching secrets from Secret Manager..."
+FLACFETCH_API_KEY=$(gcloud secrets versions access latest --secret=flacfetch-api-key 2>/dev/null || echo "")
+REDACTED_API_KEY=$(gcloud secrets versions access latest --secret=redacted-api-key 2>/dev/null || echo "")
+OPS_API_KEY=$(gcloud secrets versions access latest --secret=ops-api-key 2>/dev/null || echo "")
+
+# Get bucket name from project metadata
+GCS_BUCKET=$(gcloud compute project-info describe --format='value(commonInstanceMetadata.items.gcs-bucket)' 2>/dev/null || echo "")
+if [ -z "$GCS_BUCKET" ]; then
+    # Fallback: construct from project ID
+    PROJECT_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")
+    GCS_BUCKET="karaoke-gen-storage-${PROJECT_ID}"
+fi
+
+echo "Using GCS bucket: $GCS_BUCKET"
+
+# Create systemd service for flacfetch
+echo "Creating systemd service..."
+cat > /etc/systemd/system/flacfetch.service << SYSTEMD
+[Unit]
+Description=Flacfetch HTTP API Service
+After=network.target transmission-daemon.service
+Requires=transmission-daemon.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/flacfetch
+Environment="FLACFETCH_API_KEY=${FLACFETCH_API_KEY}"
+Environment="REDACTED_API_KEY=${REDACTED_API_KEY}"
+Environment="OPS_API_KEY=${OPS_API_KEY}"
+Environment="GCS_BUCKET=${GCS_BUCKET}"
+Environment="FLACFETCH_KEEP_SEEDING=true"
+Environment="FLACFETCH_MIN_FREE_GB=5"
+Environment="FLACFETCH_DOWNLOAD_DIR=/var/lib/transmission-daemon/downloads"
+Environment="TRANSMISSION_HOST=localhost"
+Environment="TRANSMISSION_PORT=9091"
+ExecStart=/opt/flacfetch/venv/bin/flacfetch serve --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+systemctl daemon-reload
+systemctl enable flacfetch
+systemctl start flacfetch
+
+echo "Flacfetch service started at $(date)"
+echo "Setup complete!"
+"""
+
+# Flacfetch VM instance
+flacfetch_vm = gcp.compute.Instance(
+    "flacfetch-service",
+    name="flacfetch-service",
+    machine_type="e2-small",  # 0.5 vCPU, 2GB RAM - sufficient for I/O-bound workload
+    zone="us-central1-a",
+    boot_disk=gcp.compute.InstanceBootDiskArgs(
+        initialize_params=gcp.compute.InstanceBootDiskInitializeParamsArgs(
+            image="debian-cloud/debian-12",
+            size=30,  # GB - for torrent storage + headroom
+            type="pd-ssd",  # SSD for faster I/O
+        ),
+    ),
+    network_interfaces=[gcp.compute.InstanceNetworkInterfaceArgs(
+        network="default",
+        access_configs=[gcp.compute.InstanceNetworkInterfaceAccessConfigArgs(
+            nat_ip=flacfetch_ip.address,  # Static IP
+        )],
+    )],
+    service_account=gcp.compute.InstanceServiceAccountArgs(
+        email=flacfetch_sa.email,
+        scopes=["cloud-platform"],
+    ),
+    metadata_startup_script=FLACFETCH_STARTUP_SCRIPT,
+    metadata={
+        "gcs-bucket": bucket.name,  # Pass bucket name to startup script
+    },
+    tags=["flacfetch-service"],
+    allow_stopping_for_update=True,
+)
+
+# Firewall rule for flacfetch
+# - Port 51413 TCP/UDP: BitTorrent peer connections
+# - Port 8080 TCP: Flacfetch HTTP API (auth required at app level)
+flacfetch_firewall = gcp.compute.Firewall(
+    "flacfetch-firewall",
+    name="flacfetch-firewall",
+    network="default",
+    allows=[
+        # BitTorrent peer connections
+        gcp.compute.FirewallAllowArgs(protocol="tcp", ports=["51413"]),
+        gcp.compute.FirewallAllowArgs(protocol="udp", ports=["51413"]),
+        # Flacfetch HTTP API (auth required at app level)
+        gcp.compute.FirewallAllowArgs(protocol="tcp", ports=["8080"]),
+    ],
+    source_ranges=["0.0.0.0/0"],  # Permissive, auth enforced at app level
+    target_tags=["flacfetch-service"],
+    description="Firewall rules for flacfetch torrent/API service",
+)
+
+# Export flacfetch values
+pulumi.export("flacfetch_static_ip", flacfetch_ip.address)
+pulumi.export("flacfetch_service_url", flacfetch_ip.address.apply(
+    lambda ip: f"http://{ip}:8080"
+))
+pulumi.export("flacfetch_service_account", flacfetch_sa.email)
+

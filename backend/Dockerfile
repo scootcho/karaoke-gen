@@ -36,26 +36,7 @@ ENV PORT=8080
 # Expose port
 EXPOSE 8080
 
-# Create startup script that launches Transmission daemon before the main app
-# Transmission is needed for flacfetch to download from music trackers (Redacted, OPS)
-RUN echo '#!/bin/bash\n\
-# Start Transmission daemon in background\n\
-echo "Starting Transmission daemon..."\n\
-transmission-daemon --foreground --config-dir /var/lib/transmission-daemon/.config/transmission-daemon &\n\
-TRANSMISSION_PID=$!\n\
-\n\
-# Wait for Transmission to be ready (up to 10 seconds)\n\
-for i in {1..20}; do\n\
-    if curl -s http://127.0.0.1:9091/transmission/rpc > /dev/null 2>&1; then\n\
-        echo "Transmission daemon ready"\n\
-        break\n\
-    fi\n\
-    sleep 0.5\n\
-done\n\
-\n\
-# Start the main application\n\
-exec uvicorn backend.main:app --host 0.0.0.0 --port 8080\n\
-' > /app/start.sh && chmod +x /app/start.sh
-
-# Run the startup script
-CMD ["/bin/bash", "/app/start.sh"]
+# Run uvicorn directly
+# Note: Transmission daemon removed - torrent downloads now handled by
+# dedicated flacfetch VM service (see docs/00-current-plan/TORRENT-SERVICE-PLAN.md)
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
