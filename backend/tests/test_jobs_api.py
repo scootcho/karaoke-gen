@@ -81,7 +81,7 @@ class TestGetJob:
         assert data["status"] == "pending"
         assert data["artist"] == "Test Artist"
     
-    def test_get_nonexistent_job_returns_404(self, mock_worker_service):
+    def test_get_nonexistent_job_returns_404(self, mock_worker_service, auth_headers):
         """Test getting non-existent job returns 404."""
         mock_job_manager = MagicMock()
         mock_job_manager.get_job.return_value = None
@@ -133,7 +133,8 @@ class TestCreateJob:
         """Test creating job with URL returns 200."""
         response = client.post(
             "/api/jobs",
-            json={"url": "https://youtube.com/watch?v=test123"}
+            json={"url": "https://youtube.com/watch?v=test123"},
+            headers=auth_headers
         )
         assert response.status_code == 200
     
@@ -141,7 +142,8 @@ class TestCreateJob:
         """Test create response contains job_id."""
         response = client.post(
             "/api/jobs",
-            json={"url": "https://youtube.com/watch?v=test"}
+            json={"url": "https://youtube.com/watch?v=test"},
+            headers=auth_headers
         )
         data = response.json()
         assert "job_id" in data
@@ -154,7 +156,8 @@ class TestCreateJob:
                 "url": "https://youtube.com/watch?v=test",
                 "artist": "Test Artist",
                 "title": "Test Song"
-            }
+            },
+            headers=auth_headers
         )
         assert response.status_code == 200
 
@@ -167,7 +170,7 @@ class TestDeleteJob:
         response = client.delete("/api/jobs/test123", headers=auth_headers)
         assert response.status_code == 200
     
-    def test_delete_nonexistent_job(self, mock_worker_service):
+    def test_delete_nonexistent_job(self, mock_worker_service, auth_headers):
         """Test deleting non-existent job."""
         mock_job_manager = MagicMock()
         mock_job_manager.delete_job.return_value = False
@@ -194,7 +197,8 @@ class TestCancelJob:
         mock_job_manager.cancel_job.return_value = mock_job
         response = client.post(
             "/api/jobs/test123/cancel",
-            json={}
+            json={},
+            headers=auth_headers
         )
         assert response.status_code == 200
 
@@ -222,7 +226,8 @@ class TestSubmitCorrections:
                     "lines": [],
                     "metadata": {"source": "test"}
                 }
-            }
+            },
+            headers=auth_headers
         )
         # Should be 200 or validation error
         assert response.status_code in [200, 400, 422]
@@ -235,7 +240,8 @@ class TestSelectInstrumental:
         """Test instrumental selection requires selection field."""
         response = client.post(
             "/api/jobs/test123/select-instrumental",
-            json={}  # Missing selection field
+            json={},  # Missing selection field
+            headers=auth_headers
         )
         # Missing field should cause validation error
         assert response.status_code == 422

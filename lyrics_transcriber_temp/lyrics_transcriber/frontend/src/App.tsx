@@ -19,25 +19,27 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const encodedApiUrl = params.get('baseApiUrl')
     const audioHashParam = params.get('audioHash')
+    const reviewTokenParam = params.get('reviewToken')
 
     if (encodedApiUrl) {
       const baseApiUrl = decodeURIComponent(encodedApiUrl)
-      setApiClient(new LiveApiClient(baseApiUrl))
+      // Pass reviewToken to LiveApiClient for authentication
+      setApiClient(new LiveApiClient(baseApiUrl, reviewTokenParam || undefined))
       setIsReadOnly(false)
       if (audioHashParam) {
         setAudioHash(audioHashParam)
       }
       // Fetch initial data
-      fetchData(baseApiUrl)
+      fetchData(baseApiUrl, reviewTokenParam || undefined)
     } else {
       setApiClient(new FileOnlyClient())
       setIsReadOnly(true)
     }
   }, [])
 
-  const fetchData = async (baseUrl: string) => {
+  const fetchData = async (baseUrl: string, reviewToken?: string) => {
     try {
-      const client = new LiveApiClient(baseUrl)
+      const client = new LiveApiClient(baseUrl, reviewToken)
       const data = await client.getCorrectionData()
       // console.log('Full correction data from API:', data)
       setData(data)

@@ -321,6 +321,7 @@ class TestReviewEndpoints:
         # Annotations endpoint should accept data (even if it just logs it)
         response = client.post(
             f"/api/review/{job_id}/v1/annotations",
+            headers=auth_headers,
             json={"type": "test", "data": "test annotation"}
         )
         assert response.status_code == 200

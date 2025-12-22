@@ -32,7 +32,7 @@ def _create_mock_job(job_id: str = "test123") -> Job:
 
 
 @pytest.fixture
-def client(mock_auth_service):
+def client():
     """Create TestClient with mocked workers and job manager."""
     mock_creds = MagicMock()
     mock_creds.universe_domain = 'googleapis.com'

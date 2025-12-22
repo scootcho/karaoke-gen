@@ -234,6 +234,7 @@ class TestAudioSearchServiceSearch:
     def test_search_no_results_raises_error(self):
         """Test search raises NoResultsError when no results."""
         service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.side_effect = NoResultsError("No results found")
         
@@ -258,6 +259,7 @@ class TestAudioSearchServiceSearch:
             ))
         
         service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.return_value = mock_results
         
@@ -354,6 +356,7 @@ class TestAudioSearchServiceDownload:
         )
         
         service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.return_value = [mock_result]
         service._fetcher.download.return_value = mock_fetch_result

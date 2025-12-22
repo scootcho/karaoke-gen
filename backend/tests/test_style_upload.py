@@ -16,12 +16,20 @@ from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from io import BytesIO
 
 # Test the remote CLI's style parsing
+# Skip this class if flacfetch is not properly installed (remote_cli depends on it)
+try:
+    from karaoke_gen.utils.remote_cli import RemoteKaraokeClient, Config
+    _remote_cli_available = True
+except ImportError:
+    _remote_cli_available = False
+
+
+@pytest.mark.skipif(not _remote_cli_available, reason="flacfetch not properly installed")
 class TestRemoteCLIStyleParsing:
     """Test that remote CLI correctly parses style_params.json."""
     
     def test_parse_style_params_extracts_file_paths(self):
         """Test that _parse_style_params extracts all file references."""
-        from karaoke_gen.utils.remote_cli import RemoteKaraokeClient, Config
         
         # Create a mock style_params.json
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -79,7 +87,6 @@ class TestRemoteCLIStyleParsing:
     
     def test_parse_style_params_handles_missing_files(self):
         """Test that _parse_style_params ignores non-existent files."""
-        from karaoke_gen.utils.remote_cli import RemoteKaraokeClient, Config
         
         with tempfile.TemporaryDirectory() as temp_dir:
             style_params = {

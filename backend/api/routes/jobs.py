@@ -26,7 +26,7 @@ from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
-from backend.api.dependencies import require_admin, require_auth
+from backend.api.dependencies import require_admin, require_auth, require_instrumental_auth
 from backend.services.auth_service import UserType
 from backend.services.metrics import metrics
 
@@ -494,7 +494,7 @@ async def complete_review(
 @router.get("/{job_id}/instrumental-options")
 async def get_instrumental_options(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ) -> Dict[str, Any]:
     """
     Get instrumental audio options for user selection.
@@ -502,6 +502,8 @@ async def get_instrumental_options(
     Returns signed URLs for both options:
     1. Clean instrumental (no backing vocals)
     2. Instrumental with backing vocals
+    
+    Accepts either full auth token or job-specific instrumental_token.
     """
     job = job_manager.get_job(job_id)
     if not job:
@@ -552,7 +554,7 @@ async def get_instrumental_options(
 @router.get("/{job_id}/instrumental-analysis")
 async def get_instrumental_analysis(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ) -> Dict[str, Any]:
     """
     Get audio analysis data for instrumental selection.
@@ -564,6 +566,8 @@ async def get_instrumental_analysis(
     
     This endpoint enables intelligent instrumental selection by providing
     detailed analysis of the backing vocals track.
+    
+    Accepts either full auth token or job-specific instrumental_token.
     """
     job = job_manager.get_job(job_id)
     if not job:
@@ -630,7 +634,7 @@ async def get_instrumental_analysis(
 async def stream_audio(
     job_id: str,
     stem_type: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ):
     """
     Stream an audio file for playback in the browser.
@@ -643,6 +647,8 @@ async def stream_audio(
     
     Returns audio as a streaming response with proper headers for
     browser audio playback.
+    
+    Accepts either full auth token or job-specific instrumental_token.
     """
     from fastapi.responses import StreamingResponse
     import tempfile
@@ -719,6 +725,7 @@ async def stream_audio(
 async def create_custom_instrumental(
     job_id: str,
     request: CreateCustomInstrumentalRequest,
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ) -> Dict[str, Any]:
     """
     Create a custom instrumental by muting regions of backing vocals.
@@ -730,6 +737,8 @@ async def create_custom_instrumental(
     
     After calling this endpoint, the user can select "custom" in the
     select-instrumental endpoint.
+    
+    Accepts either full auth token or job-specific instrumental_token.
     """
     from backend.services.audio_editing_service import AudioEditingService
     from karaoke_gen.instrumental_review import MuteRegion
@@ -811,7 +820,7 @@ async def create_custom_instrumental(
 async def get_waveform_data(
     job_id: str,
     num_points: int = 500,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ) -> Dict[str, Any]:
     """
     Get waveform amplitude data for client-side rendering.
@@ -829,6 +838,8 @@ async def get_waveform_data(
             "duration_seconds": 180.5,
             "num_points": 500
         }
+        
+    Accepts either full auth token or job-specific instrumental_token.
     """
     from backend.services.audio_analysis_service import AudioAnalysisService
     
@@ -870,13 +881,15 @@ async def select_instrumental(
     job_id: str,
     selection: InstrumentalSelection,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_instrumental_auth)
 ) -> dict:
     """
     Submit instrumental selection.
     
     This is the SECOND critical human-in-the-loop interaction point.
     After selection, the job proceeds to video generation.
+    
+    Accepts either full auth token or job-specific instrumental_token.
     """
     job = job_manager.get_job(job_id)
     if not job:
