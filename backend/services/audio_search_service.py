@@ -276,10 +276,9 @@ class AudioSearchService:
         # Check if this was a remote search (torrent sources need remote download)
         if self._remote_search_id and self._remote_client:
             # Check if this is a torrent source that needs remote handling
-            is_remote = result.extra_info.get("remote", False) if result.extra_info else False
             is_torrent = result.provider in ["Redacted", "OPS"]
             
-            if is_remote or is_torrent:
+            if is_torrent:
                 return self._download_remote(result_index, output_dir, output_filename, gcs_path)
         
         # Delegate to shared FlacFetcher (local download)

@@ -414,6 +414,309 @@ class TestGetAudioSearchService:
         assert service1 is service2
 
 
+class TestRemoteDownloadPath:
+    """Test remote download functionality when flacfetch service is configured.
+    
+    These tests verify the code path that uses the remote flacfetch service
+    for torrent downloads (Redacted/OPS providers). This would have caught
+    the 'extra_info' attribute error.
+    
+    The tests directly set up the service state without calling search() to avoid
+    the complexity of mocking async remote search operations.
+    """
+    
+    def test_download_uses_remote_for_redacted_provider(self):
+        """Test download routes to remote service for Redacted provider.
+        
+        This test would have caught: 'AudioSearchResult' object has no attribute 'extra_info'
+        """
+        # Create a Redacted result (torrent source)
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="Redacted",  # Torrent provider - should use remote
+            url="",  # No URL for torrent sources
+            quality="FLAC 16bit CD",
+            seeders=50,
+            target_file="Waterloo.flac",
+            index=0,
+        )
+        
+        # Create service with mocked remote client
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        
+        # Directly set cached results (simulating after search)
+        service._cached_results = [mock_result]
+        service._remote_search_id = "remote_search_123"  # Remote search was performed
+        
+        # Mock the remote client
+        mock_remote_client = Mock()
+        service._remote_client = mock_remote_client
+        
+        # Mock the remote download method
+        mock_download_result = AudioDownloadResult(
+            filepath="gs://bucket/uploads/job123/audio/Waterloo.flac",
+            artist="ABBA",
+            title="Waterloo",
+            provider="Redacted",
+            quality="FLAC 16bit CD",
+        )
+        service._download_remote = Mock(return_value=mock_download_result)
+        
+        # Call download - should route to remote
+        result = service.download(0, "/tmp", gcs_path="uploads/job123/audio/")
+        
+        # Verify remote download was called
+        service._download_remote.assert_called_once_with(0, "/tmp", None, "uploads/job123/audio/")
+        assert result.filepath == "gs://bucket/uploads/job123/audio/Waterloo.flac"
+    
+    def test_download_uses_remote_for_ops_provider(self):
+        """Test download routes to remote service for OPS provider."""
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="OPS",  # Torrent provider
+            url="",
+            quality="FLAC 16bit CD",
+            seeders=30,
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        
+        # Directly set cached results
+        service._cached_results = [mock_result]
+        service._remote_search_id = "remote_search_456"
+        
+        # Mock remote client
+        mock_remote_client = Mock()
+        service._remote_client = mock_remote_client
+        
+        # Mock remote download
+        mock_download_result = AudioDownloadResult(
+            filepath="gs://bucket/test.flac",
+            artist="ABBA",
+            title="Waterloo",
+            provider="OPS",
+            quality="FLAC",
+        )
+        service._download_remote = Mock(return_value=mock_download_result)
+        
+        # Call download
+        result = service.download(0, "/tmp")
+        
+        # Should use remote for OPS
+        service._download_remote.assert_called_once()
+    
+    def test_download_uses_local_for_youtube_even_with_remote_client(self):
+        """Test YouTube downloads use local even when remote client is configured."""
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="YouTube",  # NOT a torrent provider
+            url="https://youtube.com/watch?v=abc123",
+            quality="Opus 128kbps",
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        
+        # Directly set cached results
+        service._cached_results = [mock_result]
+        service._remote_search_id = "remote_search_789"  # Remote search was performed
+        
+        # Mock remote client (configured but shouldn't be used for YouTube)
+        mock_remote_client = Mock()
+        service._remote_client = mock_remote_client
+        
+        # Mock local download
+        mock_fetch_result = AudioDownloadResult(
+            filepath="/tmp/test.opus",
+            artist="ABBA",
+            title="Waterloo",
+            provider="YouTube",
+            quality="Opus 128kbps",
+        )
+        service._fetcher.download.return_value = mock_fetch_result
+        
+        # Mock _download_remote to ensure it's NOT called
+        service._download_remote = Mock()
+        
+        # Call download
+        result = service.download(0, "/tmp")
+        
+        # Should use local for YouTube
+        service._download_remote.assert_not_called()
+        service._fetcher.download.assert_called_once()
+    
+    def test_download_uses_local_when_no_remote_client(self):
+        """Test download uses local when remote client is not configured."""
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="Redacted",  # Would normally use remote
+            url="",
+            quality="FLAC",
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        
+        # Directly set cached results
+        service._cached_results = [mock_result]
+        
+        # No remote client
+        service._remote_client = None
+        service._remote_search_id = None  # No remote search
+        
+        # Mock local download
+        mock_fetch_result = AudioDownloadResult(
+            filepath="/tmp/test.flac",
+            artist="ABBA",
+            title="Waterloo",
+            provider="Redacted",
+            quality="FLAC",
+        )
+        service._fetcher.download.return_value = mock_fetch_result
+        
+        # Call download
+        result = service.download(0, "/tmp")
+        
+        # Should use local even though it's Redacted
+        service._fetcher.download.assert_called_once()
+    
+    def test_download_uses_local_when_no_remote_search_id(self):
+        """Test download uses local when search wasn't done remotely."""
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="Redacted",
+            url="",
+            quality="FLAC",
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        
+        # Directly set cached results
+        service._cached_results = [mock_result]
+        
+        # Remote client configured but search was local (fallback scenario)
+        service._remote_client = Mock()
+        service._remote_search_id = None  # Search was local, not remote
+        
+        # Mock local download
+        mock_fetch_result = AudioDownloadResult(
+            filepath="/tmp/test.flac",
+            artist="ABBA",
+            title="Waterloo",
+            provider="Redacted",
+            quality="FLAC",
+        )
+        service._fetcher.download.return_value = mock_fetch_result
+        
+        # Call download
+        result = service.download(0, "/tmp")
+        
+        # Should use local since no remote search ID
+        service._fetcher.download.assert_called_once()
+    
+    def test_torrent_provider_routing_checks_both_conditions(self):
+        """Test that torrent provider routing requires BOTH remote_search_id AND remote_client.
+        
+        This test verifies the logical AND condition in the download routing.
+        """
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="Redacted",
+            url="",
+            quality="FLAC",
+            index=0,
+        )
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._cached_results = [mock_result]
+        
+        # Test: remote_client set but no remote_search_id -> should use local
+        service._remote_client = Mock()
+        service._remote_search_id = None
+        
+        mock_fetch_result = AudioDownloadResult(
+            filepath="/tmp/test.flac", artist="ABBA", title="Waterloo",
+            provider="Redacted", quality="FLAC",
+        )
+        service._fetcher.download.return_value = mock_fetch_result
+        service._download_remote = Mock()
+        
+        service.download(0, "/tmp")
+        service._download_remote.assert_not_called()
+        service._fetcher.download.assert_called_once()
+        
+        # Reset mocks
+        service._fetcher.download.reset_mock()
+        service._download_remote.reset_mock()
+        
+        # Test: remote_search_id set but no remote_client -> should use local
+        service._remote_client = None
+        service._remote_search_id = "search_123"
+        
+        service.download(0, "/tmp")
+        service._download_remote.assert_not_called()
+        service._fetcher.download.assert_called_once()
+    
+    def test_download_does_not_access_nonexistent_attributes(self):
+        """Test that download() doesn't try to access nonexistent attributes.
+        
+        This test would have caught the 'extra_info' attribute error:
+        AttributeError: 'AudioSearchResult' object has no attribute 'extra_info'
+        
+        AudioSearchResult only has: title, artist, url, provider, duration,
+        quality, source_id, index, seeders, target_file, raw_result
+        """
+        mock_result = AudioSearchResult(
+            title="Waterloo",
+            artist="ABBA",
+            provider="Redacted",
+            url="",
+            quality="FLAC 16bit CD",
+            seeders=50,
+            index=0,
+        )
+        
+        # Verify AudioSearchResult doesn't have extra_info
+        assert not hasattr(mock_result, 'extra_info')
+        
+        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service._fetcher = Mock()
+        service._cached_results = [mock_result]
+        service._remote_search_id = "search_123"
+        service._remote_client = Mock()
+        
+        # Mock _download_remote to avoid actual network call
+        mock_download_result = AudioDownloadResult(
+            filepath="/tmp/test.flac",
+            artist="ABBA",
+            title="Waterloo", 
+            provider="Redacted",
+            quality="FLAC",
+        )
+        service._download_remote = Mock(return_value=mock_download_result)
+        
+        # This should NOT raise AttributeError: 'AudioSearchResult' object has no attribute 'extra_info'
+        result = service.download(0, "/tmp")
+        
+        # Should succeed and use remote download for Redacted provider
+        service._download_remote.assert_called_once()
+        assert result.filepath == "/tmp/test.flac"
+
+
 class TestFlacfetchIntegration:
     """
     Integration tests that verify flacfetch imports work correctly.
