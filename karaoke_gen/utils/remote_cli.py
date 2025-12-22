@@ -1398,16 +1398,21 @@ class JobMonitor:
         base_api_url = f"{self.config.service_url}/api/review/{job_id}"
         encoded_api_url = urllib.parse.quote(base_api_url, safe='')
         
-        # Try to get audio hash from job data
+        # Try to get audio hash and review token from job data
+        audio_hash = ''
+        review_token = ''
         try:
             job_data = self.client.get_job(job_id)
             audio_hash = job_data.get('audio_hash', '')
+            review_token = job_data.get('review_token', '')
         except Exception:
-            audio_hash = ''
+            pass
         
         url = f"{self.config.review_ui_url}/?baseApiUrl={encoded_api_url}"
         if audio_hash:
             url += f"&audioHash={audio_hash}"
+        if review_token:
+            url += f"&reviewToken={review_token}"
         
         self.logger.info(f"Opening lyrics review UI: {url}")
         self.open_browser(url)

@@ -35,14 +35,29 @@ interface AddLyricsRequest {
 }
 
 export class LiveApiClient implements ApiClient {
-    constructor(private baseUrl: string) {
+    private reviewToken?: string;
+
+    constructor(private baseUrl: string, reviewToken?: string) {
         this.baseUrl = baseUrl.replace(/\/$/, '')
+        this.reviewToken = reviewToken
     }
 
     public isUpdatingHandlers = false;
 
+    /**
+     * Build URL with reviewToken query parameter if available
+     */
+    private buildUrl(path: string): string {
+        const url = `${this.baseUrl}${path}`
+        if (this.reviewToken) {
+            const separator = url.includes('?') ? '&' : '?'
+            return `${url}${separator}review_token=${encodeURIComponent(this.reviewToken)}`
+        }
+        return url
+    }
+
     async getCorrectionData(): Promise<CorrectionData> {
-        const response = await fetch(`${this.baseUrl}/correction-data`);
+        const response = await fetch(this.buildUrl('/correction-data'));
         if (!response.ok) {
             throw new Error(`API error: ${response.statusText}`);
         }
@@ -64,7 +79,7 @@ export class LiveApiClient implements ApiClient {
             corrected_segments: data.corrected_segments
         };
 
-        const response = await fetch(`${this.baseUrl}/complete`, {
+        const response = await fetch(this.buildUrl('/complete'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -78,7 +93,7 @@ export class LiveApiClient implements ApiClient {
     }
 
     getAudioUrl(audioHash: string): string {
-        return `${this.baseUrl}/audio/${audioHash}`
+        return this.buildUrl(`/audio/${audioHash}`)
     }
 
     async generatePreviewVideo(data: CorrectionData): Promise<PreviewVideoResponse> {
@@ -88,7 +103,7 @@ export class LiveApiClient implements ApiClient {
             corrected_segments: data.corrected_segments
         };
 
-        const response = await fetch(`${this.baseUrl}/preview-video`, {
+        const response = await fetch(this.buildUrl('/preview-video'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -107,7 +122,7 @@ export class LiveApiClient implements ApiClient {
     }
 
     getPreviewVideoUrl(previewHash: string): string {
-        return `${this.baseUrl}/preview-video/${previewHash}`;
+        return this.buildUrl(`/preview-video/${previewHash}`);
     }
 
     async updateHandlers(enabledHandlers: string[]): Promise<CorrectionData> {
@@ -116,7 +131,7 @@ export class LiveApiClient implements ApiClient {
         console.log('API: Set isUpdatingHandlers to', this.isUpdatingHandlers);
         
         try {
-            const response = await fetch(`${this.baseUrl}/handlers`, {
+            const response = await fetch(this.buildUrl('/handlers'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -147,7 +162,7 @@ export class LiveApiClient implements ApiClient {
             lyrics
         };
 
-        const response = await fetch(`${this.baseUrl}/add-lyrics`, {
+        const response = await fetch(this.buildUrl('/add-lyrics'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -170,7 +185,7 @@ export class LiveApiClient implements ApiClient {
     async submitAnnotations(annotations: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]): Promise<void> {
         // Submit each annotation to the backend
         for (const annotation of annotations) {
-            const response = await fetch(`${this.baseUrl}/v1/annotations`, {
+            const response = await fetch(this.buildUrl('/v1/annotations'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -186,7 +201,7 @@ export class LiveApiClient implements ApiClient {
     }
 
     async getAnnotationStats(): Promise<any> {
-        const response = await fetch(`${this.baseUrl}/v1/annotations/stats`);
+        const response = await fetch(this.buildUrl('/v1/annotations/stats'));
         if (!response.ok) {
             throw new Error(`API error: ${response.statusText}`);
         }

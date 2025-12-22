@@ -368,18 +368,37 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Enable Yarn (for lyrics frontend)
+        run: corepack enable
+
+      # ===== Build Main Frontend (Next.js) =====
+      - name: Install main frontend dependencies
         working-directory: frontend
         run: npm ci --legacy-peer-deps
 
-      - name: Build Next.js static export
+      - name: Build main frontend (Next.js static export)
         working-directory: frontend
         env:
           NEXT_PUBLIC_API_URL: https://api.nomadkaraoke.com
         run: npm run build
+
+      # ===== Build Lyrics Review Frontend (Vite) =====
+      - name: Install lyrics frontend dependencies
+        working-directory: lyrics_transcriber_temp/lyrics_transcriber/frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Build lyrics frontend (Vite)
+        working-directory: lyrics_transcriber_temp/lyrics_transcriber/frontend
+        env:
+          # Set base path for subpath deployment
+          VITE_BASE_PATH: /lyrics/
+        run: yarn build --base=/lyrics/
+
+      - name: Copy lyrics frontend to main output
+        run: |
+          mkdir -p frontend/out/lyrics
+          cp -r lyrics_transcriber_temp/lyrics_transcriber/frontend/dist/* frontend/out/lyrics/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

@@ -251,6 +251,10 @@ class Job(BaseModel):
     finalise_only: bool = False                  # Skip prep, run only finalisation (requires uploaded prep outputs)
     keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
     
+    # Review authentication (Batch 7)
+    review_token: Optional[str] = None           # Job-scoped token for review UI access (generated when entering AWAITING_REVIEW)
+    review_token_expires_at: Optional[datetime] = None  # Token expiry time (optional, for extra security)
+    
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication

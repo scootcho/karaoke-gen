@@ -27,7 +27,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.job_logging import job_log_context, JobLogger
 from backend.services.tracing import create_span, add_span_attribute, add_span_event
-from backend.api.dependencies import require_auth
+from backend.api.dependencies import require_auth, require_review_auth
 from backend.services.auth_service import UserType
 
 # LyricsTranscriber imports for preview generation
@@ -67,7 +67,7 @@ async def ping(job_id: str):
 @router.get("/{job_id}/correction-data")
 async def get_correction_data(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """
     Get correction data for the review interface.
@@ -134,14 +134,21 @@ async def get_correction_data(
 
 
 @router.get("/{job_id}/audio/{audio_hash}")
-async def get_audio_with_hash(job_id: str, audio_hash: str):
+async def get_audio_with_hash(
+    job_id: str,
+    audio_hash: str,
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """Stream the audio file for playback (with hash parameter)."""
     return await _stream_audio(job_id)
 
 
 @router.get("/{job_id}/audio/")
 @router.get("/{job_id}/audio")
-async def get_audio_no_hash(job_id: str):
+async def get_audio_no_hash(
+    job_id: str,
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """Stream the audio file for playback (without hash parameter)."""
     return await _stream_audio(job_id)
 
@@ -197,7 +204,7 @@ async def _stream_audio(job_id: str):
 async def complete_review(
     job_id: str,
     updated_data: Dict[str, Any],
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """
     Complete the review and save corrected lyrics.
@@ -253,7 +260,11 @@ async def complete_review(
 
 
 @router.post("/{job_id}/handlers")
-async def update_handlers(job_id: str, enabled_handlers: list):
+async def update_handlers(
+    job_id: str,
+    enabled_handlers: list,
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """
     Update enabled correction handlers (optional feature).
     
@@ -268,7 +279,7 @@ async def update_handlers(job_id: str, enabled_handlers: list):
 async def add_lyrics(
     job_id: str,
     data: Dict[str, str],
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """
     Add custom lyrics source and rerun correction.
@@ -370,7 +381,7 @@ async def add_lyrics(
 async def generate_preview_video(
     job_id: str,
     updated_data: Dict[str, Any],
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """
     Generate a preview video with the current corrections.
@@ -486,7 +497,11 @@ async def generate_preview_video(
 
 
 @router.get("/{job_id}/preview-video/{preview_hash}")
-async def get_preview_video(job_id: str, preview_hash: str):
+async def get_preview_video(
+    job_id: str,
+    preview_hash: str,
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """Stream the generated preview video."""
     storage = StorageService()
     
@@ -527,7 +542,11 @@ async def get_preview_video(job_id: str, preview_hash: str):
 
 
 @router.post("/{job_id}/v1/annotations")
-async def submit_annotation(job_id: str, annotation: Dict[str, Any]):
+async def submit_annotation(
+    job_id: str,
+    annotation: Dict[str, Any],
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """
     Submit a correction annotation for ML training data.
     
@@ -539,7 +558,10 @@ async def submit_annotation(job_id: str, annotation: Dict[str, Any]):
 
 
 @router.get("/{job_id}/v1/annotations/stats")
-async def get_annotation_stats(job_id: str):
+async def get_annotation_stats(
+    job_id: str,
+    auth_info: Tuple[str, str] = Depends(require_review_auth)
+):
     """Get annotation statistics."""
     return {
         "total_annotations": 0,
