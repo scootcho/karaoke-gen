@@ -1,5 +1,4 @@
 {
-  "$schema": "https://cloud.google.com/monitoring/schemas/dashboard.schema.json",
   "displayName": "Karaoke Backend Overview",
   "mosaicLayout": {
     "columns": 12,
