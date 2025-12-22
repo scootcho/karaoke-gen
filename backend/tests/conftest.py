@@ -34,15 +34,35 @@ if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
 from backend.models.job import Job, JobStatus, JobCreate
 
 
-@pytest.fixture
-def mock_auth_service():
-    """Mock AuthService to accept test tokens."""
-    with patch('backend.api.dependencies.get_auth_service') as mock_get_service:
-        mock_service = MagicMock()
-        # Accept "test-admin-token" as valid admin token
-        mock_service.validate_token.return_value = (True, 'admin', 999, 'Valid token')
-        mock_get_service.return_value = mock_service
-        yield mock_service
+@pytest.fixture(autouse=True)
+def mock_auth_dependency(request):
+    """Mock the require_auth dependency for all tests using FastAPI's dependency override system."""
+    # Skip for emulator tests which have their own auth setup
+    if 'emulator' in str(request.fspath):
+        yield
+        return
+    
+    from backend.services.auth_service import UserType
+    from backend.api.dependencies import require_auth, require_admin
+    from backend.main import app
+    
+    # Create mock auth functions
+    async def mock_require_auth():
+        """Mock require_auth to always return valid admin credentials."""
+        return ("test-admin-token", UserType.ADMIN, 999)
+    
+    async def mock_require_admin():
+        """Mock require_admin to always return valid admin credentials."""
+        return ("test-admin-token", UserType.ADMIN, 999)
+    
+    # Use FastAPI's dependency override system
+    app.dependency_overrides[require_auth] = mock_require_auth
+    app.dependency_overrides[require_admin] = mock_require_admin
+    
+    yield
+    
+    # Clean up after test
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

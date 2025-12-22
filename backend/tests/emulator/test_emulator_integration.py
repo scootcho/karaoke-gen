@@ -27,15 +27,15 @@ pytestmark = pytest.mark.skipif(
 class TestEmulatorBasics:
     """Basic emulator connectivity tests."""
     
-    def test_health_endpoint(self, client):
+    def test_health_endpoint(self, client, auth_headers):
         """Test health endpoint works."""
-        response = client.get("/api/health")
+        response = client.get("/api/health", )
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
     
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self, client, auth_headers):
         """Test root endpoint works."""
-        response = client.get("/")
+        response = client.get("/", )
         assert response.status_code == 200
         assert response.json()["service"] == "karaoke-gen-backend"
 
@@ -285,9 +285,9 @@ class TestReviewEndpoints:
         assert response.status_code == 400
         assert "not ready for review" in response.json()["detail"].lower()
     
-    def test_review_audio_no_job(self, client):
+    def test_review_audio_no_job(self, client, auth_headers):
         """Test audio endpoint returns 404 for nonexistent job."""
-        response = client.get("/api/review/nonexistent-job/audio/")
+        response = client.get("/api/review/nonexistent-job/audio/", headers=auth_headers)
         assert response.status_code == 404
     
     def test_review_preview_video_stub(self, client, auth_headers):

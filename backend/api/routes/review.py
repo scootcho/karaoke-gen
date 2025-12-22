@@ -16,9 +16,9 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, Tuple
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from starlette.background import BackgroundTask
 

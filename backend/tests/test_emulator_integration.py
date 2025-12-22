@@ -96,15 +96,15 @@ def auth_headers():
 class TestEmulatorBasics:
     """Basic emulator connectivity tests."""
     
-    def test_health_endpoint(self, client):
+    def test_health_endpoint(self, client, auth_headers):
         """Test health endpoint works."""
-        response = client.get("/api/health")
+        response = client.get("/api/health", )
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
     
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self, client, auth_headers):
         """Test root endpoint works."""
-        response = client.get("/")
+        response = client.get("/", )
         assert response.status_code == 200
         assert response.json()["service"] == "karaoke-gen-backend"
 
