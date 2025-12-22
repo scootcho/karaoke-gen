@@ -183,6 +183,8 @@ karaoke-gen-remote \
 | `REVIEW_UI_URL` | Lyrics review UI URL | `https://lyrics.nomadkaraoke.com` |
 | `POLL_INTERVAL` | Seconds between status polls | `5` |
 
+**Note:** The `REVIEW_UI_URL` defaults to the hosted lyrics review UI. For local development, set it to `http://localhost:5173` if you're running the frontend dev server.
+
 ### Authentication
 
 The backend uses token-based authentication for admin operations (bulk delete, internal worker triggers). For basic job submission and monitoring, authentication is optional.
