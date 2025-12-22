@@ -1428,9 +1428,25 @@
                     <div class="success-screen">
                         <h2>✓ Selection Submitted</h2>
                         <p>You selected: <strong>${escapeHtml(selectionLabel)}</strong></p>
-                        <p style="color: var(--text-muted);">You can close this window now.</p>
+                        <p id="close-msg" style="color: var(--text-muted);">Closing in <span id="countdown">2</span>s...</p>
                     </div>
                 `;
+                
+                // Auto-close window after 2 seconds
+                let countdown = 2;
+                const countdownEl = document.getElementById('countdown');
+                const countdownInterval = setInterval(() => {
+                    countdown--;
+                    if (countdownEl) countdownEl.textContent = countdown;
+                    if (countdown <= 0) {
+                        clearInterval(countdownInterval);
+                        // Try to close the window (works for windows opened by script)
+                        window.close();
+                        // If window.close() didn't work, update message
+                        const msg = document.getElementById('close-msg');
+                        if (msg) msg.textContent = 'You can close this window now.';
+                    }
+                }, 1000);
             } catch (error) {
                 showError(error.message);
                 if (btn) {

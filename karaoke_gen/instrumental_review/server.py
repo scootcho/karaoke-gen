@@ -11,6 +11,7 @@ Similar pattern to LyricsTranscriber's ReviewServer.
 import logging
 import os
 from pathlib import Path
+import socket
 import threading
 import webbrowser
 from typing import List, Optional
@@ -358,23 +359,74 @@ class InstrumentalReviewServer:
 </body>
 </html>"""
     
+    @staticmethod
+    def _is_port_available(host: str, port: int) -> bool:
+        """Check if a port is available for binding."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind((host, port))
+                return True
+        except OSError:
+            return False
+    
+    @staticmethod
+    def _find_available_port(host: str, preferred_port: int, max_attempts: int = 100) -> int:
+        """
+        Find an available port, starting with the preferred port.
+        
+        Args:
+            host: Host to bind to
+            preferred_port: The preferred port to try first
+            max_attempts: Maximum number of ports to try
+            
+        Returns:
+            An available port number
+            
+        Raises:
+            RuntimeError: If no available port could be found
+        """
+        # Try the preferred port first
+        if InstrumentalReviewServer._is_port_available(host, preferred_port):
+            return preferred_port
+        
+        # Try subsequent ports
+        for offset in range(1, max_attempts):
+            port = preferred_port + offset
+            if port > 65535:
+                break
+            if InstrumentalReviewServer._is_port_available(host, port):
+                return port
+        
+        # Last resort: let the OS assign a port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, 0))
+            return sock.getsockname()[1]
+    
     def start_and_open_browser(self, port: int = 8765) -> str:
         """
         Start server, open browser, and block until selection is submitted.
         
         Args:
-            port: Port to run the server on
+            port: Preferred port to run the server on. If unavailable, will
+                  automatically find an available port.
             
         Returns:
             The user's selection ("clean", "with_backing", or "custom")
         """
         self._app = self._create_app()
         
+        # Find an available port (handles concurrent CLI instances)
+        host = "127.0.0.1"
+        actual_port = self._find_available_port(host, port)
+        if actual_port != port:
+            logger.info(f"Port {port} in use, using port {actual_port} instead")
+        
         # Run uvicorn in a separate thread
         config = uvicorn.Config(
             self._app,
-            host="127.0.0.1",
-            port=port,
+            host=host,
+            port=actual_port,
             log_level="warning",
         )
         server = uvicorn.Server(config)
@@ -389,7 +441,7 @@ class InstrumentalReviewServer:
         import time
         time.sleep(0.5)
         
-        url = f"http://localhost:{port}/"
+        url = f"http://localhost:{actual_port}/"
         logger.info(f"Instrumental review server started at {url}")
         
         # Open browser

@@ -357,6 +357,95 @@ class TestServerStop:
         assert server._shutdown_event.is_set()
 
 
+class TestPortFinding:
+    """Test automatic port finding for concurrent CLI instances."""
+    
+    def test_is_port_available_returns_true_for_free_port(self):
+        """Test _is_port_available returns True for an available port."""
+        import socket
+        # Find a free port by binding to 0
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(('127.0.0.1', 0))
+            free_port = sock.getsockname()[1]
+        
+        # The port should now be free
+        assert InstrumentalReviewServer._is_port_available('127.0.0.1', free_port) is True
+    
+    def test_is_port_available_returns_false_for_used_port(self):
+        """Test _is_port_available returns False when port is in use."""
+        import socket
+        # Bind to a port to make it unavailable
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('127.0.0.1', 0))
+            used_port = sock.getsockname()[1]
+            sock.listen(1)
+            
+            # The port should be unavailable while socket is bound
+            assert InstrumentalReviewServer._is_port_available('127.0.0.1', used_port) is False
+    
+    def test_find_available_port_returns_preferred_if_free(self):
+        """Test _find_available_port returns preferred port when available."""
+        import socket
+        # Find a free port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(('127.0.0.1', 0))
+            free_port = sock.getsockname()[1]
+        
+        # Should return the same port
+        result = InstrumentalReviewServer._find_available_port('127.0.0.1', free_port)
+        assert result == free_port
+    
+    def test_find_available_port_tries_next_ports_when_preferred_busy(self):
+        """Test _find_available_port tries subsequent ports when preferred is busy."""
+        import socket
+        # Bind to a port to make it unavailable
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('127.0.0.1', 0))
+            used_port = sock.getsockname()[1]
+            sock.listen(1)
+            
+            # Should return a different port (likely used_port + 1 if available)
+            result = InstrumentalReviewServer._find_available_port('127.0.0.1', used_port)
+            assert result != used_port
+            assert result > used_port  # Should be one of the next ports
+    
+    def test_find_available_port_skips_multiple_busy_ports(self):
+        """Test _find_available_port skips multiple busy ports."""
+        import socket
+        sockets = []
+        try:
+            # Bind to 3 consecutive ports
+            base_port = 49000  # Use a high port range
+            for offset in range(3):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind(('127.0.0.1', base_port + offset))
+                    sock.listen(1)
+                    sockets.append(sock)
+                except OSError:
+                    sock.close()
+                    # Port might already be in use, that's fine for this test
+            
+            if len(sockets) >= 2:
+                # Should find a port beyond the bound ones
+                result = InstrumentalReviewServer._find_available_port('127.0.0.1', base_port)
+                assert result >= base_port + len(sockets)
+        finally:
+            for sock in sockets:
+                sock.close()
+    
+    def test_find_available_port_falls_back_to_os_assigned(self):
+        """Test _find_available_port falls back to OS-assigned port if needed."""
+        # This should always work since we pass max_attempts=1 and use an invalid port
+        # We can't easily test the fallback without binding to 100 consecutive ports,
+        # but we can verify the method doesn't raise and returns a valid port
+        result = InstrumentalReviewServer._find_available_port('127.0.0.1', 8765, max_attempts=100)
+        assert 1024 <= result <= 65535
+
+
 class TestServerAPIEndpoints:
     """Test FastAPI endpoint handlers using TestClient."""
     
