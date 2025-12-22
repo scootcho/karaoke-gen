@@ -397,8 +397,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+          fetch-depth: 0  # Need full history for tag check
+
+      - name: Set up Python (for version extraction)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+
+      - name: Extract version and check if deployment needed
+        id: version_check
+        run: |
+          VERSION=$(poetry version --short)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📋 Current version: $VERSION"
+          
+          if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
+            echo "needs_deploy=false" >> $GITHUB_OUTPUT
+            echo "⏭️  Tag v$VERSION already exists - skipping backend deployment"
+            echo "   (Bump version in pyproject.toml to trigger a new deployment)"
+          else
+            echo "needs_deploy=true" >> $GITHUB_OUTPUT
+            echo "✨ Tag v$VERSION does not exist - proceeding with deployment"
+          fi
 
       - name: Authenticate to Google Cloud (Workload Identity)
+        if: steps.version_check.outputs.needs_deploy == 'true'
         id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -406,11 +432,13 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
+        if: steps.version_check.outputs.needs_deploy == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: "latest"
 
       - name: Check if base image needs rebuild
+        if: steps.version_check.outputs.needs_deploy == 'true'
         id: check-base
         run: |
           echo "🔍 Checking if base image needs rebuild..."
@@ -444,7 +472,7 @@ jobs:
           fi
 
       - name: Rebuild base image (if needed)
-        if: steps.check-base.outputs.needs_rebuild == 'true'
+        if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
         run: |
           echo "🏗️ Rebuilding base image with updated dependencies..."
 
@@ -484,9 +512,11 @@ jobs:
           done
 
       - name: Trigger Cloud Build
+        if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
           echo "🚀 Triggering Cloud Build for deployment..."
           echo "Commit: ${{ github.sha }}"
+          echo "Version: ${{ steps.version_check.outputs.version }}"
 
           BUILD_ID=$(gcloud builds submit \
             --config=cloudbuild.yaml \
@@ -524,21 +554,61 @@ jobs:
             sleep 30
           done
 
-      - name: Verify deployment
+      - name: Verify deployment and version
+        if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
+          EXPECTED_VERSION="${{ steps.version_check.outputs.version }}"
           SERVICE_URL=$(gcloud run services describe karaoke-backend \
             --region us-central1 \
             --format 'value(status.url)')
 
           echo "Service URL: $SERVICE_URL"
-          sleep 10
+          echo "Expected version: $EXPECTED_VERSION"
+          
+          # Wait for new revision to be ready
+          echo "Waiting for new revision to be ready..."
+          sleep 15
+          
+          # Basic health check
           curl -f "$SERVICE_URL/api/health" || exit 1
-          echo "✅ Deployment verified - service is healthy"
+          echo "✅ Service is healthy"
+          
+          # Version verification with retries (Cloud Run may take time to route to new revision)
+          MAX_RETRIES=6
+          RETRY_DELAY=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Checking deployed version (attempt $i/$MAX_RETRIES)..."
+            DEPLOYED_VERSION=$(curl -sf "$SERVICE_URL/api/health/detailed" | jq -r '.version // empty')
+            
+            if [ "$DEPLOYED_VERSION" = "$EXPECTED_VERSION" ]; then
+              echo "✅ Version verified: $DEPLOYED_VERSION"
+              break
+            else
+              echo "⚠️  Version mismatch: deployed=$DEPLOYED_VERSION, expected=$EXPECTED_VERSION"
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "   Retrying in ${RETRY_DELAY}s..."
+                sleep $RETRY_DELAY
+              else
+                echo "❌ Version verification failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Summary
-        if: success()
+        if: steps.version_check.outputs.needs_deploy == 'true' && success()
         run: |
           echo "🎉 Deployment successful!"
+          echo "Version: ${{ steps.version_check.outputs.version }}"
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
+          
+      - name: Skipped deployment summary
+        if: steps.version_check.outputs.needs_deploy == 'false'
+        run: |
+          echo "⏭️  Backend deployment skipped - version ${{ steps.version_check.outputs.version }} already deployed"
+          echo ""
+          echo "To deploy a new version:"
+          echo "  1. Update version in pyproject.toml"
+          echo "  2. Commit and push to main"
