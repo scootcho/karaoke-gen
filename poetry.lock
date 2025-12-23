@@ -1876,10 +1876,12 @@ name = "flacfetch"
 version = "0.8.0"
 description = "Search and download high-quality audio from multiple sources"
 optional = false
-python-versions = ">=3.10"
+python-versions = ">=3.8"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "flacfetch-0.8.0-py3-none-any.whl", hash = "sha256:a684f902a95f4d89f5ca0d7577e56fc17024f07d89fa198f5505300c25ba4c50"},
+    {file = "flacfetch-0.8.0.tar.gz", hash = "sha256:53eaae2e85099f05d6a667c13edbcac650faeacd366400db5b564c4a48b1fc9d"},
+]
 
 [package.dependencies]
 requests = ">=2.28.0"
@@ -1891,10 +1893,6 @@ all = ["flacfetch[api]", "flacfetch[dev]", "flacfetch[remote]"]
 api = ["fastapi (>=0.104.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.25.0)", "pydantic (>=2.0.0)", "uvicorn[standard] (>=0.24.0)"]
 dev = ["mypy (>=1.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "types-requests (>=2.28.0)"]
 remote = ["httpx (>=0.25.0)"]
-
-[package.source]
-type = "directory"
-url = "flacfetch"
 
 [[package]]
 name = "flatbuffers"
@@ -9571,4 +9569,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "d42c4c964cb9f6b522d84efcc5c6af4ba5cc0f703c36d23328bfc2cec8ce3268"
+content-hash = "1e643f63a31d7a34f6c583c4043bc53bd689f68ce93f5cda0c54e49a348222ff"
