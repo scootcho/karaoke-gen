@@ -2,11 +2,91 @@ from dataclasses import dataclass
 import requests
 import time
 import os
-from typing import Dict, Optional, Any, Union
+import tempfile
+from typing import Dict, Optional, Any, Union, Tuple
 from pathlib import Path
+from pydub import AudioSegment
 from lyrics_transcriber.types import TranscriptionData, LyricsSegment, Word
 from lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber, TranscriptionError
 from lyrics_transcriber.utils.word_utils import WordUtils
+
+# Lossy formats that should be uploaded directly (transcoding would cause quality loss)
+LOSSY_FORMATS = {'.mp3', '.aac', '.ogg', '.m4a', '.wma', '.opus'}
+# Lossless formats that are already compressed and can be uploaded directly
+LOSSLESS_COMPRESSED_FORMATS = {'.flac', '.alac'}
+# Uncompressed formats that should be converted to FLAC for efficient upload
+UNCOMPRESSED_FORMATS = {'.wav', '.aiff', '.aif', '.pcm'}
+
+
+class AudioUploadOptimizer:
+    """Optimizes audio files for upload by converting uncompressed formats to FLAC."""
+
+    def __init__(self, logger):
+        self.logger = logger
+
+    def prepare_for_upload(self, filepath: str) -> Tuple[str, Optional[str]]:
+        """
+        Prepare audio file for optimal upload.
+        
+        Returns:
+            Tuple of (filepath_to_upload, temp_file_to_cleanup)
+            - If no conversion needed, returns (original_filepath, None)
+            - If converted, returns (temp_flac_filepath, temp_flac_filepath)
+        """
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        # Lossy formats: upload directly (transcoding would lose quality)
+        if ext in LOSSY_FORMATS:
+            self.logger.info(f"Uploading lossy format ({ext}) directly to preserve quality")
+            return filepath, None
+        
+        # Already compressed lossless: upload directly
+        if ext in LOSSLESS_COMPRESSED_FORMATS:
+            self.logger.info(f"Uploading lossless compressed format ({ext}) directly")
+            return filepath, None
+        
+        # Uncompressed formats: convert to FLAC for smaller upload
+        if ext in UNCOMPRESSED_FORMATS:
+            self.logger.info(f"Converting uncompressed format ({ext}) to FLAC for efficient upload")
+            return self._convert_to_flac(filepath)
+        
+        # Unknown format: try to upload directly
+        self.logger.warning(f"Unknown audio format ({ext}), uploading directly")
+        return filepath, None
+
+    def _convert_to_flac(self, filepath: str) -> Tuple[str, str]:
+        """Convert audio file to FLAC format."""
+        ext = os.path.splitext(filepath)[1].lower()
+        
+        # Load audio based on format
+        if ext == '.wav':
+            audio = AudioSegment.from_wav(filepath)
+        elif ext in {'.aiff', '.aif'}:
+            audio = AudioSegment.from_file(filepath, format='aiff')
+        else:
+            audio = AudioSegment.from_file(filepath)
+        
+        # Create temp file for FLAC output
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as temp_flac:
+            flac_path = temp_flac.name
+            audio.export(flac_path, format="flac")
+        
+        # Log size reduction
+        original_size = os.path.getsize(filepath)
+        flac_size = os.path.getsize(flac_path)
+        reduction_pct = (1 - flac_size / original_size) * 100
+        self.logger.info(f"Converted to FLAC: {original_size / 1024 / 1024:.1f}MB → {flac_size / 1024 / 1024:.1f}MB ({reduction_pct:.0f}% smaller)")
+        
+        return flac_path, flac_path
+
+    def cleanup(self, temp_filepath: Optional[str]) -> None:
+        """Clean up temporary file if it exists."""
+        if temp_filepath and os.path.exists(temp_filepath):
+            try:
+                os.unlink(temp_filepath)
+                self.logger.debug(f"Cleaned up temporary file: {temp_filepath}")
+            except OSError as e:
+                self.logger.warning(f"Failed to clean up temporary file {temp_filepath}: {e}")
 
 
 @dataclass
@@ -162,11 +242,13 @@ class AudioShakeTranscriber(BaseTranscriber):
         config: Optional[AudioShakeConfig] = None,
         logger: Optional[Any] = None,
         api_client: Optional[AudioShakeAPI] = None,
+        upload_optimizer: Optional[AudioUploadOptimizer] = None,
     ):
         """Initialize AudioShake transcriber."""
         super().__init__(cache_dir=cache_dir, logger=logger)
         self.config = config or AudioShakeConfig(api_token=os.getenv("AUDIOSHAKE_API_TOKEN"))
         self.api = api_client or AudioShakeAPI(self.config, self.logger)
+        self.upload_optimizer = upload_optimizer or AudioUploadOptimizer(self.logger)
 
     def get_name(self) -> str:
         return "AudioShake"
@@ -195,14 +277,21 @@ class AudioShakeTranscriber(BaseTranscriber):
         """Starts the transcription task and returns the task ID."""
         self.logger.debug(f"Entering start_transcription() for {audio_filepath}")
 
-        # Upload file and create task
-        file_url = self.api.upload_file(audio_filepath)
-        self.logger.debug(f"File uploaded successfully. File URL: {file_url}")
+        # Optimize file format for upload (convert WAV to FLAC, etc.)
+        upload_filepath, temp_filepath = self.upload_optimizer.prepare_for_upload(audio_filepath)
+        
+        try:
+            # Upload file and create task
+            file_url = self.api.upload_file(upload_filepath)
+            self.logger.debug(f"File uploaded successfully. File URL: {file_url}")
 
-        task_id = self.api.create_task(file_url)
-        self.logger.debug(f"Task created successfully. Task ID: {task_id}")
+            task_id = self.api.create_task(file_url)
+            self.logger.debug(f"Task created successfully. Task ID: {task_id}")
 
-        return task_id
+            return task_id
+        finally:
+            # Clean up any temporary file created during optimization
+            self.upload_optimizer.cleanup(temp_filepath)
 
     def get_transcription_result(self, task_id: str) -> Dict[str, Any]:
         """Gets the raw results for a previously started task."""

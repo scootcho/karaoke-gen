@@ -1,14 +1,19 @@
 import pytest
 import requests
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch, mock_open, MagicMock
 from lyrics_transcriber.types import TranscriptionData
 from lyrics_transcriber.transcribers.audioshake import (
     AudioShakeConfig,
     AudioShakeAPI,
     AudioShakeTranscriber,
+    AudioUploadOptimizer,
+    LOSSY_FORMATS,
+    LOSSLESS_COMPRESSED_FORMATS,
+    UNCOMPRESSED_FORMATS,
 )
 from lyrics_transcriber.transcribers.base_transcriber import TranscriptionError
 import os
+import tempfile
 
 
 @pytest.fixture
@@ -19,6 +24,101 @@ def mock_logger():
 @pytest.fixture
 def config():
     return AudioShakeConfig(api_token="test_token")
+
+
+class TestAudioUploadOptimizer:
+    """Tests for the AudioUploadOptimizer class."""
+
+    @pytest.fixture
+    def optimizer(self, mock_logger):
+        return AudioUploadOptimizer(mock_logger)
+
+    def test_prepare_for_upload_lossy_mp3(self, optimizer):
+        """Test that MP3 files are uploaded directly."""
+        filepath, temp = optimizer.prepare_for_upload("test.mp3")
+        assert filepath == "test.mp3"
+        assert temp is None
+        optimizer.logger.info.assert_called_with("Uploading lossy format (.mp3) directly to preserve quality")
+
+    def test_prepare_for_upload_lossy_formats(self, optimizer):
+        """Test that all lossy formats are uploaded directly."""
+        for ext in LOSSY_FORMATS:
+            filepath, temp = optimizer.prepare_for_upload(f"test{ext}")
+            assert filepath == f"test{ext}"
+            assert temp is None
+
+    def test_prepare_for_upload_flac(self, optimizer):
+        """Test that FLAC files are uploaded directly."""
+        filepath, temp = optimizer.prepare_for_upload("test.flac")
+        assert filepath == "test.flac"
+        assert temp is None
+        optimizer.logger.info.assert_called_with("Uploading lossless compressed format (.flac) directly")
+
+    def test_prepare_for_upload_lossless_formats(self, optimizer):
+        """Test that all lossless compressed formats are uploaded directly."""
+        for ext in LOSSLESS_COMPRESSED_FORMATS:
+            filepath, temp = optimizer.prepare_for_upload(f"test{ext}")
+            assert filepath == f"test{ext}"
+            assert temp is None
+
+    @patch("lyrics_transcriber.transcribers.audioshake.AudioSegment")
+    @patch("tempfile.NamedTemporaryFile")
+    @patch("os.path.getsize")
+    def test_prepare_for_upload_wav_converts_to_flac(self, mock_getsize, mock_tempfile, mock_audio_segment, optimizer):
+        """Test that WAV files are converted to FLAC."""
+        # Setup mocks
+        mock_audio = MagicMock()
+        mock_audio_segment.from_wav.return_value = mock_audio
+        mock_temp = MagicMock()
+        mock_temp.__enter__ = MagicMock(return_value=mock_temp)
+        mock_temp.__exit__ = MagicMock(return_value=False)
+        mock_temp.name = "/tmp/temp123.flac"
+        mock_tempfile.return_value = mock_temp
+        mock_getsize.side_effect = [100_000_000, 50_000_000]  # Original 100MB, FLAC 50MB
+
+        filepath, temp = optimizer.prepare_for_upload("test.wav")
+
+        assert filepath == "/tmp/temp123.flac"
+        assert temp == "/tmp/temp123.flac"
+        mock_audio_segment.from_wav.assert_called_once_with("test.wav")
+        mock_audio.export.assert_called_once_with("/tmp/temp123.flac", format="flac")
+        optimizer.logger.info.assert_any_call("Converting uncompressed format (.wav) to FLAC for efficient upload")
+
+    def test_prepare_for_upload_unknown_format(self, optimizer):
+        """Test that unknown formats are uploaded directly with a warning."""
+        filepath, temp = optimizer.prepare_for_upload("test.xyz")
+        assert filepath == "test.xyz"
+        assert temp is None
+        optimizer.logger.warning.assert_called_with("Unknown audio format (.xyz), uploading directly")
+
+    @patch("os.path.exists")
+    @patch("os.unlink")
+    def test_cleanup_removes_temp_file(self, mock_unlink, mock_exists, optimizer):
+        """Test that cleanup removes temporary files."""
+        mock_exists.return_value = True
+        optimizer.cleanup("/tmp/temp123.flac")
+        mock_unlink.assert_called_once_with("/tmp/temp123.flac")
+
+    def test_cleanup_does_nothing_for_none(self, optimizer):
+        """Test that cleanup does nothing when filepath is None."""
+        optimizer.cleanup(None)
+        # Should not raise an exception
+
+    @patch("os.path.exists")
+    def test_cleanup_does_nothing_for_nonexistent_file(self, mock_exists, optimizer):
+        """Test that cleanup does nothing when file doesn't exist."""
+        mock_exists.return_value = False
+        optimizer.cleanup("/tmp/nonexistent.flac")
+        # Should not raise an exception
+
+    @patch("os.path.exists")
+    @patch("os.unlink")
+    def test_cleanup_handles_os_error(self, mock_unlink, mock_exists, optimizer):
+        """Test that cleanup handles OS errors gracefully."""
+        mock_exists.return_value = True
+        mock_unlink.side_effect = OSError("Permission denied")
+        optimizer.cleanup("/tmp/temp123.flac")
+        optimizer.logger.warning.assert_called()
 
 
 class TestAudioShakeConfig:
@@ -208,9 +308,22 @@ class TestAudioShakeTranscriber:
         return Mock()
 
     @pytest.fixture
-    def transcriber(self, mock_logger, mock_api, tmp_path):
+    def mock_optimizer(self):
+        optimizer = Mock(spec=AudioUploadOptimizer)
+        # By default, return the original file path with no temp file
+        optimizer.prepare_for_upload.return_value = ("test.mp3", None)
+        return optimizer
+
+    @pytest.fixture
+    def transcriber(self, mock_logger, mock_api, mock_optimizer, tmp_path):
         config = AudioShakeConfig(api_token="test_token")
-        return AudioShakeTranscriber(config=config, logger=mock_logger, api_client=mock_api, cache_dir=tmp_path)
+        return AudioShakeTranscriber(
+            config=config, 
+            logger=mock_logger, 
+            api_client=mock_api, 
+            upload_optimizer=mock_optimizer,
+            cache_dir=tmp_path
+        )
 
     def test_init_with_token(self, transcriber):
         assert transcriber.config.api_token == "test_token"
@@ -232,15 +345,42 @@ class TestAudioShakeTranscriber:
     def test_get_name(self, transcriber):
         assert transcriber.get_name() == "AudioShake"
 
-    def test_start_transcription(self, transcriber, mock_api):
+    def test_start_transcription(self, transcriber, mock_api, mock_optimizer):
+        mock_optimizer.prepare_for_upload.return_value = ("test.mp3", None)
         mock_api.upload_file.return_value = "https://example.com/file.mp3"
         mock_api.create_task.return_value = "task123"
 
         task_id = transcriber.start_transcription("test.mp3")
 
         assert task_id == "task123"
+        mock_optimizer.prepare_for_upload.assert_called_once_with("test.mp3")
         mock_api.upload_file.assert_called_once_with("test.mp3")
         mock_api.create_task.assert_called_once_with("https://example.com/file.mp3")
+        mock_optimizer.cleanup.assert_called_once_with(None)
+
+    def test_start_transcription_with_wav_conversion(self, transcriber, mock_api, mock_optimizer):
+        """Test that WAV files are converted before upload and temp file is cleaned up."""
+        mock_optimizer.prepare_for_upload.return_value = ("/tmp/converted.flac", "/tmp/converted.flac")
+        mock_api.upload_file.return_value = "https://example.com/file.flac"
+        mock_api.create_task.return_value = "task123"
+
+        task_id = transcriber.start_transcription("test.wav")
+
+        assert task_id == "task123"
+        mock_optimizer.prepare_for_upload.assert_called_once_with("test.wav")
+        mock_api.upload_file.assert_called_once_with("/tmp/converted.flac")
+        mock_optimizer.cleanup.assert_called_once_with("/tmp/converted.flac")
+
+    def test_start_transcription_cleanup_on_error(self, transcriber, mock_api, mock_optimizer):
+        """Test that temp files are cleaned up even when upload fails."""
+        mock_optimizer.prepare_for_upload.return_value = ("/tmp/converted.flac", "/tmp/converted.flac")
+        mock_api.upload_file.side_effect = Exception("Upload failed")
+
+        with pytest.raises(Exception, match="Upload failed"):
+            transcriber.start_transcription("test.wav")
+
+        # Cleanup should still be called
+        mock_optimizer.cleanup.assert_called_once_with("/tmp/converted.flac")
 
     def test_get_transcription_result(self, transcriber, mock_api):
         mock_task_data = {
@@ -289,7 +429,7 @@ class TestAudioShakeTranscriber:
         assert result.metadata["language"] == "en"
         assert result.metadata["task_id"] == "task123"
 
-    def test_transcribe_full_flow(self, transcriber, mock_api, tmp_path):
+    def test_transcribe_full_flow(self, transcriber, mock_api, mock_optimizer, tmp_path):
         # Clear the cache directory first
         cache_dir = transcriber.cache_dir
         if os.path.exists(cache_dir):
@@ -299,6 +439,9 @@ class TestAudioShakeTranscriber:
         # Create test file
         test_file = tmp_path / "test.mp3"
         test_file.write_text("test content")
+
+        # Set up mock optimizer to return the original file
+        mock_optimizer.prepare_for_upload.return_value = (str(test_file), None)
 
         # Set up mock API responses
         mock_api.upload_file.return_value = "https://example.com/file.mp3"
@@ -328,6 +471,7 @@ class TestAudioShakeTranscriber:
         assert len(result.segments) == 1
         assert result.segments[0].text == "test"
         assert result.source == "AudioShake"
+        mock_optimizer.prepare_for_upload.assert_called_once_with(str(test_file))
         mock_api.upload_file.assert_called_once_with(str(test_file))
 
     def test_get_output_filename(self, transcriber):
@@ -368,7 +512,7 @@ class TestAudioShakeTranscriber:
         assert result.metadata["language"] == "en"
         assert result.metadata["task_id"] == "task123"
 
-    def test_transcribe_with_cache(self, transcriber, mock_api, tmp_path):
+    def test_transcribe_with_cache(self, transcriber, mock_api, mock_optimizer, tmp_path):
         # Clear the cache directory first
         cache_dir = transcriber.cache_dir
         if os.path.exists(cache_dir):
@@ -378,6 +522,9 @@ class TestAudioShakeTranscriber:
         # Create test file
         test_file = tmp_path / "test.mp3"
         test_file.write_text("test content")
+
+        # Set up mock optimizer to return the original file
+        mock_optimizer.prepare_for_upload.return_value = (str(test_file), None)
 
         # Set up mock API responses
         mock_api.upload_file.return_value = "https://example.com/file.mp3"
@@ -408,7 +555,8 @@ class TestAudioShakeTranscriber:
             result2 = transcriber.transcribe(str(test_file))
             assert isinstance(result2, TranscriptionData)
 
-        # Verify API was only called once
+        # Verify API was only called once (second call uses cache)
+        mock_optimizer.prepare_for_upload.assert_called_once_with(str(test_file))
         mock_api.upload_file.assert_called_once_with(str(test_file))
 
     @pytest.fixture(autouse=True)
@@ -420,8 +568,9 @@ class TestAudioShakeTranscriber:
                 os.remove(os.path.join(cache_dir, file))
         yield
 
-    def test_perform_transcription_error(self, transcriber, mock_api):
+    def test_perform_transcription_error(self, transcriber, mock_api, mock_optimizer):
         """Test _perform_transcription with API error"""
+        mock_optimizer.prepare_for_upload.return_value = ("test.mp3", None)
         mock_api.upload_file.side_effect = Exception("API Error")
 
         with pytest.raises(Exception, match="API Error"):
@@ -471,8 +620,9 @@ class TestAudioShakeTranscriber:
         assert result.metadata["task_id"] == "task123"
         assert result.metadata["duration"] is None
 
-    def test_perform_transcription_debug_logging(self, transcriber, mock_api, caplog):
+    def test_perform_transcription_debug_logging(self, transcriber, mock_api, mock_optimizer, caplog):
         """Test debug logging in _perform_transcription"""
+        mock_optimizer.prepare_for_upload.return_value = ("test.mp3", None)
         mock_api.upload_file.return_value = "https://example.com/file.mp3"
         mock_api.create_task.return_value = "task123"
         mock_api.wait_for_task_result.return_value = {
