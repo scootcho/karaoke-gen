@@ -283,7 +283,7 @@ async def process_render_video(job_id: str) -> bool:
                 job_log.info("Analyzing backing vocals for instrumental selection...")
                 await _analyze_backing_vocals(job_id, job_manager, storage, job_log)
                 
-                # 12. Transition based on prep_only flag
+                # 12. Transition based on prep_only flag and existing instrumental
                 if getattr(job, 'prep_only', False):
                     # Prep-only mode: stop here and mark as prep complete
                     job_manager.transition_to_state(
@@ -297,6 +297,28 @@ async def process_render_video(job_id: str) -> bool:
                     root_span.set_attribute("duration_seconds", duration)
                     root_span.set_attribute("prep_only", True)
                     logger.info(f"[job:{job_id}] WORKER_END worker=render-video status=success duration={duration:.1f}s prep_only=true")
+                elif getattr(job, 'existing_instrumental_gcs_path', None):
+                    # Existing instrumental provided - skip selection, auto-use it
+                    # Store selection as 'custom' to indicate user-provided instrumental
+                    job_manager.update_state_data(job_id, 'instrumental_selection', 'custom')
+                    job_log.info("Existing instrumental provided - skipping selection, using user-provided file")
+                    
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.INSTRUMENTAL_SELECTED,
+                        progress=82,
+                        message="Using user-provided instrumental"
+                    )
+                    job_log.info("=== RENDER VIDEO WORKER COMPLETE (EXISTING INSTRUMENTAL) ===")
+                    duration = time.time() - start_time
+                    root_span.set_attribute("duration_seconds", duration)
+                    root_span.set_attribute("existing_instrumental", True)
+                    logger.info(f"[job:{job_id}] WORKER_END worker=render-video status=success duration={duration:.1f}s existing_instrumental=true")
+                    
+                    # Trigger video worker directly since no user selection needed
+                    from backend.workers.video_worker import run_video_worker
+                    job_log.info("Triggering video worker for final encoding...")
+                    await run_video_worker(job_id, job_manager, storage)
                 else:
                     # Normal mode: proceed to instrumental selection
                     job_manager.transition_to_state(
