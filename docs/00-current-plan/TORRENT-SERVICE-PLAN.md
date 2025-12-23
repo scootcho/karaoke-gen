@@ -14,7 +14,7 @@ BitTorrent downloads don't work reliably in Cloud Run due to:
 - DHT peer discovery blocked
 - Container timeout limits (max 60 min)
 
-This prevents downloading lossless audio from private trackers (Redacted, OPS) via the remote backend.
+This prevents downloading lossless audio from private trackers (RED, OPS) via the remote backend.
 
 ## Solution Overview
 
@@ -41,7 +41,7 @@ This approach provides clean separation of concerns:
 │   │ AudioSearchService │ ────────────▶ │  POST /search           │          │
 │   │                    │               │                         │          │
 │   │                    │  2. Results   │  Providers:             │          │
-│   │                    │ ◀──────────── │  • Redacted (FLAC)      │          │
+│   │                    │ ◀──────────── │  • RED (FLAC)           │          │
 │   │                    │               │  • OPS (FLAC)           │          │
 │   │                    │  3. Download  │  • YouTube (fallback)   │          │
 │   │                    │ ────────────▶ │                         │          │
@@ -147,7 +147,7 @@ POST /search
           "index": 0,
           "title": "Waterloo",
           "artist": "ABBA",
-          "provider": "Redacted",
+          "provider": "RED",
           "quality": "FLAC 16bit CD",
           "seeders": 45,
           "size_bytes": 31457280,
@@ -184,7 +184,7 @@ GET /download/{download_id}/status
       "peers": 3,
       "download_speed_kbps": 1250.5,
       "eta_seconds": 120,
-      "provider": "Redacted",
+      "provider": "RED",
       "title": "ABBA - Waterloo",
       "output_path": null,        # Set when complete (local path)
       "gcs_path": null,           # Set when uploaded to GCS
@@ -248,7 +248,7 @@ GET /health
         "free_gb": 12
       },
       "providers": {
-        "redacted": true,
+        "red": true,
         "ops": true,
         "youtube": true
       }
@@ -418,7 +418,8 @@ pip install -e ".[api]"
 
 # Get secrets from metadata/Secret Manager
 FLACFETCH_API_KEY=$(gcloud secrets versions access latest --secret=flacfetch-api-key)
-REDACTED_API_KEY=$(gcloud secrets versions access latest --secret=redacted-api-key)
+RED_API_KEY=$(gcloud secrets versions access latest --secret=red-api-key)
+RED_API_URL=$(gcloud secrets versions access latest --secret=red-api-url)
 OPS_API_KEY=$(gcloud secrets versions access latest --secret=ops-api-key)
 GCS_BUCKET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/gcs-bucket" -H "Metadata-Flavor: Google")
 
@@ -433,7 +434,8 @@ Type=simple
 User=root
 WorkingDirectory=/opt/flacfetch
 Environment="FLACFETCH_API_KEY=${FLACFETCH_API_KEY}"
-Environment="REDACTED_API_KEY=${REDACTED_API_KEY}"
+Environment="RED_API_KEY=${RED_API_KEY}"
+Environment="RED_API_URL=${RED_API_URL}"
 Environment="OPS_API_KEY=${OPS_API_KEY}"
 Environment="GCS_BUCKET=${GCS_BUCKET}"
 Environment="FLACFETCH_KEEP_SEEDING=true"
@@ -650,7 +652,8 @@ FLACFETCH_API_PORT=8080              # Default: 8080
 FLACFETCH_API_HOST=0.0.0.0           # Default: 0.0.0.0
 
 # Tracker API Keys
-REDACTED_API_KEY=<key>               # For Redacted provider
+RED_API_KEY=<key>                    # For RED provider
+RED_API_URL=<url>                    # For RED provider base URL
 OPS_API_KEY=<key>                    # For OPS provider
 
 # GCS Upload (optional)
@@ -702,7 +705,7 @@ If flacfetch service fails:
 ## Success Criteria
 
 - [x] Flacfetch HTTP API accepts search requests and returns results
-- [x] Downloads complete successfully for Redacted/OPS sources
+- [x] Downloads complete successfully for RED/OPS sources
 - [x] Downloaded files upload to GCS automatically
 - [x] Torrents continue seeding after download
 - [x] Disk cleanup triggers automatically when space is low
@@ -739,7 +742,7 @@ If flacfetch service fails:
 - GCP VM: `flacfetch-service` (e2-small, us-central1-a)
 - Static IP: `104.198.214.26` (whitelisted with trackers)
 - Firewall rules: TCP/UDP 51413 (BitTorrent), TCP 8080 (API)
-- Secrets: `flacfetch-api-key`, `redacted-api-key`, `ops-api-key`, `flacfetch-api-url`
+- Secrets: `flacfetch-api-key`, `red-api-key`, `red-api-url`, `ops-api-key`, `ops-api-url`, `flacfetch-api-url`
 - GitHub Actions deployer has `compute.admin` and `compute.osLogin` roles
 
 #### Phase 3: Backend Integration ✅
@@ -756,7 +759,7 @@ If flacfetch service fails:
 
 #### Phase 5: CLI & Testing ✅
 - `flacfetch-remote` CLI added for testing remote API
-- Downloads file locally with descriptive filenames (e.g., `Artist - Title (Album, 2022, CD, 16bit, Redacted).flac`)
+- Downloads file locally with descriptive filenames (e.g., `Artist - Title (Album, 2022, CD, 16bit, RED).flac`)
 - 70%+ unit test coverage requirement enforced
 - Integration tests for API routes
 

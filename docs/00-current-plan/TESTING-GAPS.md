@@ -18,7 +18,7 @@ This bug existed in production code but wasn't caught by automated tests because
 
 ### Bug #2: Missing `gcs_path` Parameter in API Route (Fixed 2025-12-22)
 ```
-Error handling audio selection: Error selecting audio: {'detail': "Download failed: [Errno 2] No such file or directory: '/var/lib/transmission-daemon/downloads/Avril Lavigne - Unwanted (Album, 2002, CD, 16bit, Redacted).flac'"}
+Error handling audio selection: Error selecting audio: {'detail': "Download failed: [Errno 2] No such file or directory: '/var/lib/transmission-daemon/downloads/Avril Lavigne - Unwanted (Album, 2002, CD, 16bit, RED).flac'"}
 ```
 
 The backend API route `_download_and_start_processing` in `audio_search.py` was not passing the `gcs_path` parameter to `audio_search_service.download()`. Without this parameter, the remote `flacfetch` VM would download the file locally but not upload it to GCS. The backend then tried to open the VM's local path (`/var/lib/transmission-daemon/downloads/...`) which doesn't exist on Cloud Run.
@@ -30,7 +30,7 @@ The backend API route `_download_and_start_processing` in `audio_search.py` was 
 
 ## Root Cause Analysis
 
-1. **Missing remote code path tests**: The download routing logic for `provider in ["Redacted", "OPS"]` was never exercised
+1. **Missing remote code path tests**: The download routing logic for `provider in ["RED", "OPS"]` was never exercised
 2. **State not set up for remote scenario**: Tests never configured `_remote_search_id` and `_remote_client` together  
 3. **`FlacfetchClient` had zero tests**: The entire HTTP client was untested
 4. **Tests mocked at wrong level**: Tests mocked `service._fetcher` completely, bypassing the routing logic
@@ -126,7 +126,7 @@ def test_upload_handles_network_error(self):
 def test_download_routes_to_remote_for_torrent_providers(self):
     service._remote_client = Mock()
     service._remote_search_id = "search_123"
-    service._cached_results = [result_with_provider_redacted]
+    service._cached_results = [result_with_provider_red]
     
     service.download(0, "/tmp")
     
@@ -156,7 +156,7 @@ class TestAudioSearchApiRouteDownload:
         # Mock the audio_search_service.download to capture the call
         mock_audio_search_service = Mock()
         mock_audio_search_service.download.return_value = AudioDownloadResult(
-            filepath="gs://bucket/path.flac", artist="A", title="T", provider="Redacted", quality="FLAC"
+            filepath="gs://bucket/path.flac", artist="A", title="T", provider="RED", quality="FLAC"
         )
         
         result = await _download_and_start_processing(job_id="job1", ...)

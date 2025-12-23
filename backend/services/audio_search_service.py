@@ -71,22 +71,30 @@ class AudioSearchService:
     
     def __init__(
         self,
-        redacted_api_key: Optional[str] = _USE_ENV,
+        red_api_key: Optional[str] = _USE_ENV,
+        red_api_url: Optional[str] = _USE_ENV,
         ops_api_key: Optional[str] = _USE_ENV,
+        ops_api_url: Optional[str] = _USE_ENV,
     ):
         """
         Initialize the audio search service.
         
         Args:
-            redacted_api_key: API key for Redacted tracker (optional, uses env if not provided)
+            red_api_key: API key for RED tracker (optional, uses env if not provided)
+            red_api_url: Base URL for RED tracker API (optional, uses env if not provided)
             ops_api_key: API key for OPS tracker (optional, uses env if not provided)
+            ops_api_url: Base URL for OPS tracker API (optional, uses env if not provided)
         """
         # Use environment variables if not explicitly provided
-        if redacted_api_key is self._USE_ENV:
-            redacted_api_key = os.environ.get("REDACTED_API_KEY")
+        if red_api_key is self._USE_ENV:
+            red_api_key = os.environ.get("RED_API_KEY")
+        if red_api_url is self._USE_ENV:
+            red_api_url = os.environ.get("RED_API_URL")
             
         if ops_api_key is self._USE_ENV:
             ops_api_key = os.environ.get("OPS_API_KEY")
+        if ops_api_url is self._USE_ENV:
+            ops_api_url = os.environ.get("OPS_API_URL")
         
         # Check for remote flacfetch client
         self._remote_client = get_flacfetch_client()
@@ -99,8 +107,10 @@ class AudioSearchService:
         
         # Delegate to shared FlacFetcher implementation (for local mode or fallback)
         self._fetcher = FlacFetcher(
-            redacted_api_key=redacted_api_key,
+            red_api_key=red_api_key,
+            red_api_url=red_api_url,
             ops_api_key=ops_api_key,
+            ops_api_url=ops_api_url,
         )
         
         # Cache search results for API-based selection flow
@@ -276,7 +286,7 @@ class AudioSearchService:
         # Check if this was a remote search (torrent sources need remote download)
         if self._remote_search_id and self._remote_client:
             # Check if this is a torrent source that needs remote handling
-            is_torrent = result.provider in ["Redacted", "OPS"]
+            is_torrent = result.provider in ["RED", "OPS"]
             
             if is_torrent:
                 return self._download_remote(result_index, output_dir, output_filename, gcs_path)

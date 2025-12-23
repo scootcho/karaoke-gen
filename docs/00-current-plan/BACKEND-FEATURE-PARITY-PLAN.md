@@ -681,8 +681,10 @@ The karaoke-gen system supports multiple interfaces to the same core functionali
 | `dropbox-oauth-credentials` | ✅ | Dropbox API OAuth tokens |
 | `gdrive-service-account` | ✅ | Google Drive service account |
 | `discord-webhook-url` | ✅ | Default Discord webhook |
-| `redacted-api-key` | ⏳ | Redacted tracker API key (flacfetch audio search) |
-| `ops-api-key` | ⏳ | OPS/Orpheus tracker API key (flacfetch audio search) |
+| `red-api-key` | ⏳ | RED tracker API key (flacfetch audio search) |
+| `red-api-url` | ⏳ | RED tracker base URL (flacfetch audio search) |
+| `ops-api-key` | ⏳ | OPS tracker API key (flacfetch audio search) |
+| `ops-api-url` | ⏳ | OPS tracker base URL (flacfetch audio search) |
 
 ### Default Distribution Settings
 

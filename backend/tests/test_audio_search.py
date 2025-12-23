@@ -172,26 +172,30 @@ class TestAudioSearchResult:
 class TestAudioSearchServiceInit:
     """Test AudioSearchService initialization."""
     
-    @patch.dict('os.environ', {'REDACTED_API_KEY': '', 'OPS_API_KEY': ''}, clear=False)
+    @patch.dict('os.environ', {'RED_API_KEY': '', 'RED_API_URL': '', 'OPS_API_KEY': '', 'OPS_API_URL': ''}, clear=False)
     def test_init_with_no_keys(self):
         """Test initialization without API keys."""
         # Pass explicit None to override environment
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         
         # Service should have a FlacFetcher internally
         assert service._fetcher is not None
         assert service._cached_results == []
     
     def test_init_with_keys(self):
-        """Test initialization with API keys."""
+        """Test initialization with API keys and URLs."""
         service = AudioSearchService(
-            redacted_api_key="test_redacted_key",
+            red_api_key="test_red_key",
+            red_api_url="https://red.url",
             ops_api_key="test_ops_key",
+            ops_api_url="https://ops.url",
         )
         
-        # Keys are passed to FlacFetcher
-        assert service._fetcher._redacted_api_key == "test_redacted_key"
+        # Keys and URLs are passed to FlacFetcher
+        assert service._fetcher._red_api_key == "test_red_key"
+        assert service._fetcher._red_api_url == "https://red.url"
         assert service._fetcher._ops_api_key == "test_ops_key"
+        assert service._fetcher._ops_api_url == "https://ops.url"
     
     def test_init_reads_from_environment(self):
         """Test initialization reads keys from environment variables."""
@@ -219,7 +223,7 @@ class TestAudioSearchServiceSearch:
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._fetcher.search.return_value = [mock_result]
         
@@ -233,7 +237,7 @@ class TestAudioSearchServiceSearch:
     
     def test_search_no_results_raises_error(self):
         """Test search raises NoResultsError when no results."""
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.side_effect = NoResultsError("No results found")
@@ -250,7 +254,7 @@ class TestAudioSearchServiceSearch:
             mock_results.append(AudioSearchResult(
                 title=f"Song {i}",
                 artist="Artist",
-                provider=["YouTube", "Redacted", "OPS"][i],
+                provider=["YouTube", "RED", "OPS"][i],
                 url=f"https://example.com/{i}",
                 duration=180 + i * 10,
                 quality=["320kbps", "FLAC", "FLAC"][i],
@@ -258,7 +262,7 @@ class TestAudioSearchServiceSearch:
                 index=i,
             ))
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.return_value = mock_results
@@ -287,13 +291,13 @@ class TestAudioSearchServiceSelectBest:
             AudioSearchResult(
                 title="Waterloo",
                 artist="ABBA",
-                provider="Redacted",
+                provider="RED",
                 url="https://example.com/456",
                 index=1,
             ),
         ]
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._fetcher.select_best.return_value = 1
         
@@ -304,7 +308,7 @@ class TestAudioSearchServiceSelectBest:
     
     def test_select_best_empty_list_returns_zero(self):
         """Test select_best returns 0 for empty list."""
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._fetcher.select_best.return_value = 0
         
@@ -318,7 +322,7 @@ class TestAudioSearchServiceDownload:
     
     def test_download_without_search_raises_error(self):
         """Test download without prior search raises error."""
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         
         with pytest.raises(DownloadError) as exc_info:
             service.download(0, "/tmp")
@@ -355,7 +359,7 @@ class TestAudioSearchServiceDownload:
             quality="FLAC",
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._remote_client = None  # Force local mode to use mocked fetcher
         service._fetcher = Mock()
         service._fetcher.search.return_value = [mock_result]
@@ -383,7 +387,7 @@ class TestAudioSearchServiceDownload:
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._fetcher.search.return_value = [mock_result]
         
@@ -421,23 +425,23 @@ class TestRemoteDownloadPath:
     """Test remote download functionality when flacfetch service is configured.
     
     These tests verify the code path that uses the remote flacfetch service
-    for torrent downloads (Redacted/OPS providers). This would have caught
+    for torrent downloads (RED/OPS providers). This would have caught
     the 'extra_info' attribute error.
     
     The tests directly set up the service state without calling search() to avoid
     the complexity of mocking async remote search operations.
     """
     
-    def test_download_uses_remote_for_redacted_provider(self):
-        """Test download routes to remote service for Redacted provider.
+    def test_download_uses_remote_for_red_provider(self):
+        """Test download routes to remote service for RED provider.
         
         This test would have caught: 'AudioSearchResult' object has no attribute 'extra_info'
         """
-        # Create a Redacted result (torrent source)
+        # Create a RED result (torrent source)
         mock_result = AudioSearchResult(
             title="Waterloo",
             artist="ABBA",
-            provider="Redacted",  # Torrent provider - should use remote
+            provider="RED",  # Torrent provider - should use remote
             url="",  # No URL for torrent sources
             quality="FLAC 16bit CD",
             seeders=50,
@@ -446,7 +450,7 @@ class TestRemoteDownloadPath:
         )
         
         # Create service with mocked remote client
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         
         # Directly set cached results (simulating after search)
@@ -462,7 +466,7 @@ class TestRemoteDownloadPath:
             filepath="gs://bucket/uploads/job123/audio/Waterloo.flac",
             artist="ABBA",
             title="Waterloo",
-            provider="Redacted",
+            provider="RED",
             quality="FLAC 16bit CD",
         )
         service._download_remote = Mock(return_value=mock_download_result)
@@ -486,7 +490,7 @@ class TestRemoteDownloadPath:
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         
         # Directly set cached results
@@ -524,7 +528,7 @@ class TestRemoteDownloadPath:
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         
         # Directly set cached results
@@ -560,13 +564,13 @@ class TestRemoteDownloadPath:
         mock_result = AudioSearchResult(
             title="Waterloo",
             artist="ABBA",
-            provider="Redacted",  # Would normally use remote
+            provider="RED",  # Would normally use remote
             url="",
             quality="FLAC",
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         
         # Directly set cached results
@@ -581,7 +585,7 @@ class TestRemoteDownloadPath:
             filepath="/tmp/test.flac",
             artist="ABBA",
             title="Waterloo",
-            provider="Redacted",
+            provider="RED",
             quality="FLAC",
         )
         service._fetcher.download.return_value = mock_fetch_result
@@ -589,7 +593,7 @@ class TestRemoteDownloadPath:
         # Call download
         result = service.download(0, "/tmp")
         
-        # Should use local even though it's Redacted
+        # Should use local even though it's RED
         service._fetcher.download.assert_called_once()
     
     def test_download_uses_local_when_no_remote_search_id(self):
@@ -597,13 +601,13 @@ class TestRemoteDownloadPath:
         mock_result = AudioSearchResult(
             title="Waterloo",
             artist="ABBA",
-            provider="Redacted",
+            provider="RED",
             url="",
             quality="FLAC",
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         
         # Directly set cached results
@@ -618,7 +622,7 @@ class TestRemoteDownloadPath:
             filepath="/tmp/test.flac",
             artist="ABBA",
             title="Waterloo",
-            provider="Redacted",
+            provider="RED",
             quality="FLAC",
         )
         service._fetcher.download.return_value = mock_fetch_result
@@ -637,13 +641,13 @@ class TestRemoteDownloadPath:
         mock_result = AudioSearchResult(
             title="Waterloo",
             artist="ABBA",
-            provider="Redacted",
+            provider="RED",
             url="",
             quality="FLAC",
             index=0,
         )
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._cached_results = [mock_result]
         
@@ -653,7 +657,7 @@ class TestRemoteDownloadPath:
         
         mock_fetch_result = AudioDownloadResult(
             filepath="/tmp/test.flac", artist="ABBA", title="Waterloo",
-            provider="Redacted", quality="FLAC",
+            provider="RED", quality="FLAC",
         )
         service._fetcher.download.return_value = mock_fetch_result
         service._download_remote = Mock()
@@ -686,7 +690,7 @@ class TestRemoteDownloadPath:
         mock_result = AudioSearchResult(
             title="Waterloo",
             artist="ABBA",
-            provider="Redacted",
+            provider="RED",
             url="",
             quality="FLAC 16bit CD",
             seeders=50,
@@ -696,7 +700,7 @@ class TestRemoteDownloadPath:
         # Verify AudioSearchResult doesn't have extra_info
         assert not hasattr(mock_result, 'extra_info')
         
-        service = AudioSearchService(redacted_api_key=None, ops_api_key=None)
+        service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
         service._fetcher = Mock()
         service._cached_results = [mock_result]
         service._remote_search_id = "search_123"
@@ -707,7 +711,7 @@ class TestRemoteDownloadPath:
             filepath="/tmp/test.flac",
             artist="ABBA",
             title="Waterloo", 
-            provider="Redacted",
+            provider="RED",
             quality="FLAC",
         )
         service._download_remote = Mock(return_value=mock_download_result)
@@ -715,7 +719,7 @@ class TestRemoteDownloadPath:
         # This should NOT raise AttributeError: 'AudioSearchResult' object has no attribute 'extra_info'
         result = service.download(0, "/tmp")
         
-        # Should succeed and use remote download for Redacted provider
+        # Should succeed and use remote download for RED provider
         service._download_remote.assert_called_once()
         assert result.filepath == "/tmp/test.flac"
 
@@ -778,7 +782,8 @@ class TestFlacfetchIntegration:
         pytest.importorskip("flacfetch")
         
         service = AudioSearchService(
-            redacted_api_key=None,
+            red_api_key=None,
+            red_api_url=None,
             ops_api_key=None,
         )
         
@@ -838,13 +843,13 @@ class TestAudioSearchApiRouteDownload:
         from backend.api.routes.audio_search import _download_and_start_processing
         import asyncio
         
-        # Setup mock job with Redacted search result
+        # Setup mock job with RED search result
         mock_job = Mock()
         mock_job.state_data = {
             'audio_search_results': [{
                 'title': 'Unwanted',
                 'artist': 'Avril Lavigne',
-                'provider': 'Redacted',  # Torrent source
+                'provider': 'RED',  # Torrent source
                 'quality': 'FLAC 16bit CD',
             }]
         }
@@ -959,13 +964,13 @@ class TestAudioSearchApiRouteDownload:
         from backend.api.routes.audio_search import _download_and_start_processing
         import asyncio
         
-        # Setup mock job with Redacted search result
+        # Setup mock job with RED search result
         mock_job = Mock()
         mock_job.state_data = {
             'audio_search_results': [{
                 'title': 'Test',
                 'artist': 'Test Artist',
-                'provider': 'Redacted',
+                'provider': 'RED',
                 'quality': 'FLAC',
             }]
         }
@@ -1015,13 +1020,13 @@ class TestAudioSearchApiRouteDownload:
         import asyncio
         import tempfile
         
-        # Setup mock job with Redacted search result
+        # Setup mock job with RED search result
         mock_job = Mock()
         mock_job.state_data = {
             'audio_search_results': [{
                 'title': 'Test',
                 'artist': 'Test',
-                'provider': 'Redacted',  # Torrent source, but remote is disabled
+                'provider': 'RED',  # Torrent source, but remote is disabled
                 'quality': 'FLAC',
             }]
         }

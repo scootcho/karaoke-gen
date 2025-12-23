@@ -95,9 +95,13 @@ echo -n "your-genius-key" | \
 echo -n "https://your-modal-url" | \
   gcloud secrets versions add audio-separator-api-url --data-file=-
 
-# Add Redacted API key (for flacfetch audio search - private tracker)
-echo -n "your-redacted-api-key" | \
-  gcloud secrets versions add redacted-api-key --data-file=-
+# Add RED API key (for flacfetch audio search - private tracker)
+echo -n "your-red-api-key" | \
+  gcloud secrets versions add red-api-key --data-file=-
+
+# Add RED API URL (for flacfetch audio search - private tracker)
+echo -n "https://your.red.url" | \
+  gcloud secrets versions add red-api-url --data-file=-
 
 # Add OPS API key (for flacfetch audio search - private tracker)
 echo -n "your-ops-api-key" | \

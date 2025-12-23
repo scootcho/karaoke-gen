@@ -252,8 +252,10 @@ class FlacFetchAudioFetcher(AudioFetcher):
     def __init__(
         self,
         logger: Optional[logging.Logger] = None,
-        redacted_api_key: Optional[str] = None,
+        red_api_key: Optional[str] = None,
+        red_api_url: Optional[str] = None,
         ops_api_key: Optional[str] = None,
+        ops_api_url: Optional[str] = None,
         provider_priority: Optional[List[str]] = None,
     ):
         """
@@ -261,13 +263,17 @@ class FlacFetchAudioFetcher(AudioFetcher):
 
         Args:
             logger: Logger instance for output
-            redacted_api_key: API key for Redacted tracker (optional)
+            red_api_key: API key for RED tracker (optional)
+            red_api_url: Base URL for RED tracker API (optional, required if using RED)
             ops_api_key: API key for OPS tracker (optional)
+            ops_api_url: Base URL for OPS tracker API (optional, required if using OPS)
             provider_priority: Custom provider priority order (optional)
         """
         self.logger = logger or logging.getLogger(__name__)
-        self._redacted_api_key = redacted_api_key or os.environ.get("REDACTED_API_KEY")
+        self._red_api_key = red_api_key or os.environ.get("RED_API_KEY")
+        self._red_api_url = red_api_url or os.environ.get("RED_API_URL")
         self._ops_api_key = ops_api_key or os.environ.get("OPS_API_KEY")
+        self._ops_api_url = ops_api_url or os.environ.get("OPS_API_URL")
         self._provider_priority = provider_priority
         self._manager = None
         self._transmission_available = None  # Cached result of Transmission check
@@ -276,7 +282,7 @@ class FlacFetchAudioFetcher(AudioFetcher):
         """
         Check if Transmission daemon is available for torrent downloads.
         
-        This prevents adding tracker providers (Redacted/OPS) when Transmission
+        This prevents adding tracker providers (RED/OPS) when Transmission
         isn't running, which would result in search results that can't be downloaded.
         
         Returns:
@@ -340,27 +346,31 @@ class FlacFetchAudioFetcher(AudioFetcher):
                 f"Transmission={transmission_available}, can_use_trackers={can_use_trackers}"
             )
             
-            if not can_use_trackers and (self._redacted_api_key or self._ops_api_key):
+            if not can_use_trackers and (self._red_api_key or self._ops_api_key):
                 self.logger.warning(
-                    "[FlacFetcher] Tracker providers (Redacted/OPS) DISABLED: "
+                    "[FlacFetcher] Tracker providers (RED/OPS) DISABLED: "
                     f"TorrentDownloader={has_torrent_downloader}, Transmission={transmission_available}. "
                     "Only YouTube sources will be used."
                 )
 
-            # Add providers and downloaders based on available API keys
-            if self._redacted_api_key and can_use_trackers:
-                from flacfetch.providers.redacted import RedactedProvider
+            # Add providers and downloaders based on available API keys and URLs
+            if self._red_api_key and self._red_api_url and can_use_trackers:
+                from flacfetch.providers.red import REDProvider
 
-                self._manager.add_provider(RedactedProvider(api_key=self._redacted_api_key))
-                self._manager.register_downloader("Redacted", TorrentDownloader())
-                self.logger.info("[FlacFetcher] Added Redacted provider with TorrentDownloader")
+                self._manager.add_provider(REDProvider(api_key=self._red_api_key, base_url=self._red_api_url))
+                self._manager.register_downloader("RED", TorrentDownloader())
+                self.logger.info("[FlacFetcher] Added RED provider with TorrentDownloader")
+            elif self._red_api_key and not self._red_api_url:
+                self.logger.warning("[FlacFetcher] RED_API_KEY set but RED_API_URL not set - RED provider disabled")
 
-            if self._ops_api_key and can_use_trackers:
+            if self._ops_api_key and self._ops_api_url and can_use_trackers:
                 from flacfetch.providers.ops import OPSProvider
 
-                self._manager.add_provider(OPSProvider(api_key=self._ops_api_key))
+                self._manager.add_provider(OPSProvider(api_key=self._ops_api_key, base_url=self._ops_api_url))
                 self._manager.register_downloader("OPS", TorrentDownloader())
                 self.logger.info("[FlacFetcher] Added OPS provider with TorrentDownloader")
+            elif self._ops_api_key and not self._ops_api_url:
+                self.logger.warning("[FlacFetcher] OPS_API_KEY set but OPS_API_URL not set - OPS provider disabled")
 
             # Always add YouTube as a fallback provider with its downloader
             self._manager.add_provider(YoutubeProvider())
@@ -860,22 +870,28 @@ FlacFetcher = FlacFetchAudioFetcher
 
 def create_audio_fetcher(
     logger: Optional[logging.Logger] = None,
-    redacted_api_key: Optional[str] = None,
+    red_api_key: Optional[str] = None,
+    red_api_url: Optional[str] = None,
     ops_api_key: Optional[str] = None,
+    ops_api_url: Optional[str] = None,
 ) -> AudioFetcher:
     """
     Factory function to create an appropriate AudioFetcher instance.
 
     Args:
         logger: Logger instance for output
-        redacted_api_key: API key for Redacted tracker (optional)
+        red_api_key: API key for RED tracker (optional)
+        red_api_url: Base URL for RED tracker API (optional, required if using RED)
         ops_api_key: API key for OPS tracker (optional)
+        ops_api_url: Base URL for OPS tracker API (optional, required if using OPS)
 
     Returns:
         An AudioFetcher instance
     """
     return FlacFetchAudioFetcher(
         logger=logger,
-        redacted_api_key=redacted_api_key,
+        red_api_key=red_api_key,
+        red_api_url=red_api_url,
         ops_api_key=ops_api_key,
+        ops_api_url=ops_api_url,
     )
