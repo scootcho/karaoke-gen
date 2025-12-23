@@ -426,3 +426,53 @@ class TestCountdownProcessor:
         
         assert os.path.exists(nonexistent_cache)
 
+    def test_has_countdown_with_countdown_present(self, processor, early_start_correction_result):
+        """Test that has_countdown returns True when countdown segment is present."""
+        # Add countdown to the result
+        modified_result = processor._add_countdown_to_result(early_start_correction_result)
+        
+        # Verify has_countdown detects it
+        assert processor.has_countdown(modified_result) is True
+
+    def test_has_countdown_without_countdown(self, processor, early_start_correction_result):
+        """Test that has_countdown returns False when no countdown segment."""
+        # The original result doesn't have countdown
+        assert processor.has_countdown(early_start_correction_result) is False
+
+    def test_has_countdown_with_empty_segments(self, processor):
+        """Test that has_countdown returns False with empty segments."""
+        correction_result = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+        assert processor.has_countdown(correction_result) is False
+
+    def test_has_countdown_with_different_first_segment(self, processor, late_start_correction_result):
+        """Test that has_countdown returns False when first segment is not countdown."""
+        assert processor.has_countdown(late_start_correction_result) is False
+
+    @patch.object(CountdownProcessor, '_create_padded_audio')
+    def test_create_padded_audio_only(self, mock_create_padded_audio, processor, tmpdir):
+        """Test create_padded_audio_only delegates to _create_padded_audio."""
+        test_audio = tmpdir.join("test_audio.flac")
+        test_audio.write("fake audio")
+        padded_audio = tmpdir.join("test_audio_padded.flac")
+        padded_audio.write("padded audio")
+        mock_create_padded_audio.return_value = str(padded_audio)
+        
+        result = processor.create_padded_audio_only(str(test_audio))
+        
+        assert result == str(padded_audio)
+        mock_create_padded_audio.assert_called_once_with(str(test_audio))
+
