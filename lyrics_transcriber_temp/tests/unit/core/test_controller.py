@@ -1,5 +1,8 @@
 import pytest
-from unittest.mock import Mock, patch
+import json
+import os
+import tempfile
+from unittest.mock import Mock, patch, MagicMock
 from lyrics_transcriber.core.controller import (
     LyricsTranscriber,
     TranscriberConfig,
@@ -16,9 +19,12 @@ from tests.test_helpers import (
     create_test_output_config,
     create_test_transcription_result,
     create_test_lyrics_data,
-    create_test_transcription_data
+    create_test_transcription_data,
+    create_test_segment,
+    create_test_word,
 )
 from lyrics_transcriber.types import CorrectionResult
+from lyrics_transcriber.output.countdown_processor import CountdownProcessor
 
 
 @dataclass
@@ -588,3 +594,376 @@ def test_fetch_lyrics_with_outer_exception(basic_transcriber, mock_genius_provid
 
     # Verify no results were stored
     assert len(basic_transcriber.results.lyrics_results) == 0
+
+
+# =============================================================================
+# Tests for loading existing corrections with countdown padding
+# =============================================================================
+# These tests verify the fix for the bug where loading corrections from an
+# existing JSON file with countdown didn't create the padded audio file,
+# causing video/audio desync.
+
+class TestExistingCorrectionsWithCountdown:
+    """Test suite for loading existing corrections that have countdown padding."""
+
+    @pytest.fixture
+    def temp_output_dir(self):
+        """Create a temporary output directory for testing."""
+        temp_dir = tempfile.mkdtemp(prefix="test_controller_")
+        yield temp_dir
+        # Cleanup is handled by OS tmpdir cleanup
+
+    @pytest.fixture
+    def temp_cache_dir(self):
+        """Create a temporary cache directory for testing."""
+        temp_dir = tempfile.mkdtemp(prefix="test_cache_")
+        yield temp_dir
+
+    @pytest.fixture
+    def correction_result_with_countdown(self):
+        """
+        Create a CorrectionResult that has countdown padding already applied.
+        This simulates what would be saved to JSON after countdown processing.
+        """
+        # First segment is the countdown
+        countdown_segment = create_test_segment(
+            text="3... 2... 1...",
+            words=[
+                create_test_word(text="3... 2... 1...", start_time=0.1, end_time=2.9),
+            ],
+            start_time=0.1,
+            end_time=2.9,
+        )
+        
+        # Second segment is the first lyrics (shifted by 3s from original 1.5s)
+        first_lyrics_segment = create_test_segment(
+            text="Hello world",
+            words=[
+                create_test_word(text="Hello", start_time=4.5, end_time=5.0),  # 1.5+3.0
+                create_test_word(text="world", start_time=5.1, end_time=5.5),  # 2.1+3.0
+            ],
+            start_time=4.5,
+            end_time=5.5,
+        )
+
+        return CorrectionResult(
+            original_segments=[first_lyrics_segment],
+            corrected_segments=[countdown_segment, first_lyrics_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[countdown_segment, first_lyrics_segment],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+
+    @pytest.fixture
+    def correction_result_without_countdown(self):
+        """
+        Create a CorrectionResult that does NOT have countdown padding.
+        This simulates a song that starts late (after 3 seconds).
+        """
+        # First lyrics segment starts at 5.0 seconds (no countdown needed)
+        first_segment = create_test_segment(
+            text="Hello world",
+            words=[
+                create_test_word(text="Hello", start_time=5.0, end_time=5.5),
+                create_test_word(text="world", start_time=5.6, end_time=6.0),
+            ],
+            start_time=5.0,
+            end_time=6.0,
+        )
+
+        return CorrectionResult(
+            original_segments=[first_segment],
+            corrected_segments=[first_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[first_segment],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+
+    def test_process_loads_existing_corrections_with_countdown_and_creates_padded_audio(
+        self, temp_output_dir, temp_cache_dir, sample_audio_file, 
+        correction_result_with_countdown, mock_output_generator
+    ):
+        """
+        Test that when existing corrections JSON has countdown, the controller
+        detects this and creates the padded audio file for video rendering.
+        
+        This is the main test for the bug fix - previously the controller would
+        skip straight to output generation without creating padded audio.
+        """
+        # Save correction result to JSON
+        output_prefix = "Test Artist - Test Song"
+        corrections_json_path = os.path.join(temp_output_dir, f"{output_prefix} (Lyrics Corrections).json")
+        with open(corrections_json_path, "w", encoding="utf-8") as f:
+            json.dump(correction_result_with_countdown.to_dict(), f)
+
+        # Setup output config with add_countdown enabled
+        output_config = create_test_output_config(
+            output_dir=temp_output_dir,
+            cache_dir=temp_cache_dir,
+            add_countdown=True,
+            render_video=False,  # Disable video to avoid needing styles
+        )
+
+        # Setup mock output generator
+        mock_output_paths = MockOutputPaths()
+        mock_output_generator.generate_outputs.return_value = mock_output_paths
+
+        # Create transcriber with mock output generator
+        with patch.object(CountdownProcessor, 'create_padded_audio_only') as mock_pad_audio:
+            mock_pad_audio.return_value = os.path.join(temp_cache_dir, "Test Artist - Test Song (Original)_padded.flac")
+            
+            transcriber = LyricsTranscriber(
+                audio_filepath=sample_audio_file,
+                artist="Test Artist",
+                title="Test Song",
+                output_config=output_config,
+                output_generator=mock_output_generator,
+            )
+
+            # Run process - should load existing corrections and create padded audio
+            result = transcriber.process()
+
+            # Verify countdown was detected and padded audio was created
+            mock_pad_audio.assert_called_once_with(sample_audio_file)
+            
+            # Verify result attributes are set correctly
+            assert result.countdown_padding_added is True
+            assert result.countdown_padding_seconds == 3.0
+            assert result.padded_audio_filepath is not None
+
+    def test_process_loads_existing_corrections_without_countdown_no_padding(
+        self, temp_output_dir, temp_cache_dir, sample_audio_file,
+        correction_result_without_countdown, mock_output_generator
+    ):
+        """
+        Test that when existing corrections JSON does NOT have countdown,
+        no padding is created.
+        """
+        # Save correction result to JSON
+        output_prefix = "Test Artist - Test Song"
+        corrections_json_path = os.path.join(temp_output_dir, f"{output_prefix} (Lyrics Corrections).json")
+        with open(corrections_json_path, "w", encoding="utf-8") as f:
+            json.dump(correction_result_without_countdown.to_dict(), f)
+
+        # Setup output config with add_countdown enabled
+        output_config = create_test_output_config(
+            output_dir=temp_output_dir,
+            cache_dir=temp_cache_dir,
+            add_countdown=True,
+            render_video=False,
+        )
+
+        # Setup mock output generator
+        mock_output_paths = MockOutputPaths()
+        mock_output_generator.generate_outputs.return_value = mock_output_paths
+
+        with patch.object(CountdownProcessor, 'create_padded_audio_only') as mock_pad_audio:
+            transcriber = LyricsTranscriber(
+                audio_filepath=sample_audio_file,
+                artist="Test Artist",
+                title="Test Song",
+                output_config=output_config,
+                output_generator=mock_output_generator,
+            )
+
+            result = transcriber.process()
+
+            # Verify padded audio was NOT created (no countdown in corrections)
+            mock_pad_audio.assert_not_called()
+            
+            # Verify result attributes indicate no padding
+            assert result.countdown_padding_added is False
+            assert result.countdown_padding_seconds == 0.0
+            assert result.padded_audio_filepath is None
+
+    def test_process_existing_corrections_with_countdown_disabled_no_padding(
+        self, temp_output_dir, temp_cache_dir, sample_audio_file,
+        correction_result_with_countdown, mock_output_generator
+    ):
+        """
+        Test that when add_countdown is disabled in config, no padding check is done
+        even if corrections have countdown.
+        """
+        # Save correction result to JSON
+        output_prefix = "Test Artist - Test Song"
+        corrections_json_path = os.path.join(temp_output_dir, f"{output_prefix} (Lyrics Corrections).json")
+        with open(corrections_json_path, "w", encoding="utf-8") as f:
+            json.dump(correction_result_with_countdown.to_dict(), f)
+
+        # Setup output config with add_countdown DISABLED
+        output_config = create_test_output_config(
+            output_dir=temp_output_dir,
+            cache_dir=temp_cache_dir,
+            add_countdown=False,  # Disabled!
+            render_video=False,
+        )
+
+        # Setup mock output generator
+        mock_output_paths = MockOutputPaths()
+        mock_output_generator.generate_outputs.return_value = mock_output_paths
+
+        with patch.object(CountdownProcessor, 'has_countdown') as mock_has_countdown:
+            transcriber = LyricsTranscriber(
+                audio_filepath=sample_audio_file,
+                artist="Test Artist",
+                title="Test Song",
+                output_config=output_config,
+                output_generator=mock_output_generator,
+            )
+
+            result = transcriber.process()
+
+            # Verify countdown check was NOT performed (add_countdown is False)
+            mock_has_countdown.assert_not_called()
+            
+            # Verify result attributes indicate no padding
+            assert result.countdown_padding_added is False
+            assert result.countdown_padding_seconds == 0.0
+
+    def test_process_existing_corrections_audio_filepath_updated(
+        self, temp_output_dir, temp_cache_dir, sample_audio_file,
+        correction_result_with_countdown, mock_output_generator
+    ):
+        """
+        Test that when countdown padding is applied, the audio_filepath passed
+        to generate_outputs is the padded audio, not the original.
+        
+        This verifies the fix for the video desync issue - the video must be
+        rendered with the padded audio to match the countdown-shifted subtitles.
+        """
+        # Save correction result to JSON
+        output_prefix = "Test Artist - Test Song"
+        corrections_json_path = os.path.join(temp_output_dir, f"{output_prefix} (Lyrics Corrections).json")
+        with open(corrections_json_path, "w", encoding="utf-8") as f:
+            json.dump(correction_result_with_countdown.to_dict(), f)
+
+        # Setup output config
+        output_config = create_test_output_config(
+            output_dir=temp_output_dir,
+            cache_dir=temp_cache_dir,
+            add_countdown=True,
+            render_video=False,
+        )
+
+        # Setup mock output generator to capture the call arguments
+        mock_output_paths = MockOutputPaths()
+        mock_output_generator.generate_outputs.return_value = mock_output_paths
+
+        padded_audio_path = os.path.join(temp_cache_dir, "padded_audio.flac")
+
+        with patch.object(CountdownProcessor, 'create_padded_audio_only') as mock_pad_audio:
+            mock_pad_audio.return_value = padded_audio_path
+            
+            transcriber = LyricsTranscriber(
+                audio_filepath=sample_audio_file,
+                artist="Test Artist",
+                title="Test Song",
+                output_config=output_config,
+                output_generator=mock_output_generator,
+            )
+
+            transcriber.process()
+
+            # Verify generate_outputs was called with the PADDED audio path
+            call_kwargs = mock_output_generator.generate_outputs.call_args.kwargs
+            assert call_kwargs["audio_filepath"] == padded_audio_path
+            assert call_kwargs["audio_filepath"] != sample_audio_file
+
+    def test_countdown_processor_has_countdown_integration(self, temp_cache_dir):
+        """
+        Integration test for CountdownProcessor.has_countdown() with real data.
+        Verifies the detection logic works correctly.
+        """
+        processor = CountdownProcessor(cache_dir=temp_cache_dir)
+
+        # Create result with countdown
+        countdown_segment = create_test_segment(
+            text="3... 2... 1...",
+            words=[create_test_word(text="3... 2... 1...", start_time=0.1, end_time=2.9)],
+            start_time=0.1,
+            end_time=2.9,
+        )
+        result_with_countdown = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[countdown_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+
+        # Create result without countdown
+        normal_segment = create_test_segment(
+            text="Hello world",
+            words=[create_test_word(text="Hello", start_time=5.0, end_time=5.5)],
+            start_time=5.0,
+            end_time=5.5,
+        )
+        result_without_countdown = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[normal_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+
+        # Test detection
+        assert processor.has_countdown(result_with_countdown) is True
+        assert processor.has_countdown(result_without_countdown) is False
+
+    def test_corrections_json_roundtrip_preserves_countdown(
+        self, temp_output_dir, correction_result_with_countdown
+    ):
+        """
+        Test that saving and loading corrections JSON preserves the countdown
+        segment that can be detected by has_countdown().
+        
+        This ensures the detection works with real serialized/deserialized data.
+        """
+        # Save to JSON
+        json_path = os.path.join(temp_output_dir, "test_corrections.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(correction_result_with_countdown.to_dict(), f)
+
+        # Load from JSON
+        with open(json_path, "r", encoding="utf-8") as f:
+            loaded_data = json.load(f)
+        loaded_result = CorrectionResult.from_dict(loaded_data)
+
+        # Verify countdown is still detectable
+        processor = CountdownProcessor(cache_dir=temp_output_dir)
+        assert processor.has_countdown(loaded_result) is True
+        
+        # Verify first segment is the countdown
+        assert loaded_result.corrected_segments[0].text == "3... 2... 1..."
