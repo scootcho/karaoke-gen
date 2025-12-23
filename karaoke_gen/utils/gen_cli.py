@@ -755,7 +755,7 @@ async def async_main():
     except UserCancelledError:
         logger.info("Operation cancelled by user")
         return
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("Operation cancelled by user (Ctrl+C)")
         return
 

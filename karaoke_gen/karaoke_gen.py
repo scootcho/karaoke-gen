@@ -901,11 +901,11 @@ class KaraokePrep:
             for sig in (signal.SIGINT, signal.SIGTERM):
                 loop.remove_signal_handler(sig)
 
-    async def shutdown(self, signal):
+    async def shutdown(self, signal_received):
         """Handle shutdown signals gracefully."""
-        self.logger.info(f"Received exit signal {signal.name}...")
+        self.logger.info(f"Received exit signal {signal_received.name}...")
 
-        # Get all running tasks
+        # Get all running tasks except the current shutdown task
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
 
         if tasks:
@@ -914,17 +914,15 @@ class KaraokePrep:
             for task in tasks:
                 task.cancel()
 
-            self.logger.info("Received cancellation request, cleaning up...")
-
             # Wait for all tasks to complete with cancellation
-            try:
-                await asyncio.gather(*tasks, return_exceptions=True)
-            except asyncio.CancelledError:
-                pass
+            # Use return_exceptions=True to gather all results without raising
+            await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Force exit after cleanup
-        self.logger.info("Cleanup complete, exiting...")
-        sys.exit(0)  # Add this line to force exit
+        self.logger.info("Cleanup complete")
+        
+        # Raise KeyboardInterrupt to propagate the cancellation up the call stack
+        # This allows the main event loop to exit cleanly
+        raise KeyboardInterrupt()
 
     async def process_playlist(self):
         if self.artist is None or self.title is None:
