@@ -513,6 +513,15 @@ ops_api_key_secret = secretmanager.Secret(
     ),
 )
 
+# OPS API URL Secret (for flacfetch audio search)
+ops_api_url_secret = secretmanager.Secret(
+    "ops-api-url",
+    secret_id="ops-api-url",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
 # Create Cloud Run Domain Mapping
 # Maps api.nomadkaraoke.com to the karaoke-backend service
 domain_mapping = cloudrun.DomainMapping(
