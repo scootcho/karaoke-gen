@@ -2079,7 +2079,7 @@ class TestJobMonitorDownloadProgress:
         """Test that active torrents show progress details."""
         job_data = {
             'state_data': {
-                'selected_audio_provider': 'Redacted'
+                'selected_audio_provider': 'RED'
             }
         }
         
@@ -2103,7 +2103,7 @@ class TestJobMonitorDownloadProgress:
         with caplog.at_level(logging.INFO):
             monitor._show_download_progress(job_data)
         
-        assert "Downloading from Redacted" in caplog.text
+        assert "Downloading from RED" in caplog.text
         assert "45.5%" in caplog.text
         assert "1250.0 KB/s" in caplog.text
         assert "3 peers" in caplog.text
@@ -2145,7 +2145,7 @@ class TestJobMonitorDownloadProgress:
         """Test message when no active torrents."""
         job_data = {
             'state_data': {
-                'selected_audio_provider': 'Redacted'
+                'selected_audio_provider': 'RED'
             }
         }
         
@@ -2171,7 +2171,7 @@ class TestJobMonitorDownloadProgress:
         """Test warning when Transmission not available."""
         job_data = {
             'state_data': {
-                'selected_audio_provider': 'Redacted'
+                'selected_audio_provider': 'RED'
             }
         }
         
@@ -2196,7 +2196,7 @@ class TestJobMonitorDownloadProgress:
         """Test fallback message on request error."""
         job_data = {
             'state_data': {
-                'selected_audio_provider': 'Redacted'
+                'selected_audio_provider': 'RED'
             }
         }
         
@@ -2212,7 +2212,7 @@ class TestJobMonitorDownloadProgress:
         """Test fallback on non-200 HTTP response."""
         job_data = {
             'state_data': {
-                'selected_audio_provider': 'Redacted'
+                'selected_audio_provider': 'RED'
             }
         }
         
@@ -2223,7 +2223,7 @@ class TestJobMonitorDownloadProgress:
         with caplog.at_level(logging.INFO):
             monitor._show_download_progress(job_data)
         
-        assert "Downloading from Redacted" in caplog.text
+        assert "Downloading from RED" in caplog.text
     
     def test_show_download_progress_missing_provider(self, monitor, caplog):
         """Test handling of missing provider in state_data."""

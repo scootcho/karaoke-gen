@@ -20,7 +20,7 @@ This violates DRY and caused a bug where the backend's import wasn't updated whe
 | Component | Local (`audio_fetcher.py`) | Backend (`audio_search_service.py`) |
 |-----------|---------------------------|-------------------------------------|
 | `_get_manager()` | ✅ 40 lines | ❌ 35 lines (copy) |
-| Provider setup | ✅ Redacted, OPS, YouTube | ❌ Same, diverged |
+| Provider setup | ✅ RED, OPS, YouTube | ❌ Same, diverged |
 | `search()` | ✅ Full implementation | ❌ Similar, diverged |
 | `download()` | ✅ With downloaders | ⚠️ Different, simpler |
 | `AudioSearchResult` | ✅ Dataclass | ❌ Duplicate, different fields |
@@ -64,11 +64,13 @@ class AudioSearchService:
     
     def __init__(
         self,
-        redacted_api_key: Optional[str] = None,
+        red_api_key: Optional[str] = None,
+        red_api_url: Optional[str] = None,
         ops_api_key: Optional[str] = None,
     ):
         self._fetcher = FlacFetcher(
-            redacted_api_key=redacted_api_key,
+            red_api_key=red_api_key,
+            red_api_url=red_api_url,
             ops_api_key=ops_api_key,
         )
     

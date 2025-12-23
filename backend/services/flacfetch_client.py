@@ -2,7 +2,7 @@
 Client for the remote flacfetch HTTP API service.
 
 This client communicates with a dedicated flacfetch VM that handles:
-- BitTorrent downloads from private trackers (Redacted, OPS)
+- BitTorrent downloads from private trackers (RED, OPS)
 - YouTube downloads
 - GCS uploads of downloaded files
 

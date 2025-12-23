@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.75.19"
+version = "0.75.23"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -26,7 +26,7 @@ python = ">=3.10,<3.14"
 torch = ">=2.7"
 requests = ">=2"
 beautifulsoup4 = ">=4"
-flacfetch = ">=0.3"
+flacfetch = ">=0.8"
 lyricsgenius = ">=3"
 fetch-lyrics-from-genius = ">=0.1"
 pillow = ">=10.1"

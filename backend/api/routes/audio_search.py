@@ -231,7 +231,7 @@ async def _download_and_start_processing(
     
     try:
         # Determine if this is a remote torrent download
-        is_torrent_source = selected.get('provider') in ['Redacted', 'OPS']
+        is_torrent_source = selected.get('provider') in ['RED', 'OPS']
         is_remote_enabled = audio_search_service.is_remote_enabled()
         
         # For remote torrent downloads, have flacfetch VM upload directly to GCS

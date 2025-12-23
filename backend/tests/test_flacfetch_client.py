@@ -188,7 +188,7 @@ class TestFlacfetchClientSearch:
                 {
                     "title": "Waterloo",
                     "artist": "ABBA",
-                    "provider": "Redacted",
+                    "provider": "RED",
                     "quality": "FLAC 16bit CD",
                     "seeders": 50,
                     "index": 0,

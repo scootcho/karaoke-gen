@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -65,6 +67,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -97,6 +101,8 @@ jobs:
     needs: [package-unit-tests, package-integration-tests]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -275,6 +281,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5

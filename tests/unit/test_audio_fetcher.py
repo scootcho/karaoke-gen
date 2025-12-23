@@ -83,7 +83,7 @@ class TestAudioSearchResult:
             title="Test Song",
             artist="Test Artist",
             url="https://example.com/song",
-            provider="Redacted",
+            provider="RED",
             duration=240,
             quality="FLAC",
             source_id="123456",
@@ -124,7 +124,7 @@ class TestAudioSearchResult:
             title="Test Song",
             artist="Test Artist",
             url="https://example.com/song",
-            provider="Redacted",
+            provider="RED",
             duration=240,
             quality="FLAC 24bit",
             source_id="abc123",
@@ -136,7 +136,7 @@ class TestAudioSearchResult:
         assert data["title"] == "Test Song"
         assert data["artist"] == "Test Artist"
         assert data["url"] == "https://example.com/song"
-        assert data["provider"] == "Redacted"
+        assert data["provider"] == "RED"
         assert data["duration"] == 240
         assert data["quality"] == "FLAC 24bit"
         assert data["source_id"] == "abc123"
@@ -172,14 +172,14 @@ class TestAudioSearchResult:
             title="Test Song",
             artist="Test Artist",
             url="https://example.com/song",
-            provider="Redacted",
+            provider="RED",
             raw_result=MockRelease(),
         )
         data = result.to_dict()
         
         # Basic fields
         assert data["title"] == "Test Song"
-        assert data["provider"] == "Redacted"
+        assert data["provider"] == "RED"
         
         # Release-specific fields should be included
         assert data["year"] == 2024
@@ -228,7 +228,7 @@ class TestAudioSearchResult:
             "title": "Test Song",
             "artist": "Test Artist",
             "url": "https://example.com/song",
-            "provider": "Redacted",
+            "provider": "RED",
             "duration": 240,
             "quality": "FLAC 24bit",
             "source_id": "abc123",
@@ -241,7 +241,7 @@ class TestAudioSearchResult:
         assert result.title == "Test Song"
         assert result.artist == "Test Artist"
         assert result.url == "https://example.com/song"
-        assert result.provider == "Redacted"
+        assert result.provider == "RED"
         assert result.duration == 240
         assert result.quality == "FLAC 24bit"
         assert result.source_id == "abc123"
@@ -268,7 +268,7 @@ class TestAudioSearchResult:
             title="Test Song",
             artist="Test Artist",
             url="https://example.com/song",
-            provider="Redacted",
+            provider="RED",
             duration=240,
             quality="FLAC",
             source_id="abc123",
@@ -315,7 +315,7 @@ class TestAudioFetchResult:
             filepath="/path/to/song.flac",
             artist="Test Artist",
             title="Test Song",
-            provider="Redacted",
+            provider="RED",
             duration=180,
             quality="FLAC 24bit",
         )
@@ -345,7 +345,7 @@ class TestAudioFetchResult:
             filepath="/path/to/song.flac",
             artist="Test Artist",
             title="Test Song",
-            provider="Redacted",
+            provider="RED",
             duration=180,
             quality="FLAC 24bit",
         )
@@ -354,7 +354,7 @@ class TestAudioFetchResult:
         assert data["filepath"] == "/path/to/song.flac"
         assert data["artist"] == "Test Artist"
         assert data["title"] == "Test Song"
-        assert data["provider"] == "Redacted"
+        assert data["provider"] == "RED"
         assert data["duration"] == 180
         assert data["quality"] == "FLAC 24bit"
 
@@ -381,7 +381,7 @@ class TestAudioFetchResult:
             "filepath": "/path/to/song.flac",
             "artist": "Test Artist",
             "title": "Test Song",
-            "provider": "Redacted",
+            "provider": "RED",
             "duration": 180,
             "quality": "FLAC 24bit",
         }
@@ -390,7 +390,7 @@ class TestAudioFetchResult:
         assert result.filepath == "/path/to/song.flac"
         assert result.artist == "Test Artist"
         assert result.title == "Test Song"
-        assert result.provider == "Redacted"
+        assert result.provider == "RED"
         assert result.duration == 180
         assert result.quality == "FLAC 24bit"
 
@@ -412,7 +412,7 @@ class TestAudioFetchResult:
             filepath="/path/to/song.flac",
             artist="Test Artist",
             title="Test Song",
-            provider="Redacted",
+            provider="RED",
             duration=180,
             quality="FLAC 24bit",
         )
@@ -503,26 +503,32 @@ class TestFlacFetchAudioFetcher:
     def test_init_default(self):
         """Test default initialization without environment variables."""
         # Clear env vars to test default behavior
-        with patch.dict(os.environ, {"REDACTED_API_KEY": "", "OPS_API_KEY": ""}, clear=False):
+        with patch.dict(os.environ, {"RED_API_KEY": "", "RED_API_URL": "", "OPS_API_KEY": "", "OPS_API_URL": ""}, clear=False):
             fetcher = FlacFetchAudioFetcher()
             assert fetcher._manager is None
 
     def test_init_with_api_keys(self, mock_logger):
-        """Test initialization with API keys."""
+        """Test initialization with API keys and URLs."""
         fetcher = FlacFetchAudioFetcher(
             logger=mock_logger,
-            redacted_api_key="red_key",
+            red_api_key="red_key",
+            red_api_url="https://red.api.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.api.url",
         )
-        assert fetcher._redacted_api_key == "red_key"
+        assert fetcher._red_api_key == "red_key"
+        assert fetcher._red_api_url == "https://red.api.url"
         assert fetcher._ops_api_key == "ops_key"
+        assert fetcher._ops_api_url == "https://ops.api.url"
 
-    @patch.dict(os.environ, {"REDACTED_API_KEY": "env_red_key", "OPS_API_KEY": "env_ops_key"})
+    @patch.dict(os.environ, {"RED_API_KEY": "env_red_key", "RED_API_URL": "https://env.red.url", "OPS_API_KEY": "env_ops_key", "OPS_API_URL": "https://env.ops.url"})
     def test_init_from_environment(self, mock_logger):
-        """Test initialization reads API keys from environment."""
+        """Test initialization reads API keys and URLs from environment."""
         fetcher = FlacFetchAudioFetcher(logger=mock_logger)
-        assert fetcher._redacted_api_key == "env_red_key"
+        assert fetcher._red_api_key == "env_red_key"
+        assert fetcher._red_api_url == "https://env.red.url"
         assert fetcher._ops_api_key == "env_ops_key"
+        assert fetcher._ops_api_url == "https://env.ops.url"
 
     @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
     def test_search_success(self, mock_get_manager, fetcher):
@@ -784,7 +790,7 @@ class TestFlacFetchAudioFetcher:
                 index=0, raw_result=raw_result_1,
             ),
             AudioSearchResult(
-                title="Song 2", artist="Artist", url="url2", provider="Redacted",
+                title="Song 2", artist="Artist", url="url2", provider="RED",
                 index=1, raw_result=raw_result_2,
             ),
             AudioSearchResult(
@@ -839,7 +845,7 @@ class TestFlacFetchAudioFetcher:
                 index=0, raw_result=None,
             ),
             AudioSearchResult(
-                title="Song 2", artist="Artist", url="url2", provider="Redacted",
+                title="Song 2", artist="Artist", url="url2", provider="RED",
                 index=1, raw_result=None,
             ),
         ]
@@ -924,11 +930,15 @@ class TestFlacFetcherAlias:
         """Test FlacFetcher alias passes parameters correctly."""
         from karaoke_gen.audio_fetcher import FlacFetcher
         fetcher = FlacFetcher(
-            redacted_api_key="test_key",
+            red_api_key="test_key",
+            red_api_url="https://red.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.url",
         )
-        assert fetcher._redacted_api_key == "test_key"
+        assert fetcher._red_api_key == "test_key"
+        assert fetcher._red_api_url == "https://red.url"
         assert fetcher._ops_api_key == "ops_key"
+        assert fetcher._ops_api_url == "https://ops.url"
 
 
 class TestCreateAudioFetcher:
@@ -944,12 +954,16 @@ class TestCreateAudioFetcher:
         logger = MagicMock()
         fetcher = create_audio_fetcher(
             logger=logger,
-            redacted_api_key="red_key",
+            red_api_key="red_key",
+            red_api_url="https://red.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.url",
         )
         assert fetcher.logger == logger
-        assert fetcher._redacted_api_key == "red_key"
+        assert fetcher._red_api_key == "red_key"
+        assert fetcher._red_api_url == "https://red.url"
         assert fetcher._ops_api_key == "ops_key"
+        assert fetcher._ops_api_url == "https://ops.url"
 
 
 class TestFlacFetchManagerInitialization:
@@ -962,13 +976,17 @@ class TestFlacFetchManagerInitialization:
         assert fetcher._manager is None
 
     def test_api_keys_stored_at_init(self):
-        """Test API keys are stored at init for later use."""
+        """Test API keys and URLs are stored at init for later use."""
         fetcher = FlacFetchAudioFetcher(
-            redacted_api_key="red_key",
+            red_api_key="red_key",
+            red_api_url="https://red.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.url",
         )
-        assert fetcher._redacted_api_key == "red_key"
+        assert fetcher._red_api_key == "red_key"
+        assert fetcher._red_api_url == "https://red.url"
         assert fetcher._ops_api_key == "ops_key"
+        assert fetcher._ops_api_url == "https://ops.url"
 
 
 class TestGetManagerIntegration:
@@ -1015,46 +1033,46 @@ class TestGetManagerIntegration:
         assert "YouTube" in manager._downloader_map, \
             "YouTube downloader must be registered to download from YouTube"
 
-    def test_get_manager_registers_redacted_with_api_key_and_transmission(self):
-        """Test that Redacted provider is registered when API key AND Transmission are available."""
-        fetcher = FlacFetchAudioFetcher(redacted_api_key="test_key")
+    def test_get_manager_registers_red_with_api_key_url_and_transmission(self):
+        """Test that RED provider is registered when API key, URL AND Transmission are available."""
+        fetcher = FlacFetchAudioFetcher(red_api_key="test_key", red_api_url="https://red.url")
         
         # Mock Transmission as available
         with patch.object(fetcher, '_check_transmission_available', return_value=True):
             manager = fetcher._get_manager()
         
-        # Verify Redacted provider is registered
+        # Verify RED provider is registered
         provider_names = [p.name for p in manager.providers]
-        assert "Redacted" in provider_names
+        assert "RED" in provider_names
         
-        # Verify Redacted downloader is registered (if TorrentDownloader is available)
+        # Verify RED downloader is registered (if TorrentDownloader is available)
         try:
             from flacfetch.downloaders.torrent import TorrentDownloader
-            assert "Redacted" in manager._downloader_map, \
-                "Redacted downloader must be registered when TorrentDownloader is available"
+            assert "RED" in manager._downloader_map, \
+                "RED downloader must be registered when TorrentDownloader is available"
         except ImportError:
             # TorrentDownloader not available, which is okay
             pass
 
-    def test_get_manager_skips_redacted_without_transmission(self):
-        """Test that Redacted provider is NOT registered when Transmission is unavailable."""
-        fetcher = FlacFetchAudioFetcher(redacted_api_key="test_key")
+    def test_get_manager_skips_red_without_transmission(self):
+        """Test that RED provider is NOT registered when Transmission is unavailable."""
+        fetcher = FlacFetchAudioFetcher(red_api_key="test_key", red_api_url="https://red.url")
         
         # Mock Transmission as unavailable (the default on Cloud Run)
         with patch.object(fetcher, '_check_transmission_available', return_value=False):
             manager = fetcher._get_manager()
         
-        # Verify Redacted provider is NOT registered (can't download from it)
+        # Verify RED provider is NOT registered (can't download from it)
         provider_names = [p.name for p in manager.providers]
-        assert "Redacted" not in provider_names, \
-            "Redacted provider should NOT be registered when Transmission is unavailable"
+        assert "RED" not in provider_names, \
+            "RED provider should NOT be registered when Transmission is unavailable"
         
         # YouTube should still be registered
         assert "YouTube" in provider_names
 
-    def test_get_manager_registers_ops_with_api_key_and_transmission(self):
-        """Test that OPS provider is registered when API key AND Transmission are available."""
-        fetcher = FlacFetchAudioFetcher(ops_api_key="test_key")
+    def test_get_manager_registers_ops_with_api_key_url_and_transmission(self):
+        """Test that OPS provider is registered when API key, URL AND Transmission are available."""
+        fetcher = FlacFetchAudioFetcher(ops_api_key="test_key", ops_api_url="https://ops.url")
         
         # Mock Transmission as available
         with patch.object(fetcher, '_check_transmission_available', return_value=True):
@@ -1074,7 +1092,7 @@ class TestGetManagerIntegration:
 
     def test_get_manager_skips_ops_without_transmission(self):
         """Test that OPS provider is NOT registered when Transmission is unavailable."""
-        fetcher = FlacFetchAudioFetcher(ops_api_key="test_key")
+        fetcher = FlacFetchAudioFetcher(ops_api_key="test_key", ops_api_url="https://ops.url")
         
         # Mock Transmission as unavailable
         with patch.object(fetcher, '_check_transmission_available', return_value=False):
@@ -1091,8 +1109,10 @@ class TestGetManagerIntegration:
     def test_get_manager_with_all_providers_and_transmission(self):
         """Test manager setup with all providers configured when Transmission is available."""
         fetcher = FlacFetchAudioFetcher(
-            redacted_api_key="red_key",
+            red_api_key="red_key",
+            red_api_url="https://red.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.url",
         )
         
         # Mock Transmission as available
@@ -1102,7 +1122,7 @@ class TestGetManagerIntegration:
         provider_names = [p.name for p in manager.providers]
         
         # All three providers should be registered when Transmission is available
-        assert "Redacted" in provider_names
+        assert "RED" in provider_names
         assert "OPS" in provider_names
         assert "YouTube" in provider_names
         
@@ -1112,8 +1132,10 @@ class TestGetManagerIntegration:
     def test_get_manager_only_youtube_without_transmission(self):
         """Test that only YouTube is registered when Transmission is unavailable."""
         fetcher = FlacFetchAudioFetcher(
-            redacted_api_key="red_key",
+            red_api_key="red_key",
+            red_api_url="https://red.url",
             ops_api_key="ops_key",
+            ops_api_url="https://ops.url",
         )
         
         # Mock Transmission as unavailable (simulates Cloud Run environment)
@@ -1123,7 +1145,7 @@ class TestGetManagerIntegration:
         provider_names = [p.name for p in manager.providers]
         
         # Only YouTube should be registered
-        assert "Redacted" not in provider_names
+        assert "RED" not in provider_names
         assert "OPS" not in provider_names
         assert "YouTube" in provider_names
         
@@ -1210,7 +1232,7 @@ class TestFlacFetchReleaseModelCompatibility:
             title="Test Song",
             artist="Test Artist",
             quality=quality,
-            source_name="Redacted",
+            source_name="RED",
         )
         
         # Verify the attributes we use in audio_fetcher.py exist
@@ -1241,7 +1263,7 @@ class TestFlacFetchReleaseModelCompatibility:
             title="Real Song",
             artist="Real Artist",
             quality=quality,
-            source_name="Redacted",
+            source_name="RED",
             download_url="https://example.com/download",
             duration_seconds=240,
             info_hash="abc123hash",
@@ -1263,7 +1285,7 @@ class TestFlacFetchReleaseModelCompatibility:
         
         assert result.title == "Real Song"
         assert result.artist == "Real Artist"
-        assert result.provider == "Redacted"  # source_name -> provider
+        assert result.provider == "RED"  # source_name -> provider
         assert result.duration == 240  # duration_seconds -> duration
         assert result.url == "https://example.com/download"  # download_url -> url
         assert result.source_id == "abc123hash"  # info_hash -> source_id
@@ -1294,7 +1316,7 @@ class TestFlacFetchCLIHandlerCompatibility:
             title="Test Song",
             artist="Test Artist", 
             quality=quality,
-            source_name="Redacted",
+            source_name="RED",
             seeders=25,
         )
         

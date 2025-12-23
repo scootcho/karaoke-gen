@@ -246,13 +246,44 @@ workload_identity_provider = gcp.iam.WorkloadIdentityPoolProvider(
 )
 
 # Allow GitHub Actions to impersonate the service account
+# Both karaoke-gen and flacfetch repos need access
 github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
     "github-actions-wif-binding",
     service_account_id=github_actions_sa.name,
     role="roles/iam.workloadIdentityUser",
-    members=[workload_identity_pool.name.apply(
-        lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-gen"
-    )],
+    members=[
+        workload_identity_pool.name.apply(
+            lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-gen"
+        ),
+        workload_identity_pool.name.apply(
+            lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/flacfetch"
+        ),
+    ],
+)
+
+# Grant Compute Engine permissions for flacfetch VM deployment
+# Needed for gcloud compute ssh to update the VM
+github_actions_compute_admin = gcp.projects.IAMMember(
+    "github-actions-compute-admin",
+    project=project_id,
+    role="roles/compute.instanceAdmin.v1",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant OS Login permissions for SSH access
+github_actions_os_login = gcp.projects.IAMMember(
+    "github-actions-os-login",
+    project=project_id,
+    role="roles/compute.osLogin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant IAP tunnel user for secure SSH (used by gcloud compute ssh)
+github_actions_iap_tunnel = gcp.projects.IAMMember(
+    "github-actions-iap-tunnel",
+    project=project_id,
+    role="roles/iap.tunnelResourceAccessor",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
 # ==================== Cloud Tasks Queues (Phase 1 Scalability) ====================
@@ -455,10 +486,19 @@ audio_separator_secret = secretmanager.Secret(
     ),
 )
 
-# Redacted API Key Secret (for flacfetch audio search)
-redacted_api_key_secret = secretmanager.Secret(
-    "redacted-api-key",
-    secret_id="redacted-api-key",
+# RED API Key Secret (for flacfetch audio search)
+red_api_key_secret = secretmanager.Secret(
+    "red-api-key",
+    secret_id="red-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# RED API URL Secret (for flacfetch audio search)
+red_api_url_secret = secretmanager.Secret(
+    "red-api-url",
+    secret_id="red-api-url",
     replication=secretmanager.SecretReplicationArgs(
         auto=secretmanager.SecretReplicationAutoArgs(),
     ),
@@ -468,6 +508,15 @@ redacted_api_key_secret = secretmanager.Secret(
 ops_api_key_secret = secretmanager.Secret(
     "ops-api-key",
     secret_id="ops-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# OPS API URL Secret (for flacfetch audio search)
+ops_api_url_secret = secretmanager.Secret(
+    "ops-api-url",
+    secret_id="ops-api-url",
     replication=secretmanager.SecretReplicationArgs(
         auto=secretmanager.SecretReplicationAutoArgs(),
     ),
@@ -658,8 +707,10 @@ pip install -e ".[api]"
 # Get secrets from Secret Manager
 echo "Fetching secrets from Secret Manager..."
 FLACFETCH_API_KEY=$(gcloud secrets versions access latest --secret=flacfetch-api-key 2>/dev/null || echo "")
-REDACTED_API_KEY=$(gcloud secrets versions access latest --secret=redacted-api-key 2>/dev/null || echo "")
+RED_API_KEY=$(gcloud secrets versions access latest --secret=red-api-key 2>/dev/null || echo "")
+RED_API_URL=$(gcloud secrets versions access latest --secret=red-api-url 2>/dev/null || echo "")
 OPS_API_KEY=$(gcloud secrets versions access latest --secret=ops-api-key 2>/dev/null || echo "")
+OPS_API_URL=$(gcloud secrets versions access latest --secret=ops-api-url 2>/dev/null || echo "")
 
 # Get bucket name from project metadata
 GCS_BUCKET=$(gcloud compute project-info describe --format='value(commonInstanceMetadata.items.gcs-bucket)' 2>/dev/null || echo "")
@@ -684,8 +735,10 @@ Type=simple
 User=root
 WorkingDirectory=/opt/flacfetch
 Environment="FLACFETCH_API_KEY=${FLACFETCH_API_KEY}"
-Environment="REDACTED_API_KEY=${REDACTED_API_KEY}"
+Environment="RED_API_KEY=${RED_API_KEY}"
+Environment="RED_API_URL=${RED_API_URL}"
 Environment="OPS_API_KEY=${OPS_API_KEY}"
+Environment="OPS_API_URL=${OPS_API_URL}"
 Environment="GCS_BUCKET=${GCS_BUCKET}"
 Environment="FLACFETCH_KEEP_SEEDING=true"
 Environment="FLACFETCH_MIN_FREE_GB=5"
