@@ -784,12 +784,28 @@ async def async_main():
         logger.info(f"Changing to directory: {track_dir}")
         os.chdir(track_dir)
 
-        # Select instrumental file - either via web UI or auto-selection
+        # Select instrumental file - either via web UI, auto-selection, or custom instrumental
         # This ALWAYS produces a selected file - no silent fallback to legacy code
         selected_instrumental_file = None
         skip_review = getattr(args, 'skip_instrumental_review', False)
         
-        if skip_review:
+        # Check if a custom instrumental was provided (via --existing_instrumental)
+        # In this case, the instrumental is already chosen - skip review entirely
+        separated_audio = track.get("separated_audio", {})
+        custom_instrumental = separated_audio.get("Custom", {}).get("instrumental")
+        
+        if custom_instrumental:
+            # Custom instrumental was provided - use it directly, no review needed
+            resolved_path = _resolve_path_for_cwd(custom_instrumental, track_dir)
+            if os.path.exists(resolved_path):
+                logger.info(f"Using custom instrumental (--existing_instrumental): {resolved_path}")
+                selected_instrumental_file = resolved_path
+            else:
+                logger.error(f"Custom instrumental file not found: {resolved_path}")
+                logger.error("The file may have been moved or deleted after preparation.")
+                sys.exit(1)
+                return  # Explicit return for testing
+        elif skip_review:
             # Auto-select instrumental when review is skipped (non-interactive mode)
             logger.info("Instrumental review skipped (--skip_instrumental_review), auto-selecting instrumental file...")
             try:

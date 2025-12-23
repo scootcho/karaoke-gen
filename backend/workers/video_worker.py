@@ -478,7 +478,8 @@ def _validate_prerequisites(job) -> bool:
         logger.error(f"Job {job.job_id}: No instrumental selected")
         return False
     
-    if instrumental_selection not in ['clean', 'with_backing']:
+    # 'custom' is valid when user provided existing_instrumental
+    if instrumental_selection not in ['clean', 'with_backing', 'custom']:
         logger.error(f"Job {job.job_id}: Invalid instrumental selection: {instrumental_selection}")
         return False
     
@@ -494,7 +495,14 @@ def _validate_prerequisites(job) -> bool:
         logger.error(f"Job {job.job_id}: Missing lyrics video")
         return False
     
-    # Check instrumental exists
+    # Check instrumental exists - for 'custom', check existing_instrumental_gcs_path instead of stems
+    if instrumental_selection == 'custom':
+        existing_instrumental_path = getattr(job, 'existing_instrumental_gcs_path', None)
+        if not existing_instrumental_path:
+            logger.error(f"Job {job.job_id}: Custom instrumental selected but no existing_instrumental_gcs_path")
+            return False
+        return True  # Other stem checks not needed for custom instrumental
+    
     stems = job.file_urls.get('stems', {})
     instrumental_key = 'instrumental_clean' if instrumental_selection == 'clean' else 'instrumental_with_backing'
     if not stems.get(instrumental_key):

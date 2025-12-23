@@ -74,7 +74,7 @@ class KaraokePrep:
         skip_separation=False,
         # Video Background Configuration
         background_video=None,
-        background_video_darkness=0,
+        background_video_darkness=50,
         # Audio Fetcher Configuration
         auto_download=False,
     ):

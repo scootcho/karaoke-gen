@@ -2172,6 +2172,14 @@ class JobMonitor:
                         self.handle_instrumental_selection(job_id)
                         self._instrumental_prompted = True
                 
+                elif status == 'instrumental_selected':
+                    # Check if this was auto-selected due to existing instrumental
+                    selection = job_data.get('state_data', {}).get('instrumental_selection', '')
+                    if selection == 'custom' and not self._instrumental_prompted:
+                        self.logger.info("")
+                        self.logger.info("Using user-provided instrumental (--existing_instrumental)")
+                        self._instrumental_prompted = True
+                
                 elif status == 'complete':
                     self.logger.info("")
                     self.logger.info("=" * 60)
