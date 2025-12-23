@@ -34056,13 +34056,26 @@ function validateCorrectionData(data) {
   return CorrectionDataSchema.parse(data);
 }
 class LiveApiClient {
-  constructor(baseUrl) {
+  constructor(baseUrl, reviewToken) {
+    __publicField(this, "reviewToken");
     __publicField(this, "isUpdatingHandlers", false);
     this.baseUrl = baseUrl;
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.reviewToken = reviewToken;
+  }
+  /**
+   * Build URL with reviewToken query parameter if available
+   */
+  buildUrl(path) {
+    const url = `${this.baseUrl}${path}`;
+    if (this.reviewToken) {
+      const separator = url.includes("?") ? "&" : "?";
+      return `${url}${separator}review_token=${encodeURIComponent(this.reviewToken)}`;
+    }
+    return url;
   }
   async getCorrectionData() {
-    const response = await fetch(`${this.baseUrl}/correction-data`);
+    const response = await fetch(this.buildUrl("/correction-data"));
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
@@ -34079,7 +34092,7 @@ class LiveApiClient {
       corrections: data.corrections,
       corrected_segments: data.corrected_segments
     };
-    const response = await fetch(`${this.baseUrl}/complete`, {
+    const response = await fetch(this.buildUrl("/complete"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -34091,14 +34104,14 @@ class LiveApiClient {
     }
   }
   getAudioUrl(audioHash) {
-    return `${this.baseUrl}/audio/${audioHash}`;
+    return this.buildUrl(`/audio/${audioHash}`);
   }
   async generatePreviewVideo(data) {
     const updatePayload = {
       corrections: data.corrections,
       corrected_segments: data.corrected_segments
     };
-    const response = await fetch(`${this.baseUrl}/preview-video`, {
+    const response = await fetch(this.buildUrl("/preview-video"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -34114,14 +34127,14 @@ class LiveApiClient {
     return await response.json();
   }
   getPreviewVideoUrl(previewHash) {
-    return `${this.baseUrl}/preview-video/${previewHash}`;
+    return this.buildUrl(`/preview-video/${previewHash}`);
   }
   async updateHandlers(enabledHandlers) {
     console.log("API: Starting handler update...");
     this.isUpdatingHandlers = true;
     console.log("API: Set isUpdatingHandlers to", this.isUpdatingHandlers);
     try {
-      const response = await fetch(`${this.baseUrl}/handlers`, {
+      const response = await fetch(this.buildUrl("/handlers"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -34147,7 +34160,7 @@ class LiveApiClient {
       source,
       lyrics
     };
-    const response = await fetch(`${this.baseUrl}/add-lyrics`, {
+    const response = await fetch(this.buildUrl("/add-lyrics"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -34165,7 +34178,7 @@ class LiveApiClient {
   }
   async submitAnnotations(annotations) {
     for (const annotation of annotations) {
-      const response = await fetch(`${this.baseUrl}/v1/annotations`, {
+      const response = await fetch(this.buildUrl("/v1/annotations"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -34178,7 +34191,7 @@ class LiveApiClient {
     }
   }
   async getAnnotationStats() {
-    const response = await fetch(`${this.baseUrl}/v1/annotations/stats`);
+    const response = await fetch(this.buildUrl("/v1/annotations/stats"));
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
     }
@@ -38943,10 +38956,12 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
       const deltaTime = time - dragStartRef.current.time;
       const updates = [];
       for (const [wordId, originalTimes] of dragOriginalTimesRef.current) {
+        const newStartTime = Math.max(0, originalTimes.start + deltaTime);
+        const newEndTime = Math.max(newStartTime + 0.05, originalTimes.end + deltaTime);
         updates.push({
           wordId,
-          newStartTime: Math.max(0, originalTimes.start + deltaTime),
-          newEndTime: Math.max(0.05, originalTimes.end + deltaTime)
+          newStartTime,
+          newEndTime
         });
       }
       if (updates.length > 0) {
@@ -39275,7 +39290,7 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
   );
   const allWords = reactExports.useMemo(() => getAllWords(workingSegments), [workingSegments]);
   const audioDuration = reactExports.useMemo(() => {
-    if (window.getAudioDuration) {
+    if (typeof window.getAudioDuration === "function") {
       const duration2 = window.getAudioDuration();
       return duration2 > 0 ? duration2 : 300;
     }
@@ -39347,7 +39362,7 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
   const [isPlaying, setIsPlaying] = reactExports.useState(false);
   reactExports.useEffect(() => {
     const checkPlaying = () => {
-      setIsPlaying(window.isAudioPlaying || false);
+      setIsPlaying(typeof window.isAudioPlaying === "boolean" ? window.isAudioPlaying : false);
     };
     checkPlaying();
     const interval = setInterval(checkPlaying, 100);
@@ -39359,7 +39374,7 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
     }
   }, [onPlaySegment]);
   const handleStopAudio = reactExports.useCallback(() => {
-    if (window.toggleAudioPlayback && window.isAudioPlaying) {
+    if (typeof window.toggleAudioPlayback === "function" && window.isAudioPlaying) {
       window.toggleAudioPlayback();
     }
     if (isManualSyncing) {
@@ -39616,7 +39631,7 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
     if (onPlaySegment) {
       onPlaySegment(time);
       setTimeout(() => {
-        if (window.toggleAudioPlayback && window.isAudioPlaying) {
+        if (typeof window.toggleAudioPlayback === "function" && window.isAudioPlaying) {
           window.toggleAudioPlayback();
         }
       }, 50);
@@ -42923,22 +42938,23 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const encodedApiUrl = params.get("baseApiUrl");
     const audioHashParam = params.get("audioHash");
+    const reviewTokenParam = params.get("reviewToken");
     if (encodedApiUrl) {
       const baseApiUrl = decodeURIComponent(encodedApiUrl);
-      setApiClient(new LiveApiClient(baseApiUrl));
+      setApiClient(new LiveApiClient(baseApiUrl, reviewTokenParam || void 0));
       setIsReadOnly(false);
       if (audioHashParam) {
         setAudioHash(audioHashParam);
       }
-      fetchData(baseApiUrl);
+      fetchData(baseApiUrl, reviewTokenParam || void 0);
     } else {
       setApiClient(new FileOnlyClient());
       setIsReadOnly(true);
     }
   }, []);
-  const fetchData = async (baseUrl) => {
+  const fetchData = async (baseUrl, reviewToken) => {
     try {
-      const client2 = new LiveApiClient(baseUrl);
+      const client2 = new LiveApiClient(baseUrl, reviewToken);
       const data2 = await client2.getCorrectionData();
       setData(data2);
     } catch (err) {
@@ -43258,7 +43274,7 @@ const theme = createTheme({
   spacing: (factor) => `${0.6 * factor}rem`
   // Further reduced from 0.8 * factor
 });
-const version = "0.82.0";
+const version = "0.83.0";
 const packageJson = {
   version
 };
@@ -43269,4 +43285,4 @@ ReactDOM$1.createRoot(document.getElementById("root")).render(
     /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
   ] })
 );
-//# sourceMappingURL=index-COYImAcx.js.map
+//# sourceMappingURL=index-BECn1o8Q.js.map

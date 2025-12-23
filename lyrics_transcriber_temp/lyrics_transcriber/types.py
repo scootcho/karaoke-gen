@@ -363,8 +363,19 @@ class AnchorSequence:
     def from_dict(cls, data: Dict[str, Any]) -> "AnchorSequence":
         """Create AnchorSequence from dictionary."""
         # Handle both old and new dictionary formats
-        if "words" in data:
-            # Old format - convert to new format without setting _words
+        # Check for new format keys FIRST (they take priority even if old keys also present)
+        if "transcribed_word_ids" in data:
+            # New format - use existing IDs
+            return cls(
+                id=data.get("id", WordUtils.generate_id()),
+                transcribed_word_ids=data["transcribed_word_ids"],
+                transcription_position=data["transcription_position"],
+                reference_positions=data["reference_positions"],
+                reference_word_ids=data["reference_word_ids"],
+                confidence=data["confidence"],
+            )
+        elif "words" in data:
+            # Old format only - convert to new format by generating IDs
             # This ensures to_dict() always returns the new format
             words = data["words"]
             return cls(
@@ -375,18 +386,9 @@ class AnchorSequence:
                 reference_word_ids={source: [WordUtils.generate_id() for _ in words] 
                                    for source in data["reference_positions"].keys()},
                 confidence=data["confidence"],
-                # Don't set _words - this ensures we always use the new format
             )
         else:
-            # New format
-            return cls(
-                id=data.get("id", WordUtils.generate_id()),
-                transcribed_word_ids=data["transcribed_word_ids"],
-                transcription_position=data["transcription_position"],
-                reference_positions=data["reference_positions"],
-                reference_word_ids=data["reference_word_ids"],
-                confidence=data["confidence"],
-            )
+            raise ValueError("AnchorSequence.from_dict requires either 'transcribed_word_ids' or 'words' key")
 
 
 @dataclass
