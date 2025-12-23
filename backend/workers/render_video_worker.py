@@ -37,6 +37,7 @@ from backend.services.tracing import job_span, add_span_event, add_span_attribut
 
 # Import from lyrics_transcriber (submodule)
 from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.output.countdown_processor import CountdownProcessor
 from lyrics_transcriber.types import CorrectionResult
 from lyrics_transcriber.core.config import OutputConfig
 
@@ -185,6 +186,16 @@ async def process_render_video(job_id: str) -> bool:
                 logger.info(f"Job {job_id}: Downloading audio from {audio_gcs_path}")
                 storage.download_file(audio_gcs_path, audio_path)
                 job_log.info(f"Audio downloaded: {os.path.getsize(audio_path)} bytes")
+                
+                # Check if corrections have countdown padding and pad audio if needed
+                # This ensures the audio matches the shifted timestamps in the corrections
+                countdown_processor = CountdownProcessor(cache_dir=temp_dir, logger=logger)
+                if countdown_processor.has_countdown(correction_result):
+                    job_log.info("Detected countdown in corrections - creating padded audio for sync")
+                    audio_path = countdown_processor.create_padded_audio_only(audio_path)
+                    job_log.info(f"Padded audio created: {audio_path}")
+                else:
+                    job_log.info("No countdown detected in corrections - using original audio")
                 
                 # 4. Get or create styles using the unified style loader
                 job_log.info("Loading style configuration...")
