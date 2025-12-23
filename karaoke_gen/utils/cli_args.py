@@ -258,8 +258,8 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     style_group.add_argument(
         "--background_video_darkness",
         type=int,
-        default=0,
-        help="Optional: Darkness overlay percentage (0-100) for video background (default: %(default)s). Example: --background_video_darkness=50",
+        default=50,
+        help="Optional: Darkness overlay percentage (0-100) for video background (default: %(default)s). Example: --background_video_darkness=20",
     )
 
     # Finalisation Configuration
