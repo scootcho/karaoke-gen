@@ -67,6 +67,56 @@ def test_anchor_sequence_properties():
     assert len(result["reference_word_ids"]["source1"]) == 2
 
 
+def test_anchor_sequence_from_dict_preserves_ids_with_both_formats():
+    """Test that from_dict prioritizes new format keys when both old and new are present.
+    
+    This is a regression test for a bug where cached anchors with both 'words' (old format)
+    and 'transcribed_word_ids' (new format) would incorrectly regenerate word IDs.
+    The fix ensures that 'transcribed_word_ids' takes priority when present.
+    """
+    # Dict with BOTH old format (words) and new format (transcribed_word_ids)
+    # This is what the cache file looks like after to_dict() is called
+    data = {
+        "id": "test123",
+        "transcribed_word_ids": ["original_id1", "original_id2", "original_id3"],
+        "transcription_position": 0,
+        "reference_positions": {"file": 0},
+        "reference_word_ids": {"file": ["ref_id1", "ref_id2", "ref_id3"]},
+        "confidence": 1.0,
+        "words": ["word1", "word2", "word3"],  # Old format key also present
+        "text": "word1 word2 word3",
+        "length": 3,
+    }
+
+    anchor = AnchorSequence.from_dict(data)
+
+    # The fix should preserve the explicit IDs from transcribed_word_ids
+    assert anchor.transcribed_word_ids == ["original_id1", "original_id2", "original_id3"], \
+        "transcribed_word_ids should be preserved when both old and new format keys present"
+    assert anchor.reference_word_ids == {"file": ["ref_id1", "ref_id2", "ref_id3"]}, \
+        "reference_word_ids should be preserved when both old and new format keys present"
+    assert anchor.id == "test123", "id should be preserved"
+
+
+def test_anchor_sequence_from_dict_old_format_only():
+    """Test that from_dict generates IDs when only old format is present."""
+    # Dict with ONLY old format (words), no transcribed_word_ids
+    data = {
+        "transcription_position": 0,
+        "reference_positions": {"file": 0},
+        "confidence": 1.0,
+        "words": ["word1", "word2", "word3"],
+    }
+
+    anchor = AnchorSequence.from_dict(data)
+
+    # Should generate new IDs
+    assert len(anchor.transcribed_word_ids) == 3
+    assert len(anchor.reference_word_ids["file"]) == 3
+    # IDs should be newly generated (not the literal word text)
+    assert anchor.transcribed_word_ids != ["word1", "word2", "word3"]
+
+
 def test_find_ngrams(finder):
     words = ["a", "b", "c", "d"]
     assert finder._find_ngrams(words, 2) == [(["a", "b"], 0), (["b", "c"], 1), (["c", "d"], 2)]

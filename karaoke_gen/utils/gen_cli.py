@@ -313,9 +313,18 @@ async def async_main():
     args = parser.parse_args()
 
     # Set review UI URL environment variable for the lyrics transcriber review server
-    # This allows development against a local frontend dev server (e.g., http://localhost:5173)
+    # Only set this if the user explicitly wants to use a dev server (e.g., http://localhost:5173)
+    # By default, let the ReviewServer use its bundled local frontend (served from lyrics_transcriber/frontend/)
+    # This enables local iteration on the frontend without redeploying
     if hasattr(args, 'review_ui_url') and args.review_ui_url:
-        os.environ['LYRICS_REVIEW_UI_URL'] = args.review_ui_url
+        # Check if user provided a custom value (not the default hosted URL)
+        default_hosted_urls = [
+            'https://gen.nomadkaraoke.com/lyrics',
+            'https://lyrics.nomadkaraoke.com'
+        ]
+        if args.review_ui_url.rstrip('/') not in [url.rstrip('/') for url in default_hosted_urls]:
+            # User explicitly wants a specific URL (e.g., Vite dev server)
+            os.environ['LYRICS_REVIEW_UI_URL'] = args.review_ui_url
         
     # Process style overrides
     try:
@@ -746,7 +755,7 @@ async def async_main():
     except UserCancelledError:
         logger.info("Operation cancelled by user")
         return
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("Operation cancelled by user (Ctrl+C)")
         return
 

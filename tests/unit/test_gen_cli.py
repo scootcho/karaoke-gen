@@ -703,6 +703,88 @@ async def test_style_override_parsing(mock_run_review, mock_kprep_class, mock_ba
     assert prep_kwargs["style_overrides"] == expected_overrides
 
 
+# --- Test review_ui_url environment variable handling ---
+
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="clean")
+@patch("karaoke_gen.utils.gen_cli.is_url", return_value=False)
+@patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
+@patch("karaoke_gen.utils.gen_cli.KaraokePrep")
+async def test_review_ui_url_default_hosted_not_set_env_var(mock_kprep_class, mock_isfile, mock_isurl, mock_run_review, mock_base_args):
+    """Test that default hosted review UI URL does NOT set LYRICS_REVIEW_UI_URL env var.
+    
+    This allows the ReviewServer to use its bundled local frontend by default.
+    """
+    mock_base_args.args = ["Artist", "Title"]
+    # Simulate the default hosted URL from cli_args
+    mock_base_args.review_ui_url = "https://gen.nomadkaraoke.com/lyrics"
+
+    mock_kprep_instance = MagicMock()
+    mock_kprep_class.return_value = mock_kprep_instance
+    mock_kprep_instance.process = AsyncMock(return_value=[MOCK_PREP_TRACK])
+
+    # Clear the env var first
+    env_backup = os.environ.get('LYRICS_REVIEW_UI_URL')
+    if 'LYRICS_REVIEW_UI_URL' in os.environ:
+        del os.environ['LYRICS_REVIEW_UI_URL']
+
+    try:
+        with patch("karaoke_gen.utils.gen_cli.argparse.ArgumentParser") as mock_parser, \
+             patch("karaoke_gen.utils.gen_cli.os.chdir"), \
+             patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True), \
+             patch("karaoke_gen.utils.gen_cli.KaraokeFinalise"):
+            mock_parser.return_value.parse_args.return_value = mock_base_args
+            await gen_cli.async_main()
+
+        # Verify the env var was NOT set (so ReviewServer uses local frontend)
+        assert 'LYRICS_REVIEW_UI_URL' not in os.environ or os.environ.get('LYRICS_REVIEW_UI_URL') != mock_base_args.review_ui_url
+    finally:
+        # Restore env var
+        if env_backup:
+            os.environ['LYRICS_REVIEW_UI_URL'] = env_backup
+        elif 'LYRICS_REVIEW_UI_URL' in os.environ:
+            del os.environ['LYRICS_REVIEW_UI_URL']
+
+
+@patch("karaoke_gen.utils.gen_cli.run_instrumental_review", return_value="clean")
+@patch("karaoke_gen.utils.gen_cli.is_url", return_value=False)
+@patch("karaoke_gen.utils.gen_cli.is_file", return_value=False)
+@patch("karaoke_gen.utils.gen_cli.KaraokePrep")
+async def test_review_ui_url_custom_dev_server_sets_env_var(mock_kprep_class, mock_isfile, mock_isurl, mock_run_review, mock_base_args):
+    """Test that custom dev server URL (e.g., localhost:5173) DOES set LYRICS_REVIEW_UI_URL env var.
+    
+    This allows using a Vite dev server for local frontend development.
+    """
+    mock_base_args.args = ["Artist", "Title"]
+    # Simulate a custom dev server URL
+    mock_base_args.review_ui_url = "http://localhost:5173"
+
+    mock_kprep_instance = MagicMock()
+    mock_kprep_class.return_value = mock_kprep_instance
+    mock_kprep_instance.process = AsyncMock(return_value=[MOCK_PREP_TRACK])
+
+    # Clear the env var first
+    env_backup = os.environ.get('LYRICS_REVIEW_UI_URL')
+    if 'LYRICS_REVIEW_UI_URL' in os.environ:
+        del os.environ['LYRICS_REVIEW_UI_URL']
+
+    try:
+        with patch("karaoke_gen.utils.gen_cli.argparse.ArgumentParser") as mock_parser, \
+             patch("karaoke_gen.utils.gen_cli.os.chdir"), \
+             patch("karaoke_gen.utils.gen_cli.os.path.exists", return_value=True), \
+             patch("karaoke_gen.utils.gen_cli.KaraokeFinalise"):
+            mock_parser.return_value.parse_args.return_value = mock_base_args
+            await gen_cli.async_main()
+
+        # Verify the env var WAS set to the custom URL
+        assert os.environ.get('LYRICS_REVIEW_UI_URL') == "http://localhost:5173"
+    finally:
+        # Restore env var
+        if env_backup:
+            os.environ['LYRICS_REVIEW_UI_URL'] = env_backup
+        elif 'LYRICS_REVIEW_UI_URL' in os.environ:
+            del os.environ['LYRICS_REVIEW_UI_URL']
+
+
 # --- Test _resolve_path_for_cwd helper function ---
 
 class TestResolvePathForCwd:

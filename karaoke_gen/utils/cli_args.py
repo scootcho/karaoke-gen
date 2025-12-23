@@ -353,8 +353,9 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     remote_group.add_argument(
         "--review-ui-url",
         default=os.environ.get('REVIEW_UI_URL', os.environ.get('LYRICS_REVIEW_UI_URL', 'https://gen.nomadkaraoke.com/lyrics')),
-        help="Lyrics review UI URL. Default: 'https://gen.nomadkaraoke.com/lyrics'. "
-             "Use 'http://localhost:5173' for Vite dev server during development. "
+        help="Lyrics review UI URL. For remote mode: defaults to 'https://gen.nomadkaraoke.com/lyrics'. "
+             "For local mode: defaults to bundled frontend (from lyrics_transcriber/frontend/). "
+             "Use 'http://localhost:5173' to develop against Vite dev server. "
              "(env: REVIEW_UI_URL or LYRICS_REVIEW_UI_URL)",
     )
     remote_group.add_argument(
