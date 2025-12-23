@@ -246,13 +246,44 @@ workload_identity_provider = gcp.iam.WorkloadIdentityPoolProvider(
 )
 
 # Allow GitHub Actions to impersonate the service account
+# Both karaoke-gen and flacfetch repos need access
 github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
     "github-actions-wif-binding",
     service_account_id=github_actions_sa.name,
     role="roles/iam.workloadIdentityUser",
-    members=[workload_identity_pool.name.apply(
-        lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-gen"
-    )],
+    members=[
+        workload_identity_pool.name.apply(
+            lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-gen"
+        ),
+        workload_identity_pool.name.apply(
+            lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/flacfetch"
+        ),
+    ],
+)
+
+# Grant Compute Engine permissions for flacfetch VM deployment
+# Needed for gcloud compute ssh to update the VM
+github_actions_compute_admin = gcp.projects.IAMMember(
+    "github-actions-compute-admin",
+    project=project_id,
+    role="roles/compute.instanceAdmin.v1",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant OS Login permissions for SSH access
+github_actions_os_login = gcp.projects.IAMMember(
+    "github-actions-os-login",
+    project=project_id,
+    role="roles/compute.osLogin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant IAP tunnel user for secure SSH (used by gcloud compute ssh)
+github_actions_iap_tunnel = gcp.projects.IAMMember(
+    "github-actions-iap-tunnel",
+    project=project_id,
+    role="roles/iap.tunnelResourceAccessor",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
 # ==================== Cloud Tasks Queues (Phase 1 Scalability) ====================
