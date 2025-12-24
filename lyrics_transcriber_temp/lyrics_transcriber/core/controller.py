@@ -394,7 +394,24 @@ class LyricsTranscriber:
 
     def transcribe(self) -> None:
         """Run transcription using all available transcribers."""
-        self.logger.info(f"Starting transcription with providers: {list(self.transcribers.keys())}")
+        provider_names = list(self.transcribers.keys())
+        
+        if not provider_names:
+            self.logger.warning(
+                "Starting transcription with providers: [] - NO TRANSCRIPTION PROVIDERS CONFIGURED!\n"
+                "\n"
+                "This means no word-level timing data will be generated, and synchronized karaoke "
+                "lyrics cannot be created. The output will lack the '(With Vocals).mkv' video file.\n"
+                "\n"
+                "To enable transcription, configure at least one provider:\n"
+                "  - AudioShake: Set AUDIOSHAKE_API_TOKEN environment variable\n"
+                "  - Whisper/RunPod: Set RUNPOD_API_KEY and WHISPER_RUNPOD_ID environment variables\n"
+                "\n"
+                "See README.md 'Transcription Providers' section for detailed setup instructions."
+            )
+        else:
+            self.logger.info(f"Starting transcription with providers: {provider_names}")
+            self._log_provider_configuration_status()
 
         for name, transcriber_info in self.transcribers.items():
             self.logger.info(f"Running transcription with {name}")
@@ -407,7 +424,33 @@ class LyricsTranscriber:
                 self.logger.debug(f"Transcription completed for {name}")
 
         if not self.results.transcription_results:
-            self.logger.warning("No successful transcriptions from any provider")
+            self.logger.warning(
+                "No successful transcriptions from any provider. "
+                "Check that your API tokens are valid and the services are accessible."
+            )
+
+    def _log_provider_configuration_status(self) -> None:
+        """Log detailed configuration status for each potential transcription provider."""
+        self.logger.debug("Transcription provider configuration status:")
+        
+        # AudioShake status
+        if self.transcriber_config.audioshake_api_token:
+            self.logger.debug("  - AudioShake: CONFIGURED (API token provided)")
+        else:
+            self.logger.debug("  - AudioShake: NOT CONFIGURED (missing AUDIOSHAKE_API_TOKEN)")
+        
+        # Whisper/RunPod status
+        has_runpod_key = bool(self.transcriber_config.runpod_api_key)
+        has_whisper_id = bool(self.transcriber_config.whisper_runpod_id)
+        
+        if has_runpod_key and has_whisper_id:
+            self.logger.debug("  - Whisper (RunPod): CONFIGURED (API key and endpoint ID provided)")
+        elif has_runpod_key:
+            self.logger.debug("  - Whisper (RunPod): PARTIALLY CONFIGURED (missing WHISPER_RUNPOD_ID)")
+        elif has_whisper_id:
+            self.logger.debug("  - Whisper (RunPod): PARTIALLY CONFIGURED (missing RUNPOD_API_KEY)")
+        else:
+            self.logger.debug("  - Whisper (RunPod): NOT CONFIGURED (missing RUNPOD_API_KEY and WHISPER_RUNPOD_ID)")
 
     def correct_lyrics(self) -> None:
         """Run lyrics correction using transcription and internet lyrics."""

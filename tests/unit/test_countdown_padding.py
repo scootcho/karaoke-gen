@@ -224,7 +224,8 @@ class TestLyricsProcessorIntegration:
              patch('os.path.exists', return_value=False), \
              patch('os.makedirs'), \
              patch('shutil.copy2'), \
-             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+             patch('karaoke_gen.lyrics_processor.load_dotenv'), \
+             patch.dict(os.environ, {"AUDIOSHAKE_API_TOKEN": "test_token"}):
             
             mock_transcriber_instance = MagicMock()
             mock_transcriber_instance.process.return_value = mock_result
@@ -258,7 +259,8 @@ class TestLyricsProcessorIntegration:
              patch('os.path.exists', return_value=False), \
              patch('os.makedirs'), \
              patch('shutil.copy2'), \
-             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+             patch('karaoke_gen.lyrics_processor.load_dotenv'), \
+             patch.dict(os.environ, {"AUDIOSHAKE_API_TOKEN": "test_token"}):
             
             mock_transcriber_instance = MagicMock()
             mock_transcriber_instance.process.return_value = mock_result

@@ -315,3 +315,155 @@ class TestLyrics:
             
             with pytest.raises(Exception, match=f"No input audio file found in {track_output_dir}"):
                 basic_karaoke_gen.file_handler.backup_existing_outputs(track_output_dir, artist, title)
+
+
+class TestTranscriptionProviderValidation:
+    """Tests for transcription provider validation and error messaging."""
+    
+    def test_check_transcription_providers_audioshake_configured(self, basic_karaoke_gen):
+        """Test provider check when AudioShake is configured."""
+        with patch.dict(os.environ, {"AUDIOSHAKE_API_TOKEN": "test_token"}, clear=False), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert "AudioShake" in result["configured"]
+    
+    def test_check_transcription_providers_whisper_configured(self, basic_karaoke_gen):
+        """Test provider check when Whisper is configured."""
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": "test_key", "WHISPER_RUNPOD_ID": "test_id"}, clear=False), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert "Whisper (RunPod)" in result["configured"]
+    
+    def test_check_transcription_providers_both_configured(self, basic_karaoke_gen):
+        """Test provider check when both providers are configured."""
+        with patch.dict(os.environ, {
+            "AUDIOSHAKE_API_TOKEN": "test_token",
+            "RUNPOD_API_KEY": "test_key",
+            "WHISPER_RUNPOD_ID": "test_id"
+        }, clear=False), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert "AudioShake" in result["configured"]
+            assert "Whisper (RunPod)" in result["configured"]
+    
+    def test_check_transcription_providers_none_configured(self, basic_karaoke_gen):
+        """Test provider check when no providers are configured."""
+        with patch.dict(os.environ, {}, clear=True), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert len(result["configured"]) == 0
+            assert len(result["missing"]) > 0
+    
+    def test_check_transcription_providers_whisper_partial_key_only(self, basic_karaoke_gen):
+        """Test provider check when only RunPod API key is set."""
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": "test_key"}, clear=True), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert "Whisper (RunPod)" not in result["configured"]
+            # Should show partial configuration message
+            assert any("WHISPER_RUNPOD_ID" in msg for msg in result["missing"])
+    
+    def test_check_transcription_providers_whisper_partial_id_only(self, basic_karaoke_gen):
+        """Test provider check when only Whisper RunPod ID is set."""
+        with patch.dict(os.environ, {"WHISPER_RUNPOD_ID": "test_id"}, clear=True), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            result = basic_karaoke_gen.lyrics_processor._check_transcription_providers()
+            assert "Whisper (RunPod)" not in result["configured"]
+            # Should show partial configuration message
+            assert any("RUNPOD_API_KEY" in msg for msg in result["missing"])
+    
+    def test_build_transcription_provider_error_message(self, basic_karaoke_gen):
+        """Test error message building."""
+        missing = ["AudioShake (AUDIOSHAKE_API_TOKEN)", "Whisper (RUNPOD_API_KEY + WHISPER_RUNPOD_ID)"]
+        error_msg = basic_karaoke_gen.lyrics_processor._build_transcription_provider_error_message(missing)
+        
+        # Check key elements are in the message
+        assert "No transcription providers configured" in error_msg
+        assert "AudioShake" in error_msg
+        assert "Whisper" in error_msg
+        assert "AUDIOSHAKE_API_TOKEN" in error_msg
+        assert "RUNPOD_API_KEY" in error_msg
+        assert "--skip-lyrics" in error_msg
+        assert "README.md" in error_msg
+    
+    def test_transcribe_lyrics_raises_when_no_providers(self, basic_karaoke_gen, temp_dir):
+        """Test that transcribe_lyrics raises ValueError when no providers configured."""
+        track_output_dir = os.path.join(temp_dir, "track")
+        os.makedirs(track_output_dir, exist_ok=True)
+        
+        # Make sure skip_transcription is False
+        basic_karaoke_gen.lyrics_processor.skip_transcription = False
+        
+        with patch.dict(os.environ, {}, clear=True), \
+             patch('os.path.exists', return_value=False), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            
+            with pytest.raises(ValueError, match="No transcription providers configured"):
+                basic_karaoke_gen.lyrics_processor.transcribe_lyrics(
+                    "/path/to/audio.wav", "Artist", "Title", track_output_dir
+                )
+    
+    def test_transcribe_lyrics_skips_validation_when_files_exist(self, basic_karaoke_gen, temp_dir):
+        """Test that existing files bypass provider validation."""
+        track_output_dir = os.path.join(temp_dir, "track")
+        os.makedirs(track_output_dir, exist_ok=True)
+        
+        artist = "Test Artist"
+        title = "Test Title"
+        sanitized_artist = sanitize_filename(artist)
+        sanitized_title = sanitize_filename(title)
+        
+        # Create existing files
+        parent_video_path = os.path.join(track_output_dir, f"{sanitized_artist} - {sanitized_title} (With Vocals).mkv")
+        parent_lrc_path = os.path.join(track_output_dir, f"{sanitized_artist} - {sanitized_title} (Karaoke).lrc")
+        
+        with open(parent_video_path, "w") as f:
+            f.write("mock video")
+        with open(parent_lrc_path, "w") as f:
+            f.write("[00:01.00]Test lyrics")
+        
+        # No providers configured, but existing files should work
+        with patch.dict(os.environ, {}, clear=True), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'):
+            
+            # Should NOT raise - existing files bypass validation
+            result = basic_karaoke_gen.lyrics_processor.transcribe_lyrics(
+                "/path/to/audio.wav", artist, title, track_output_dir
+            )
+            
+            assert result["lrc_filepath"] == parent_lrc_path
+            assert result["ass_filepath"] == parent_video_path
+    
+    def test_transcribe_lyrics_skips_validation_when_transcription_disabled(self, basic_karaoke_gen, temp_dir):
+        """Test that provider validation is skipped when skip_transcription=True."""
+        track_output_dir = os.path.join(temp_dir, "track")
+        os.makedirs(track_output_dir, exist_ok=True)
+        
+        # Set skip_transcription to True
+        basic_karaoke_gen.lyrics_processor.skip_transcription = True
+        
+        # Mock the LyricsTranscriber
+        mock_result = MagicMock()
+        mock_result.lrc_filepath = "/path/to/output.lrc"
+        mock_result.ass_filepath = None
+        mock_result.video_filepath = None
+        mock_result.transcription_corrected = None
+        
+        with patch.dict(os.environ, {}, clear=True), \
+             patch('os.path.exists', return_value=False), \
+             patch('os.makedirs'), \
+             patch('shutil.copy2'), \
+             patch('karaoke_gen.lyrics_processor.load_dotenv'), \
+             patch('karaoke_gen.lyrics_processor.LyricsTranscriber') as mock_transcriber:
+            
+            mock_instance = MagicMock()
+            mock_instance.process.return_value = mock_result
+            mock_transcriber.return_value = mock_instance
+            
+            # Should NOT raise - skip_transcription bypasses validation
+            result = basic_karaoke_gen.lyrics_processor.transcribe_lyrics(
+                "/path/to/audio.wav", "Artist", "Title", track_output_dir
+            )
+            
+            # Verify transcriber was called
+            mock_transcriber.assert_called_once()
