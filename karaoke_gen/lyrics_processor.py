@@ -167,6 +167,76 @@ class LyricsProcessor:
 
         return processed_lines
 
+    def _check_transcription_providers(self) -> dict:
+        """
+        Check which transcription providers are configured and return their status.
+        
+        Returns:
+            dict with 'configured' (list of provider names) and 'missing' (list of missing configs)
+        """
+        load_dotenv()
+        
+        configured = []
+        missing = []
+        
+        # Check AudioShake
+        audioshake_token = os.getenv("AUDIOSHAKE_API_TOKEN")
+        if audioshake_token:
+            configured.append("AudioShake")
+            self.logger.debug("AudioShake transcription provider: configured")
+        else:
+            missing.append("AudioShake (AUDIOSHAKE_API_TOKEN)")
+            self.logger.debug("AudioShake transcription provider: not configured (missing AUDIOSHAKE_API_TOKEN)")
+        
+        # Check Whisper via RunPod
+        runpod_key = os.getenv("RUNPOD_API_KEY")
+        whisper_id = os.getenv("WHISPER_RUNPOD_ID")
+        if runpod_key and whisper_id:
+            configured.append("Whisper (RunPod)")
+            self.logger.debug("Whisper transcription provider: configured")
+        elif runpod_key:
+            missing.append("Whisper (missing WHISPER_RUNPOD_ID)")
+            self.logger.debug("Whisper transcription provider: partially configured (missing WHISPER_RUNPOD_ID)")
+        elif whisper_id:
+            missing.append("Whisper (missing RUNPOD_API_KEY)")
+            self.logger.debug("Whisper transcription provider: partially configured (missing RUNPOD_API_KEY)")
+        else:
+            missing.append("Whisper (RUNPOD_API_KEY + WHISPER_RUNPOD_ID)")
+            self.logger.debug("Whisper transcription provider: not configured")
+        
+        return {"configured": configured, "missing": missing}
+
+    def _build_transcription_provider_error_message(self, missing_providers: list) -> str:
+        """Build a helpful error message when no transcription providers are configured."""
+        return (
+            "No transcription providers configured!\n"
+            "\n"
+            "Karaoke video generation requires at least one transcription provider to create "
+            "synchronized lyrics. Without a transcription provider, the system cannot generate "
+            "the word-level timing data needed for the karaoke video.\n"
+            "\n"
+            "AVAILABLE TRANSCRIPTION PROVIDERS:\n"
+            "\n"
+            "1. AudioShake (Recommended - Commercial, high-quality)\n"
+            "   - Set environment variable: AUDIOSHAKE_API_TOKEN=your_token\n"
+            "   - Get an API key at: https://www.audioshake.ai/\n"
+            "\n"
+            "2. Whisper via RunPod (Open-source alternative)\n"
+            "   - Set environment variables:\n"
+            "     RUNPOD_API_KEY=your_key\n"
+            "     WHISPER_RUNPOD_ID=your_endpoint_id\n"
+            "   - Set up a Whisper endpoint at: https://www.runpod.io/\n"
+            "\n"
+            "ALTERNATIVES:\n"
+            "\n"
+            "- Use --skip-lyrics flag to generate instrumental-only karaoke (no synchronized lyrics)\n"
+            "- Use --lyrics_file to provide pre-timed lyrics (still needs transcription for timing)\n"
+            "\n"
+            f"Missing provider configurations: {', '.join(missing_providers)}\n"
+            "\n"
+            "See README.md 'Transcription Providers' section for detailed setup instructions."
+        )
+
     def transcribe_lyrics(self, input_audio_wav, artist, title, track_output_dir, lyrics_artist=None, lyrics_title=None):
         """
         Transcribe lyrics for a track.
@@ -178,6 +248,9 @@ class LyricsProcessor:
             track_output_dir: Output directory path
             lyrics_artist: Artist name for lyrics processing (defaults to artist if None)
             lyrics_title: Title for lyrics processing (defaults to title if None)
+            
+        Raises:
+            ValueError: If transcription is enabled but no providers are configured
         """
         # Use original artist/title for filename generation
         filename_artist = artist
@@ -240,6 +313,17 @@ class LyricsProcessor:
                 "countdown_padding_seconds": countdown_padding_seconds,
                 "padded_audio_filepath": None,  # Original padded audio may not exist
             }
+
+        # Check transcription provider configuration if transcription is not being skipped
+        # Do this AFTER checking for existing files, since existing files don't need transcription
+        if not self.skip_transcription:
+            provider_status = self._check_transcription_providers()
+            
+            if provider_status["configured"]:
+                self.logger.info(f"Transcription providers configured: {', '.join(provider_status['configured'])}")
+            else:
+                error_msg = self._build_transcription_provider_error_message(provider_status["missing"])
+                raise ValueError(error_msg)
 
         # Create lyrics directory if it doesn't exist
         os.makedirs(lyrics_dir, exist_ok=True)

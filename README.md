@@ -58,6 +58,40 @@ This installs both `karaoke-gen` (local) and `karaoke-gen-remote` (cloud) CLIs.
 - FFmpeg
 - For local processing: CUDA-capable GPU or Apple Silicon CPU recommended
 
+### Transcription Provider Setup
+
+**Transcription is required** for creating karaoke videos with synchronized lyrics. The system needs word-level timing data to display lyrics in sync with the music.
+
+#### Option 1: AudioShake (Recommended)
+Commercial service with high-quality transcription. Best for production use.
+
+```bash
+export AUDIOSHAKE_API_TOKEN="your_audioshake_token"
+```
+
+Get an API key at [https://www.audioshake.ai/](https://www.audioshake.ai/)
+
+#### Option 2: Whisper via RunPod
+Open-source alternative using OpenAI's Whisper model on RunPod infrastructure.
+
+```bash
+export RUNPOD_API_KEY="your_runpod_key"
+export WHISPER_RUNPOD_ID="your_whisper_endpoint_id"
+```
+
+Set up a Whisper endpoint at [https://www.runpod.io/](https://www.runpod.io/)
+
+#### Without Transcription (Instrumental Only)
+If you don't need synchronized lyrics, use the `--skip-lyrics` flag:
+
+```bash
+karaoke-gen --skip-lyrics "Artist" "Title"
+```
+
+This creates an instrumental-only karaoke video without lyrics overlay.
+
+> **Note:** See `lyrics_transcriber_temp/README.md` for detailed transcription provider configuration options.
+
 ---
 
 ## 🖥️ Local CLI (`karaoke-gen`)
@@ -472,6 +506,73 @@ Stream download a specific file.
 **GET** `/api/health`
 
 Check backend health status.
+
+---
+
+## 🔧 Troubleshooting
+
+### "No suitable files found for processing"
+
+This error occurs during the finalisation step when the `(With Vocals).mkv` file is missing. This file is created during lyrics transcription.
+
+**Most common cause:** No transcription provider configured.
+
+**Quick fix:**
+1. Check if transcription providers are configured:
+   ```bash
+   echo $AUDIOSHAKE_API_TOKEN
+   echo $RUNPOD_API_KEY
+   ```
+
+2. If both are empty, set up a provider (see [Transcription Provider Setup](#transcription-provider-setup))
+
+3. Or use `--skip-lyrics` for instrumental-only karaoke:
+   ```bash
+   karaoke-gen --skip-lyrics "Artist" "Title"
+   ```
+
+**Other causes:**
+- Invalid API credentials - verify your tokens are correct and active
+- API service unavailable - check service status pages
+- Network connectivity issues - ensure you can reach the API endpoints
+- Transcription timeout - try again or use a different provider
+
+### Transcription Fails Silently
+
+If karaoke-gen runs without errors but produces no synchronized lyrics:
+
+1. **Check logs** - Run with `--log_level debug` for detailed output:
+   ```bash
+   karaoke-gen --log_level debug "Artist" "Title"
+   ```
+
+2. **Verify environment variables** - Ensure API tokens are exported in your shell:
+   ```bash
+   # Check if set
+   printenv | grep -E "(AUDIOSHAKE|RUNPOD|WHISPER)"
+   
+   # Set in current session
+   export AUDIOSHAKE_API_TOKEN="your_token"
+   ```
+
+3. **Test API connectivity** - Verify you can reach the transcription service
+
+### "No lyrics found from any source"
+
+This warning means no reference lyrics were fetched from online sources (Genius, Spotify, Musixmatch). The transcription will still work, but auto-correction may be less accurate.
+
+**To fix:**
+- Set `GENIUS_API_TOKEN` for Genius lyrics
+- Set `SPOTIFY_COOKIE_SP_DC` for Spotify lyrics
+- Set `RAPIDAPI_KEY` for Musixmatch lyrics
+- Or provide lyrics manually with `--lyrics_file /path/to/lyrics.txt`
+
+### Video Quality Issues
+
+If the output video has quality problems:
+- Ensure FFmpeg is properly installed: `ffmpeg -version`
+- Check available codecs: `ffmpeg -codecs`
+- For 4K output, ensure sufficient disk space (10GB+ per track)
 
 ---
 

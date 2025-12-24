@@ -654,7 +654,31 @@ class KaraokeFinalise:
                 else:
                     self.logger.warning(f"Unsupported file extension: {current_ext}")
 
-        raise Exception("No suitable files found for processing.")
+        raise Exception(
+            "No suitable files found for processing.\n"
+            "\n"
+            "WHAT THIS MEANS:\n"
+            "The finalisation step requires a '(With Vocals).mkv' video file, which is created "
+            "during the lyrics transcription phase. This file contains the karaoke video with "
+            "synchronized lyrics overlay.\n"
+            "\n"
+            "COMMON CAUSES:\n"
+            "1. Transcription provider not configured - No AUDIOSHAKE_API_TOKEN or RUNPOD_API_KEY set\n"
+            "2. Transcription failed - Check logs above for API errors or timeout messages\n"
+            "3. Invalid API credentials - Verify your API tokens are correct and active\n"
+            "4. Network issues - Unable to reach transcription service\n"
+            "5. Running in wrong directory - Make sure you're in the track output folder\n"
+            "\n"
+            "TROUBLESHOOTING STEPS:\n"
+            "1. Check environment variables:\n"
+            "   - AUDIOSHAKE_API_TOKEN (for AudioShake transcription)\n"
+            "   - RUNPOD_API_KEY + WHISPER_RUNPOD_ID (for Whisper transcription)\n"
+            "2. Review the log output above for transcription errors\n"
+            "3. Try running with --log_level debug for more detailed output\n"
+            "4. If you don't need synchronized lyrics, use --skip-lyrics for instrumental-only karaoke\n"
+            "\n"
+            "See README.md 'Transcription Providers' and 'Troubleshooting' sections for more details."
+        )
 
     def choose_instrumental_audio_file(self, base_name):
         self.logger.info(f"Choosing instrumental audio file to use as karaoke audio...")
