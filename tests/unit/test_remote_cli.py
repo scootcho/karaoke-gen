@@ -2236,3 +2236,181 @@ class TestJobMonitorDownloadProgress:
         
         # Should use 'unknown' as default
         assert "unknown" in caplog.text.lower() or "Downloading" in caplog.text
+
+
+class TestCategorizedAudioDisplay:
+    """Tests for categorized audio search display (flacfetch PR #4)."""
+    
+    @pytest.fixture
+    def monitor(self):
+        """Create a JobMonitor instance for testing."""
+        config = Config(
+            service_url="http://localhost:8000",
+            review_ui_url="http://localhost:3000",
+            poll_interval=5,
+            output_dir="/tmp/output",
+            non_interactive=False,
+        )
+        client = MagicMock()
+        logger = logging.getLogger("test")
+        return JobMonitor(client=client, config=config, logger=logger)
+    
+    def test_convert_to_release_objects_empty_list(self, monitor):
+        """Test conversion with empty list."""
+        result = monitor._convert_to_release_objects([])
+        assert result == []
+    
+    def test_convert_to_release_objects_valid_dicts(self, monitor):
+        """Test conversion with valid Release-compatible dicts."""
+        release_dicts = [
+            {
+                "title": "Test Song",
+                "artist": "Test Artist",
+                "source_name": "RED",
+                "quality": {"format": "FLAC", "media": "CD"},
+            },
+            {
+                "title": "Another Song",
+                "artist": "Another Artist",
+                "source_name": "YouTube",
+                "quality": {"format": "AAC", "media": "WEB"},
+            },
+        ]
+        
+        result = monitor._convert_to_release_objects(release_dicts)
+        
+        # Should successfully convert both
+        assert len(result) == 2
+        assert result[0].title == "Test Song"
+        assert result[1].title == "Another Song"
+    
+    def test_convert_to_release_objects_handles_invalid(self, monitor):
+        """Test conversion skips invalid dicts gracefully."""
+        release_dicts = [
+            {
+                "title": "Valid Song",
+                "artist": "Valid Artist",
+                "source_name": "RED",
+                "quality": {"format": "FLAC", "media": "CD"},
+            },
+            # This dict is missing required fields - may cause error
+            {},
+        ]
+        
+        result = monitor._convert_to_release_objects(release_dicts)
+        
+        # Should have at least one result (the valid one)
+        # Invalid ones should be skipped without raising
+        assert len(result) >= 1
+    
+    def test_find_original_index_by_identity(self, monitor):
+        """Test finding index by object identity."""
+        from flacfetch import Release
+        
+        releases = [
+            Release.from_dict({
+                "title": "Song 1", "artist": "Artist", "source_name": "RED",
+                "quality": {"format": "FLAC", "media": "CD"}
+            }),
+            Release.from_dict({
+                "title": "Song 2", "artist": "Artist", "source_name": "OPS",
+                "quality": {"format": "FLAC", "media": "CD"}
+            }),
+        ]
+        original_results = [
+            {"title": "Song 1", "artist": "Artist", "provider": "RED"},
+            {"title": "Song 2", "artist": "Artist", "provider": "OPS"},
+        ]
+        
+        # Find by object identity
+        result = monitor._find_original_index(releases[1], original_results, releases)
+        assert result == 1
+    
+    def test_find_original_index_by_url(self, monitor):
+        """Test finding index by download_url match."""
+        from flacfetch import Release
+        
+        release = Release.from_dict({
+            "title": "Song", "artist": "Artist", "source_name": "RED",
+            "quality": {"format": "FLAC", "media": "CD"},
+            "download_url": "https://example.com/download/123"
+        })
+        original_results = [
+            {"title": "Wrong", "artist": "Artist", "provider": "RED", "url": "https://other.com"},
+            {"title": "Song", "artist": "Artist", "provider": "RED", "url": "https://example.com/download/123"},
+        ]
+        
+        result = monitor._find_original_index(release, original_results, [])
+        assert result == 1
+    
+    def test_find_original_index_by_hash(self, monitor):
+        """Test finding index by info_hash match."""
+        from flacfetch import Release
+        
+        release = Release.from_dict({
+            "title": "Song", "artist": "Artist", "source_name": "RED",
+            "quality": {"format": "FLAC", "media": "CD"},
+            "info_hash": "abc123hash"
+        })
+        original_results = [
+            {"title": "Wrong", "artist": "Artist", "provider": "RED", "source_id": "other"},
+            {"title": "Song", "artist": "Artist", "provider": "RED", "source_id": "abc123hash"},
+        ]
+        
+        result = monitor._find_original_index(release, original_results, [])
+        assert result == 1
+    
+    def test_find_original_index_by_metadata(self, monitor):
+        """Test finding index by title+artist+provider match."""
+        from flacfetch import Release
+        
+        release = Release.from_dict({
+            "title": "Unique Title", "artist": "Unique Artist", "source_name": "OPS",
+            "quality": {"format": "FLAC", "media": "CD"}
+        })
+        original_results = [
+            {"title": "Other", "artist": "Other", "provider": "RED"},
+            {"title": "Unique Title", "artist": "Unique Artist", "provider": "OPS"},
+        ]
+        
+        result = monitor._find_original_index(release, original_results, [])
+        assert result == 1
+    
+    def test_find_original_index_not_found(self, monitor):
+        """Test returns -1 when no match found."""
+        from flacfetch import Release
+        
+        release = Release.from_dict({
+            "title": "No Match", "artist": "No Artist", "source_name": "Unknown",
+            "quality": {"format": "MP3", "media": "WEB"}
+        })
+        original_results = [
+            {"title": "Other", "artist": "Other", "provider": "RED"},
+        ]
+        
+        result = monitor._find_original_index(release, original_results, [])
+        assert result == -1
+    
+    def test_convert_api_result_to_release_dict(self, monitor):
+        """Test API result conversion to Release-compatible dict."""
+        api_result = {
+            "title": "Test Song",
+            "artist": "Test Artist", 
+            "provider": "RED",
+            "url": "https://download.url",
+            "source_id": "hash123",
+            "seeders": 50,
+            "quality": "FLAC 16bit CD",
+            "quality_data": {"format": "FLAC", "bit_depth": 16, "media": "CD"},
+            "is_lossless": True,
+            "year": 2020,
+        }
+        
+        result = monitor._convert_api_result_to_release_dict(api_result)
+        
+        assert result["title"] == "Test Song"
+        assert result["artist"] == "Test Artist"
+        assert result["source_name"] == "RED"
+        assert result["download_url"] == "https://download.url"
+        assert result["seeders"] == 50
+        assert result["is_lossless"] == True
