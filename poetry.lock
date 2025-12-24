@@ -1873,14 +1873,14 @@ platformdirs = ">=4.3.6"
 
 [[package]]
 name = "flacfetch"
-version = "0.8.0"
+version = "0.9.0"
 description = "Search and download high-quality audio from multiple sources"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "flacfetch-0.8.0-py3-none-any.whl", hash = "sha256:a684f902a95f4d89f5ca0d7577e56fc17024f07d89fa198f5505300c25ba4c50"},
-    {file = "flacfetch-0.8.0.tar.gz", hash = "sha256:53eaae2e85099f05d6a667c13edbcac650faeacd366400db5b564c4a48b1fc9d"},
+    {file = "flacfetch-0.9.0-py3-none-any.whl", hash = "sha256:d28d75e7167effaf634e718b1054a4c0e6590dda5003d9bfa895346e3648cef8"},
+    {file = "flacfetch-0.9.0.tar.gz", hash = "sha256:92044a8c9e6ea49a3198901bb34c307672866a019d930c7a085c85743dd69021"},
 ]
 
 [package.dependencies]
@@ -1889,10 +1889,11 @@ transmission-rpc = ">=7.0.0"
 yt-dlp = ">=2023.0.0"
 
 [package.extras]
-all = ["flacfetch[api]", "flacfetch[dev]", "flacfetch[remote]"]
+all = ["fastapi (>=0.104.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.25.0)", "mypy (>=1.0.0)", "pydantic (>=2.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "spotipy (>=2.25.1)", "types-requests (>=2.28.0)", "uvicorn[standard] (>=0.24.0)"]
 api = ["fastapi (>=0.104.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.25.0)", "pydantic (>=2.0.0)", "uvicorn[standard] (>=0.24.0)"]
 dev = ["mypy (>=1.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "types-requests (>=2.28.0)"]
 remote = ["httpx (>=0.25.0)"]
+spotify = ["spotipy (>=2.25.1)"]
 
 [[package]]
 name = "flatbuffers"
@@ -9569,4 +9570,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "1e643f63a31d7a34f6c583c4043bc53bd689f68ce93f5cda0c54e49a348222ff"
+content-hash = "382f25bb82ace790c87c589ea152473cab8aeffa6713a8abd237e7bafbb038fc"

@@ -31,13 +31,16 @@ import webbrowser
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
 from .cli_args import create_parser, process_style_overrides, is_url, is_file
 # Use flacfetch's shared display functions for consistent formatting
 from flacfetch import print_releases, Release
+from flacfetch.core.categorize import categorize_releases
+from flacfetch.core.models import TrackQuery
+from flacfetch.interface.cli import print_categorized_releases
 
 
 class JobStatus(str, Enum):
@@ -1613,8 +1616,34 @@ class JobMonitor:
             "quality_str": result.get('quality_str') or result.get('quality', ''),
         }
     
+    def _convert_to_release_objects(self, release_dicts: List[Dict[str, Any]]) -> List[Release]:
+        """
+        Convert API result dicts to Release objects for categorization.
+        
+        Used by handle_audio_selection() to enable categorized display
+        for large result sets (10+ results).
+        
+        Args:
+            release_dicts: List of dicts in Release-compatible format
+            
+        Returns:
+            List of Release objects (skipping any that fail to convert)
+        """
+        releases = []
+        for d in release_dicts:
+            try:
+                releases.append(Release.from_dict(d))
+            except Exception as e:
+                self.logger.debug(f"Failed to convert result to Release: {e}")
+        return releases
+    
     def handle_audio_selection(self, job_id: str) -> None:
-        """Handle audio source selection interaction (Batch 5)."""
+        """Handle audio source selection interaction (Batch 5).
+        
+        For 10+ results, uses categorized display (grouped by Top Seeded,
+        Album Releases, Hi-Res, etc.) with a 'more' command to show full list.
+        For smaller result sets, uses flat list display.
+        """
         self.logger.info("=" * 60)
         self.logger.info("AUDIO SOURCE SELECTION NEEDED")
         self.logger.info("=" * 60)
@@ -1624,6 +1653,7 @@ class JobMonitor:
             results_data = self.client.get_audio_search_results(job_id)
             results = results_data.get('results', [])
             artist = results_data.get('artist', 'Unknown')
+            title = results_data.get('title', 'Unknown')
             
             if not results:
                 self.logger.error("No search results available")
@@ -1638,23 +1668,71 @@ class JobMonitor:
                 # This gives us the same rich, colorized output as the local CLI
                 release_dicts = [self._convert_api_result_to_release_dict(r) for r in results]
                 
-                # Use flacfetch's shared display function
-                print_releases(release_dicts, target_artist=artist, use_colors=True)
+                # Convert to Release objects for categorization
+                release_objects = self._convert_to_release_objects(release_dicts)
+                
+                # Use categorized display for large result sets (10+)
+                # This groups results into categories: Top Seeded, Album Releases, Hi-Res, etc.
+                use_categorized = len(release_objects) >= 10
+                
+                if use_categorized:
+                    # Create query for categorization
+                    query = TrackQuery(artist=artist, title=title)
+                    categorized = categorize_releases(release_objects, query)
+                    # print_categorized_releases returns the flattened list of displayed releases
+                    display_releases = print_categorized_releases(categorized, target_artist=artist, use_colors=True)
+                    showing_categorized = True
+                else:
+                    # Small result set - use simple flat list
+                    print_releases(release_dicts, target_artist=artist, use_colors=True)
+                    display_releases = release_objects
+                    showing_categorized = False
                 
                 selection_index = -1
                 while selection_index < 0:
                     try:
-                        choice = input(f"\nSelect a release (1-{len(results)}, 0 to cancel): ").strip()
+                        if showing_categorized:
+                            prompt = f"\nSelect (1-{len(display_releases)}), 'more' for full list, 0 to cancel: "
+                        else:
+                            prompt = f"\nSelect a release (1-{len(display_releases)}, 0 to cancel): "
+                        
+                        choice = input(prompt).strip().lower()
+                        
                         if choice == "0":
                             self.logger.info("Selection cancelled by user")
                             raise KeyboardInterrupt
+                        
+                        # Handle 'more' command to show full flat list
+                        if choice in ('more', 'm', 'all', 'a') and showing_categorized:
+                            print("\n" + "=" * 60)
+                            print("FULL LIST (all results)")
+                            print("=" * 60 + "\n")
+                            print_releases(release_dicts, target_artist=artist, use_colors=True)
+                            display_releases = release_objects
+                            showing_categorized = False
+                            continue
+                        
                         choice_num = int(choice)
-                        if 1 <= choice_num <= len(results):
-                            selection_index = choice_num - 1
+                        if 1 <= choice_num <= len(display_releases):
+                            # Map selection back to original results index for API call
+                            selected_release = display_releases[choice_num - 1]
+                            
+                            # Find matching index in original results by download_url
+                            selection_index = self._find_original_index(
+                                selected_release, results, release_objects
+                            )
+                            
+                            if selection_index < 0:
+                                # Fallback: use display index if mapping fails
+                                self.logger.warning("Could not map selection to original index, using display index")
+                                selection_index = choice_num - 1
                         else:
-                            print(f"Please enter a number between 0 and {len(results)}")
+                            print(f"Please enter a number between 0 and {len(display_releases)}")
                     except ValueError:
-                        print("Please enter a valid number")
+                        if showing_categorized:
+                            print("Please enter a number or 'more'")
+                        else:
+                            print("Please enter a valid number")
                     except KeyboardInterrupt:
                         print()
                         raise
@@ -1672,6 +1750,58 @@ class JobMonitor:
                 
         except Exception as e:
             self.logger.error(f"Error handling audio selection: {e}")
+    
+    def _find_original_index(
+        self,
+        selected_release: Release,
+        original_results: List[Dict[str, Any]],
+        release_objects: List[Release],
+    ) -> int:
+        """
+        Map a selected Release back to its index in the original API results.
+        
+        This is needed because categorized display may reorder results,
+        but the API selection endpoint needs the original index.
+        
+        Args:
+            selected_release: The Release object user selected
+            original_results: Original API results (list of dicts)
+            release_objects: Release objects in same order as original_results
+            
+        Returns:
+            Index in original_results, or -1 if not found
+        """
+        # First try: match by object identity in release_objects
+        for i, release in enumerate(release_objects):
+            if release is selected_release:
+                return i
+        
+        # Second try: match by download_url
+        selected_url = getattr(selected_release, 'download_url', None)
+        if selected_url:
+            for i, r in enumerate(original_results):
+                if r.get('url') == selected_url:
+                    return i
+        
+        # Third try: match by info_hash (for torrent sources)
+        selected_hash = getattr(selected_release, 'info_hash', None)
+        if selected_hash:
+            for i, r in enumerate(original_results):
+                if r.get('source_id') == selected_hash:
+                    return i
+        
+        # Fourth try: match by title + artist + provider
+        selected_title = getattr(selected_release, 'title', '')
+        selected_artist = getattr(selected_release, 'artist', '')
+        selected_source = getattr(selected_release, 'source_name', '')
+        
+        for i, r in enumerate(original_results):
+            if (r.get('title') == selected_title and 
+                r.get('artist') == selected_artist and
+                r.get('provider') == selected_source):
+                return i
+        
+        return -1
 
     def _open_instrumental_review_and_wait(self, job_id: str) -> None:
         """Open browser to instrumental review UI and wait for selection."""
