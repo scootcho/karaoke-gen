@@ -3,6 +3,11 @@ Audio Fetcher module - abstraction layer for fetching audio files.
 
 This module provides a clean interface for searching and downloading audio files
 using flacfetch, replacing the previous direct yt-dlp usage.
+
+Supports two modes:
+1. Local mode: Uses flacfetch library directly (requires torrent client, etc.)
+2. Remote mode: Uses a remote flacfetch HTTP API server when FLACFETCH_API_URL
+   and FLACFETCH_API_KEY environment variables are set.
 """
 
 import logging
@@ -11,10 +16,18 @@ import signal
 import sys
 import tempfile
 import threading
+import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, asdict, field
 from typing import List, Optional, Dict, Any
+
+# Optional import for remote fetcher
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
 
 # Global flag to track if user requested cancellation via Ctrl+C
 _interrupt_requested = False
@@ -868,26 +881,717 @@ class FlacFetchAudioFetcher(AudioFetcher):
 FlacFetcher = FlacFetchAudioFetcher
 
 
+class RemoteFlacFetchAudioFetcher(AudioFetcher):
+    """
+    Audio fetcher implementation using remote flacfetch HTTP API.
+    
+    This fetcher communicates with a dedicated flacfetch server that handles:
+    - BitTorrent downloads from private trackers (RED, OPS)
+    - YouTube downloads
+    - File streaming back to the client
+    
+    Used when FLACFETCH_API_URL and FLACFETCH_API_KEY environment variables are set.
+    """
+    
+    def __init__(
+        self,
+        api_url: str,
+        api_key: str,
+        logger: Optional[logging.Logger] = None,
+        timeout: int = 60,
+        download_timeout: int = 600,
+    ):
+        """
+        Initialize the remote FlacFetch audio fetcher.
+        
+        Args:
+            api_url: Base URL of flacfetch API server (e.g., http://10.0.0.5:8080)
+            api_key: API key for authentication
+            logger: Logger instance for output
+            timeout: Request timeout in seconds for search/status calls
+            download_timeout: Maximum wait time for downloads to complete
+        """
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx is required for remote flacfetch. Install with: pip install httpx")
+        
+        self.api_url = api_url.rstrip('/')
+        self.api_key = api_key
+        self.logger = logger or logging.getLogger(__name__)
+        self.timeout = timeout
+        self.download_timeout = download_timeout
+        self._last_search_id: Optional[str] = None
+        self._last_search_results: List[Dict[str, Any]] = []
+        
+        self.logger.info(f"[RemoteFlacFetcher] Initialized with API URL: {self.api_url}")
+    
+    def _headers(self) -> Dict[str, str]:
+        """Get request headers with authentication."""
+        return {
+            "X-API-Key": self.api_key,
+            "Content-Type": "application/json",
+        }
+    
+    def _check_health(self) -> bool:
+        """Check if the remote flacfetch service is healthy."""
+        try:
+            with httpx.Client() as client:
+                resp = client.get(
+                    f"{self.api_url}/health",
+                    headers=self._headers(),
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    status = data.get("status", "unknown")
+                    self.logger.debug(f"[RemoteFlacFetcher] Health check: {status}")
+                    return status in ["healthy", "degraded"]
+                return False
+        except Exception as e:
+            self.logger.warning(f"[RemoteFlacFetcher] Health check failed: {e}")
+            return False
+    
+    def search(self, artist: str, title: str) -> List[AudioSearchResult]:
+        """
+        Search for audio matching the given artist and title via remote API.
+        
+        Args:
+            artist: The artist name to search for
+            title: The track title to search for
+            
+        Returns:
+            List of AudioSearchResult objects
+            
+        Raises:
+            NoResultsError: If no results are found
+            AudioFetcherError: For other errors
+        """
+        self.logger.info(f"[RemoteFlacFetcher] Searching for: {artist} - {title}")
+        
+        try:
+            with httpx.Client() as client:
+                resp = client.post(
+                    f"{self.api_url}/search",
+                    headers=self._headers(),
+                    json={"artist": artist, "title": title},
+                    timeout=self.timeout,
+                )
+                
+                if resp.status_code == 404:
+                    raise NoResultsError(f"No results found for: {artist} - {title}")
+                
+                resp.raise_for_status()
+                data = resp.json()
+                
+                self._last_search_id = data.get("search_id")
+                self._last_search_results = data.get("results", [])
+                
+                if not self._last_search_results:
+                    raise NoResultsError(f"No results found for: {artist} - {title}")
+                
+                # Convert API results to AudioSearchResult objects
+                search_results = []
+                for i, result in enumerate(self._last_search_results):
+                    search_results.append(
+                        AudioSearchResult(
+                            title=result.get("title", title),
+                            artist=result.get("artist", artist),
+                            url=result.get("download_url", "") or result.get("url", ""),
+                            provider=result.get("provider", result.get("source_name", "Unknown")),
+                            duration=result.get("duration_seconds", result.get("duration")),
+                            quality=result.get("quality_str", result.get("quality")),
+                            source_id=result.get("info_hash"),
+                            index=i,
+                            seeders=result.get("seeders"),
+                            target_file=result.get("target_file"),
+                            raw_result=result,  # Store the full API result
+                        )
+                    )
+                
+                self.logger.info(f"[RemoteFlacFetcher] Found {len(search_results)} results")
+                return search_results
+                
+        except httpx.RequestError as e:
+            raise AudioFetcherError(f"Search request failed: {e}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                raise NoResultsError(f"No results found for: {artist} - {title}") from e
+            raise AudioFetcherError(f"Search failed: {e.response.status_code} - {e.response.text}") from e
+    
+    def download(
+        self,
+        result: AudioSearchResult,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+    ) -> AudioFetchResult:
+        """
+        Download audio from a search result via remote API.
+        
+        Args:
+            result: The search result to download
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            
+        Returns:
+            AudioFetchResult with the downloaded file path
+            
+        Raises:
+            DownloadError: If download fails
+        """
+        if not self._last_search_id:
+            raise DownloadError("No search performed - call search() first")
+        
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename if not provided
+        if output_filename is None:
+            output_filename = f"{result.artist} - {result.title}"
+        
+        self.logger.info(f"[RemoteFlacFetcher] Downloading: {result.artist} - {result.title} from {result.provider}")
+        
+        try:
+            # Start the download
+            with httpx.Client() as client:
+                resp = client.post(
+                    f"{self.api_url}/download",
+                    headers=self._headers(),
+                    json={
+                        "search_id": self._last_search_id,
+                        "result_index": result.index,
+                        "output_filename": output_filename,
+                        # Don't set upload_to_gcs - we want local download
+                    },
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                download_id = data.get("download_id")
+                
+                if not download_id:
+                    raise DownloadError("No download_id returned from API")
+                
+                self.logger.info(f"[RemoteFlacFetcher] Download started: {download_id}")
+            
+            # Wait for download to complete
+            filepath = self._wait_and_stream_download(
+                download_id=download_id,
+                output_dir=output_dir,
+                output_filename=output_filename,
+            )
+            
+            self.logger.info(f"[RemoteFlacFetcher] Downloaded to: {filepath}")
+            
+            return AudioFetchResult(
+                filepath=filepath,
+                artist=result.artist,
+                title=result.title,
+                provider=result.provider,
+                duration=result.duration,
+                quality=result.quality,
+            )
+            
+        except httpx.RequestError as e:
+            raise DownloadError(f"Download request failed: {e}") from e
+        except httpx.HTTPStatusError as e:
+            raise DownloadError(f"Download failed: {e.response.status_code} - {e.response.text}") from e
+    
+    def _wait_and_stream_download(
+        self,
+        download_id: str,
+        output_dir: str,
+        output_filename: str,
+        poll_interval: float = 2.0,
+    ) -> str:
+        """
+        Wait for a remote download to complete, then stream the file locally.
+        
+        Args:
+            download_id: Download ID from /download endpoint
+            output_dir: Local directory to save file
+            output_filename: Local filename (without extension)
+            poll_interval: Seconds between status checks
+            
+        Returns:
+            Path to the downloaded local file
+            
+        Raises:
+            DownloadError: On download failure or timeout
+            UserCancelledError: If user presses Ctrl+C
+        """
+        global _interrupt_requested
+        _interrupt_requested = False
+        
+        # Set up signal handler for Ctrl+C
+        original_handler = signal.getsignal(signal.SIGINT)
+        
+        def interrupt_handler(signum, frame):
+            global _interrupt_requested
+            _interrupt_requested = True
+            print("\nCancelling download... please wait", file=sys.stderr)
+        
+        signal.signal(signal.SIGINT, interrupt_handler)
+        
+        try:
+            elapsed = 0.0
+            last_progress = -1
+            
+            while elapsed < self.download_timeout:
+                # Check for interrupt
+                if _interrupt_requested:
+                    raise UserCancelledError("Download cancelled by user (Ctrl+C)")
+                
+                # Check status
+                with httpx.Client() as client:
+                    resp = client.get(
+                        f"{self.api_url}/download/{download_id}/status",
+                        headers=self._headers(),
+                        timeout=10,
+                    )
+                    resp.raise_for_status()
+                    status = resp.json()
+                
+                download_status = status.get("status")
+                progress = status.get("progress", 0)
+                speed = status.get("download_speed_kbps", 0)
+                
+                # Log progress updates
+                if int(progress) != last_progress:
+                    if download_status == "downloading":
+                        self.logger.info(f"[RemoteFlacFetcher] Progress: {progress:.1f}% ({speed:.1f} KB/s)")
+                    elif download_status in ["uploading", "processing"]:
+                        self.logger.info(f"[RemoteFlacFetcher] {download_status.capitalize()}...")
+                    last_progress = int(progress)
+                
+                if download_status in ["complete", "seeding"]:
+                    # Download complete - now stream the file locally
+                    self.logger.info(f"[RemoteFlacFetcher] Remote download complete, streaming to local...")
+                    return self._stream_file_locally(download_id, output_dir, output_filename)
+                
+                elif download_status == "failed":
+                    error = status.get("error", "Unknown error")
+                    raise DownloadError(f"Remote download failed: {error}")
+                
+                elif download_status == "cancelled":
+                    raise DownloadError("Download was cancelled on server")
+                
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+            
+            raise DownloadError(f"Download timed out after {self.download_timeout}s")
+            
+        finally:
+            # Restore original signal handler
+            signal.signal(signal.SIGINT, original_handler)
+            _interrupt_requested = False
+    
+    def _stream_file_locally(
+        self,
+        download_id: str,
+        output_dir: str,
+        output_filename: str,
+    ) -> str:
+        """
+        Stream a completed download from the remote server to local disk.
+        
+        Args:
+            download_id: Download ID
+            output_dir: Local directory to save file
+            output_filename: Local filename (without extension)
+            
+        Returns:
+            Path to the downloaded local file
+            
+        Raises:
+            DownloadError: On streaming failure
+        """
+        try:
+            # Stream the file from the remote server
+            with httpx.Client() as client:
+                with client.stream(
+                    "GET",
+                    f"{self.api_url}/download/{download_id}/file",
+                    headers=self._headers(),
+                    timeout=300,  # 5 minute timeout for file streaming
+                ) as resp:
+                    resp.raise_for_status()
+                    
+                    # Get content-disposition header for filename/extension
+                    content_disp = resp.headers.get("content-disposition", "")
+                    
+                    # Try to extract extension from the server's filename
+                    extension = ".flac"  # Default
+                    if "filename=" in content_disp:
+                        import re
+                        match = re.search(r'filename="?([^";\s]+)"?', content_disp)
+                        if match:
+                            server_filename = match.group(1)
+                            _, ext = os.path.splitext(server_filename)
+                            if ext:
+                                extension = ext
+                    
+                    # Also try content-type
+                    content_type = resp.headers.get("content-type", "")
+                    if "audio/mpeg" in content_type or "audio/mp3" in content_type:
+                        extension = ".mp3"
+                    elif "audio/wav" in content_type:
+                        extension = ".wav"
+                    elif "audio/x-flac" in content_type or "audio/flac" in content_type:
+                        extension = ".flac"
+                    elif "audio/mp4" in content_type or "audio/m4a" in content_type:
+                        extension = ".m4a"
+                    
+                    # Build local filepath
+                    local_filepath = os.path.join(output_dir, f"{output_filename}{extension}")
+                    
+                    # Stream to local file
+                    total_bytes = 0
+                    with open(local_filepath, "wb") as f:
+                        for chunk in resp.iter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                            total_bytes += len(chunk)
+                    
+                    self.logger.info(f"[RemoteFlacFetcher] Streamed {total_bytes / 1024 / 1024:.1f} MB to {local_filepath}")
+                    return local_filepath
+                    
+        except httpx.RequestError as e:
+            raise DownloadError(f"Failed to stream file: {e}") from e
+        except httpx.HTTPStatusError as e:
+            raise DownloadError(f"Failed to stream file: {e.response.status_code}") from e
+    
+    def select_best(self, results: List[AudioSearchResult]) -> int:
+        """
+        Select the best result from a list of search results.
+        
+        For remote fetcher, we use simple heuristics since we don't have
+        access to flacfetch's internal ranking. Prefers:
+        1. Lossless sources (FLAC) over lossy
+        2. Higher seeders for torrents
+        3. First result otherwise (API typically returns sorted by quality)
+        
+        Args:
+            results: List of AudioSearchResult objects from search()
+            
+        Returns:
+            Index of the best result in the list
+        """
+        if not results:
+            return 0
+        
+        # Score each result
+        best_index = 0
+        best_score = -1
+        
+        for i, result in enumerate(results):
+            score = 0
+            
+            # Prefer lossless
+            quality = (result.quality or "").lower()
+            if "flac" in quality or "lossless" in quality:
+                score += 1000
+            elif "320" in quality:
+                score += 500
+            elif "256" in quality or "192" in quality:
+                score += 200
+            
+            # Prefer higher seeders (for torrents)
+            if result.seeders:
+                score += min(result.seeders, 100)  # Cap at 100 points
+            
+            # Prefer non-YouTube sources (typically higher quality)
+            provider = (result.provider or "").lower()
+            if "youtube" not in provider:
+                score += 50
+            
+            if score > best_score:
+                best_score = score
+                best_index = i
+        
+        return best_index
+    
+    def search_and_download(
+        self,
+        artist: str,
+        title: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        auto_select: bool = False,
+    ) -> AudioFetchResult:
+        """
+        Search for audio and download it in one operation via remote API.
+        
+        Args:
+            artist: The artist name to search for
+            title: The track title to search for
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            auto_select: If True, automatically select the best result
+            
+        Returns:
+            AudioFetchResult with the downloaded file path
+            
+        Raises:
+            NoResultsError: If no results are found
+            DownloadError: If download fails
+            UserCancelledError: If user cancels
+        """
+        # Search
+        results = self.search(artist, title)
+        
+        if auto_select:
+            # Auto mode: select best result
+            best_index = self.select_best(results)
+            selected = results[best_index]
+            self.logger.info(f"[RemoteFlacFetcher] Auto-selected: {selected.title} from {selected.provider}")
+        else:
+            # Interactive mode: present options to user
+            selected = self._interactive_select(results, artist, title)
+        
+        # Download
+        return self.download(selected, output_dir, output_filename)
+    
+    def _convert_api_result_for_release(self, api_result: dict) -> dict:
+        """
+        Convert API SearchResultItem format to format expected by Release.from_dict().
+        
+        The flacfetch API returns:
+        - provider: source name (RED, OPS, YouTube)
+        - quality: display string (e.g., "FLAC 16bit CD")
+        - quality_data: structured dict with format, bit_depth, media, etc.
+        
+        But Release.from_dict() expects:
+        - source_name: provider name
+        - quality: dict with format, bit_depth, media, etc.
+        
+        This mirrors the convert_api_result_to_display() function in flacfetch-remote CLI.
+        """
+        result = dict(api_result)  # Copy to avoid modifying original
+        
+        # Map provider to source_name
+        result["source_name"] = api_result.get("provider", "Unknown")
+        
+        # Store original quality string as quality_str (used by display functions)
+        result["quality_str"] = api_result.get("quality", "")
+        
+        # Map quality_data to quality (Release.from_dict expects quality to be a dict)
+        quality_data = api_result.get("quality_data")
+        if quality_data and isinstance(quality_data, dict):
+            result["quality"] = quality_data
+        else:
+            # Fallback: parse quality string to determine format
+            quality_str = api_result.get("quality", "").upper()
+            format_name = "OTHER"
+            media_name = "OTHER"
+            
+            if "FLAC" in quality_str:
+                format_name = "FLAC"
+            elif "MP3" in quality_str:
+                format_name = "MP3"
+            elif "WAV" in quality_str:
+                format_name = "WAV"
+            
+            if "CD" in quality_str:
+                media_name = "CD"
+            elif "WEB" in quality_str:
+                media_name = "WEB"
+            elif "VINYL" in quality_str:
+                media_name = "VINYL"
+            
+            result["quality"] = {"format": format_name, "media": media_name}
+        
+        # Copy is_lossless if available
+        if "is_lossless" in api_result:
+            result["is_lossless"] = api_result["is_lossless"]
+        
+        return result
+    
+    def _interactive_select(
+        self,
+        results: List[AudioSearchResult],
+        artist: str,
+        title: str,
+    ) -> AudioSearchResult:
+        """
+        Present search results to the user for interactive selection.
+        
+        Uses flacfetch's built-in display functions if available, otherwise
+        falls back to basic text display.
+        
+        Args:
+            results: List of AudioSearchResult objects
+            artist: The artist name being searched
+            title: The track title being searched
+            
+        Returns:
+            The selected AudioSearchResult
+            
+        Raises:
+            UserCancelledError: If user cancels selection
+        """
+        # Try to use flacfetch's display functions with raw API results
+        try:
+            # Convert raw_result dicts back to Release objects for display
+            from flacfetch.core.models import Release
+            
+            releases = []
+            for r in results:
+                if r.raw_result and isinstance(r.raw_result, dict):
+                    # Convert API format to Release.from_dict() format
+                    converted = self._convert_api_result_for_release(r.raw_result)
+                    release = Release.from_dict(converted)
+                    releases.append(release)
+                elif r.raw_result and hasattr(r.raw_result, 'title'):
+                    # It's already a Release object
+                    releases.append(r.raw_result)
+            
+            if releases:
+                from flacfetch.interface.cli import CLIHandler
+                handler = CLIHandler(target_artist=artist)
+                selected_release = handler.select_release(releases)
+                
+                if selected_release is None:
+                    raise UserCancelledError("Selection cancelled by user")
+                
+                # Find the matching AudioSearchResult by index
+                # CLIHandler returns the release at the selected index
+                for i, release in enumerate(releases):
+                    if release == selected_release:
+                        return results[i]
+                
+                # Fallback: try matching by download_url
+                for r in results:
+                    if r.raw_result == selected_release or (
+                        isinstance(r.raw_result, dict) and 
+                        r.raw_result.get("download_url") == getattr(selected_release, "download_url", None)
+                    ):
+                        return r
+                
+        except (ImportError, AttributeError, TypeError) as e:
+            self.logger.debug(f"[RemoteFlacFetcher] Falling back to basic display: {e}")
+        
+        # Fallback to basic display
+        return self._basic_interactive_select(results, artist, title)
+    
+    def _basic_interactive_select(
+        self,
+        results: List[AudioSearchResult],
+        artist: str,
+        title: str,
+    ) -> AudioSearchResult:
+        """
+        Basic fallback for interactive selection without rich formatting.
+        
+        Args:
+            results: List of AudioSearchResult objects
+            artist: The artist name being searched
+            title: The track title being searched
+            
+        Returns:
+            The selected AudioSearchResult
+            
+        Raises:
+            UserCancelledError: If user cancels selection
+        """
+        print(f"\nFound {len(results)} releases:\n")
+        
+        for i, result in enumerate(results, 1):
+            # Try to get lossless info from raw_result (API response)
+            is_lossless = False
+            if result.raw_result and isinstance(result.raw_result, dict):
+                is_lossless = result.raw_result.get("is_lossless", False)
+            elif result.quality:
+                is_lossless = "flac" in result.quality.lower() or "lossless" in result.quality.lower()
+            
+            format_indicator = "[LOSSLESS]" if is_lossless else "[lossy]"
+            quality = f"({result.quality})" if result.quality else ""
+            provider = f"[{result.provider}]" if result.provider else ""
+            seeders = f"Seeders: {result.seeders}" if result.seeders else ""
+            duration = ""
+            if result.duration:
+                mins, secs = divmod(result.duration, 60)
+                duration = f"[{int(mins)}:{int(secs):02d}]"
+            
+            print(f"{i}. {format_indicator} {provider} {result.artist}: {result.title} {quality} {duration} {seeders}")
+        
+        print()
+        
+        while True:
+            try:
+                choice = input(f"Select a release (1-{len(results)}, 0 to cancel): ").strip()
+                
+                if choice == "0":
+                    raise UserCancelledError("Selection cancelled by user")
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(results):
+                    selected = results[choice_num - 1]
+                    self.logger.info(f"[RemoteFlacFetcher] User selected option {choice_num}")
+                    return selected
+                else:
+                    print(f"Please enter a number between 0 and {len(results)}")
+                    
+            except ValueError:
+                print("Please enter a valid number")
+            except (KeyboardInterrupt, EOFError):
+                print("\nCancelled")
+                raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
+
+
+# Alias for shorter name
+RemoteFlacFetcher = RemoteFlacFetchAudioFetcher
+
+
 def create_audio_fetcher(
     logger: Optional[logging.Logger] = None,
     red_api_key: Optional[str] = None,
     red_api_url: Optional[str] = None,
     ops_api_key: Optional[str] = None,
     ops_api_url: Optional[str] = None,
+    flacfetch_api_url: Optional[str] = None,
+    flacfetch_api_key: Optional[str] = None,
 ) -> AudioFetcher:
     """
     Factory function to create an appropriate AudioFetcher instance.
+    
+    If FLACFETCH_API_URL and FLACFETCH_API_KEY environment variables are set
+    (or passed as arguments), returns a RemoteFlacFetchAudioFetcher that uses
+    the remote flacfetch HTTP API server.
+    
+    Otherwise, returns a local FlacFetchAudioFetcher that uses the flacfetch
+    library directly.
 
     Args:
         logger: Logger instance for output
-        red_api_key: API key for RED tracker (optional)
-        red_api_url: Base URL for RED tracker API (optional, required if using RED)
-        ops_api_key: API key for OPS tracker (optional)
-        ops_api_url: Base URL for OPS tracker API (optional, required if using OPS)
+        red_api_key: API key for RED tracker (optional, for local mode)
+        red_api_url: Base URL for RED tracker API (optional, for local mode)
+        ops_api_key: API key for OPS tracker (optional, for local mode)
+        ops_api_url: Base URL for OPS tracker API (optional, for local mode)
+        flacfetch_api_url: URL of remote flacfetch API server (optional)
+        flacfetch_api_key: API key for remote flacfetch server (optional)
 
     Returns:
-        An AudioFetcher instance
+        An AudioFetcher instance (remote or local depending on configuration)
     """
+    # Check for remote flacfetch API configuration
+    api_url = flacfetch_api_url or os.environ.get("FLACFETCH_API_URL")
+    api_key = flacfetch_api_key or os.environ.get("FLACFETCH_API_KEY")
+    
+    if api_url and api_key:
+        # Use remote flacfetch API
+        if logger:
+            logger.info(f"Using remote flacfetch API at: {api_url}")
+        return RemoteFlacFetchAudioFetcher(
+            api_url=api_url,
+            api_key=api_key,
+            logger=logger,
+        )
+    elif api_url and not api_key:
+        if logger:
+            logger.warning("FLACFETCH_API_URL is set but FLACFETCH_API_KEY is not - falling back to local mode")
+    elif api_key and not api_url:
+        if logger:
+            logger.warning("FLACFETCH_API_KEY is set but FLACFETCH_API_URL is not - falling back to local mode")
+    
+    # Use local flacfetch library
     return FlacFetchAudioFetcher(
         logger=logger,
         red_api_key=red_api_key,

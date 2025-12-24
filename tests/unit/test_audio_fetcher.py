@@ -1,7 +1,8 @@
 """
 Unit tests for audio_fetcher module.
 
-Tests cover the AudioFetcher abstraction layer and FlacFetchAudioFetcher implementation.
+Tests cover the AudioFetcher abstraction layer, FlacFetchAudioFetcher implementation,
+and RemoteFlacFetchAudioFetcher for remote API access.
 """
 
 import pytest
@@ -19,7 +20,9 @@ from karaoke_gen.audio_fetcher import (
     DownloadError,
     UserCancelledError,
     FlacFetchAudioFetcher,
+    RemoteFlacFetchAudioFetcher,
     create_audio_fetcher,
+    HTTPX_AVAILABLE,
 )
 import karaoke_gen.audio_fetcher as audio_fetcher_module
 
@@ -944,11 +947,13 @@ class TestFlacFetcherAlias:
 class TestCreateAudioFetcher:
     """Tests for create_audio_fetcher factory function."""
 
+    @patch.dict(os.environ, {"FLACFETCH_API_URL": "", "FLACFETCH_API_KEY": ""}, clear=False)
     def test_creates_flacfetch_fetcher(self):
-        """Test factory creates FlacFetchAudioFetcher."""
+        """Test factory creates FlacFetchAudioFetcher when no remote config."""
         fetcher = create_audio_fetcher()
         assert isinstance(fetcher, FlacFetchAudioFetcher)
 
+    @patch.dict(os.environ, {"FLACFETCH_API_URL": "", "FLACFETCH_API_KEY": ""}, clear=False)
     def test_passes_parameters(self):
         """Test factory passes parameters to constructor."""
         logger = MagicMock()
@@ -1650,3 +1655,729 @@ class TestTransmissionCleanup:
                 fetcher._cleanup_transmission_torrents(mock_selected)
         
         mock_constructor.assert_called_once_with(host='remote-host', port=9999, timeout=5)
+
+
+# ============================================================================
+# Tests for RemoteFlacFetchAudioFetcher
+# ============================================================================
+
+class TestRemoteFlacFetchAudioFetcherInit:
+    """Tests for RemoteFlacFetchAudioFetcher initialization."""
+
+    def test_init_with_required_params(self):
+        """Test initialization with required API URL and key."""
+        fetcher = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+        assert fetcher.api_url == "http://localhost:8080"
+        assert fetcher.api_key == "test_key"
+        assert fetcher.timeout == 60
+        assert fetcher.download_timeout == 600
+
+    def test_init_strips_trailing_slash_from_url(self):
+        """Test that trailing slashes are removed from API URL."""
+        fetcher = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080/",
+            api_key="test_key",
+        )
+        assert fetcher.api_url == "http://localhost:8080"
+
+    def test_init_with_custom_timeouts(self):
+        """Test initialization with custom timeout values."""
+        fetcher = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+            timeout=30,
+            download_timeout=300,
+        )
+        assert fetcher.timeout == 30
+        assert fetcher.download_timeout == 300
+
+    def test_init_with_custom_logger(self):
+        """Test initialization with custom logger."""
+        logger = MagicMock(spec=logging.Logger)
+        fetcher = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+            logger=logger,
+        )
+        assert fetcher.logger == logger
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherSearch:
+    """Tests for RemoteFlacFetchAudioFetcher search functionality."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+
+    @patch('httpx.Client')
+    def test_search_success(self, mock_client_class, fetcher):
+        """Test successful search returns AudioSearchResult objects."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "search_id": "abc123",
+            "results": [
+                {
+                    "title": "Test Song",
+                    "artist": "Test Artist",
+                    "provider": "YouTube",
+                    "download_url": "https://example.com/song",
+                    "duration_seconds": 180,
+                    "quality_str": "320kbps",
+                },
+                {
+                    "title": "Test Song",
+                    "artist": "Test Artist",
+                    "provider": "RED",
+                    "download_url": "https://example.com/flac",
+                    "duration_seconds": 180,
+                    "quality_str": "FLAC 16bit",
+                    "seeders": 50,
+                },
+            ],
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        results = fetcher.search("Test Artist", "Test Song")
+
+        assert len(results) == 2
+        assert results[0].title == "Test Song"
+        assert results[0].provider == "YouTube"
+        assert results[0].index == 0
+        assert results[1].provider == "RED"
+        assert results[1].index == 1
+        assert results[1].seeders == 50
+
+    @patch('httpx.Client')
+    def test_search_no_results(self, mock_client_class, fetcher):
+        """Test search raises NoResultsError when API returns 404."""
+        import httpx
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(NoResultsError):
+            fetcher.search("Unknown Artist", "Unknown Song")
+
+    @patch('httpx.Client')
+    def test_search_empty_results(self, mock_client_class, fetcher):
+        """Test search raises NoResultsError when results list is empty."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "search_id": "abc123",
+            "results": [],
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(NoResultsError):
+            fetcher.search("Artist", "Song")
+
+    @patch('httpx.Client')
+    def test_search_stores_search_id(self, mock_client_class, fetcher):
+        """Test search stores search_id for subsequent download."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "search_id": "stored_id_123",
+            "results": [{"title": "Song", "artist": "Artist", "provider": "YouTube"}],
+        }
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        fetcher.search("Artist", "Song")
+
+        assert fetcher._last_search_id == "stored_id_123"
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherDownload:
+    """Tests for RemoteFlacFetchAudioFetcher download functionality."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance with search completed."""
+        f = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+        f._last_search_id = "search123"
+        return f
+
+    def test_download_without_search_raises_error(self):
+        """Test download raises DownloadError if search wasn't called first."""
+        fetcher = RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+        search_result = AudioSearchResult(
+            title="Song", artist="Artist", url="url", provider="YouTube", index=0,
+        )
+        
+        with pytest.raises(DownloadError, match="No search performed"):
+            fetcher.download(search_result, "/tmp")
+
+    @patch.object(RemoteFlacFetchAudioFetcher, '_wait_and_stream_download')
+    @patch('httpx.Client')
+    def test_download_success(self, mock_client_class, mock_wait_stream, fetcher, tmp_path):
+        """Test successful download returns AudioFetchResult."""
+        # Mock download initiation
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"download_id": "dl123"}
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+        
+        # Mock wait and stream
+        downloaded_path = str(tmp_path / "song.flac")
+        mock_wait_stream.return_value = downloaded_path
+        
+        search_result = AudioSearchResult(
+            title="Test Song",
+            artist="Test Artist",
+            url="https://example.com/song",
+            provider="RED",
+            duration=180,
+            quality="FLAC",
+            index=0,
+        )
+        
+        result = fetcher.download(search_result, str(tmp_path))
+        
+        assert result.filepath == downloaded_path
+        assert result.artist == "Test Artist"
+        assert result.title == "Test Song"
+        assert result.provider == "RED"
+
+    @patch.object(RemoteFlacFetchAudioFetcher, '_wait_and_stream_download')
+    @patch('httpx.Client')
+    def test_download_with_custom_filename(self, mock_client_class, mock_wait_stream, fetcher, tmp_path):
+        """Test download uses custom filename when provided."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"download_id": "dl123"}
+        mock_response.raise_for_status = MagicMock()
+        
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_class.return_value = mock_client
+        
+        mock_wait_stream.return_value = str(tmp_path / "custom.flac")
+        
+        search_result = AudioSearchResult(
+            title="Song", artist="Artist", url="url", provider="YouTube", index=0,
+        )
+        
+        fetcher.download(search_result, str(tmp_path), output_filename="custom_name")
+        
+        # Verify custom filename was sent to API
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["output_filename"] == "custom_name"
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherSelectBest:
+    """Tests for RemoteFlacFetchAudioFetcher select_best functionality."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+
+    def test_select_best_prefers_flac(self, fetcher):
+        """Test select_best prefers FLAC quality over lossy."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url1", provider="YouTube",
+                quality="320kbps", index=0,
+            ),
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url2", provider="RED",
+                quality="FLAC 16bit", index=1,
+            ),
+        ]
+        
+        best_index = fetcher.select_best(results)
+        assert best_index == 1  # FLAC should win
+
+    def test_select_best_prefers_lossless_keyword(self, fetcher):
+        """Test select_best recognizes 'lossless' keyword."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url1", provider="YouTube",
+                quality="256kbps", index=0,
+            ),
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url2", provider="OPS",
+                quality="Lossless CD", index=1,
+            ),
+        ]
+        
+        best_index = fetcher.select_best(results)
+        assert best_index == 1
+
+    def test_select_best_considers_seeders(self, fetcher):
+        """Test select_best considers seeder count."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url1", provider="RED",
+                quality="FLAC", seeders=5, index=0,
+            ),
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url2", provider="RED",
+                quality="FLAC", seeders=50, index=1,
+            ),
+        ]
+        
+        best_index = fetcher.select_best(results)
+        assert best_index == 1  # More seeders
+
+    def test_select_best_prefers_non_youtube(self, fetcher):
+        """Test select_best prefers tracker sources over YouTube."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url1", provider="YouTube",
+                quality="320kbps", index=0,
+            ),
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url2", provider="RED",
+                quality="320kbps", index=1,
+            ),
+        ]
+        
+        best_index = fetcher.select_best(results)
+        assert best_index == 1  # Non-YouTube preferred
+
+    def test_select_best_empty_list(self, fetcher):
+        """Test select_best returns 0 for empty list."""
+        assert fetcher.select_best([]) == 0
+
+    def test_select_best_handles_none_quality(self, fetcher):
+        """Test select_best handles results with None quality."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube",
+                quality=None, index=0,
+            ),
+        ]
+        
+        # Should not raise
+        best_index = fetcher.select_best(results)
+        assert best_index == 0
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherSearchAndDownload:
+    """Tests for RemoteFlacFetchAudioFetcher search_and_download functionality."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+
+    @patch.object(RemoteFlacFetchAudioFetcher, 'download')
+    @patch.object(RemoteFlacFetchAudioFetcher, 'search')
+    def test_search_and_download_auto_select(self, mock_search, mock_download, fetcher, tmp_path):
+        """Test search_and_download with auto_select=True."""
+        # Mock search results
+        mock_search.return_value = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url1", provider="YouTube",
+                quality="320kbps", index=0,
+            ),
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url2", provider="RED",
+                quality="FLAC", index=1,
+            ),
+        ]
+        
+        # Mock download
+        mock_download.return_value = AudioFetchResult(
+            filepath="/path/to/song.flac",
+            artist="Artist",
+            title="Song",
+            provider="RED",
+        )
+        
+        result = fetcher.search_and_download(
+            artist="Artist",
+            title="Song",
+            output_dir=str(tmp_path),
+            auto_select=True,
+        )
+        
+        # Should auto-select FLAC (index 1)
+        mock_download.assert_called_once()
+        selected = mock_download.call_args[0][0]
+        assert selected.quality == "FLAC"
+
+    @patch.object(RemoteFlacFetchAudioFetcher, 'download')
+    @patch.object(RemoteFlacFetchAudioFetcher, '_interactive_select')
+    @patch.object(RemoteFlacFetchAudioFetcher, 'search')
+    def test_search_and_download_interactive(self, mock_search, mock_interactive, mock_download, fetcher, tmp_path):
+        """Test search_and_download with interactive selection."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube", index=0,
+            ),
+        ]
+        mock_search.return_value = results
+        mock_interactive.return_value = results[0]
+        mock_download.return_value = AudioFetchResult(
+            filepath="/path/to/song.mp3",
+            artist="Artist",
+            title="Song",
+            provider="YouTube",
+        )
+        
+        fetcher.search_and_download(
+            artist="Artist",
+            title="Song",
+            output_dir=str(tmp_path),
+            auto_select=False,
+        )
+        
+        mock_interactive.assert_called_once()
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherConvertApiResult:
+    """Tests for RemoteFlacFetchAudioFetcher._convert_api_result_for_release method."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+
+    def test_maps_provider_to_source_name(self, fetcher):
+        """Test that provider field is mapped to source_name."""
+        api_result = {
+            "provider": "RED",
+            "title": "Test Song",
+            "artist": "Test Artist",
+            "quality": "FLAC 16bit CD",
+            "quality_data": {"format": "FLAC", "bit_depth": 16, "media": "CD"},
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["source_name"] == "RED"
+        assert converted["provider"] == "RED"  # Original preserved
+
+    def test_maps_quality_data_to_quality(self, fetcher):
+        """Test that quality_data is mapped to quality dict for Release.from_dict()."""
+        api_result = {
+            "provider": "OPS",
+            "title": "Test Song",
+            "quality": "FLAC 24bit WEB",
+            "quality_data": {"format": "FLAC", "bit_depth": 24, "media": "WEB", "sample_rate": 96000},
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert isinstance(converted["quality"], dict)
+        assert converted["quality"]["format"] == "FLAC"
+        assert converted["quality"]["bit_depth"] == 24
+        assert converted["quality"]["media"] == "WEB"
+        assert converted["quality"]["sample_rate"] == 96000
+
+    def test_stores_original_quality_as_quality_str(self, fetcher):
+        """Test that original quality string is stored as quality_str."""
+        api_result = {
+            "provider": "RED",
+            "quality": "FLAC 16bit CD",
+            "quality_data": {"format": "FLAC", "bit_depth": 16, "media": "CD"},
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["quality_str"] == "FLAC 16bit CD"
+
+    def test_handles_missing_quality_data(self, fetcher):
+        """Test fallback when quality_data is missing."""
+        api_result = {
+            "provider": "YouTube",
+            "quality": "MP3 320kbps",
+            # No quality_data
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert isinstance(converted["quality"], dict)
+        assert converted["quality"]["format"] == "MP3"
+        assert converted["quality_str"] == "MP3 320kbps"
+
+    def test_handles_none_quality_data(self, fetcher):
+        """Test fallback when quality_data is None."""
+        api_result = {
+            "provider": "YouTube",
+            "quality": "FLAC",
+            "quality_data": None,
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert isinstance(converted["quality"], dict)
+        assert converted["quality"]["format"] == "FLAC"
+
+    def test_parses_flac_from_quality_string(self, fetcher):
+        """Test that FLAC format is parsed from quality string."""
+        api_result = {"provider": "Unknown", "quality": "FLAC 16bit"}
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["quality"]["format"] == "FLAC"
+
+    def test_parses_mp3_from_quality_string(self, fetcher):
+        """Test that MP3 format is parsed from quality string."""
+        api_result = {"provider": "Unknown", "quality": "MP3 320kbps"}
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["quality"]["format"] == "MP3"
+
+    def test_parses_media_from_quality_string(self, fetcher):
+        """Test that media type is parsed from quality string."""
+        api_result = {"provider": "Unknown", "quality": "FLAC CD"}
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["quality"]["media"] == "CD"
+
+    def test_parses_web_media_from_quality_string(self, fetcher):
+        """Test that WEB media type is parsed from quality string."""
+        api_result = {"provider": "Unknown", "quality": "FLAC WEB"}
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["quality"]["media"] == "WEB"
+
+    def test_preserves_is_lossless_flag(self, fetcher):
+        """Test that is_lossless flag is preserved from API result."""
+        api_result = {
+            "provider": "RED",
+            "quality": "FLAC 16bit CD",
+            "quality_data": {"format": "FLAC"},
+            "is_lossless": True,
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["is_lossless"] is True
+
+    def test_does_not_modify_original(self, fetcher):
+        """Test that original dict is not modified."""
+        api_result = {
+            "provider": "RED",
+            "quality": "FLAC 16bit CD",
+        }
+        original_quality = api_result["quality"]
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        # Original should not have source_name added
+        assert "source_name" not in api_result
+        assert api_result["quality"] == original_quality
+
+    def test_handles_youtube_result(self, fetcher):
+        """Test conversion of YouTube-style API result."""
+        api_result = {
+            "provider": "YouTube",
+            "title": "Test Video",
+            "artist": "Test Channel",
+            "channel": "Test Channel",
+            "quality": "MP3 320kbps",
+            "quality_data": {"format": "MP3", "bitrate": 320},
+            "is_lossless": False,
+            "view_count": 1000000,
+            "duration_seconds": 180,
+        }
+        
+        converted = fetcher._convert_api_result_for_release(api_result)
+        
+        assert converted["source_name"] == "YouTube"
+        assert converted["quality"]["format"] == "MP3"
+        assert converted["quality"]["bitrate"] == 320
+        assert converted["channel"] == "Test Channel"
+        assert converted["view_count"] == 1000000
+
+
+@pytest.mark.skipif(not HTTPX_AVAILABLE, reason="httpx not installed")
+class TestRemoteFlacFetcherInteractiveSelect:
+    """Tests for RemoteFlacFetchAudioFetcher interactive selection."""
+
+    @pytest.fixture
+    def fetcher(self):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+        )
+
+    @patch('builtins.input', return_value='1')
+    def test_basic_interactive_select_success(self, mock_input, fetcher, capsys):
+        """Test basic interactive selection returns selected result."""
+        results = [
+            AudioSearchResult(
+                title="Song 1", artist="Artist", url="url1", provider="YouTube",
+                quality="320kbps", index=0,
+            ),
+            AudioSearchResult(
+                title="Song 2", artist="Artist", url="url2", provider="RED",
+                quality="FLAC", index=1,
+            ),
+        ]
+        
+        selected = fetcher._basic_interactive_select(results, "Artist", "Song")
+        
+        assert selected == results[0]
+        
+        # Check output shows options
+        captured = capsys.readouterr()
+        assert "Found 2 releases" in captured.out
+
+    @patch('builtins.input', return_value='0')
+    def test_basic_interactive_select_cancel(self, mock_input, fetcher):
+        """Test interactive selection raises UserCancelledError on cancel."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube", index=0,
+            ),
+        ]
+        
+        with pytest.raises(UserCancelledError):
+            fetcher._basic_interactive_select(results, "Artist", "Song")
+
+    @patch('builtins.input', side_effect=KeyboardInterrupt)
+    def test_basic_interactive_select_keyboard_interrupt(self, mock_input, fetcher):
+        """Test interactive selection handles Ctrl+C."""
+        results = [
+            AudioSearchResult(
+                title="Song", artist="Artist", url="url", provider="YouTube", index=0,
+            ),
+        ]
+        
+        with pytest.raises(UserCancelledError):
+            fetcher._basic_interactive_select(results, "Artist", "Song")
+
+
+class TestRemoteFlacFetcherAlias:
+    """Tests for RemoteFlacFetcher alias."""
+    
+    def test_remote_flacfetcher_alias_exists(self):
+        """Test RemoteFlacFetcher alias is available."""
+        from karaoke_gen.audio_fetcher import RemoteFlacFetcher
+        assert RemoteFlacFetcher is not None
+
+    def test_remote_flacfetcher_is_remoteflacfetchaudiofetcher(self):
+        """Test RemoteFlacFetcher is the same as RemoteFlacFetchAudioFetcher."""
+        from karaoke_gen.audio_fetcher import RemoteFlacFetcher
+        assert RemoteFlacFetcher is RemoteFlacFetchAudioFetcher
+
+
+class TestCreateAudioFetcherRemoteSelection:
+    """Tests for create_audio_fetcher factory selecting remote vs local."""
+
+    @patch.dict(os.environ, {"FLACFETCH_API_URL": "http://localhost:8080", "FLACFETCH_API_KEY": "test_key"})
+    def test_creates_remote_fetcher_from_env(self):
+        """Test factory creates RemoteFlacFetchAudioFetcher when env vars are set."""
+        fetcher = create_audio_fetcher()
+        assert isinstance(fetcher, RemoteFlacFetchAudioFetcher)
+        assert fetcher.api_url == "http://localhost:8080"
+        assert fetcher.api_key == "test_key"
+
+    def test_creates_remote_fetcher_from_args(self):
+        """Test factory creates RemoteFlacFetchAudioFetcher when args are passed."""
+        fetcher = create_audio_fetcher(
+            flacfetch_api_url="http://custom:8080",
+            flacfetch_api_key="custom_key",
+        )
+        assert isinstance(fetcher, RemoteFlacFetchAudioFetcher)
+        assert fetcher.api_url == "http://custom:8080"
+        assert fetcher.api_key == "custom_key"
+
+    @patch.dict(os.environ, {"FLACFETCH_API_URL": "http://localhost:8080"}, clear=False)
+    def test_falls_back_to_local_without_api_key(self):
+        """Test factory falls back to local when only URL is set."""
+        # Clear FLACFETCH_API_KEY if it exists
+        with patch.dict(os.environ, {"FLACFETCH_API_KEY": ""}, clear=False):
+            fetcher = create_audio_fetcher()
+            assert isinstance(fetcher, FlacFetchAudioFetcher)
+
+    @patch.dict(os.environ, {"FLACFETCH_API_KEY": "test_key"}, clear=False)
+    def test_falls_back_to_local_without_api_url(self):
+        """Test factory falls back to local when only key is set."""
+        # Clear FLACFETCH_API_URL if it exists
+        with patch.dict(os.environ, {"FLACFETCH_API_URL": ""}, clear=False):
+            fetcher = create_audio_fetcher()
+            assert isinstance(fetcher, FlacFetchAudioFetcher)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_creates_local_fetcher_by_default(self):
+        """Test factory creates local fetcher when no remote config."""
+        fetcher = create_audio_fetcher()
+        assert isinstance(fetcher, FlacFetchAudioFetcher)
+
+    @patch.dict(os.environ, {"FLACFETCH_API_URL": "http://localhost:8080", "FLACFETCH_API_KEY": "test_key"})
+    def test_remote_fetcher_gets_logger(self):
+        """Test factory passes logger to remote fetcher."""
+        logger = MagicMock(spec=logging.Logger)
+        fetcher = create_audio_fetcher(logger=logger)
+        assert isinstance(fetcher, RemoteFlacFetchAudioFetcher)
+        assert fetcher.logger == logger
+
+    def test_args_override_env_vars(self):
+        """Test explicit args override environment variables."""
+        with patch.dict(os.environ, {"FLACFETCH_API_URL": "http://env:8080", "FLACFETCH_API_KEY": "env_key"}):
+            fetcher = create_audio_fetcher(
+                flacfetch_api_url="http://arg:9090",
+                flacfetch_api_key="arg_key",
+            )
+            assert isinstance(fetcher, RemoteFlacFetchAudioFetcher)
+            assert fetcher.api_url == "http://arg:9090"
+            assert fetcher.api_key == "arg_key"
