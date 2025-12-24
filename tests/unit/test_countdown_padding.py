@@ -438,11 +438,33 @@ class TestExistingInstrumentalPadding:
 class TestDetectCountdownPaddingFromLRC:
     """Tests for detecting countdown padding from existing LRC files."""
     
+    def test_detect_padding_from_lrc_with_countdown_text(self, basic_karaoke_gen, temp_dir):
+        """Test that countdown padding is detected by the countdown text '3... 2... 1...'"""
+        lrc_file = os.path.join(temp_dir, 'test.lrc')
+        
+        # Create an LRC file with countdown text (this is what LyricsTranscriber actually creates)
+        # The countdown segment starts at 0.1s, not 3.0s, so timestamp detection would fail
+        lrc_content = """[ti:Test Song]
+[ar:Test Artist]
+[00:00.10]3... 2... 1...
+[00:03.10]First actual line of lyrics
+[00:06.20]Second line of lyrics
+"""
+        with open(lrc_file, 'w') as f:
+            f.write(lrc_content)
+        
+        padding_added, padding_seconds = basic_karaoke_gen.lyrics_processor._detect_countdown_padding_from_lrc(lrc_file)
+        
+        # Should detect via countdown text pattern
+        assert padding_added is True
+        assert padding_seconds == 3.0
+    
     def test_detect_padding_from_lrc_with_padding(self, basic_karaoke_gen, temp_dir):
-        """Test that countdown padding is detected when first lyric is after 3 seconds."""
+        """Test that countdown padding is detected when first lyric is after 3 seconds (fallback method)."""
         lrc_file = os.path.join(temp_dir, 'test.lrc')
         
         # Create an LRC file with first lyric at 3 seconds (padding was applied)
+        # This tests the fallback detection method (no countdown text but shifted timestamps)
         lrc_content = """[ti:Test Song]
 [ar:Test Artist]
 [00:03.50]First line of lyrics

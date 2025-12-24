@@ -27,10 +27,10 @@ class LyricsProcessor:
 
     def _detect_countdown_padding_from_lrc(self, lrc_filepath):
         """
-        Detect if countdown padding was applied by checking the first lyric timestamp in the LRC file.
+        Detect if countdown padding was applied by checking for countdown text in the LRC file.
         
-        LRC format timestamps look like: [mm:ss.xx] or [mm:ss.xxx]
-        If the first lyric timestamp is >= 3.0 seconds, countdown padding was likely applied.
+        The countdown segment has the text "3... 2... 1..." at timestamp 0.1-2.9s.
+        We detect this by looking for the countdown text pattern.
         
         Args:
             lrc_filepath: Path to the LRC file
@@ -42,7 +42,15 @@ class LyricsProcessor:
             with open(lrc_filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Find all timestamp patterns in the LRC file
+            # Method 1: Check for countdown text pattern "3... 2... 1..."
+            # This is the most reliable detection method since the countdown text is unique
+            countdown_text = "3... 2... 1..."
+            if countdown_text in content:
+                self.logger.info(f"Detected countdown padding from LRC: found countdown text '{countdown_text}'")
+                return (True, self.COUNTDOWN_PADDING_SECONDS)
+            
+            # Method 2 (fallback): Check if first lyric timestamp is >= 3 seconds
+            # This handles cases where countdown text format might differ
             # LRC timestamps: [mm:ss.xx] or [mm:ss.xxx]
             timestamp_pattern = r'\[(\d{1,2}):(\d{2})\.(\d{2,3})\]'
             matches = re.findall(timestamp_pattern, content)
@@ -51,8 +59,7 @@ class LyricsProcessor:
                 self.logger.debug("No timestamps found in LRC file")
                 return (False, 0.0)
             
-            # Find the first non-metadata timestamp (metadata like [ar:Artist] doesn't have decimal)
-            # We already filtered for decimal timestamps in our pattern
+            # Parse the first timestamp
             first_timestamp = matches[0]
             minutes = int(first_timestamp[0])
             seconds = int(first_timestamp[1])
