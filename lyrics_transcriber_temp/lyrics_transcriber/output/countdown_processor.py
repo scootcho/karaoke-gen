@@ -265,3 +265,42 @@ class CountdownProcessor:
 
         return countdown_segment
 
+    def has_countdown(self, correction_result: CorrectionResult) -> bool:
+        """
+        Check if a CorrectionResult already has a countdown segment.
+        
+        This is used to detect if countdown padding was applied to corrections
+        that were loaded from a saved JSON file (where the padding state is not
+        explicitly stored).
+
+        Args:
+            correction_result: The correction result to check
+
+        Returns:
+            True if the first segment is a countdown, False otherwise
+        """
+        if not correction_result.corrected_segments:
+            return False
+
+        first_segment = correction_result.corrected_segments[0]
+        return first_segment.text == self.COUNTDOWN_TEXT
+
+    def create_padded_audio_only(self, audio_filepath: str) -> str:
+        """
+        Create a padded audio file without modifying the correction result.
+        
+        This is used when loading existing corrections that already have countdown
+        timestamps, but we need to create the padded audio file for video rendering.
+
+        Args:
+            audio_filepath: Path to original audio file
+
+        Returns:
+            Path to padded audio file
+
+        Raises:
+            FileNotFoundError: If input audio file doesn't exist
+            RuntimeError: If ffmpeg command fails
+        """
+        return self._create_padded_audio(audio_filepath)
+

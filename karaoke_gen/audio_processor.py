@@ -771,6 +771,10 @@ class AudioProcessor:
         padded_result["other_stems"] = separation_result.get("other_stems", {})
         padded_result["backing_vocals"] = separation_result.get("backing_vocals", {})
         
+        # Preserve Custom instrumental if present (already padded in karaoke_gen.py)
+        if "Custom" in separation_result:
+            padded_result["Custom"] = separation_result["Custom"]
+        
         # Count actual padded files (don't assume clean instrumental was padded)
         padded_count = (1 if padded_result["clean_instrumental"].get("instrumental") else 0) + len(padded_result["combined_instrumentals"])
         

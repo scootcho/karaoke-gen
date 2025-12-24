@@ -546,6 +546,143 @@ class TestRenderVideoWorkerConfiguration:
         assert subtitle_offset == -250
 
 
+class TestRenderVideoWorkerCountdownPadding:
+    """Tests for render_video_worker countdown detection and audio padding.
+    
+    This ensures that when corrections with countdown timestamps are loaded,
+    the audio is padded to match. This prevents video desynchronization.
+    """
+    
+    def test_countdown_processor_import(self):
+        """Test that render_video_worker imports CountdownProcessor."""
+        from backend.workers.render_video_worker import CountdownProcessor
+        assert CountdownProcessor is not None
+    
+    def test_countdown_detection_with_countdown(self):
+        """Test that has_countdown correctly detects countdown in corrections."""
+        from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+        from lyrics_transcriber.types import CorrectionResult, LyricsSegment, Word
+        
+        # Create a CorrectionResult WITH countdown segment
+        countdown_segment = LyricsSegment(
+            id="countdown",
+            text="3... 2... 1...",  # CountdownProcessor.COUNTDOWN_TEXT
+            words=[Word(
+                id="w1",
+                text="3... 2... 1...",
+                start_time=0.1,
+                end_time=2.9,
+                confidence=1.0,
+            )],
+            start_time=0.1,
+            end_time=2.9,
+        )
+        
+        regular_segment = LyricsSegment(
+            id="seg1",
+            text="Hello world",
+            words=[Word(
+                id="w2",
+                text="Hello world",
+                start_time=3.1,  # Shifted by 3 seconds
+                end_time=4.0,
+                confidence=0.9,
+            )],
+            start_time=3.1,
+            end_time=4.0,
+        )
+        
+        correction_result = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[countdown_segment, regular_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+        
+        countdown_processor = CountdownProcessor(cache_dir="/tmp")
+        assert countdown_processor.has_countdown(correction_result) is True
+    
+    def test_countdown_detection_without_countdown(self):
+        """Test that has_countdown returns False for corrections without countdown."""
+        from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+        from lyrics_transcriber.types import CorrectionResult, LyricsSegment, Word
+        
+        # Create a CorrectionResult WITHOUT countdown segment
+        regular_segment = LyricsSegment(
+            id="seg1",
+            text="Hello world",
+            words=[Word(
+                id="w1",
+                text="Hello world",
+                start_time=0.5,
+                end_time=1.5,
+                confidence=0.9,
+            )],
+            start_time=0.5,
+            end_time=1.5,
+        )
+        
+        correction_result = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[regular_segment],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+        
+        countdown_processor = CountdownProcessor(cache_dir="/tmp")
+        assert countdown_processor.has_countdown(correction_result) is False
+    
+    def test_countdown_detection_empty_corrections(self):
+        """Test that has_countdown handles empty corrections gracefully."""
+        from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+        from lyrics_transcriber.types import CorrectionResult
+        
+        correction_result = CorrectionResult(
+            original_segments=[],
+            corrected_segments=[],
+            corrections=[],
+            corrections_made=0,
+            confidence=1.0,
+            reference_lyrics={},
+            anchor_sequences=[],
+            gap_sequences=[],
+            resized_segments=[],
+            metadata={},
+            correction_steps=[],
+            word_id_map={},
+            segment_id_map={},
+        )
+        
+        countdown_processor = CountdownProcessor(cache_dir="/tmp")
+        assert countdown_processor.has_countdown(correction_result) is False
+    
+    def test_create_padded_audio_only_exists(self):
+        """Test that CountdownProcessor has create_padded_audio_only method."""
+        from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+        
+        countdown_processor = CountdownProcessor(cache_dir="/tmp")
+        assert hasattr(countdown_processor, 'create_padded_audio_only')
+        assert callable(countdown_processor.create_padded_audio_only)
+
+
 class TestDownloadHelpers:
     """Tests for download helper functions in workers."""
     

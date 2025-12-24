@@ -864,15 +864,21 @@ class KaraokePrep:
                 
                 # If separated_audio is empty (e.g., transcription was skipped but existing files have countdown),
                 # scan the directory for existing instrumental files
+                # Note: also check for Custom instrumental (provided via --existing_instrumental)
                 has_instrumentals = (
                     processed_track["separated_audio"].get("clean_instrumental", {}).get("instrumental") or
-                    processed_track["separated_audio"].get("combined_instrumentals")
+                    processed_track["separated_audio"].get("combined_instrumentals") or
+                    processed_track["separated_audio"].get("Custom", {}).get("instrumental")
                 )
                 if not has_instrumentals:
                     self.logger.info("No instrumentals in separated_audio, scanning directory for existing files...")
+                    # Preserve existing Custom key if present before overwriting
+                    custom_backup = processed_track["separated_audio"].get("Custom")
                     processed_track["separated_audio"] = self._scan_directory_for_instrumentals(
                         track_output_dir, artist_title
                     )
+                    if custom_backup:
+                        processed_track["separated_audio"]["Custom"] = custom_backup
                 
                 # Apply padding using AudioProcessor
                 padded_separation_result = self.audio_processor.apply_countdown_padding_to_instrumentals(

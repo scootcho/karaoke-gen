@@ -307,6 +307,37 @@ class LyricsTranscriber:
                 self.results.transcription_corrected = CorrectionResult.from_dict(corrections_data)
                 self.logger.info("Successfully loaded existing corrections data")
 
+                # Check if the loaded corrections have countdown padding applied
+                # This is important because the video needs to use padded audio to sync
+                # with the countdown-adjusted timestamps in the ASS subtitles
+                if self.output_config.add_countdown:
+                    from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+                    
+                    countdown_processor = CountdownProcessor(
+                        cache_dir=self.output_config.cache_dir,
+                        logger=self.logger,
+                    )
+                    
+                    if countdown_processor.has_countdown(self.results.transcription_corrected):
+                        self.logger.info(
+                            "Loaded corrections have countdown - creating padded audio for video sync"
+                        )
+                        # Create padded audio file to match the countdown-adjusted timestamps
+                        padded_audio_path = countdown_processor.create_padded_audio_only(self.audio_filepath)
+                        self.audio_filepath = padded_audio_path
+                        
+                        # Set countdown padding attributes on results
+                        self.results.countdown_padding_added = True
+                        self.results.countdown_padding_seconds = countdown_processor.COUNTDOWN_PADDING_SECONDS
+                        self.results.padded_audio_filepath = padded_audio_path
+                        
+                        self.logger.info(
+                            f"Countdown padding applied: {countdown_processor.COUNTDOWN_PADDING_SECONDS}s. "
+                            f"Using padded audio: {padded_audio_path}"
+                        )
+                    else:
+                        self.logger.info("Loaded corrections do not have countdown - no padding needed")
+
                 # Skip to output generation
                 self.generate_outputs()
                 self.logger.info("Processing completed successfully using existing corrections")
