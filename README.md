@@ -1,7 +1,7 @@
 # Karaoke Generator 🎶 🎥 🚀
 
 ![PyPI - Version](https://img.shields.io/pypi/v/karaoke-gen)
-![Python Version](https://img.shields.io/badge/python-3.10+-blue)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/karaoke-gen)
 ![Tests](https://github.com/nomadkaraoke/karaoke-gen/workflows/Test%20and%20Publish/badge.svg)
 ![Test Coverage](https://codecov.io/gh/nomadkaraoke/karaoke-gen/branch/main/graph/badge.svg)
 
@@ -54,7 +54,7 @@ pip install karaoke-gen
 This installs both `karaoke-gen` (local) and `karaoke-gen-remote` (cloud) CLIs.
 
 ### Requirements
-- Python 3.10+
+- Python 3.10-3.13
 - FFmpeg
 - For local processing: CUDA-capable GPU or Apple Silicon CPU recommended
 
