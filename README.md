@@ -69,7 +69,7 @@ Commercial service with high-quality transcription. Best for production use.
 export AUDIOSHAKE_API_TOKEN="your_audioshake_token"
 ```
 
-Get an API key at [https://www.audioshake.ai/](https://www.audioshake.ai/)
+Get an API key at [https://www.audioshake.ai/](https://www.audioshake.ai/) - business only, at time of writing this.
 
 #### Option 2: Whisper via RunPod
 Open-source alternative using OpenAI's Whisper model on RunPod infrastructure.
