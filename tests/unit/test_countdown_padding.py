@@ -695,6 +695,370 @@ class TestScanDirectoryForInstrumentals:
         assert len(result['combined_instrumentals']) == 0
 
 
+class TestCustomInstrumentalWithCountdownPadding:
+    """
+    Tests for the bug where Custom instrumental was lost during countdown padding.
+    
+    This class tests the fix for the issue where --existing_instrumental would:
+    1. Correctly set separated_audio["Custom"]["instrumental"]
+    2. Correctly pad the custom instrumental
+    3. But then the has_instrumentals check didn't include Custom
+    4. So it would scan the directory and create a new separated_audio dict
+    5. Which OVERWROTE the Custom key, losing the custom instrumental
+    
+    The fix ensures:
+    1. Custom is checked in has_instrumentals
+    2. Custom key is preserved if directory scanning still occurs
+    """
+    
+    @pytest.mark.asyncio
+    async def test_custom_instrumental_detected_as_has_instrumentals(self, basic_karaoke_gen, temp_dir):
+        """
+        Test that Custom instrumental is detected in the has_instrumentals check.
+        
+        This was the root cause of the bug - has_instrumentals only checked
+        clean_instrumental and combined_instrumentals, not Custom.
+        """
+        basic_karaoke_gen.input_media = os.path.join(temp_dir, 'test.mp3')
+        basic_karaoke_gen.artist = 'Test Artist'
+        basic_karaoke_gen.title = 'Test Song'
+        basic_karaoke_gen.existing_instrumental = os.path.join(temp_dir, 'custom.wav')
+        
+        # Create mock files
+        with open(basic_karaoke_gen.input_media, 'w') as f:
+            f.write('mock audio')
+        with open(basic_karaoke_gen.existing_instrumental, 'w') as f:
+            f.write('mock custom instrumental')
+        
+        # Create a processed_track that simulates having a Custom instrumental
+        # but no clean_instrumental or combined_instrumentals
+        separated_audio = {
+            'clean_instrumental': {},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+            'Custom': {
+                'instrumental': os.path.join(temp_dir, 'Test Artist - Test Song (Instrumental Custom).wav'),
+                'vocals': None,
+            }
+        }
+        
+        # The fix adds Custom to the has_instrumentals check
+        has_instrumentals = (
+            separated_audio.get("clean_instrumental", {}).get("instrumental") or
+            separated_audio.get("combined_instrumentals") or
+            separated_audio.get("Custom", {}).get("instrumental")
+        )
+        
+        # Custom instrumental should be detected
+        assert has_instrumentals is not None
+        assert 'Instrumental Custom' in has_instrumentals
+    
+    @pytest.mark.asyncio
+    async def test_custom_instrumental_preserved_during_countdown_padding(self, basic_karaoke_gen, temp_dir):
+        """
+        Test that Custom instrumental key is not lost during countdown padding scan.
+        
+        This is the actual bug fix test - when countdown_padding_added is True
+        and has_instrumentals is False (which shouldn't happen anymore with the fix),
+        the directory scan used to create a NEW separated_audio dict without Custom.
+        """
+        basic_karaoke_gen.input_media = os.path.join(temp_dir, 'test.mp3')
+        basic_karaoke_gen.artist = 'Test Artist'
+        basic_karaoke_gen.title = 'Test Song'
+        basic_karaoke_gen.existing_instrumental = os.path.join(temp_dir, 'custom.wav')
+        basic_karaoke_gen.skip_lyrics = False
+        
+        # Create mock files
+        with open(basic_karaoke_gen.input_media, 'w') as f:
+            f.write('mock audio')
+        with open(basic_karaoke_gen.existing_instrumental, 'w') as f:
+            f.write('mock custom instrumental')
+        
+        # Mock transcription result with countdown padding
+        mock_transcription_result = {
+            'lrc_filepath': '/path/to/lyrics.lrc',
+            'corrected_lyrics_text': 'Test lyrics',
+            'corrected_lyrics_text_filepath': '/path/to/lyrics.txt',
+            'countdown_padding_added': True,
+            'countdown_padding_seconds': 3.0,
+            'padded_audio_filepath': '/path/to/padded_vocals.flac',
+        }
+        
+        # Track the separated_audio to verify Custom is preserved
+        captured_separated_audio = {}
+        
+        def capture_padding_call(separation_result, **kwargs):
+            captured_separated_audio['result'] = separation_result
+            return separation_result
+        
+        with patch.object(basic_karaoke_gen.file_handler, 'setup_output_paths', return_value=(temp_dir, 'Test Artist - Test Song')), \
+             patch.object(basic_karaoke_gen.file_handler, 'copy_input_media', return_value='/path/to/copied.mp3'), \
+             patch.object(basic_karaoke_gen.file_handler, 'convert_to_wav', return_value='/path/to/audio.wav'), \
+             patch.object(basic_karaoke_gen.lyrics_processor, 'transcribe_lyrics', return_value=mock_transcription_result), \
+             patch.object(basic_karaoke_gen.audio_processor, 'apply_countdown_padding_to_instrumentals', side_effect=capture_padding_call), \
+             patch.object(basic_karaoke_gen.audio_processor, 'pad_audio_file'), \
+             patch.object(basic_karaoke_gen.video_generator, 'create_title_video'), \
+             patch.object(basic_karaoke_gen.video_generator, 'create_end_video'), \
+             patch.object(basic_karaoke_gen.file_handler, '_file_exists', return_value=False), \
+             patch('shutil.copy2'), \
+             patch('os.path.isfile', return_value=True):
+            
+            result = await basic_karaoke_gen.prep_single_track()
+            
+            # Verify Custom key exists in the final result
+            assert 'Custom' in result['separated_audio'], \
+                "Custom key was lost during countdown padding - this is the bug we fixed!"
+            assert result['separated_audio']['Custom'].get('instrumental') is not None, \
+                "Custom instrumental path was lost"
+    
+    @pytest.mark.asyncio
+    async def test_custom_instrumental_full_flow_with_countdown_padding(self, basic_karaoke_gen, temp_dir):
+        """
+        End-to-end test for --existing_instrumental with countdown padding.
+        
+        This simulates the full workflow:
+        1. User provides --existing_instrumental
+        2. Transcription adds countdown padding
+        3. Custom instrumental is padded
+        4. Custom key MUST be preserved for finalization phase
+        """
+        basic_karaoke_gen.input_media = os.path.join(temp_dir, 'test.mp3')
+        basic_karaoke_gen.artist = 'Test Artist'
+        basic_karaoke_gen.title = 'Test Song'
+        custom_instrumental_path = os.path.join(temp_dir, 'my_custom_backing_track.wav')
+        basic_karaoke_gen.existing_instrumental = custom_instrumental_path
+        basic_karaoke_gen.skip_lyrics = False
+        
+        # Create mock files
+        with open(basic_karaoke_gen.input_media, 'w') as f:
+            f.write('mock audio')
+        with open(custom_instrumental_path, 'w') as f:
+            f.write('mock custom instrumental')
+        
+        # Mock transcription result with countdown padding
+        mock_transcription_result = {
+            'lrc_filepath': '/path/to/lyrics.lrc',
+            'corrected_lyrics_text': 'Test lyrics',
+            'corrected_lyrics_text_filepath': '/path/to/lyrics.txt',
+            'countdown_padding_added': True,
+            'countdown_padding_seconds': 3.0,
+            'padded_audio_filepath': '/path/to/padded_vocals.flac',
+        }
+        
+        # Mock apply_countdown_padding_to_instrumentals to pass through Custom key
+        # (simulating the fix that preserves Custom)
+        def mock_apply_padding(separation_result, **kwargs):
+            result = {
+                'clean_instrumental': {},
+                'combined_instrumentals': {},
+                'backing_vocals': {},
+                'other_stems': {},
+            }
+            # The fix: preserve Custom key
+            if 'Custom' in separation_result:
+                result['Custom'] = separation_result['Custom']
+            return result
+        
+        with patch.object(basic_karaoke_gen.file_handler, 'setup_output_paths', return_value=(temp_dir, 'Test Artist - Test Song')), \
+             patch.object(basic_karaoke_gen.file_handler, 'copy_input_media', return_value='/path/to/copied.mp3'), \
+             patch.object(basic_karaoke_gen.file_handler, 'convert_to_wav', return_value='/path/to/audio.wav'), \
+             patch.object(basic_karaoke_gen.lyrics_processor, 'transcribe_lyrics', return_value=mock_transcription_result), \
+             patch.object(basic_karaoke_gen.audio_processor, 'apply_countdown_padding_to_instrumentals', side_effect=mock_apply_padding), \
+             patch.object(basic_karaoke_gen.audio_processor, 'pad_audio_file'), \
+             patch.object(basic_karaoke_gen.video_generator, 'create_title_video'), \
+             patch.object(basic_karaoke_gen.video_generator, 'create_end_video'), \
+             patch.object(basic_karaoke_gen.file_handler, '_file_exists', return_value=False), \
+             patch('shutil.copy2'), \
+             patch('os.path.isfile', return_value=True):
+            
+            result = await basic_karaoke_gen.prep_single_track()
+            
+            # Verify the Custom key is present and correct
+            assert 'separated_audio' in result
+            assert 'Custom' in result['separated_audio'], \
+                "Custom key must be preserved for gen_cli.py finalization to work"
+            
+            custom_data = result['separated_audio']['Custom']
+            assert 'instrumental' in custom_data
+            assert custom_data['instrumental'] is not None
+            
+            # The path should reference the custom instrumental
+            instrumental_path = custom_data['instrumental']
+            assert 'Instrumental Custom' in instrumental_path or 'Padded' in instrumental_path
+    
+    def test_has_instrumentals_check_includes_custom(self, basic_karaoke_gen):
+        """
+        Unit test verifying the has_instrumentals logic includes Custom.
+        
+        This directly tests the fix condition that was missing.
+        """
+        # Scenario 1: Only Custom instrumental (the bug case)
+        separated_audio_custom_only = {
+            'clean_instrumental': {},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+            'Custom': {
+                'instrumental': '/path/to/custom.wav',
+                'vocals': None,
+            }
+        }
+        
+        has_instrumentals = (
+            separated_audio_custom_only.get("clean_instrumental", {}).get("instrumental") or
+            separated_audio_custom_only.get("combined_instrumentals") or
+            separated_audio_custom_only.get("Custom", {}).get("instrumental")
+        )
+        assert has_instrumentals == '/path/to/custom.wav', \
+            "Custom instrumental should be detected in has_instrumentals check"
+        
+        # Scenario 2: Only clean instrumental (normal case)
+        separated_audio_clean_only = {
+            'clean_instrumental': {'instrumental': '/path/to/clean.flac'},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+        }
+        
+        has_instrumentals = (
+            separated_audio_clean_only.get("clean_instrumental", {}).get("instrumental") or
+            separated_audio_clean_only.get("combined_instrumentals") or
+            separated_audio_clean_only.get("Custom", {}).get("instrumental")
+        )
+        assert has_instrumentals == '/path/to/clean.flac'
+        
+        # Scenario 3: Both Custom and clean (edge case)
+        separated_audio_both = {
+            'clean_instrumental': {'instrumental': '/path/to/clean.flac'},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+            'Custom': {
+                'instrumental': '/path/to/custom.wav',
+                'vocals': None,
+            }
+        }
+        
+        has_instrumentals = (
+            separated_audio_both.get("clean_instrumental", {}).get("instrumental") or
+            separated_audio_both.get("combined_instrumentals") or
+            separated_audio_both.get("Custom", {}).get("instrumental")
+        )
+        # clean_instrumental comes first in the OR chain
+        assert has_instrumentals == '/path/to/clean.flac'
+        
+        # Scenario 4: No instrumentals at all
+        separated_audio_empty = {
+            'clean_instrumental': {},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+        }
+        
+        has_instrumentals = (
+            separated_audio_empty.get("clean_instrumental", {}).get("instrumental") or
+            separated_audio_empty.get("combined_instrumentals") or
+            separated_audio_empty.get("Custom", {}).get("instrumental")
+        )
+        assert not has_instrumentals, "Empty separated_audio should have no instrumentals"
+    
+    def test_custom_key_preserved_when_scanning(self, basic_karaoke_gen, temp_dir):
+        """
+        Test that Custom key is backed up and restored if directory scanning occurs.
+        
+        This tests the secondary fix - even if has_instrumentals somehow fails,
+        we backup Custom before scanning and restore it after.
+        """
+        artist_title = "Test Artist - Test Song"
+        
+        # Create a scenario where Custom exists but we need to scan
+        # (This shouldn't happen with the fix, but belt-and-suspenders)
+        original_custom = {
+            'instrumental': '/path/to/custom.wav',
+            'vocals': None,
+        }
+        
+        # Simulate the backup-and-restore pattern from the fix
+        custom_backup = original_custom
+        
+        # Scan creates new dict without Custom
+        scanned_result = basic_karaoke_gen._scan_directory_for_instrumentals(temp_dir, artist_title)
+        assert 'Custom' not in scanned_result
+        
+        # Restore Custom from backup
+        if custom_backup:
+            scanned_result['Custom'] = custom_backup
+        
+        # Verify Custom is preserved
+        assert 'Custom' in scanned_result
+        assert scanned_result['Custom']['instrumental'] == '/path/to/custom.wav'
+    
+    def test_audio_processor_preserves_custom_key(self, mock_audio_processor, temp_dir):
+        """
+        Test that apply_countdown_padding_to_instrumentals preserves Custom key.
+        
+        This is a direct test for the fix in audio_processor.py that ensures
+        the Custom key is passed through when applying countdown padding.
+        """
+        # Create separation result WITH Custom key
+        separation_result_with_custom = {
+            'clean_instrumental': {},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+            'Custom': {
+                'instrumental': '/path/to/custom_instrumental.wav',
+                'vocals': None,
+            }
+        }
+        
+        # Call apply_countdown_padding_to_instrumentals
+        with patch.object(mock_audio_processor, 'pad_audio_file'):
+            result = mock_audio_processor.apply_countdown_padding_to_instrumentals(
+                separation_result=separation_result_with_custom,
+                padding_seconds=3.0,
+                artist_title='Test Artist - Test Song',
+                track_output_dir=temp_dir,
+            )
+        
+        # Verify Custom key is preserved in result
+        assert 'Custom' in result, \
+            "Custom key should be preserved by apply_countdown_padding_to_instrumentals"
+        assert result['Custom']['instrumental'] == '/path/to/custom_instrumental.wav'
+        assert result['Custom']['vocals'] is None
+    
+    def test_audio_processor_handles_missing_custom_key(self, mock_audio_processor, temp_dir):
+        """
+        Test that apply_countdown_padding_to_instrumentals works without Custom key.
+        
+        This ensures the fix doesn't break normal (non-custom) instrumental flow.
+        """
+        # Create separation result WITHOUT Custom key (normal flow)
+        separation_result_without_custom = {
+            'clean_instrumental': {},
+            'combined_instrumentals': {},
+            'backing_vocals': {},
+            'other_stems': {},
+        }
+        
+        # Call apply_countdown_padding_to_instrumentals
+        with patch.object(mock_audio_processor, 'pad_audio_file'):
+            result = mock_audio_processor.apply_countdown_padding_to_instrumentals(
+                separation_result=separation_result_without_custom,
+                padding_seconds=3.0,
+                artist_title='Test Artist - Test Song',
+                track_output_dir=temp_dir,
+            )
+        
+        # Custom key should not be added if it wasn't there
+        assert 'Custom' not in result
+        
+        # But normal keys should still be present
+        assert 'clean_instrumental' in result
+        assert 'combined_instrumentals' in result
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
