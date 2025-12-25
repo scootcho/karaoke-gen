@@ -296,6 +296,8 @@ class TestAudioSearchServiceSearch:
         )
         
         service = AudioSearchService(red_api_key=None, red_api_url=None, ops_api_key=None, ops_api_url=None)
+        # IMPORTANT: Clear remote client to force local mode, otherwise real API calls are made
+        service._remote_client = None
         service._fetcher = Mock()
         service._fetcher.search.return_value = [mock_result]
         

@@ -13,15 +13,44 @@ This ensures every commit pushed to the repository has a unique version number f
 
 # Testing Requirements
 
-Before committing and pushing changes, ensure all tests pass:
+**Before committing and pushing ANY changes, you MUST run the full test suite.**
+
+## Quick Test Command (Use This!)
 
 ```bash
-python -m pytest tests/ backend/tests/ -v -x --ignore=tests/integration
+make test
 ```
 
-Ensure all code touched is thoroughly covered by unit tests, we have a 70% coverage minimum in CI:
+This runs ALL tests: unit tests, backend tests, and E2E integration tests with emulators.
+
+## Manual Test Commands (if make isn't available)
+
+1. **Unit tests (karaoke_gen package) - 70% coverage required:**
 ```bash
-poetry run pytest tests/unit/ -v --cov=karaoke_gen --cov-report=xml --cov-report=term-missing --cov-fail-under=70
+poetry run pytest tests/unit/ -v --cov=karaoke_gen --cov-report=term-missing --cov-fail-under=70
 ```
 
-Do not commit or push code that fails tests. Fix any test failures before proceeding.
+2. **Backend unit tests:**
+```bash
+poetry run pytest backend/tests/ --ignore=backend/tests/emulator -v
+```
+
+3. **E2E integration tests with emulators:**
+```bash
+./scripts/start-emulators.sh
+export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+export STORAGE_EMULATOR_HOST=http://127.0.0.1:4443
+export GOOGLE_CLOUD_PROJECT=test-project
+poetry run pytest backend/tests/emulator/ -v
+./scripts/stop-emulators.sh
+```
+
+## Pre-commit Checklist
+
+- [ ] All unit tests pass (`make test-unit`)
+- [ ] All backend tests pass (`make test-backend`)
+- [ ] E2E integration tests pass (`make test-e2e`)
+- [ ] Coverage is at least 70%
+- [ ] Version in `pyproject.toml` has been bumped
+
+**Do not commit or push code that fails tests. Fix any test failures before proceeding.**

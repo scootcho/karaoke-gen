@@ -99,13 +99,28 @@ else
     PYTEST_CMD="pytest"
 fi
 
-if $PYTEST_CMD tests/integration/test_cli_backend_integration.py -v --tb=short; then
-    echo ""
-    echo "✅ All CLI + Backend integration tests passed!"
-    exit 0
+# Run emulator tests (uses TestClient, doesn't need backend server)
+echo "Running emulator tests..."
+if $PYTEST_CMD backend/tests/emulator/ -v --tb=short; then
+    echo "✅ Emulator tests passed!"
 else
-    echo ""
-    echo "❌ Some integration tests failed"
+    echo "❌ Emulator tests failed"
     exit 1
 fi
+
+# Run CLI integration tests (if they exist)
+if [ -f "tests/integration/test_cli_backend_integration.py" ]; then
+    echo ""
+    echo "Running CLI integration tests..."
+    if $PYTEST_CMD tests/integration/test_cli_backend_integration.py -v --tb=short; then
+        echo "✅ CLI integration tests passed!"
+    else
+        echo "❌ CLI integration tests failed"
+        exit 1
+    fi
+fi
+
+echo ""
+echo "✅ All integration tests passed!"
+exit 0
 

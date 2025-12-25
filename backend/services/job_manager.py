@@ -53,6 +53,7 @@ class JobManager:
             enable_txt=job_create.enable_txt,
             enable_youtube_upload=job_create.enable_youtube_upload,
             youtube_description=job_create.youtube_description,
+            youtube_description_template=job_create.youtube_description_template,  # video_worker reads this
             webhook_url=job_create.webhook_url,
             user_email=job_create.user_email,
             # Two-phase workflow (Batch 6)

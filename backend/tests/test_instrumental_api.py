@@ -11,7 +11,6 @@ Tests for:
 import pytest
 from datetime import datetime
 from unittest.mock import MagicMock, patch, AsyncMock
-from fastapi.testclient import TestClient
 
 from backend.models.job import Job, JobStatus
 
@@ -117,16 +116,14 @@ def silent_job():
 class TestGetInstrumentalAnalysis:
     """Tests for GET /api/jobs/{job_id}/instrumental-analysis."""
     
-    def test_get_analysis_returns_data(self, mock_job_manager, mock_storage_service, sample_job):
+    @pytest.mark.asyncio
+    async def test_get_analysis_returns_data(self, mock_job_manager, mock_storage_service, sample_job):
         """GET /instrumental-analysis should return analysis data."""
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import get_instrumental_analysis
-        import asyncio
         
-        result = asyncio.get_event_loop().run_until_complete(
-            get_instrumental_analysis("test-job-123")
-        )
+        result = await get_instrumental_analysis("test-job-123")
         
         assert result["job_id"] == "test-job-123"
         assert result["artist"] == "Test Artist"
@@ -134,23 +131,22 @@ class TestGetInstrumentalAnalysis:
         assert result["analysis"]["has_audible_content"] is True
         assert len(result["analysis"]["audible_segments"]) == 2
     
-    def test_get_analysis_includes_audio_urls(self, mock_job_manager, mock_storage_service, sample_job):
+    @pytest.mark.asyncio
+    async def test_get_analysis_includes_audio_urls(self, mock_job_manager, mock_storage_service, sample_job):
         """GET /instrumental-analysis should include audio URLs."""
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import get_instrumental_analysis
-        import asyncio
         
-        result = asyncio.get_event_loop().run_until_complete(
-            get_instrumental_analysis("test-job-123")
-        )
+        result = await get_instrumental_analysis("test-job-123")
         
         assert "audio_urls" in result
         assert "clean_instrumental" in result["audio_urls"]
         assert "backing_vocals" in result["audio_urls"]
         assert "with_backing" in result["audio_urls"]
     
-    def test_get_analysis_includes_waveform_url(self, mock_job_manager, sample_job):
+    @pytest.mark.asyncio
+    async def test_get_analysis_includes_waveform_url(self, mock_job_manager, sample_job):
         """GET /instrumental-analysis should include waveform URL."""
         mock_job_manager.get_job.return_value = sample_job
         
@@ -161,59 +157,50 @@ class TestGetInstrumentalAnalysis:
             mock_storage_cls.return_value = mock_storage
             
             from backend.api.routes.jobs import get_instrumental_analysis
-            import asyncio
             
-            result = asyncio.get_event_loop().run_until_complete(
-                get_instrumental_analysis("test-job-123")
-            )
+            result = await get_instrumental_analysis("test-job-123")
             
             assert "waveform_url" in result
             # Waveform URL should be generated from the file_urls
             assert result["waveform_url"] == "https://storage.googleapis.com/signed-url"
     
-    def test_get_analysis_silent_audio(self, mock_job_manager, mock_storage_service, silent_job):
+    @pytest.mark.asyncio
+    async def test_get_analysis_silent_audio(self, mock_job_manager, mock_storage_service, silent_job):
         """GET /instrumental-analysis should correctly report silent audio."""
         mock_job_manager.get_job.return_value = silent_job
         
         from backend.api.routes.jobs import get_instrumental_analysis
-        import asyncio
         
-        result = asyncio.get_event_loop().run_until_complete(
-            get_instrumental_analysis("test-job-silent")
-        )
+        result = await get_instrumental_analysis("test-job-silent")
         
         assert result["analysis"]["has_audible_content"] is False
         assert result["analysis"]["recommended_selection"] == "clean"
         assert len(result["analysis"]["audible_segments"]) == 0
     
-    def test_get_analysis_job_not_found(self, mock_job_manager):
+    @pytest.mark.asyncio
+    async def test_get_analysis_job_not_found(self, mock_job_manager):
         """GET /instrumental-analysis should return 404 for non-existent job."""
         mock_job_manager.get_job.return_value = None
         
         from backend.api.routes.jobs import get_instrumental_analysis
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                get_instrumental_analysis("non-existent")
-            )
+            await get_instrumental_analysis("non-existent")
         
         assert exc_info.value.status_code == 404
     
-    def test_get_analysis_wrong_status(self, mock_job_manager, sample_job):
+    @pytest.mark.asyncio
+    async def test_get_analysis_wrong_status(self, mock_job_manager, sample_job):
         """GET /instrumental-analysis should return 400 for wrong job status."""
         sample_job.status = JobStatus.PENDING
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import get_instrumental_analysis
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                get_instrumental_analysis("test-job-123")
-            )
+            await get_instrumental_analysis("test-job-123")
         
         assert exc_info.value.status_code == 400
 
@@ -226,39 +213,34 @@ class TestAudioStream:
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import stream_audio
-        import asyncio
         
         # This will try to stream from GCS which we can't test easily
         # Instead, verify the function exists and has correct signature
         assert callable(stream_audio)
     
-    def test_stream_invalid_stem_type(self, mock_job_manager, sample_job):
+    @pytest.mark.asyncio
+    async def test_stream_invalid_stem_type(self, mock_job_manager, sample_job):
         """Should return 400 for invalid stem type."""
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import stream_audio
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                stream_audio("test-job-123", "invalid_stem")
-            )
+            await stream_audio("test-job-123", "invalid_stem")
         
         assert exc_info.value.status_code == 400
     
-    def test_stream_job_not_found(self, mock_job_manager):
+    @pytest.mark.asyncio
+    async def test_stream_job_not_found(self, mock_job_manager):
         """Should return 404 for non-existent job."""
         mock_job_manager.get_job.return_value = None
         
         from backend.api.routes.jobs import stream_audio
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                stream_audio("non-existent", "backing_vocals")
-            )
+            await stream_audio("non-existent", "backing_vocals")
         
         assert exc_info.value.status_code == 404
 
@@ -293,27 +275,26 @@ class TestCreateCustomInstrumental:
         
         assert "At least one mute region is required" in str(exc_info.value)
     
-    def test_create_custom_job_not_found(self, mock_job_manager):
+    @pytest.mark.asyncio
+    async def test_create_custom_job_not_found(self, mock_job_manager):
         """Should return 404 for non-existent job."""
         mock_job_manager.get_job.return_value = None
         
         from backend.api.routes.jobs import create_custom_instrumental
         from backend.models.requests import CreateCustomInstrumentalRequest, MuteRegionRequest
         from fastapi import HTTPException
-        import asyncio
         
         request = CreateCustomInstrumentalRequest(
             mute_regions=[MuteRegionRequest(start_seconds=10.0, end_seconds=20.0)]
         )
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                create_custom_instrumental("non-existent", request)
-            )
+            await create_custom_instrumental("non-existent", request)
         
         assert exc_info.value.status_code == 404
     
-    def test_create_custom_wrong_status(self, mock_job_manager, sample_job):
+    @pytest.mark.asyncio
+    async def test_create_custom_wrong_status(self, mock_job_manager, sample_job):
         """Should return 400 for wrong job status."""
         sample_job.status = JobStatus.PENDING
         mock_job_manager.get_job.return_value = sample_job
@@ -321,16 +302,13 @@ class TestCreateCustomInstrumental:
         from backend.api.routes.jobs import create_custom_instrumental
         from backend.models.requests import CreateCustomInstrumentalRequest, MuteRegionRequest
         from fastapi import HTTPException
-        import asyncio
         
         request = CreateCustomInstrumentalRequest(
             mute_regions=[MuteRegionRequest(start_seconds=10.0, end_seconds=20.0)]
         )
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                create_custom_instrumental("test-job-123", request)
-            )
+            await create_custom_instrumental("test-job-123", request)
         
         assert exc_info.value.status_code == 400
 
@@ -338,34 +316,30 @@ class TestCreateCustomInstrumental:
 class TestGetWaveformData:
     """Tests for GET /api/jobs/{job_id}/waveform-data."""
     
-    def test_get_waveform_data_job_not_found(self, mock_job_manager):
+    @pytest.mark.asyncio
+    async def test_get_waveform_data_job_not_found(self, mock_job_manager):
         """Should return 404 for non-existent job."""
         mock_job_manager.get_job.return_value = None
         
         from backend.api.routes.jobs import get_waveform_data
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                get_waveform_data("non-existent")
-            )
+            await get_waveform_data("non-existent")
         
         assert exc_info.value.status_code == 404
     
-    def test_get_waveform_data_wrong_status(self, mock_job_manager, sample_job):
+    @pytest.mark.asyncio
+    async def test_get_waveform_data_wrong_status(self, mock_job_manager, sample_job):
         """Should return 400 for wrong job status."""
         sample_job.status = JobStatus.PENDING
         mock_job_manager.get_job.return_value = sample_job
         
         from backend.api.routes.jobs import get_waveform_data
         from fastapi import HTTPException
-        import asyncio
         
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(
-                get_waveform_data("test-job-123")
-            )
+            await get_waveform_data("test-job-123")
         
         assert exc_info.value.status_code == 400
     
