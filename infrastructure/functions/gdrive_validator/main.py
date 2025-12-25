@@ -83,7 +83,7 @@ def get_drive_service():
     # In Cloud Functions, use Application Default Credentials
     # The function's service account will be used automatically
     from google.auth import default
-    credentials, project = default(scopes=['https://www.googleapis.com/auth/drive.readonly'])
+    credentials, _ = default(scopes=['https://www.googleapis.com/auth/drive.readonly'])
     return build('drive', 'v3', credentials=credentials)
 
 
@@ -142,8 +142,8 @@ def list_folder_contents(service, folder_id: str) -> dict[str, list[str]]:
             results[folder_name] = files
             logger.info(f"Found {len(files)} files in {folder_name}/")
     
-    except HttpError as e:
-        logger.error(f"Error accessing Google Drive: {e}")
+    except HttpError:
+        logger.exception("Error accessing Google Drive")
         raise
     
     return results
@@ -340,8 +340,8 @@ def send_pushbullet_notification(title: str, body: str) -> bool:
         response.raise_for_status()
         logger.info("Pushbullet notification sent successfully")
         return True
-    except requests.RequestException as e:
-        logger.error(f"Failed to send Pushbullet notification: {e}")
+    except requests.RequestException:
+        logger.exception("Failed to send Pushbullet notification")
         return False
 
 
@@ -416,16 +416,16 @@ def validate_gdrive(request):
             }), 200, {"Content-Type": "application/json"}
     
     except Exception as e:
-        logger.exception(f"Error during validation: {e}")
+        logger.exception("Error during validation")
         
         # Try to send error notification
         try:
             send_pushbullet_notification(
                 "❌ Karaoke GDrive Validator Error",
-                f"Validation failed with error:\n\n{str(e)}"
+                f"Validation failed with error:\n\n{e!s}"
             )
-        except Exception:
-            pass
+        except Exception as notify_err:
+            logger.warning("Failed to send error notification: %s", notify_err)
         
         return json.dumps({
             "status": "error",

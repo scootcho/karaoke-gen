@@ -237,7 +237,7 @@ sequence numbers, invalid filenames, and gaps in your public Google Drive folder
 
 ### How It Works
 
-- Runs daily at 6 AM Pacific via Cloud Scheduler
+- Runs daily at 9 PM EST (6 PM Pacific) via Cloud Scheduler
 - Lists all files in your Google Drive folder (CDG, MP4, MP4-720p subfolders)
 - Checks for:
   - Duplicate sequence numbers (e.g., two files with NOMAD-1107)
