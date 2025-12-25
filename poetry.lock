@@ -1873,14 +1873,14 @@ platformdirs = ">=4.3.6"
 
 [[package]]
 name = "flacfetch"
-version = "0.9.0"
+version = "0.10.0"
 description = "Search and download high-quality audio from multiple sources"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "flacfetch-0.9.0-py3-none-any.whl", hash = "sha256:d28d75e7167effaf634e718b1054a4c0e6590dda5003d9bfa895346e3648cef8"},
-    {file = "flacfetch-0.9.0.tar.gz", hash = "sha256:92044a8c9e6ea49a3198901bb34c307672866a019d930c7a085c85743dd69021"},
+    {file = "flacfetch-0.10.0-py3-none-any.whl", hash = "sha256:731aaf33f84aef5c13b26d379b8cd47cf77591b61f7093b97cbdb3372d3b00ba"},
+    {file = "flacfetch-0.10.0.tar.gz", hash = "sha256:6e407c16f10d606bfaeb98dd53eb71fb64cea8f1ec0ca8c40a17e90cb38d415f"},
 ]
 
 [package.dependencies]
@@ -1889,10 +1889,11 @@ transmission-rpc = ">=7.0.0"
 yt-dlp = ">=2023.0.0"
 
 [package.extras]
-all = ["fastapi (>=0.104.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.25.0)", "mypy (>=1.0.0)", "pydantic (>=2.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "spotipy (>=2.25.1)", "types-requests (>=2.28.0)", "uvicorn[standard] (>=0.24.0)"]
-api = ["fastapi (>=0.104.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.25.0)", "pydantic (>=2.0.0)", "uvicorn[standard] (>=0.24.0)"]
+all = ["fastapi (>=0.115.0)", "google-cloud-secret-manager (>=2.16.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.28.0)", "mypy (>=1.0.0)", "pydantic (>=2.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "spotipy (>=2.25.1)", "types-requests (>=2.28.0)", "uvicorn[standard] (>=0.24.0)", "yt-dlp-ejs (>=0.3.0)"]
+api = ["fastapi (>=0.115.0)", "google-cloud-secret-manager (>=2.16.0)", "google-cloud-storage (>=2.13.0)", "httpx (>=0.28.0)", "pydantic (>=2.0.0)", "uvicorn[standard] (>=0.24.0)"]
 dev = ["mypy (>=1.0.0)", "pytest (>=7.0.0)", "pytest-asyncio (>=0.23.0)", "pytest-cov (>=4.0.0)", "pytest-mock (>=3.10.0)", "ruff (>=0.1.0)", "types-requests (>=2.28.0)"]
-remote = ["httpx (>=0.25.0)"]
+ejs = ["yt-dlp-ejs (>=0.3.0)"]
+remote = ["httpx (>=0.28.0)"]
 spotify = ["spotipy (>=2.25.1)"]
 
 [[package]]
