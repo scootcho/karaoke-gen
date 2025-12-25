@@ -4,6 +4,8 @@
 
 We had multiple bugs that unit tests didn't catch:
 - Content-type mismatch in signed URL uploads (403 errors)
+- Missing auth headers in download requests (all downloads failed)
+- YouTube description field name mismatch (uploads silently failed)
 - Style file path handling issues
 
 These bugs required:
@@ -29,11 +31,9 @@ New **CLI + Backend Integration Tests** that:
 │   tests/unit/                       │     ~0.5s, 100+ tests
 ├─────────────────────────────────────┤
 │   Backend Emulator Tests            │  ← Backend-only integration
-│   backend/tests/emulator/           │     ~2s, 11 tests
-├─────────────────────────────────────┤
-│   CLI + Backend Integration Tests   │  ← NEW! Full flow
-│   tests/integration/                │     ~20s, catches real bugs
-│   test_cli_backend_integration.py   │
+│   backend/tests/emulator/           │     ~10s, uses Firestore/GCS
+│   - test_emulator_integration.py    │     Basic CRUD operations
+│   - test_e2e_cli_backend.py         │     Full CLI → Backend flow
 ├─────────────────────────────────────┤
 │   Cloud Integration Tests           │  ← Against deployed backend
 │   backend/tests/test_api_integration│     ~10min, pre-prod only
@@ -88,6 +88,23 @@ Uploads go to real (emulated) GCS, catches path/encoding bugs.
 ### ✅ Auth Token Handling
 Tests run with actual token flow.
 
+### ✅ Download Auth Headers
+```python
+def test_download_uses_session_not_requests(self, cli_client, tmp_path):
+    """Verify downloads use session.get() not requests.get()."""
+    # This catches the bug where downloads failed with 401/403
+    # because auth headers weren't included
+```
+
+### ✅ Cross-Component Field Mapping
+```python
+def test_job_has_youtube_description_template(self, client, auth_headers):
+    """Test youtube_description AND youtube_description_template are set."""
+    # audio_search sets youtube_description
+    # video_worker reads youtube_description_template
+    # Both must be set for YouTube upload to work!
+```
+
 ## When to Run
 
 | Situation | Run This |
@@ -100,11 +117,19 @@ Tests run with actual token flow.
 
 ## Test Files
 
-### `tests/integration/test_cli_backend_integration.py`
+### `backend/tests/emulator/test_e2e_cli_backend.py` (Primary)
 
 Key test classes:
+- `TestStyleFileUploadE2E` - Full style file upload flow with content-type verification
+- `TestYouTubeDescriptionFieldMapping` - Verifies youtube_description_template is set
+- `TestDownloadAuthHeaders` - Verifies auth headers are sent with downloads
+- `TestFullAudioSearchFlow` - Complete audio search → job creation flow
+- `TestCLIClientIntegration` - Tests actual CLI client code
+
+### `tests/integration/test_cli_backend_integration.py` (Legacy)
+
 - `TestSignedUrlUploadRoundTrip` - Full upload flow
-- `TestContentTypeMatching` - Catches the specific bug
+- `TestContentTypeMatching` - Content-type bug documentation
 - `TestAudioSearchWithStyles` - API contract tests
 
 ### Test Fixtures
