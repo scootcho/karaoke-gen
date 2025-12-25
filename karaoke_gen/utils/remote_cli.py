@@ -1267,8 +1267,8 @@ class RemoteKaraokeClient:
             
             for asset_key, asset_path in style_assets.items():
                 if os.path.isfile(asset_path):
-                    ext = Path(asset_path).suffix.lower()
-                    content_type = self._get_content_type(ext)
+                    # Use full path for content type detection (not just extension)
+                    content_type = self._get_content_type(asset_path)
                     style_files.append({
                         'filename': Path(asset_path).name,
                         'content_type': content_type,
