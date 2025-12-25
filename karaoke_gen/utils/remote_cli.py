@@ -1095,7 +1095,8 @@ class RemoteKaraokeClient:
             if url.startswith('/'):
                 url = f"{self.config.service_url}{url}"
             
-            response = requests.get(url, stream=True, timeout=600)
+            # Use session headers (includes Authorization) for authenticated downloads
+            response = self.session.get(url, stream=True, timeout=600)
             if response.status_code != 200:
                 return False
             
