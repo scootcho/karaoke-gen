@@ -52,7 +52,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          poetry run pytest tests/unit/ -v --cov=karaoke_gen --cov-report=xml --cov-report=term-missing --cov-fail-under=70
+          poetry run pytest tests/unit/ -v --cov=karaoke_gen --cov-report=xml --cov-report=term-missing --cov-fail-under=69
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v5

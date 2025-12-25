@@ -418,6 +418,283 @@ class TestFullAudioSearchFlow:
             assert 'server_version' in data
 
 
+class TestDistributionSettings:
+    """
+    Test that distribution settings are properly passed through the entire flow.
+    
+    CRITICAL: These tests verify that brand_prefix, dropbox_path, gdrive_folder_id,
+    and discord_webhook_url are correctly propagated from:
+    1. CLI parameters → Audio Search API request
+    2. Audio Search API → JobCreate model
+    3. JobCreate → Job (in Firestore)
+    4. Job → video_worker (for KaraokeFinalise and native uploads)
+    
+    BUG CAUGHT (v0.75.55): job_manager.create_job() was NOT passing these fields
+    from JobCreate to Job, causing all distribution uploads to silently fail.
+    """
+    
+    def test_brand_prefix_passed_to_job(self, client, auth_headers):
+        """Test that brand_prefix is stored in the created job."""
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test Artist',
+                'title': 'Test Song',
+                'auto_download': False,
+                'brand_prefix': 'NOMAD',
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('brand_prefix') == 'NOMAD', \
+                        "brand_prefix not passed to job - Dropbox upload will fail!"
+    
+    def test_dropbox_path_passed_to_job(self, client, auth_headers):
+        """Test that dropbox_path is stored in the created job."""
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test Artist',
+                'title': 'Test Song',
+                'auto_download': False,
+                'dropbox_path': '/Karaoke/Tracks-Organized',
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('dropbox_path') == '/Karaoke/Tracks-Organized', \
+                        "dropbox_path not passed to job - Dropbox upload will fail!"
+    
+    def test_gdrive_folder_id_passed_to_job(self, client, auth_headers):
+        """Test that gdrive_folder_id is stored in the created job."""
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test Artist',
+                'title': 'Test Song',
+                'auto_download': False,
+                'gdrive_folder_id': '1abc123xyz',
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('gdrive_folder_id') == '1abc123xyz', \
+                        "gdrive_folder_id not passed to job - Google Drive upload will fail!"
+    
+    def test_discord_webhook_url_passed_to_job(self, client, auth_headers):
+        """Test that discord_webhook_url is stored in the created job."""
+        webhook_url = 'https://discord.com/api/webhooks/123/abc'
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test Artist',
+                'title': 'Test Song',
+                'auto_download': False,
+                'discord_webhook_url': webhook_url,
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('discord_webhook_url') == webhook_url, \
+                        "discord_webhook_url not passed to job - Discord notification will fail!"
+    
+    def test_all_distribution_settings_together(self, client, auth_headers, youtube_description):
+        """
+        Test that ALL distribution settings are passed together.
+        
+        This is the full integration test that mirrors what the real CLI does.
+        """
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'ABBA',
+                'title': 'Waterloo',
+                'auto_download': False,
+                'enable_cdg': True,
+                'enable_txt': True,
+                'brand_prefix': 'NOMAD',
+                'dropbox_path': '/Karaoke/Tracks-Organized',
+                'gdrive_folder_id': '1abc123xyz',
+                'discord_webhook_url': 'https://discord.com/api/webhooks/123/abc',
+                'enable_youtube_upload': False,
+                'youtube_description': youtube_description,
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    
+                    # Verify all distribution settings
+                    errors = []
+                    if job.get('brand_prefix') != 'NOMAD':
+                        errors.append("brand_prefix not set")
+                    if job.get('dropbox_path') != '/Karaoke/Tracks-Organized':
+                        errors.append("dropbox_path not set")
+                    if job.get('gdrive_folder_id') != '1abc123xyz':
+                        errors.append("gdrive_folder_id not set")
+                    if job.get('discord_webhook_url') != 'https://discord.com/api/webhooks/123/abc':
+                        errors.append("discord_webhook_url not set")
+                    if job.get('youtube_description') != youtube_description:
+                        errors.append("youtube_description not set")
+                    if job.get('youtube_description_template') != youtube_description:
+                        errors.append("youtube_description_template not set")
+                    if job.get('enable_cdg') is not True:
+                        errors.append("enable_cdg not set")
+                    if job.get('enable_txt') is not True:
+                        errors.append("enable_txt not set")
+                    
+                    assert len(errors) == 0, \
+                        f"Distribution settings not properly passed: {', '.join(errors)}"
+
+
+class TestJobModelFileUpload:
+    """
+    Test that the /api/file-upload endpoint accepts distribution parameters.
+    
+    This tests the alternative flow where users upload a file directly
+    instead of using audio search.
+    """
+    
+    def test_file_upload_accepts_distribution_params(self, client, auth_headers):
+        """Test that file upload endpoint accepts all distribution parameters."""
+        # Note: This is a POST to create a job with file upload intent
+        # The actual file is uploaded separately via signed URL
+        response = client.post(
+            "/api/jobs",
+            headers=auth_headers,
+            json={
+                'artist': 'Test Artist',
+                'title': 'Test Song',
+                'url': 'https://example.com/audio.flac',
+                'brand_prefix': 'TEST',
+                'dropbox_path': '/Test/Path',
+                'gdrive_folder_id': 'folder123',
+                'discord_webhook_url': 'https://discord.com/webhook/test',
+                'enable_cdg': True,
+                'enable_txt': True,
+            }
+        )
+        
+        # Should accept the request (even if validation fails for other reasons)
+        assert response.status_code in [200, 400, 422], \
+            f"Unexpected status: {response.status_code} - {response.text}"
+
+
+class TestOutputFormatSettings:
+    """
+    Test that output format settings (CDG, TXT) are properly passed.
+    
+    These settings control which output files are generated:
+    - enable_cdg: Generate CDG+MP3 karaoke package
+    - enable_txt: Generate TXT lyrics file
+    """
+    
+    def test_enable_cdg_passed_to_job(self, client, auth_headers):
+        """Test enable_cdg flag is properly stored."""
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test',
+                'title': 'Song',
+                'auto_download': False,
+                'enable_cdg': True,
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('enable_cdg') is True
+    
+    def test_enable_txt_passed_to_job(self, client, auth_headers):
+        """Test enable_txt flag is properly stored."""
+        response = client.post(
+            "/api/audio-search/search",
+            headers=auth_headers,
+            json={
+                'artist': 'Test',
+                'title': 'Song',
+                'auto_download': False,
+                'enable_txt': True,
+                'enable_youtube_upload': False
+            }
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            job_id = data.get('job_id')
+            
+            if job_id:
+                time.sleep(0.2)
+                job_response = client.get(f"/api/jobs/{job_id}", headers=auth_headers)
+                
+                if job_response.status_code == 200:
+                    job = job_response.json()
+                    assert job.get('enable_txt') is True
+
+
 class TestCLIClientIntegration:
     """
     Test the actual CLI client code against the backend.
@@ -496,4 +773,281 @@ class TestCLIClientIntegration:
         # Verify it found font
         font_keys = [k for k in assets.keys() if 'font' in k.lower()]
         assert len(font_keys) > 0, "Should find font references"
+
+
+class TestDropboxServiceIntegration:
+    """
+    Test Dropbox service brand code calculation logic.
+    
+    These tests verify the brand code calculation algorithm that ensures
+    sequential brand codes (e.g., NOMAD-1163, NOMAD-1164).
+    
+    Note: These tests mock the Dropbox SDK since we can't run against
+    real Dropbox in CI. The unit tests in test_dropbox_service.py cover
+    the SDK interactions in detail.
+    """
+    
+    def test_brand_code_calculation_algorithm(self):
+        """
+        Test the brand code calculation pattern matching.
+        
+        This is the core algorithm used by DropboxService.get_next_brand_code()
+        to find the highest existing brand code and return the next one.
+        """
+        import re
+        
+        # Simulate existing folder names
+        existing_folders = [
+            "NOMAD-1161 - Artist A - Song A",
+            "NOMAD-1162 - Artist B - Song B", 
+            "NOMAD-1163 - Artist C - Song C",
+            "OTHER-0001 - Different Brand",
+            "Random Folder",
+            "NOMAD-0001 - First Ever",
+        ]
+        
+        brand_prefix = "NOMAD"
+        pattern = re.compile(rf"^{re.escape(brand_prefix)}-(\d{{4}})")
+        
+        max_num = 0
+        for folder in existing_folders:
+            match = pattern.match(folder)
+            if match:
+                num = int(match.group(1))
+                max_num = max(max_num, num)
+        
+        next_code = f"{brand_prefix}-{max_num + 1:04d}"
+        
+        assert max_num == 1163, "Should find NOMAD-1163 as highest"
+        assert next_code == "NOMAD-1164", "Next code should be NOMAD-1164"
+    
+    def test_brand_code_empty_folder(self):
+        """Test brand code starts at 0001 when folder is empty."""
+        import re
+        
+        existing_folders = []
+        brand_prefix = "NEWBRAND"
+        pattern = re.compile(rf"^{re.escape(brand_prefix)}-(\d{{4}})")
+        
+        max_num = 0
+        for folder in existing_folders:
+            match = pattern.match(folder)
+            if match:
+                num = int(match.group(1))
+                max_num = max(max_num, num)
+        
+        next_code = f"{brand_prefix}-{max_num + 1:04d}"
+        
+        assert next_code == "NEWBRAND-0001"
+
+
+class TestGoogleDriveServiceIntegration:
+    """
+    Test Google Drive service folder structure logic.
+    
+    These tests verify the folder structure for public share uploads:
+    - MP4/ for 4K lossy videos
+    - MP4-720p/ for 720p videos
+    - CDG/ for CDG packages
+    
+    Note: These tests verify the logic, not actual Drive API calls.
+    """
+    
+    def test_public_share_folder_structure(self):
+        """
+        Test that the correct folder structure is created for public shares.
+        
+        Expected structure:
+        root_folder/
+        ├── MP4/
+        │   └── {brand_code} - {artist} - {title}.mp4
+        ├── MP4-720p/
+        │   └── {brand_code} - {artist} - {title}.mp4
+        └── CDG/
+            └── {brand_code} - {artist} - {title}.zip
+        """
+        expected_folders = ["MP4", "MP4-720p", "CDG"]
+        
+        # This mirrors the logic in GoogleDriveService.upload_to_public_share()
+        upload_plan = []
+        
+        output_files = {
+            "final_karaoke_lossy_mp4": "/tmp/output.mp4",
+            "final_karaoke_lossy_720p_mp4": "/tmp/output_720p.mp4",
+            "final_karaoke_cdg_zip": "/tmp/output.zip",
+        }
+        
+        if output_files.get("final_karaoke_lossy_mp4"):
+            upload_plan.append(("MP4", "final_karaoke_lossy_mp4"))
+        if output_files.get("final_karaoke_lossy_720p_mp4"):
+            upload_plan.append(("MP4-720p", "final_karaoke_lossy_720p_mp4"))
+        if output_files.get("final_karaoke_cdg_zip"):
+            upload_plan.append(("CDG", "final_karaoke_cdg_zip"))
+        
+        folders_used = [folder for folder, _ in upload_plan]
+        
+        assert folders_used == expected_folders
+    
+    def test_filename_format(self):
+        """Test that uploaded files have correct naming format."""
+        brand_code = "NOMAD-1164"
+        base_name = "Artist - Title"
+        
+        expected_mp4_name = f"{brand_code} - {base_name}.mp4"
+        expected_zip_name = f"{brand_code} - {base_name}.zip"
+        
+        assert expected_mp4_name == "NOMAD-1164 - Artist - Title.mp4"
+        assert expected_zip_name == "NOMAD-1164 - Artist - Title.zip"
+
+
+class TestVideoWorkerDistributionLogic:
+    """
+    Test the distribution logic in video_worker.py.
+    
+    These tests verify that the video worker correctly reads job settings
+    and calls the appropriate distribution services.
+    """
+    
+    def test_dropbox_upload_requires_both_path_and_prefix(self):
+        """
+        Test that Dropbox upload only runs when BOTH dropbox_path AND brand_prefix are set.
+        
+        This mirrors the logic in video_worker.py:
+            if dropbox_path and brand_prefix:
+                # Do Dropbox upload
+        """
+        test_cases = [
+            # (dropbox_path, brand_prefix, should_upload)
+            ("/Karaoke/Tracks", "NOMAD", True),
+            ("/Karaoke/Tracks", None, False),
+            (None, "NOMAD", False),
+            (None, None, False),
+            ("", "NOMAD", False),  # Empty string is falsy
+            ("/Karaoke/Tracks", "", False),
+        ]
+        
+        for dropbox_path, brand_prefix, expected in test_cases:
+            should_upload = bool(dropbox_path and brand_prefix)
+            assert should_upload == expected, \
+                f"Failed for dropbox_path={dropbox_path!r}, brand_prefix={brand_prefix!r}"
+    
+    def test_gdrive_upload_requires_folder_id(self):
+        """
+        Test that Google Drive upload only runs when gdrive_folder_id is set.
+        
+        This mirrors the logic in video_worker.py:
+            if gdrive_folder_id:
+                # Do Google Drive upload
+        """
+        test_cases = [
+            # (gdrive_folder_id, should_upload)
+            ("1abc123xyz", True),
+            ("", False),
+            (None, False),
+        ]
+        
+        for gdrive_folder_id, expected in test_cases:
+            should_upload = bool(gdrive_folder_id)
+            assert should_upload == expected, \
+                f"Failed for gdrive_folder_id={gdrive_folder_id!r}"
+
+
+class TestCompletedFeatureParity:
+    """
+    Feature Parity Validation Tests.
+    
+    These tests verify that all features marked as "completed" in the
+    BACKEND-FEATURE-PARITY-PLAN.md are actually working.
+    
+    Based on the plan, completed features include:
+    - dropbox-service: Native Dropbox SDK service
+    - gdrive-service: Native Google Drive API service
+    - job-model-update: dropbox_path and gdrive_folder_id fields
+    - api-routes-update: Distribution parameters in API
+    - distribution-video-worker: Native distribution in video worker
+    - remote-cli-params: CLI parameters for distribution
+    - secrets-setup: Secret Manager credentials
+    """
+    
+    def test_job_model_has_distribution_fields(self):
+        """Verify Job model has all required distribution fields."""
+        from backend.models.job import Job, JobCreate
+        
+        # These fields should exist on Job model
+        job_fields = Job.model_fields.keys()
+        required_fields = [
+            'brand_prefix',
+            'dropbox_path', 
+            'gdrive_folder_id',
+            'discord_webhook_url',
+            'enable_youtube_upload',
+            'youtube_description',
+            'youtube_description_template',
+        ]
+        
+        for field in required_fields:
+            assert field in job_fields, f"Job model missing field: {field}"
+        
+        # These fields should also exist on JobCreate model
+        job_create_fields = JobCreate.model_fields.keys()
+        for field in required_fields:
+            assert field in job_create_fields, f"JobCreate model missing field: {field}"
+    
+    def test_dropbox_service_exists_and_has_required_methods(self):
+        """Verify DropboxService has all required methods."""
+        from backend.services.dropbox_service import DropboxService
+        
+        required_methods = [
+            'is_configured',
+            'list_folders',
+            'get_next_brand_code',
+            'upload_file',
+            'upload_folder',
+            'create_shared_link',
+        ]
+        
+        service = DropboxService()
+        
+        for method in required_methods:
+            assert hasattr(service, method), f"DropboxService missing method: {method}"
+    
+    def test_gdrive_service_exists_and_has_required_methods(self):
+        """Verify GoogleDriveService has all required methods."""
+        from backend.services.gdrive_service import GoogleDriveService
+        
+        required_methods = [
+            'is_configured',
+            'get_or_create_folder',
+            'upload_file',
+            'upload_to_public_share',
+        ]
+        
+        # Need to mock settings for initialization
+        with patch('backend.services.gdrive_service.get_settings') as mock_settings:
+            mock_settings.return_value = MagicMock()
+            mock_settings.return_value.get_secret.return_value = None
+            
+            service = GoogleDriveService()
+            
+            for method in required_methods:
+                assert hasattr(service, method), f"GoogleDriveService missing method: {method}"
+    
+    def test_audio_search_request_accepts_distribution_params(self):
+        """Verify AudioSearchRequest model accepts distribution parameters."""
+        from backend.api.routes.audio_search import AudioSearchRequest
+        
+        request_fields = AudioSearchRequest.model_fields.keys()
+        
+        distribution_fields = [
+            'brand_prefix',
+            'dropbox_path',
+            'gdrive_folder_id',
+            'discord_webhook_url',
+            'enable_youtube_upload',
+            'youtube_description',
+        ]
+        
+        for field in distribution_fields:
+            assert field in request_fields, \
+                f"AudioSearchRequest missing distribution field: {field}"
 

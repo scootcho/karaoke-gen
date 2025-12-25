@@ -2704,3 +2704,240 @@ class TestSearchAudioWithStyleFiles:
         call_args = mock_request.call_args
         request_json = call_args.kwargs.get('json', {})
         assert "style_files" not in request_json
+
+
+class TestConfigClass:
+    """Test Config dataclass functionality."""
+    
+    def test_config_with_all_fields(self):
+        """Test Config creation with all fields."""
+        config = Config(
+            service_url='https://api.example.com',
+            review_ui_url='https://review.example.com',
+            poll_interval=10,
+            output_dir='/tmp/output',
+            auth_token='test-token',
+            environment='prod'
+        )
+        
+        assert config.service_url == 'https://api.example.com'
+        assert config.review_ui_url == 'https://review.example.com'
+        assert config.poll_interval == 10
+        assert config.output_dir == '/tmp/output'
+        assert config.auth_token == 'test-token'
+        assert config.environment == 'prod'
+    
+    def test_config_with_minimal_fields(self):
+        """Test Config creation with minimal fields."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp'
+        )
+        
+        assert config.service_url == 'http://localhost:8000'
+        assert config.auth_token is None
+        # environment defaults to empty string, not None
+        assert config.environment == ''
+    
+    def test_config_with_client_id(self):
+        """Test Config creation with client_id."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp',
+            client_id='test-client'
+        )
+        
+        assert config.client_id == 'test-client'
+    
+    def test_config_non_interactive_mode(self):
+        """Test Config with non_interactive mode enabled."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp',
+            non_interactive=True
+        )
+        
+        assert config.non_interactive is True
+
+
+class TestRemoteClientContentType:
+    """Test content type detection edge cases."""
+    
+    @pytest.fixture
+    def client(self, config):
+        """Create a RemoteKaraokeClient instance for testing."""
+        logger = logging.getLogger("test_logger")
+        return RemoteKaraokeClient(config, logger)
+    
+    @pytest.fixture
+    def config(self):
+        """Provide a valid Config instance."""
+        return Config(
+            service_url='https://api.nomadkaraoke.com',
+            review_ui_url='https://lyrics.nomadkaraoke.com',
+            poll_interval=5,
+            output_dir='/tmp/output'
+        )
+    
+    def test_get_content_type_for_wav(self, client):
+        """Test content type detection for WAV files."""
+        assert client._get_content_type('/path/to/audio.wav') == 'audio/wav'
+    
+    def test_get_content_type_for_gif(self, client):
+        """Test content type detection for GIF files."""
+        assert client._get_content_type('/path/to/image.gif') == 'image/gif'
+    
+    def test_get_content_type_for_webp(self, client):
+        """Test content type detection for WebP files."""
+        assert client._get_content_type('/path/to/image.webp') == 'image/webp'
+    
+    def test_get_content_type_for_unknown(self, client):
+        """Test content type detection for unknown extensions."""
+        assert client._get_content_type('/path/to/file.xyz') == 'application/octet-stream'
+    
+    def test_get_content_type_for_hidden_file(self, client):
+        """Test content type detection for hidden files (no extension)."""
+        # Files like '.gitignore' have no extension
+        assert client._get_content_type('/path/to/.hidden') == 'application/octet-stream'
+    
+    def test_get_content_type_for_ogg(self, client):
+        """Test content type detection for OGG audio files."""
+        assert client._get_content_type('/path/to/audio.ogg') == 'audio/ogg'
+    
+    def test_get_content_type_for_aac(self, client):
+        """Test content type detection for AAC audio files."""
+        assert client._get_content_type('/path/to/audio.aac') == 'audio/aac'
+    
+    def test_get_content_type_for_m4a(self, client):
+        """Test content type detection for M4A audio files."""
+        assert client._get_content_type('/path/to/audio.m4a') == 'audio/mp4'
+    
+    def test_get_content_type_case_insensitive(self, client):
+        """Test content type detection is case-insensitive for extensions."""
+        # Extension lookup should be case-insensitive
+        assert client._get_content_type('/path/to/image.PNG') == 'image/png'
+        assert client._get_content_type('/path/to/audio.MP3') == 'audio/mpeg'
+        assert client._get_content_type('/path/to/audio.FLAC') == 'audio/flac'
+
+
+class TestRemoteClientSessionSetup:
+    """Test session setup and configuration."""
+    
+    @pytest.fixture
+    def config_with_auth(self):
+        """Provide a Config instance with auth token."""
+        return Config(
+            service_url='https://api.nomadkaraoke.com',
+            review_ui_url='https://lyrics.nomadkaraoke.com',
+            poll_interval=5,
+            output_dir='/tmp/output',
+            auth_token='test-token-123',
+            environment='test',
+            client_id='test-client-001'
+        )
+    
+    def test_client_sets_auth_header(self, config_with_auth):
+        """Test that client sets Authorization header when auth_token is provided."""
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config_with_auth, logger)
+        
+        assert 'Authorization' in client.session.headers
+        assert client.session.headers['Authorization'] == 'Bearer test-token-123'
+    
+    def test_client_sets_environment_header(self, config_with_auth):
+        """Test that client sets X-Environment header when environment is provided."""
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config_with_auth, logger)
+        
+        assert 'X-Environment' in client.session.headers
+        assert client.session.headers['X-Environment'] == 'test'
+    
+    def test_client_sets_client_id_header(self, config_with_auth):
+        """Test that client sets X-Client-ID header when client_id is provided."""
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config_with_auth, logger)
+        
+        assert 'X-Client-ID' in client.session.headers
+        assert client.session.headers['X-Client-ID'] == 'test-client-001'
+    
+    def test_client_without_auth(self):
+        """Test that client works without auth token."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp'
+        )
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config, logger)
+        
+        # Should not have Authorization header
+        assert 'Authorization' not in client.session.headers
+    
+    def test_client_stores_config_and_logger(self, config_with_auth):
+        """Test that client correctly stores config and logger references."""
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config_with_auth, logger)
+        
+        assert client.config == config_with_auth
+        assert client.logger == logger
+    
+    def test_client_has_session_with_timeout(self, config_with_auth):
+        """Test that client creates a session object."""
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config_with_auth, logger)
+        
+        # Client should have a session attribute
+        assert hasattr(client, 'session')
+        assert client.session is not None
+    
+    def test_empty_environment_header_not_set(self):
+        """Test that empty environment string doesn't set header."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp',
+            environment=''  # Empty string
+        )
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config, logger)
+        
+        # Empty environment should not set the header
+        assert 'X-Environment' not in client.session.headers
+    
+    def test_empty_client_id_header_not_set(self):
+        """Test that empty client_id string doesn't set header."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp',
+            client_id=''  # Empty string
+        )
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config, logger)
+        
+        # Empty client_id should not set the header
+        assert 'X-Client-ID' not in client.session.headers
+    
+    def test_client_sets_user_agent(self):
+        """Test that client sets User-Agent header with version."""
+        config = Config(
+            service_url='http://localhost:8000',
+            review_ui_url='http://localhost:3000',
+            poll_interval=5,
+            output_dir='/tmp'
+        )
+        logger = logging.getLogger("test_logger")
+        client = RemoteKaraokeClient(config, logger)
+        
+        # User-Agent should be set
+        assert 'User-Agent' in client.session.headers
+        assert 'karaoke-gen-remote/' in client.session.headers['User-Agent']
