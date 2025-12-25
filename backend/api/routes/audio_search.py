@@ -492,12 +492,20 @@ async def search_audio(
         result_responses = []
         for r in search_results:
             # Get full serialized data from raw_result if available
+            # raw_result can be either:
+            # - A dict (from remote flacfetch API)
+            # - A Release object (from local flacfetch)
             raw_dict = {}
             if r.raw_result:
-                try:
-                    raw_dict = r.raw_result.to_dict()
-                except AttributeError:
-                    pass  # Not a Release object
+                if isinstance(r.raw_result, dict):
+                    # Remote flacfetch API returns dicts directly
+                    raw_dict = r.raw_result
+                else:
+                    # Local flacfetch returns Release objects
+                    try:
+                        raw_dict = r.raw_result.to_dict()
+                    except AttributeError:
+                        pass  # Not a Release object
             
             result_responses.append(
                 AudioSearchResultResponse(
@@ -529,7 +537,8 @@ async def search_audio(
                     is_lossless=raw_dict.get('is_lossless'),
                     quality_str=raw_dict.get('quality_str'),
                     # Full quality object for Release.from_dict()
-                    quality_data=raw_dict.get('quality'),
+                    # Remote API uses 'quality_data', local uses 'quality' for the dict
+                    quality_data=raw_dict.get('quality_data') or raw_dict.get('quality'),
                 )
             )
         

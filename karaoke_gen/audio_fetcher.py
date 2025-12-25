@@ -76,22 +76,35 @@ class AudioSearchResult:
             "target_file": self.target_file,
         }
         
-        # If we have a raw_result (flacfetch Release), include its full data
+        # If we have a raw_result (flacfetch Release or dict), include its full data
         # This enables rich display on the remote CLI
+        # raw_result can be either:
+        # - A dict (from remote flacfetch API)
+        # - A Release object (from local flacfetch)
         if self.raw_result:
-            try:
-                release_dict = self.raw_result.to_dict()
-                # Merge Release fields into result (they may override basic fields)
-                for key in ['year', 'label', 'edition_info', 'release_type', 'channel',
-                           'view_count', 'size_bytes', 'target_file_size', 'track_pattern',
-                           'match_score', 'formatted_size', 'formatted_duration',
-                           'formatted_views', 'is_lossless', 'quality_str', 'quality']:
-                    if key in release_dict:
-                        # Use 'quality_data' for the quality dict to avoid confusion with quality string
-                        result_key = 'quality_data' if key == 'quality' else key
-                        result[result_key] = release_dict[key]
-            except AttributeError:
-                pass  # raw_result doesn't have to_dict() method
+            if isinstance(self.raw_result, dict):
+                # Remote flacfetch API returns dicts directly
+                release_dict = self.raw_result
+            else:
+                # Local flacfetch returns Release objects
+                try:
+                    release_dict = self.raw_result.to_dict()
+                except AttributeError:
+                    release_dict = {}  # raw_result doesn't have to_dict() method
+            
+            # Merge Release fields into result (they may override basic fields)
+            for key in ['year', 'label', 'edition_info', 'release_type', 'channel',
+                       'view_count', 'size_bytes', 'target_file_size', 'track_pattern',
+                       'match_score', 'formatted_size', 'formatted_duration',
+                       'formatted_views', 'is_lossless', 'quality_str']:
+                if key in release_dict:
+                    result[key] = release_dict[key]
+            
+            # Handle quality dict - remote API uses 'quality_data', local uses 'quality'
+            if 'quality_data' in release_dict:
+                result['quality_data'] = release_dict['quality_data']
+            elif 'quality' in release_dict and isinstance(release_dict['quality'], dict):
+                result['quality_data'] = release_dict['quality']
         
         return result
     
