@@ -1319,8 +1319,10 @@ class RemoteKaraokeClient:
                     with open(local_path, 'rb') as f:
                         file_content = f.read()
                     
-                    ext = Path(local_path).suffix.lower()
-                    content_type = self._get_content_type(ext)
+                    # Use the content type from the original file info, not re-derived
+                    # This ensures it matches the signed URL which was generated with
+                    # the same content type we specified in the request
+                    content_type = self._get_content_type(local_path)
                     
                     # Use PUT to upload directly to signed URL
                     upload_response = requests.put(
