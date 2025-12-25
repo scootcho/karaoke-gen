@@ -12,13 +12,19 @@ from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from datetime import datetime, UTC
 from fastapi.testclient import TestClient
 
-# Mock google.auth.default for unit tests if not using emulator
-# This prevents DefaultCredentialsError during imports
+# Mock google.auth.default AND firestore for unit tests if not using emulator
+# This prevents DefaultCredentialsError and FirestoreClient initialization during imports
 if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
     from unittest.mock import MagicMock
     
-    # Only mock the default() function, not the entire module
-    # This allows other google.auth imports to work normally
+    # Set up test environment variables BEFORE importing any backend modules
+    os.environ.setdefault('ADMIN_TOKENS', 'test-admin-token')
+    os.environ.setdefault('GOOGLE_CLOUD_PROJECT', 'test-project')
+    os.environ.setdefault('GCS_BUCKET_NAME', 'test-bucket')
+    os.environ.setdefault('FIRESTORE_COLLECTION', 'jobs')
+    os.environ.setdefault('ENVIRONMENT', 'test')
+    
+    # Mock google.auth.default - prevents credential errors
     try:
         import google.auth
         mock_credentials = MagicMock()
@@ -29,6 +35,43 @@ if 'FIRESTORE_EMULATOR_HOST' not in os.environ:
         google.auth.default = MagicMock(return_value=(mock_credentials, 'test-project'))
     except ImportError:
         # If google.auth not installed, that's ok for some tests
+        pass
+    
+    # Mock google.cloud.firestore.Client - prevents Firestore initialization
+    # This is CRITICAL: when AuthService is instantiated, it creates FirestoreService
+    # which tries to create a real Firestore client. The client returns MagicMocks
+    # which fail when used as enum values (e.g., UserType).
+    try:
+        import google.cloud.firestore as firestore_module
+        
+        # Create a mock client that returns proper values for get_token
+        mock_firestore_client = MagicMock()
+        mock_collection = MagicMock()
+        mock_doc = MagicMock()
+        mock_snapshot = MagicMock()
+        
+        # For auth token lookups, return None (token not found in Firestore)
+        # This forces validation to use admin tokens from environment
+        mock_snapshot.exists = False
+        mock_snapshot.to_dict.return_value = None
+        mock_doc.get.return_value = mock_snapshot
+        mock_collection.document.return_value = mock_doc
+        mock_firestore_client.collection.return_value = mock_collection
+        
+        # Replace the Client class
+        original_client = firestore_module.Client
+        firestore_module.Client = MagicMock(return_value=mock_firestore_client)
+    except ImportError:
+        pass
+    
+    # Mock google.cloud.storage.Client - prevents GCS initialization
+    try:
+        import google.cloud.storage as storage_module
+        mock_storage_client = MagicMock()
+        mock_bucket = MagicMock()
+        mock_storage_client.bucket.return_value = mock_bucket
+        storage_module.Client = MagicMock(return_value=mock_storage_client)
+    except ImportError:
         pass
 
 from backend.models.job import Job, JobStatus, JobCreate

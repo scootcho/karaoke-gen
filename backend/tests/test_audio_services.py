@@ -3,12 +3,27 @@ Unit tests for audio analysis and editing services.
 
 These tests verify the backend service wrappers that use the shared
 karaoke_gen.instrumental_review module with GCS integration.
+
+NOTE: These tests require ffmpeg to be installed. They will be skipped
+if ffmpeg is not available (e.g., in CI environments without ffmpeg).
 """
 
 import os
+import shutil
 import tempfile
 import pytest
 from unittest.mock import MagicMock, patch, ANY
+
+# Check if ffmpeg is available
+def _ffmpeg_available():
+    """Check if ffmpeg is available on the system."""
+    return shutil.which('ffmpeg') is not None
+
+# Skip all tests in this module if ffmpeg is not available
+pytestmark = pytest.mark.skipif(
+    not _ffmpeg_available(),
+    reason="ffmpeg not available - required for audio processing tests"
+)
 
 from pydub import AudioSegment
 from pydub.generators import Sine
