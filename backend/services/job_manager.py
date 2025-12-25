@@ -56,6 +56,11 @@ class JobManager:
             youtube_description_template=job_create.youtube_description_template,  # video_worker reads this
             webhook_url=job_create.webhook_url,
             user_email=job_create.user_email,
+            # Distribution settings
+            brand_prefix=job_create.brand_prefix,
+            discord_webhook_url=job_create.discord_webhook_url,
+            dropbox_path=job_create.dropbox_path,
+            gdrive_folder_id=job_create.gdrive_folder_id,
             # Two-phase workflow (Batch 6)
             prep_only=job_create.prep_only,
             finalise_only=job_create.finalise_only,

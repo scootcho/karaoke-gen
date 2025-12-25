@@ -102,6 +102,37 @@ class TestJobCreation:
         
         assert job.status == JobStatus.PENDING
         assert job.progress == 0
+    
+    def test_create_job_with_distribution_settings(self, job_manager, mock_firestore_service):
+        """Test that distribution settings are passed from JobCreate to Job.
+        
+        This was a bug where brand_prefix, dropbox_path, gdrive_folder_id, and
+        discord_webhook_url were NOT being passed to the Job constructor.
+        """
+        job_create = JobCreate(
+            artist="Test Artist",
+            title="Test Song",
+            brand_prefix="NOMAD",
+            discord_webhook_url="https://discord.com/webhook/test",
+            dropbox_path="/Karaoke/Tracks-Organized",
+            gdrive_folder_id="1abc123xyz",
+            enable_youtube_upload=True,
+        )
+        
+        job = job_manager.create_job(job_create)
+        
+        # Verify distribution settings are passed through
+        assert job.brand_prefix == "NOMAD"
+        assert job.discord_webhook_url == "https://discord.com/webhook/test"
+        assert job.dropbox_path == "/Karaoke/Tracks-Organized"
+        assert job.gdrive_folder_id == "1abc123xyz"
+        assert job.enable_youtube_upload is True
+        
+        # Verify Firestore was called with job containing these fields
+        mock_firestore_service.create_job.assert_called_once()
+        created_job = mock_firestore_service.create_job.call_args[0][0]
+        assert created_job.brand_prefix == "NOMAD"
+        assert created_job.dropbox_path == "/Karaoke/Tracks-Organized"
 
 
 class TestJobRetrieval:
