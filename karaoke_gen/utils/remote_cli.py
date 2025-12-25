@@ -1206,6 +1206,7 @@ class RemoteKaraokeClient:
             artist: Artist name to search for
             title: Song title to search for
             auto_download: Automatically select best audio source (skip interactive selection)
+            style_params_path: Path to style_params.json (optional)
             ... other args same as submit_job()
         
         Returns:
@@ -1246,6 +1247,40 @@ class RemoteKaraokeClient:
         if other_stems_models:
             request_data['other_stems_models'] = other_stems_models
         
+        # Prepare style files for upload if provided
+        style_files = []
+        local_style_files: Dict[str, str] = {}  # file_type -> local_path
+        
+        if style_params_path and os.path.isfile(style_params_path):
+            self.logger.info(f"Parsing style configuration: {style_params_path}")
+            
+            # Add the style_params.json itself
+            style_files.append({
+                'filename': Path(style_params_path).name,
+                'content_type': 'application/json',
+                'file_type': 'style_params'
+            })
+            local_style_files['style_params'] = style_params_path
+            
+            # Parse style params to find referenced files (backgrounds, fonts)
+            style_assets = self._parse_style_params(style_params_path)
+            
+            for asset_key, asset_path in style_assets.items():
+                if os.path.isfile(asset_path):
+                    ext = Path(asset_path).suffix.lower()
+                    content_type = self._get_content_type(ext)
+                    style_files.append({
+                        'filename': Path(asset_path).name,
+                        'content_type': content_type,
+                        'file_type': asset_key  # e.g., 'style_intro_background'
+                    })
+                    local_style_files[asset_key] = asset_path
+                    self.logger.info(f"  Will upload style asset: {asset_key}")
+            
+            if style_files:
+                request_data['style_files'] = style_files
+                self.logger.info(f"Including {len(style_files)} style files in request")
+        
         response = self._request('POST', '/api/audio-search/search', json=request_data)
         
         if response.status_code == 404:
@@ -1262,7 +1297,50 @@ class RemoteKaraokeClient:
                 error_detail = response.text
             raise RuntimeError(f"Error searching for audio: {error_detail}")
         
-        return response.json()
+        result = response.json()
+        
+        # Upload style files if we have signed URLs
+        style_upload_urls = result.get('style_upload_urls', [])
+        if style_upload_urls and local_style_files:
+            self.logger.info(f"Uploading {len(style_upload_urls)} style files...")
+            
+            for url_info in style_upload_urls:
+                file_type = url_info['file_type']
+                upload_url = url_info['upload_url']
+                
+                local_path = local_style_files.get(file_type)
+                if not local_path:
+                    self.logger.warning(f"No local file for {file_type}, skipping upload")
+                    continue
+                
+                self.logger.info(f"  Uploading {file_type}: {Path(local_path).name}")
+                
+                try:
+                    with open(local_path, 'rb') as f:
+                        file_content = f.read()
+                    
+                    ext = Path(local_path).suffix.lower()
+                    content_type = self._get_content_type(ext)
+                    
+                    # Use PUT to upload directly to signed URL
+                    upload_response = requests.put(
+                        upload_url,
+                        data=file_content,
+                        headers={'Content-Type': content_type},
+                        timeout=60
+                    )
+                    
+                    if upload_response.status_code not in (200, 201):
+                        self.logger.error(f"Failed to upload {file_type}: {upload_response.status_code}")
+                    else:
+                        self.logger.info(f"    ✓ Uploaded {file_type}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Error uploading {file_type}: {e}")
+            
+            self.logger.info("Style file uploads complete")
+        
+        return result
     
     def get_audio_search_results(self, job_id: str) -> Dict[str, Any]:
         """Get audio search results for a job awaiting selection."""
@@ -2974,6 +3052,7 @@ def main():
                 artist=artist,
                 title=title,
                 auto_download=auto_download,
+                style_params_path=args.style_params_json,
                 enable_cdg=args.enable_cdg,
                 enable_txt=args.enable_txt,
                 brand_prefix=args.brand_prefix,

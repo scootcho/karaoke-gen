@@ -36,8 +36,21 @@ from backend.config import get_settings
 from backend.version import VERSION
 from backend.api.dependencies import require_auth
 from backend.services.auth_service import UserType
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Valid style file types (from file_upload.py)
+STYLE_FILE_TYPES = {
+    'style_params': {'.json'},
+    'style_intro_background': {'.jpg', '.jpeg', '.png'},
+    'style_karaoke_background': {'.jpg', '.jpeg', '.png'},
+    'style_end_background': {'.jpg', '.jpeg', '.png'},
+    'style_font': {'.ttf', '.otf'},
+    'style_cdg_instrumental_background': {'.jpg', '.jpeg', '.png'},
+    'style_cdg_title_background': {'.jpg', '.jpeg', '.png'},
+    'style_cdg_outro_background': {'.jpg', '.jpeg', '.png'},
+}
 router = APIRouter(tags=["audio-search"])
 
 # Initialize services
@@ -49,6 +62,20 @@ worker_service = get_worker_service()
 # ============================================================================
 # Pydantic models
 # ============================================================================
+
+class StyleFileRequest(BaseModel):
+    """Information about a style file to be uploaded."""
+    filename: str = Field(..., description="Original filename with extension")
+    content_type: str = Field(..., description="MIME type of the file")
+    file_type: str = Field(..., description="Type of file: 'style_params', 'style_intro_background', 'style_karaoke_background', 'style_end_background', 'style_font', 'style_cdg_instrumental_background', 'style_cdg_title_background', 'style_cdg_outro_background'")
+
+
+class StyleUploadUrl(BaseModel):
+    """Signed URL for uploading a style file."""
+    file_type: str = Field(..., description="Type of file being uploaded")
+    gcs_path: str = Field(..., description="Destination path in GCS")
+    upload_url: str = Field(..., description="Signed URL to PUT the file to")
+
 
 class AudioSearchRequest(BaseModel):
     """Request to search for audio by artist and title."""
@@ -81,6 +108,10 @@ class AudioSearchRequest(BaseModel):
     clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
     backing_vocals_models: Optional[List[str]] = Field(None, description="Models for backing vocals separation")
     other_stems_models: Optional[List[str]] = Field(None, description="Models for other stems")
+    
+    # Style file uploads (optional)
+    # Style params JSON and related assets (background images, fonts)
+    style_files: Optional[List[StyleFileRequest]] = Field(None, description="Style files to upload (style_params JSON, backgrounds, fonts)")
 
 
 class AudioSearchResultResponse(BaseModel):
@@ -129,6 +160,8 @@ class AudioSearchResponse(BaseModel):
     results_count: int = 0
     auto_download: bool = False
     server_version: str
+    # Style file upload URLs (when style_files are specified in request)
+    style_upload_urls: Optional[List[StyleUploadUrl]] = None
 
 
 class AudioSelectRequest(BaseModel):
@@ -421,6 +454,66 @@ async def search_audio(
             'auto_download': body.auto_download,
         })
         
+        # Handle style file uploads if provided
+        style_upload_urls: List[StyleUploadUrl] = []
+        style_assets = {}
+        
+        if body.style_files:
+            logger.info(f"Processing {len(body.style_files)} style file uploads for job {job_id}")
+            
+            for file_info in body.style_files:
+                # Validate file type
+                if file_info.file_type not in STYLE_FILE_TYPES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid file type '{file_info.file_type}'. Must be one of: {', '.join(STYLE_FILE_TYPES.keys())}"
+                    )
+                
+                # Validate extension
+                ext = Path(file_info.filename).suffix.lower()
+                allowed_exts = STYLE_FILE_TYPES[file_info.file_type]
+                if ext not in allowed_exts:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid extension '{ext}' for {file_info.file_type}. Allowed: {', '.join(allowed_exts)}"
+                    )
+                
+                # Generate GCS path
+                if file_info.file_type == 'style_params':
+                    gcs_path = f"uploads/{job_id}/style/style_params.json"
+                else:
+                    # style_intro_background -> intro_background, etc.
+                    asset_key = file_info.file_type.replace('style_', '')
+                    gcs_path = f"uploads/{job_id}/style/{asset_key}{ext}"
+                
+                # Generate signed upload URL
+                signed_url = storage_service.generate_signed_upload_url(
+                    gcs_path,
+                    content_type=file_info.content_type,
+                    expiration_minutes=60
+                )
+                
+                style_upload_urls.append(StyleUploadUrl(
+                    file_type=file_info.file_type,
+                    gcs_path=gcs_path,
+                    upload_url=signed_url
+                ))
+                
+                # Track the expected asset paths
+                if file_info.file_type == 'style_params':
+                    style_assets['style_params'] = gcs_path
+                else:
+                    asset_key = file_info.file_type.replace('style_', '')
+                    style_assets[asset_key] = gcs_path
+            
+            # Update job with style asset expectations
+            style_update = {'style_assets': style_assets}
+            if 'style_params' in style_assets:
+                style_update['style_params_gcs_path'] = style_assets['style_params']
+            job_manager.update_job(job_id, style_update)
+            
+            logger.info(f"Generated {len(style_upload_urls)} style upload URLs for job {job_id}")
+        
         # Transition to searching state
         job_manager.transition_to_state(
             job_id=job_id,
@@ -478,6 +571,7 @@ async def search_audio(
                 results_count=len(search_results),
                 auto_download=True,
                 server_version=VERSION,
+                style_upload_urls=style_upload_urls if style_upload_urls else None,
             )
         
         # Interactive mode: return results for user selection
@@ -550,6 +644,7 @@ async def search_audio(
             results_count=len(search_results),
             auto_download=False,
             server_version=VERSION,
+            style_upload_urls=style_upload_urls if style_upload_urls else None,
         )
         
     except HTTPException:
