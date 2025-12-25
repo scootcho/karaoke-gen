@@ -2425,3 +2425,215 @@ class TestCategorizedAudioDisplay:
         assert result["download_url"] == "https://download.url"
         assert result["seeders"] == 50
         assert result["is_lossless"] == True
+
+
+class TestSearchAudioWithStyleFiles:
+    """Tests for search_audio method with style file upload support."""
+    
+    @pytest.fixture
+    def config(self):
+        """Create test config."""
+        return Config(
+            service_url="http://localhost:8000",
+            review_ui_url="http://localhost:3000",
+            poll_interval=5,
+            output_dir="/tmp/output",
+            non_interactive=False,
+            auth_token="test-token"
+        )
+    
+    @pytest.fixture
+    def logger(self):
+        """Create test logger."""
+        return logging.getLogger("test-search-audio")
+    
+    @pytest.fixture
+    def client(self, config, logger):
+        """Create a RemoteKaraokeClient instance for testing."""
+        return RemoteKaraokeClient(config, logger)
+    
+    @patch('requests.Session.request')
+    def test_search_audio_without_style_files(self, mock_request, client):
+        """Test search_audio without style files."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "awaiting_selection",
+            "job_id": "test-job-123",
+            "message": "Found 5 audio sources",
+            "results_count": 5,
+            "server_version": "0.75.47",
+        }
+        mock_request.return_value = mock_response
+        
+        result = client.search_audio("Test Artist", "Test Title")
+        
+        assert result["job_id"] == "test-job-123"
+        assert result["results_count"] == 5
+        
+        # Verify request was made without style_files
+        call_args = mock_request.call_args
+        request_json = call_args.kwargs.get('json', {})
+        assert "style_files" not in request_json
+    
+    @patch('requests.put')
+    @patch('requests.Session.request')
+    @patch('os.path.isfile')
+    def test_search_audio_with_style_params(self, mock_isfile, mock_request, mock_put, client):
+        """Test search_audio with style_params.json file."""
+        # Mock file checks
+        mock_isfile.return_value = True
+        
+        # Mock API response with style upload URLs
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "awaiting_selection",
+            "job_id": "test-job-123",
+            "message": "Found 5 audio sources",
+            "results_count": 5,
+            "server_version": "0.75.47",
+            "style_upload_urls": [
+                {
+                    "file_type": "style_params",
+                    "gcs_path": "uploads/test-job-123/style/style_params.json",
+                    "upload_url": "https://storage.googleapis.com/signed-url-1"
+                }
+            ]
+        }
+        mock_request.return_value = mock_response
+        
+        # Mock successful upload
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 200
+        mock_put.return_value = mock_put_response
+        
+        # Create temp style params file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump({"intro": {}, "karaoke": {}, "end": {}}, f)
+            style_file = f.name
+        
+        try:
+            # Mock open for reading the style file for upload
+            with patch('builtins.open', mock_open(read_data=b'{"test": "data"}')):
+                result = client.search_audio(
+                    "Test Artist", 
+                    "Test Title",
+                    style_params_path=style_file
+                )
+            
+            assert result["job_id"] == "test-job-123"
+            
+            # Verify style_files was included in request
+            call_args = mock_request.call_args
+            request_json = call_args.kwargs.get('json', {})
+            assert "style_files" in request_json
+            assert len(request_json["style_files"]) >= 1
+            assert request_json["style_files"][0]["file_type"] == "style_params"
+            
+            # Verify upload was attempted
+            mock_put.assert_called_once()
+        finally:
+            os.unlink(style_file)
+    
+    @patch('requests.Session.request')
+    def test_search_audio_no_results(self, mock_request, client):
+        """Test search_audio when no results are found."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {"error": "no_results", "message": "No audio found"}
+        mock_response.text = "Not found"
+        mock_request.return_value = mock_response
+        
+        with pytest.raises(ValueError, match="No audio sources found"):
+            client.search_audio("Unknown Artist", "Unknown Title")
+    
+    @patch('requests.Session.request')
+    def test_search_audio_server_error(self, mock_request, client):
+        """Test search_audio when server returns error."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"error": "Internal error"}
+        mock_response.text = "Internal Server Error"
+        mock_request.return_value = mock_response
+        
+        with pytest.raises(RuntimeError, match="Error searching for audio"):
+            client.search_audio("Test Artist", "Test Title")
+    
+    @patch('requests.put')
+    @patch('requests.Session.request')
+    @patch('os.path.isfile')
+    def test_search_audio_upload_failure_continues(self, mock_isfile, mock_request, mock_put, client):
+        """Test that search_audio continues even if style upload fails."""
+        mock_isfile.return_value = True
+        
+        # Mock API response with style upload URLs
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "awaiting_selection",
+            "job_id": "test-job-123",
+            "results_count": 5,
+            "server_version": "0.75.47",
+            "style_upload_urls": [
+                {
+                    "file_type": "style_params",
+                    "gcs_path": "uploads/test-job-123/style/style_params.json",
+                    "upload_url": "https://storage.googleapis.com/signed-url-1"
+                }
+            ]
+        }
+        mock_request.return_value = mock_response
+        
+        # Mock failed upload (403)
+        mock_put_response = MagicMock()
+        mock_put_response.status_code = 403
+        mock_put.return_value = mock_put_response
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump({}, f)
+            style_file = f.name
+        
+        try:
+            with patch('builtins.open', mock_open(read_data=b'{}')):
+                # Should not raise, even if upload fails
+                result = client.search_audio(
+                    "Test Artist", 
+                    "Test Title",
+                    style_params_path=style_file
+                )
+            
+            assert result["job_id"] == "test-job-123"
+        finally:
+            os.unlink(style_file)
+    
+    @patch('requests.Session.request')
+    @patch('os.path.isfile')
+    def test_search_audio_style_file_not_found(self, mock_isfile, mock_request, client):
+        """Test search_audio when style_params file doesn't exist."""
+        # First call (for style_params_path check) returns False
+        mock_isfile.return_value = False
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "awaiting_selection",
+            "job_id": "test-job-123",
+            "results_count": 5,
+            "server_version": "0.75.47",
+        }
+        mock_request.return_value = mock_response
+        
+        # Should succeed but without style files
+        result = client.search_audio(
+            "Test Artist", 
+            "Test Title",
+            style_params_path="/nonexistent/style.json"
+        )
+        
+        assert result["job_id"] == "test-job-123"
+        
+        # Verify no style_files in request
+        call_args = mock_request.call_args
+        request_json = call_args.kwargs.get('json', {})
+        assert "style_files" not in request_json
