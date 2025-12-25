@@ -428,6 +428,7 @@ async def search_audio(
             brand_prefix=body.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
+            youtube_description_template=body.youtube_description,  # video_worker reads this field
             discord_webhook_url=effective_discord_webhook_url,
             dropbox_path=effective_dropbox_path,
             gdrive_folder_id=effective_gdrive_folder_id,

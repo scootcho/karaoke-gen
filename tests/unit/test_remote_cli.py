@@ -544,6 +544,73 @@ class TestRemoteKaraokeClient:
         
         assert result is False
     
+    def test_download_file_via_url_uses_session_with_auth(self, client, tmp_path):
+        """Test that download_file_via_url uses session (which has auth headers).
+        
+        This test verifies the fix for the bug where downloads failed because
+        the auth header wasn't included in requests.
+        """
+        # Setup: mock the session.get method
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.iter_content.return_value = [b'test content']
+        client.session.get = MagicMock(return_value=mock_response)
+        
+        local_path = str(tmp_path / "test.mp4")
+        
+        # Call the method with a relative URL
+        result = client.download_file_via_url("/api/jobs/123/download/finals/mp4", local_path)
+        
+        assert result is True
+        # CRITICAL: Verify session.get was called (not requests.get directly)
+        client.session.get.assert_called_once()
+        # Verify the URL was properly constructed with service URL from config
+        call_args = client.session.get.call_args
+        expected_url = f"{client.config.service_url}/api/jobs/123/download/finals/mp4"
+        assert expected_url == call_args[0][0]
+        # Verify the file was written
+        assert (tmp_path / "test.mp4").exists()
+    
+    def test_download_file_via_url_absolute_url(self, client, tmp_path):
+        """Test download_file_via_url with absolute URL (e.g., signed GCS URL)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.iter_content.return_value = [b'gcs content']
+        client.session.get = MagicMock(return_value=mock_response)
+        
+        local_path = str(tmp_path / "test.mp4")
+        absolute_url = "https://storage.googleapis.com/bucket/path/file.mp4?signed=xyz"
+        
+        result = client.download_file_via_url(absolute_url, local_path)
+        
+        assert result is True
+        # Verify the absolute URL was used as-is
+        call_args = client.session.get.call_args
+        assert absolute_url == call_args[0][0]
+    
+    def test_download_file_via_url_failure_returns_false(self, client, tmp_path):
+        """Test that download failures return False without raising."""
+        mock_response = MagicMock()
+        mock_response.status_code = 403  # Forbidden - simulates auth failure
+        client.session.get = MagicMock(return_value=mock_response)
+        
+        local_path = str(tmp_path / "test.mp4")
+        
+        result = client.download_file_via_url("/api/jobs/123/download", local_path)
+        
+        assert result is False
+        assert not (tmp_path / "test.mp4").exists()
+    
+    def test_download_file_via_url_network_error(self, client, tmp_path):
+        """Test that network errors return False without raising."""
+        client.session.get = MagicMock(side_effect=Exception("Network error"))
+        
+        local_path = str(tmp_path / "test.mp4")
+        
+        result = client.download_file_via_url("/api/jobs/123/download", local_path)
+        
+        assert result is False
+    
     @patch.object(RemoteKaraokeClient, '_request')
     def test_submit_job_file_not_found(self, mock_request, client):
         """Test submitting job with nonexistent file."""

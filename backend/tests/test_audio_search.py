@@ -69,6 +69,78 @@ class TestJobModelAudioSearchFields:
         assert job_create.auto_download is True
 
 
+class TestYouTubeFieldMapping:
+    """Test YouTube description field mapping between API and workers.
+    
+    CRITICAL: This test class exists because we had a bug where:
+    - The audio_search API endpoint set `youtube_description`
+    - But video_worker.py reads `youtube_description_template`
+    
+    These tests ensure both fields are properly set so YouTube uploads work.
+    """
+    
+    def test_job_has_both_youtube_description_fields(self):
+        """Test Job model has both youtube_description and youtube_description_template."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            artist="Test",
+            title="Song",
+            enable_youtube_upload=True,
+            youtube_description="This is a karaoke video",
+            youtube_description_template="This is a karaoke video",
+        )
+        
+        # Both fields should exist and be set
+        assert job.youtube_description == "This is a karaoke video"
+        assert job.youtube_description_template == "This is a karaoke video"
+        assert job.enable_youtube_upload is True
+    
+    def test_job_create_has_youtube_description_template(self):
+        """Test JobCreate model has youtube_description_template field."""
+        job_create = JobCreate(
+            artist="Test",
+            title="Song",
+            enable_youtube_upload=True,
+            youtube_description="This is a karaoke video",
+            youtube_description_template="This is a karaoke video",
+        )
+        
+        assert job_create.youtube_description_template == "This is a karaoke video"
+    
+    def test_video_worker_reads_youtube_description_template(self):
+        """Document what field video_worker expects.
+        
+        This is a documentation test - if video_worker changes what field
+        it reads, this test should be updated to match.
+        """
+        # video_worker.py uses this pattern:
+        # if youtube_credentials and getattr(job, 'youtube_description_template', None):
+        #     youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
+        #     with open(youtube_desc_path, 'w') as f:
+        #         f.write(job.youtube_description_template)
+        #
+        # So the job MUST have youtube_description_template set for YouTube upload to work
+        
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            artist="Test",
+            title="Song",
+            enable_youtube_upload=True,
+            youtube_description_template="Template text",
+        )
+        
+        # Simulate what video_worker does
+        template = getattr(job, 'youtube_description_template', None)
+        assert template is not None, "youtube_description_template must be set for YouTube upload"
+        assert template == "Template text"
+
+
 class TestJobStatusAudioSearchStates:
     """Test Job status includes audio search states."""
     
