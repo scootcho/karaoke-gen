@@ -12,10 +12,11 @@ Infrastructure includes:
 - Cloud Tasks queues for worker coordination (Phase 1 scalability)
 - Secret Manager secrets
 - Cloud Run domain mapping
+- Cloud Function for Google Drive validation (daily scheduled)
 """
 import pulumi
 import pulumi_gcp as gcp
-from pulumi_gcp import storage, firestore, secretmanager, artifactregistry, cloudrun, serviceaccount, cloudtasks
+from pulumi_gcp import storage, firestore, secretmanager, artifactregistry, cloudrun, serviceaccount, cloudtasks, cloudfunctions, cloudscheduler
 
 # Get the current GCP project
 project = gcp.organizations.get_project()
@@ -969,4 +970,131 @@ pulumi.export("error_rate_alert_id", error_rate_alert.name)
 pulumi.export("queue_backlog_alert_id", queue_backlog_alert.name)
 pulumi.export("memory_alert_id", memory_alert.name)
 pulumi.export("service_unavailable_alert_id", service_unavailable_alert.name)
+
+# ==================== Google Drive Validator Cloud Function ====================
+# A lightweight Cloud Function that runs daily to validate the public Google Drive
+# folder for duplicate sequence numbers, invalid filenames, and gaps.
+# Sends Pushbullet notification if issues are detected.
+
+# Pushbullet API key secret (for sending notifications)
+pushbullet_api_key_secret = secretmanager.Secret(
+    "pushbullet-api-key",
+    secret_id="pushbullet-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Service account for the validator Cloud Function
+gdrive_validator_sa = serviceaccount.Account(
+    "gdrive-validator-sa",
+    account_id="gdrive-validator",
+    display_name="Google Drive Validator Function",
+    description="Service account for the GDrive validation Cloud Function",
+)
+
+# Grant the function access to Secret Manager (for Pushbullet API key)
+gdrive_validator_secrets_iam = gcp.projects.IAMMember(
+    "gdrive-validator-secrets-access",
+    project=project_id,
+    role="roles/secretmanager.secretAccessor",
+    member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Cloud Storage bucket for function source code
+function_bucket = storage.Bucket(
+    "gdrive-validator-function-source",
+    name=f"gdrive-validator-source-{project_id}",
+    location="US-CENTRAL1",
+    force_destroy=True,  # OK to delete since it just holds function code
+    uniform_bucket_level_access=True,
+)
+
+# Upload function source code as a ZIP archive
+# Note: The actual upload is done via gcloud or Pulumi's archive resource
+# For now, we reference the local directory - actual deployment uses gcloud
+gdrive_validator_function = gcp.cloudfunctionsv2.Function(
+    "gdrive-validator-function",
+    name="gdrive-validator",
+    location="us-central1",
+    description="Validates Nomad Karaoke Google Drive folder for duplicates and issues",
+    build_config=gcp.cloudfunctionsv2.FunctionBuildConfigArgs(
+        runtime="python312",
+        entry_point="validate_gdrive",
+        source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceArgs(
+            storage_source=gcp.cloudfunctionsv2.FunctionBuildConfigSourceStorageSourceArgs(
+                bucket=function_bucket.name,
+                object="gdrive-validator-source.zip",
+            ),
+        ),
+    ),
+    service_config=gcp.cloudfunctionsv2.FunctionServiceConfigArgs(
+        available_memory="256M",
+        timeout_seconds=300,  # 5 minutes should be plenty for listing files
+        min_instance_count=0,
+        max_instance_count=1,
+        service_account_email=gdrive_validator_sa.email,
+        environment_variables={
+            "GDRIVE_FOLDER_ID": "1laRKAyxo0v817SstfM5XkpbWiNKNAMSX",
+            # Set to "true" for daily summary notifications, "false" for issues-only
+            "NOTIFY_ON_SUCCESS": "true",
+        },
+        secret_environment_variables=[
+            gcp.cloudfunctionsv2.FunctionServiceConfigSecretEnvironmentVariableArgs(
+                key="PUSHBULLET_API_KEY",
+                project_id=project_id,
+                secret=pushbullet_api_key_secret.secret_id,
+                version="latest",
+            ),
+        ],
+    ),
+)
+
+# Allow Cloud Scheduler to invoke the function
+gdrive_validator_invoker = gcp.cloudfunctionsv2.FunctionIamMember(
+    "gdrive-validator-scheduler-invoker",
+    project=project_id,
+    location="us-central1",
+    cloud_function=gdrive_validator_function.name,
+    role="roles/cloudfunctions.invoker",
+    member=f"serviceAccount:service-{project.number}@gcp-sa-cloudscheduler.iam.gserviceaccount.com",
+)
+
+# Also allow the function's service account to invoke itself (for Cloud Scheduler)
+gdrive_validator_sa_invoker = gcp.cloudfunctionsv2.FunctionIamMember(
+    "gdrive-validator-sa-invoker",
+    project=project_id,
+    location="us-central1",
+    cloud_function=gdrive_validator_function.name,
+    role="roles/cloudfunctions.invoker",
+    member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Cloud Scheduler job to trigger validation daily at 6 AM Pacific
+gdrive_validator_scheduler = cloudscheduler.Job(
+    "gdrive-validator-scheduler",
+    name="gdrive-validator-daily",
+    description="Daily validation of Nomad Karaoke Google Drive folder",
+    region="us-central1",
+    schedule="0 21 * * *",  # 9:00 PM every day
+    time_zone="America/New_York",
+    http_target=cloudscheduler.JobHttpTargetArgs(
+        uri=gdrive_validator_function.url,
+        http_method="POST",
+        oidc_token=cloudscheduler.JobHttpTargetOidcTokenArgs(
+            service_account_email=gdrive_validator_sa.email,
+        ),
+    ),
+    retry_config=cloudscheduler.JobRetryConfigArgs(
+        retry_count=2,
+        min_backoff_duration="60s",
+        max_backoff_duration="300s",
+    ),
+)
+
+# Export GDrive validator resources
+pulumi.export("gdrive_validator_function_url", gdrive_validator_function.url)
+pulumi.export("gdrive_validator_function_name", gdrive_validator_function.name)
+pulumi.export("gdrive_validator_scheduler_name", gdrive_validator_scheduler.name)
+pulumi.export("gdrive_validator_service_account", gdrive_validator_sa.email)
 

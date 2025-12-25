@@ -17,6 +17,8 @@ This Pulumi program manages:
 - **Service Account**: For Cloud Run with appropriate IAM roles
 - **Secrets**: Secret Manager secrets (you add the values)
 - **IAM Bindings**: All necessary permissions
+- **Cloud Function**: GDrive Validator for checking public share folder
+- **Cloud Scheduler**: Daily trigger for GDrive validation
 
 ## Prerequisites
 
@@ -106,6 +108,10 @@ echo -n "https://your.red.url" | \
 # Add OPS API key (for flacfetch audio search - private tracker)
 echo -n "your-ops-api-key" | \
   gcloud secrets versions add ops-api-key --data-file=-
+
+# Add Pushbullet API key (for GDrive validator notifications)
+echo -n "your-pushbullet-api-key" | \
+  gcloud secrets versions add pushbullet-api-key --data-file=-
 ```
 
 Or use Pulumi config secrets:
@@ -205,10 +211,54 @@ If multiple people are working:
 pulumi refresh  # Sync state with actual cloud resources
 ```
 
+## Deploying GDrive Validator
+
+The GDrive Validator is a Cloud Function that runs daily to check for duplicate
+sequence numbers, invalid filenames, and gaps in your public Google Drive folder.
+
+### Initial Setup
+
+1. Add your Pushbullet API key to Secret Manager:
+   ```bash
+   echo -n "your-pushbullet-api-key" | \
+     gcloud secrets versions add pushbullet-api-key --data-file=-
+   ```
+
+2. Deploy the function:
+   ```bash
+   cd functions/gdrive_validator
+   ./deploy.sh
+   ```
+
+3. Test the function manually:
+   ```bash
+   gcloud functions call gdrive-validator --region=us-central1
+   ```
+
+### How It Works
+
+- Runs daily at 9 PM EST (6 PM Pacific) via Cloud Scheduler
+- Lists all files in your Google Drive folder (CDG, MP4, MP4-720p subfolders)
+- Checks for:
+  - Duplicate sequence numbers (e.g., two files with NOMAD-1107)
+  - Invalid filename formats (should be `NOMAD-XXXX - Artist - Title.ext`)
+  - Sequence gaps (with configurable known gaps)
+- Sends Pushbullet notification if issues are found
+- Returns JSON with validation results
+
+### Configuration
+
+The function uses environment variables:
+- `GDRIVE_FOLDER_ID`: The Google Drive folder ID to validate (default: your public share)
+- `PUSHBULLET_API_KEY`: From Secret Manager, for sending notifications
+
+Known gaps are configured in `main.py` and should match your local `validate_and_sync.py`.
+
 ## Next Steps
 
 1. Run `pulumi up` to create infrastructure
 2. Add secret values
 3. Build and deploy Cloud Run service
-4. Update documentation to reference Pulumi workflow
+4. Deploy GDrive validator function
+5. Update documentation to reference Pulumi workflow
 
