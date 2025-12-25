@@ -140,7 +140,18 @@ class RemoteKaraokeClient:
             return None
     
     def refresh_auth(self) -> bool:
-        """Refresh authentication token."""
+        """Refresh authentication token.
+        
+        Only refreshes if we're using a gcloud-based token. If the user
+        provided a static token via KARAOKE_GEN_AUTH_TOKEN, we keep that
+        since it doesn't expire like gcloud identity tokens.
+        """
+        # Don't refresh if using a static admin token from env
+        if os.environ.get('KARAOKE_GEN_AUTH_TOKEN'):
+            # Already have a valid static token, no need to refresh
+            return True
+        
+        # Try to refresh gcloud identity token
         token = self._get_auth_token_from_gcloud()
         if token:
             self.config.auth_token = token

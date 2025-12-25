@@ -197,9 +197,10 @@ class TestRemoteKaraokeClient:
         token = client._get_auth_token_from_gcloud()
         assert token is None
     
+    @patch.dict(os.environ, {}, clear=True)
     @patch('subprocess.run')
-    def test_refresh_auth_success(self, mock_run, client):
-        """Test refreshing auth token."""
+    def test_refresh_auth_success_gcloud(self, mock_run, client):
+        """Test refreshing auth token via gcloud when no env token is set."""
         mock_run.return_value = MagicMock(
             stdout="new-token\n",
             returncode=0
@@ -209,6 +210,16 @@ class TestRemoteKaraokeClient:
         assert client.config.auth_token == "new-token"
         assert client.session.headers['Authorization'] == 'Bearer new-token'
     
+    @patch.dict(os.environ, {'KARAOKE_GEN_AUTH_TOKEN': 'static-admin-token'})
+    def test_refresh_auth_keeps_env_token(self, client):
+        """Test that refresh_auth keeps static env token instead of calling gcloud."""
+        original_token = client.config.auth_token
+        result = client.refresh_auth()
+        assert result is True
+        # Token should NOT be changed when env var is set
+        assert client.config.auth_token == original_token
+    
+    @patch.dict(os.environ, {}, clear=True)
     @patch('subprocess.run')
     def test_refresh_auth_failure(self, mock_run, client):
         """Test handling auth refresh failure."""
