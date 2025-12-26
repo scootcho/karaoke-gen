@@ -143,7 +143,8 @@ class ApiError extends Error {
   }
 }
 
-function extractErrorMessage(data: any, fallback: string): string {
+// Exported for testing
+export function extractErrorMessage(data: any, fallback: string): string {
   // Handle various error response formats
   if (typeof data?.detail === 'string') return data.detail;
   if (typeof data?.message === 'string') return data.message;

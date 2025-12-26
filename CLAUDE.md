@@ -77,7 +77,7 @@ This ensures every commit pushed to the repository has a unique version number f
 
 **Before committing and pushing ANY changes, you MUST run the full test suite.**
 
-### Test Command
+### Backend Test Command
 
 ```bash
 make test 2>&1 | tail -n 500
@@ -88,14 +88,34 @@ make test 2>&1 | tail -n 500
 - Always pipe output through `tail -n 500` to limit output and preserve context window
 - The tail output will show test results and any failures at the end
 
-This is the **only command you need**. It runs all tests in order and fails fast if any test fails:
+This runs all backend tests in order and fails fast if any test fails:
 1. Unit tests (karaoke_gen package) with coverage check
 2. Backend unit tests
 3. E2E integration tests with emulators (auto-starts/stops emulators)
 
+### Frontend Test Command
+
+When working in the `frontend/` directory, run:
+
+```bash
+cd frontend && npm run test:all 2>&1 | tail -n 200
+```
+
+This runs:
+1. **Unit tests** (Jest) - Component and utility tests
+2. **E2E tests** (Playwright) - Browser-based integration tests
+
+**Note:** E2E tests require `KARAOKE_ACCESS_TOKEN` environment variable to be set in `frontend/.env.local`.
+
+Individual test commands:
+- `npm run test:unit` - Run unit tests only
+- `npm run test:e2e` - Run E2E tests only
+- `npm run test:ci` - Run unit tests with coverage
+
 ### Pre-commit Checklist
 
-- [ ] `make test` passes
+- [ ] `make test` passes (for backend changes)
+- [ ] `cd frontend && npm run test:all` passes (for frontend changes)
 - [ ] Version in `pyproject.toml` has been bumped
 - [ ] `coderabbit review --plain` has been run to get comprehensive analysis and suggestions for cleaner, more maintainable code. Apply the feedback to improve accessibility, structure, and best practices.
 

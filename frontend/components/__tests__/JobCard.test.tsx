@@ -1,8 +1,10 @@
 /**
  * Tests for JobCard component
+ *
+ * Note: Job cards are no longer collapsible - details are always visible
  */
 
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { JobCard } from '../job/JobCard'
 import { Job } from '@/lib/api'
 import { useAutoMode } from '@/lib/auto-mode'
@@ -63,14 +65,19 @@ describe('JobCard', () => {
     expect(screen.getByText('Test Artist - Test Song')).toBeInTheDocument()
   })
 
-  it('shows job ID in expanded details', () => {
+  it('shows job ID (details always visible)', () => {
     render(<JobCard job={mockJob} onRefresh={mockOnRefresh} />)
 
-    // Expand details
-    fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
+    // Details are always visible now (no need to click to expand)
     expect(screen.getByText(/Job ID:/)).toBeInTheDocument()
     expect(screen.getByText('123')).toBeInTheDocument()
+  })
+
+  it('shows job actions (details always visible)', () => {
+    render(<JobCard job={mockJob} onRefresh={mockOnRefresh} />)
+
+    // Actions should be immediately visible
+    expect(screen.getByTestId('job-actions')).toBeInTheDocument()
   })
 
   it('shows progress bar for processing jobs', () => {
@@ -80,14 +87,51 @@ describe('JobCard', () => {
     expect(progressBar).toBeInTheDocument()
   })
 
+  it('does not show progress bar when progress is 0', () => {
+    const noProgressJob = { ...mockJob, progress: 0 }
+    render(<JobCard job={noProgressJob} onRefresh={mockOnRefresh} />)
+
+    const progressBar = document.querySelector('[style*="width: 0%"]')
+    expect(progressBar).not.toBeInTheDocument()
+  })
+
+  it('does not show progress bar when job is complete', () => {
+    const completeJob = { ...mockJob, status: 'complete', progress: 100 }
+    render(<JobCard job={completeJob} onRefresh={mockOnRefresh} />)
+
+    const progressBar = document.querySelector('[class*="bg-amber-500"]')
+    expect(progressBar).not.toBeInTheDocument()
+  })
+
   it('shows error message for failed jobs', () => {
     const failedJob = { ...mockJob, status: 'failed', error_message: 'Something went wrong' }
     render(<JobCard job={failedJob} onRefresh={mockOnRefresh} />)
 
-    // Expand details
-    fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+  })
+
+  it('applies orange border for interactive jobs', () => {
+    const interactiveJob = { ...mockJob, status: 'awaiting_review' }
+    const { container } = render(<JobCard job={interactiveJob} onRefresh={mockOnRefresh} />)
+
+    const card = container.firstChild
+    expect(card).toHaveClass('border-orange-500/50')
+  })
+
+  it('applies green border for complete jobs', () => {
+    const completeJob = { ...mockJob, status: 'complete' }
+    const { container } = render(<JobCard job={completeJob} onRefresh={mockOnRefresh} />)
+
+    const card = container.firstChild
+    expect(card).toHaveClass('border-green-500/30')
+  })
+
+  it('applies red border for failed jobs', () => {
+    const failedJob = { ...mockJob, status: 'failed' }
+    const { container } = render(<JobCard job={failedJob} onRefresh={mockOnRefresh} />)
+
+    const card = container.firstChild
+    expect(card).toHaveClass('border-red-500/30')
   })
 
   describe('when auto-mode is disabled', () => {
@@ -98,12 +142,9 @@ describe('JobCard', () => {
       })
     })
 
-    it('shows lyrics review button for awaiting_review status', () => {
+    it('shows lyrics review link for awaiting_review status', () => {
       const reviewJob = { ...mockJob, status: 'awaiting_review' }
       render(<JobCard job={reviewJob} onRefresh={mockOnRefresh} />)
-
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
 
       const reviewLink = screen.getByText('Review Lyrics')
       expect(reviewLink).toBeInTheDocument()
@@ -114,18 +155,12 @@ describe('JobCard', () => {
       const audioSelectionJob = { ...mockJob, status: 'awaiting_audio_selection' }
       render(<JobCard job={audioSelectionJob} onRefresh={mockOnRefresh} />)
 
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
       expect(screen.getByRole('button', { name: 'Select Audio Source' })).toBeInTheDocument()
     })
 
     it('shows instrumental selection button for awaiting_instrumental_selection status', () => {
       const instrumentalJob = { ...mockJob, status: 'awaiting_instrumental_selection' }
       render(<JobCard job={instrumentalJob} onRefresh={mockOnRefresh} />)
-
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
 
       expect(screen.getByRole('button', { name: 'Select Instrumental' })).toBeInTheDocument()
     })
@@ -143,9 +178,6 @@ describe('JobCard', () => {
       const reviewJob = { ...mockJob, status: 'awaiting_review' }
       render(<JobCard job={reviewJob} onRefresh={mockOnRefresh} />)
 
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
       expect(screen.getByText(/Will auto-accept/)).toBeInTheDocument()
       expect(screen.queryByText('Review Lyrics')).not.toBeInTheDocument()
     })
@@ -154,9 +186,6 @@ describe('JobCard', () => {
       const instrumentalJob = { ...mockJob, status: 'awaiting_instrumental_selection' }
       render(<JobCard job={instrumentalJob} onRefresh={mockOnRefresh} />)
 
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
       expect(screen.getByText(/Will auto-select clean/)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Select Instrumental' })).not.toBeInTheDocument()
     })
@@ -164,9 +193,6 @@ describe('JobCard', () => {
     it('shows auto-select message for awaiting_audio_selection status', () => {
       const audioJob = { ...mockJob, status: 'awaiting_audio_selection' }
       render(<JobCard job={audioJob} onRefresh={mockOnRefresh} />)
-
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
 
       expect(screen.getByText(/Will auto-select first/)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Select Audio Source' })).not.toBeInTheDocument()
@@ -181,9 +207,6 @@ describe('JobCard', () => {
       const reviewJob = { ...mockJob, status: 'awaiting_review' }
       render(<JobCard job={reviewJob} onRefresh={mockOnRefresh} />)
 
-      // Expand details
-      fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
       expect(screen.getByText(/Auto-processing.../)).toBeInTheDocument()
     })
   })
@@ -192,28 +215,20 @@ describe('JobCard', () => {
     const completeJob = { ...mockJob, status: 'complete' }
     render(<JobCard job={completeJob} onRefresh={mockOnRefresh} />)
 
-    // Expand details
-    fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
     expect(screen.getByTestId('output-links')).toBeInTheDocument()
   })
 
-  it('toggles details on click', () => {
-    render(<JobCard job={mockJob} onRefresh={mockOnRefresh} />)
+  it('handles unknown artist gracefully', () => {
+    const noArtistJob = { ...mockJob, artist: undefined }
+    render(<JobCard job={noArtistJob} onRefresh={mockOnRefresh} />)
 
-    // Should not show actions initially
-    expect(screen.queryByTestId('job-actions')).not.toBeInTheDocument()
+    expect(screen.getByText('Unknown - Test Song')).toBeInTheDocument()
+  })
 
-    // Click to expand
-    fireEvent.click(screen.getByText('Test Artist - Test Song'))
+  it('handles unknown title gracefully', () => {
+    const noTitleJob = { ...mockJob, title: undefined }
+    render(<JobCard job={noTitleJob} onRefresh={mockOnRefresh} />)
 
-    // Should show actions now
-    expect(screen.getByTestId('job-actions')).toBeInTheDocument()
-
-    // Click to collapse
-    fireEvent.click(screen.getByText('Test Artist - Test Song'))
-
-    // Should hide actions again
-    expect(screen.queryByTestId('job-actions')).not.toBeInTheDocument()
+    expect(screen.getByText('Test Artist - Unknown')).toBeInTheDocument()
   })
 })

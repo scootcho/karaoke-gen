@@ -181,9 +181,10 @@ test.describe('Karaoke Generation', () => {
     await page.waitForTimeout(2000);
 
     // Check for either success (job appears) or error message
-    const hasError = await page.locator('.text-red-400').isVisible();
+    const errorDiv = page.locator('div.text-red-400').first();
+    const hasError = await errorDiv.isVisible().catch(() => false);
     if (hasError) {
-      const errorText = await page.locator('.text-red-400').textContent();
+      const errorText = await errorDiv.textContent();
       console.log('Search error:', errorText);
     }
 
@@ -232,8 +233,8 @@ test.describe('Karaoke Generation', () => {
       await page.waitForTimeout(10000);
 
       // Check for error
-      const errorLocator = page.locator('.text-red-400');
-      if (await errorLocator.isVisible()) {
+      const errorLocator = page.locator('div.text-red-400').first();
+      if (await errorLocator.isVisible().catch(() => false)) {
         const errorText = await errorLocator.textContent();
         console.log('Error:', errorText);
 
