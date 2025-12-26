@@ -2,16 +2,33 @@
 
 import { useState, useEffect } from "react"
 import { api, Job } from "@/lib/api"
+import { useAutoMode, getAutoModeFromUrl } from "@/lib/auto-mode"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Music2, RefreshCw, Loader2 } from "lucide-react"
+import { Music2, RefreshCw, Loader2, Zap, ZapOff } from "lucide-react"
 import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
 import { AuthBanner } from "@/components/auth-banner"
+import { AutoProcessor } from "@/components/AutoProcessor"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export default function HomePage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+  const { enabled: autoModeEnabled, setEnabled: setAutoMode, toggle: toggleAutoMode } = useAutoMode()
+
+  // Initialize auto-mode from URL parameter on mount
+  useEffect(() => {
+    const urlAutoMode = getAutoModeFromUrl()
+    if (urlAutoMode) {
+      setAutoMode(true)
+    }
+  }, [setAutoMode])
 
   // Load jobs on mount
   useEffect(() => {
@@ -34,6 +51,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* AutoProcessor - handles non-interactive mode */}
+      <AutoProcessor jobs={jobs} onJobsChanged={loadJobs} />
+
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -44,23 +64,79 @@ export default function HomePage() {
               <p className="text-xs text-slate-400">by Nomad Karaoke</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadJobs}
-            disabled={isLoadingJobs}
-            className="text-slate-400 hover:text-white"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleAutoMode}
+                    className={`${
+                      autoModeEnabled
+                        ? "text-amber-400 hover:text-amber-300 bg-amber-500/10"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {autoModeEnabled ? (
+                      <Zap className="w-4 h-4 mr-2" />
+                    ) : (
+                      <ZapOff className="w-4 h-4 mr-2" />
+                    )}
+                    Auto
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="font-medium">
+                    {autoModeEnabled ? "Auto Mode Enabled" : "Auto Mode Disabled"}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {autoModeEnabled
+                      ? "Jobs will auto-complete review and select clean instrumental (like -y flag)"
+                      : "Click to enable non-interactive mode"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadJobs}
+              disabled={isLoadingJobs}
+              className="text-slate-400 hover:text-white"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
+        {/* Auto Mode Banner */}
+        {autoModeEnabled && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-center gap-3">
+            <Zap className="w-5 h-5 text-amber-400 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-amber-200 font-medium">Non-Interactive Mode Active</p>
+              <p className="text-xs text-amber-200/70 mt-0.5">
+                Jobs will automatically accept lyrics and select clean instrumental (equivalent to -y flag)
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleAutoMode}
+              className="text-amber-200 hover:text-amber-100 hover:bg-amber-500/20"
+            >
+              Disable
+            </Button>
+          </div>
+        )}
+
         {/* Authentication Banner */}
         <AuthBanner />
-        
+
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Submit Job Card */}
           <Card className="border-slate-800 bg-slate-900/50 backdrop-blur">

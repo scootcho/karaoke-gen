@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { Job } from "@/lib/api"
+import { useAutoMode } from "@/lib/auto-mode"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { 
+import {
   Loader2, CheckCircle2, XCircle, Clock, AlertCircle,
-  ChevronDown, ChevronUp, ExternalLink
+  ChevronDown, ChevronUp, ExternalLink, Zap
 } from "lucide-react"
 import { JobActions } from "./JobActions"
 import { JobLogs } from "./JobLogs"
@@ -63,14 +64,22 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
   const [showLogs, setShowLogs] = useState(false)
   const [showAudioSearch, setShowAudioSearch] = useState(false)
   const [showInstrumentalSelector, setShowInstrumentalSelector] = useState(false)
+  const { enabled: autoModeEnabled, isProcessing: isAutoProcessing } = useAutoMode()
 
   const createdAt = new Date(job.created_at).toLocaleString()
-  const isInteractive = job.status === "awaiting_review" || 
+  const isInteractive = job.status === "awaiting_review" ||
                         job.status === "awaiting_instrumental_selection" ||
                         job.status === "awaiting_audio_selection"
   const isComplete = job.status === "complete"
   const isFailed = job.status === "failed"
   const isProcessing = !isComplete && !isFailed && job.status !== "cancelled"
+
+  // Check if this job is being auto-processed
+  const isBeingAutoProcessed = autoModeEnabled && isInteractive && (
+    isAutoProcessing(`${job.job_id}-review`) ||
+    isAutoProcessing(`${job.job_id}-instrumental`) ||
+    isAutoProcessing(`${job.job_id}-audio`)
+  )
 
   return (
     <div 
@@ -121,41 +130,62 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
 
           {isInteractive && (
             <div className="flex flex-wrap gap-2">
-              {job.status === "awaiting_review" && (
-                <a
-                  href={`https://lyrics.nomadkaraoke.com/?job=${job.job_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Review Lyrics
-                </a>
-              )}
-              {job.status === "awaiting_audio_selection" && (
-                <Button
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowAudioSearch(true)
-                  }}
-                  className="text-xs bg-blue-600 hover:bg-blue-500"
-                >
-                  Select Audio Source
-                </Button>
-              )}
-              {job.status === "awaiting_instrumental_selection" && (
-                <Button
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowInstrumentalSelector(true)
-                  }}
-                  className="text-xs bg-pink-600 hover:bg-pink-500"
-                >
-                  Select Instrumental
-                </Button>
+              {autoModeEnabled ? (
+                // Auto-mode indicator
+                <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded">
+                  {isBeingAutoProcessed ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Auto-processing...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3 h-3" />
+                      Will auto-{job.status === "awaiting_review" ? "accept" :
+                                 job.status === "awaiting_instrumental_selection" ? "select clean" :
+                                 "select first"}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {job.status === "awaiting_review" && (
+                    <a
+                      href={`https://lyrics.nomadkaraoke.com/?job=${job.job_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Review Lyrics
+                    </a>
+                  )}
+                  {job.status === "awaiting_audio_selection" && (
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowAudioSearch(true)
+                      }}
+                      className="text-xs bg-blue-600 hover:bg-blue-500"
+                    >
+                      Select Audio Source
+                    </Button>
+                  )}
+                  {job.status === "awaiting_instrumental_selection" && (
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowInstrumentalSelector(true)
+                      }}
+                      className="text-xs bg-pink-600 hover:bg-pink-500"
+                    >
+                      Select Instrumental
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           )}

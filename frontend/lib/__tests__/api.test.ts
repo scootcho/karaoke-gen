@@ -26,7 +26,8 @@ describe("API Client", () => {
       const result = await api.listJobs()
       expect(result).toEqual(mockJobs)
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/jobs")
+        expect.stringContaining("/api/jobs"),
+        expect.any(Object)
       )
     })
 
@@ -47,12 +48,9 @@ describe("API Client", () => {
       })
 
       await api.listJobs({ status: "complete", limit: 10 })
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("status=complete")
-      )
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("limit=10")
-      )
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0][0]
+      expect(callArgs).toContain("status=complete")
+      expect(callArgs).toContain("limit=10")
     })
   })
 
@@ -68,7 +66,8 @@ describe("API Client", () => {
       const result = await api.getJob("123")
       expect(result).toEqual(mockJob)
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/jobs/123")
+        expect.stringContaining("/api/jobs/123"),
+        expect.any(Object)
       )
     })
   })
@@ -112,7 +111,7 @@ describe("API Client", () => {
         expect.stringContaining("/api/audio-search/search"),
         expect.objectContaining({
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
         })
       )
     })
@@ -131,9 +130,8 @@ describe("API Client", () => {
 
       const result = await api.getJobLogs("123")
       expect(result).toEqual(mockLogs)
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/api/jobs/123/logs")
-      )
+      const callArgs = (global.fetch as jest.Mock).mock.calls[0][0]
+      expect(callArgs).toContain("/api/jobs/123/logs")
     })
 
     it("should handle missing logs field", async () => {
@@ -182,5 +180,64 @@ describe("API Client", () => {
       )
     })
   })
-})
 
+  describe("completeReview", () => {
+    it("should complete lyrics review", async () => {
+      const mockResponse = { status: "success", job_status: "review_complete", message: "Review completed" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.completeReview("123")
+      expect(result).toEqual(mockResponse)
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/123/complete-review"),
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+  })
+
+  describe("selectInstrumental", () => {
+    it("should select instrumental", async () => {
+      const mockResponse = { status: "success", job_status: "instrumental_selected", selection: "clean", message: "Instrumental selected" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.selectInstrumental("123", "clean")
+      expect(result).toEqual(mockResponse)
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/123/select-instrumental"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        })
+      )
+    })
+  })
+
+  describe("selectAudioResult", () => {
+    it("should select audio search result", async () => {
+      const mockResponse = { status: "success", message: "Audio selected" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.selectAudioResult("123", 0)
+      expect(result).toEqual(mockResponse)
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/audio-search/123/select"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        })
+      )
+    })
+  })
+})
