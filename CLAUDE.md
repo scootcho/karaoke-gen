@@ -61,8 +61,13 @@ This ensures every commit pushed to the repository has a unique version number f
 ### Test Command
 
 ```bash
-make test
+make test 2>&1 | tail -n 500
 ```
+
+**Important for AI agents:**
+- Set a **10 minute timeout** when running tests (they can take a while with emulators)
+- Always pipe output through `tail -n 500` to limit output and preserve context window
+- The tail output will show test results and any failures at the end
 
 This is the **only command you need**. It runs all tests in order and fails fast if any test fails:
 1. Unit tests (karaoke_gen package) with coverage check
