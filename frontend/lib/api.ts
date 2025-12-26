@@ -106,6 +106,14 @@ export interface AudioSearchResult {
   is_lossless?: boolean;
   year?: number;
   album?: string;
+  // Additional fields from CLI
+  category?: string;
+  release_type?: string;
+  label?: string;
+  size_mb?: number;
+  filename?: string;
+  views?: number;
+  bitrate?: number;
 }
 
 export interface AudioSearchResponse {
