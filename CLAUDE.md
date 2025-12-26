@@ -8,6 +8,25 @@ This document contains guidelines and rules for AI assistants working on this co
 
 Create descriptive branch names like `feature/add-discord-notifications`, `fix/audio-sync-issue`, or `refactor/cleanup-api-routes`.
 
+### Using Git Worktrees
+
+**For non-trivial changes** (new features, multi-file edits, refactors):
+- Create a git worktree in the parent folder before making any file changes:
+  ```bash
+  git worktree add ../karaoke-gen-feat-xyz feature/xyz
+  ```
+- This keeps the main directory clean on `main` and enables parallel work on multiple features
+- Name the worktree folder descriptively, e.g., `../karaoke-gen-fix-audio-sync`
+
+**For trivial changes** (typos, single-line fixes):
+- Creating a branch in the current directory is acceptable
+- Use `git checkout -b fix/typo-xyz` before making changes
+
+**Cleanup:** When done with a worktree, remove it with:
+```bash
+git worktree remove ../karaoke-gen-feat-xyz
+```
+
 ### Creating a Pull Request
 
 Once all changes are complete, tests pass, and commits are pushed, create a PR with:
