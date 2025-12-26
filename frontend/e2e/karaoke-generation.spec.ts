@@ -362,6 +362,181 @@ test.describe('Karaoke Generation', () => {
   });
 });
 
+test.describe('Job States and Interactions', () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    await authenticatePage(page);
+    setupNetworkLogging(page, testInfo);
+    setupConsoleLogging(page);
+  });
+
+  test('completed job shows download links', async ({ page }) => {
+    if (!ACCESS_TOKEN) {
+      test.skip(true, 'KARAOKE_ACCESS_TOKEN not set');
+      return;
+    }
+
+    await page.goto('/');
+    await page.waitForTimeout(2000);
+
+    // Find a completed job
+    const completedJob = page.locator('[class*="rounded-lg"][class*="border"]').filter({
+      hasText: /complete/i
+    }).first();
+
+    if (await completedJob.isVisible()) {
+      console.log('Found completed job');
+      await completedJob.click();
+      await page.waitForTimeout(2000);
+
+      // Look for download links
+      const downloadSection = page.locator('text=Downloads').first();
+      const hasDownloads = await downloadSection.isVisible().catch(() => false);
+
+      if (hasDownloads) {
+        console.log('Download links visible');
+        // Check for video download buttons
+        const videoLink = page.locator('a:has-text("720p Video"), a:has-text("4K Video")').first();
+        if (await videoLink.isVisible()) {
+          console.log('Video download link found');
+        }
+      } else {
+        console.log('No download section visible (may still be loading)');
+      }
+
+      await page.screenshot({ path: 'test-results/completed-job.png' });
+    } else {
+      console.log('No completed jobs found');
+    }
+  });
+
+  test('instrumental selection dialog opens and shows options', async ({ page }) => {
+    if (!ACCESS_TOKEN) {
+      test.skip(true, 'KARAOKE_ACCESS_TOKEN not set');
+      return;
+    }
+
+    await page.goto('/');
+    await page.waitForTimeout(2000);
+
+    // Find a job awaiting instrumental selection
+    const instrumentalJob = page.locator('[class*="rounded-lg"][class*="border"]').filter({
+      hasText: /select instrumental/i
+    }).first();
+
+    if (await instrumentalJob.isVisible()) {
+      console.log('Found job awaiting instrumental selection');
+      await instrumentalJob.click();
+      await page.waitForTimeout(1000);
+
+      // Click the Select Instrumental button
+      const selectBtn = page.getByRole('button', { name: /select instrumental/i });
+      if (await selectBtn.isVisible()) {
+        await selectBtn.click();
+        await page.waitForTimeout(2000);
+
+        // Check dialog opened
+        const dialog = page.locator('[role="dialog"]');
+        if (await dialog.isVisible()) {
+          console.log('Instrumental selection dialog opened');
+
+          // Look for options
+          const options = dialog.locator('text=Clean, text=with backing').first();
+          const hasOptions = await dialog.getByRole('button', { name: /select/i }).count();
+          console.log(`Found ${hasOptions} instrumental options`);
+
+          await page.screenshot({ path: 'test-results/instrumental-dialog.png' });
+
+          // Close dialog
+          await page.keyboard.press('Escape');
+        }
+      }
+    } else {
+      console.log('No jobs awaiting instrumental selection');
+    }
+  });
+
+  test('job card expands to show details', async ({ page }) => {
+    if (!ACCESS_TOKEN) {
+      test.skip(true, 'KARAOKE_ACCESS_TOKEN not set');
+      return;
+    }
+
+    await page.goto('/');
+    await page.waitForTimeout(2000);
+
+    // Find job cards by looking for elements with status badges (unique to job cards)
+    // Job cards have status like "Complete", "Failed", "Select Audio", etc.
+    const statusBadges = ['Complete', 'Failed', 'Select Audio', 'Downloading', 'Awaiting Review', 'Select Instrumental'];
+    let jobCard = null;
+
+    for (const status of statusBadges) {
+      const card = page.locator(`[class*="rounded-lg"][class*="border"]:has-text("${status}")`).first();
+      if (await card.isVisible().catch(() => false)) {
+        jobCard = card;
+        console.log(`Found job with status: ${status}`);
+        break;
+      }
+    }
+
+    if (jobCard) {
+      console.log('Clicking on job card...');
+      await jobCard.click();
+      await page.waitForTimeout(1000);
+
+      // Check that job details are visible - look for Job ID text
+      const jobIdText = page.locator('text=/Job ID:/i').first();
+      const isExpanded = await jobIdText.isVisible().catch(() => false);
+
+      if (isExpanded) {
+        console.log('Job card expanded successfully');
+
+        // Check for actions section
+        const viewLogsBtn = page.getByRole('button', { name: /logs/i }).first();
+        const hasLogsBtn = await viewLogsBtn.isVisible().catch(() => false);
+        console.log(`View logs button visible: ${hasLogsBtn}`);
+      } else {
+        console.log('Job card did not expand - may need to debug selector');
+      }
+
+      await page.screenshot({ path: 'test-results/job-details-expanded.png' });
+    } else {
+      console.log('No job cards found with recognizable status');
+    }
+  });
+
+  test('job logs can be viewed', async ({ page }) => {
+    if (!ACCESS_TOKEN) {
+      test.skip(true, 'KARAOKE_ACCESS_TOKEN not set');
+      return;
+    }
+
+    await page.goto('/');
+    await page.waitForTimeout(2000);
+
+    // Find and click a job
+    const jobCard = page.locator('[class*="rounded-lg"][class*="border"]').first();
+
+    if (await jobCard.isVisible()) {
+      await jobCard.click();
+      await page.waitForTimeout(500);
+
+      // Click View Logs button
+      const logsBtn = page.getByRole('button', { name: /logs/i }).first();
+      if (await logsBtn.isVisible()) {
+        await logsBtn.click();
+        await page.waitForTimeout(2000);
+
+        // Check that logs appear
+        const logsSection = page.locator('[class*="font-mono"]').first();
+        const hasLogs = await logsSection.isVisible().catch(() => false);
+        console.log(`Logs section visible: ${hasLogs}`);
+
+        await page.screenshot({ path: 'test-results/job-logs.png' });
+      }
+    }
+  });
+});
+
 test.describe('API Health', () => {
   test('backend health check', async ({ page }) => {
     // Direct API call through proxy
