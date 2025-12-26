@@ -73,6 +73,7 @@ This is the **only command you need**. It runs all tests in order and fails fast
 
 - [ ] `make test` passes
 - [ ] Version in `pyproject.toml` has been bumped
+- [ ] `coderabbit review --plain` has been run to get comprehensive analysis and suggestions for cleaner, more maintainable code. Apply the feedback to improve accessibility, structure, and best practices.
 
 **Do not commit or push code that fails tests. Fix any test failures before proceeding.**
 
