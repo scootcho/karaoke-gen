@@ -143,6 +143,25 @@ class ApiError extends Error {
   }
 }
 
+function extractErrorMessage(data: any, fallback: string): string {
+  // Handle various error response formats
+  if (typeof data?.detail === 'string') return data.detail;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error === 'string') return data.error;
+  // Handle nested error objects
+  if (data?.detail?.message) return String(data.detail.message);
+  if (data?.detail?.error) return String(data.detail.error);
+  // If detail is an object, try to stringify it meaningfully
+  if (data?.detail && typeof data.detail === 'object') {
+    try {
+      return JSON.stringify(data.detail);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let data;
@@ -152,7 +171,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
       data = { detail: response.statusText };
     }
     throw new ApiError(
-      data.detail || data.message || 'API request failed',
+      extractErrorMessage(data, `Request failed with status ${response.status}`),
       response.status,
       data
     );

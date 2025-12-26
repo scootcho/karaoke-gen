@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo } from "react"
 import { api, AudioSearchResult } from "@/lib/api"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Music2, HardDrive, Calendar, Clock, Users, Eye, FileAudio, Disc3, Building2 } from "lucide-react"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Loader2, Music2, ChevronDown, ChevronUp } from "lucide-react"
+
+// Version from pyproject.toml (single source of truth)
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"
 
 interface AudioSearchDialogProps {
   jobId: string
@@ -14,37 +16,127 @@ interface AudioSearchDialogProps {
   onSelect: () => void
 }
 
-// Category display order and labels
+// Extended result type to include all backend fields
+interface ExtendedAudioSearchResult extends AudioSearchResult {
+  channel?: string
+  view_count?: number
+  formatted_duration?: string
+  formatted_size?: string
+  release_type?: string
+  label?: string
+  edition_info?: string
+  target_file?: string
+  quality_data?: {
+    format?: string
+    bit_depth?: number
+    sample_rate?: number
+    bitrate?: number
+    media?: string
+  }
+}
+
+// Category configuration matching flacfetch
+interface CategoryConfig {
+  name: string
+  maxDisplay: number
+  color: string
+  borderColor: string
+}
+
+const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
+  'TOP SEEDED': { name: 'TOP SEEDED', maxDisplay: 3, color: 'text-amber-400', borderColor: 'border-amber-500/30' },
+  'HI-RES 24-BIT': { name: 'HI-RES 24-BIT', maxDisplay: 3, color: 'text-purple-400', borderColor: 'border-purple-500/30' },
+  'STUDIO ALBUMS': { name: 'STUDIO ALBUMS', maxDisplay: 3, color: 'text-blue-400', borderColor: 'border-blue-500/30' },
+  'SINGLES': { name: 'SINGLES', maxDisplay: 2, color: 'text-cyan-400', borderColor: 'border-cyan-500/30' },
+  'LIVE VERSIONS': { name: 'LIVE VERSIONS', maxDisplay: 2, color: 'text-pink-400', borderColor: 'border-pink-500/30' },
+  'COMPILATIONS': { name: 'COMPILATIONS', maxDisplay: 2, color: 'text-teal-400', borderColor: 'border-teal-500/30' },
+  'VINYL RIPS': { name: 'VINYL RIPS', maxDisplay: 2, color: 'text-orange-400', borderColor: 'border-orange-500/30' },
+  'YOUTUBE/LOSSY': { name: 'YOUTUBE/LOSSY', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
+  'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-slate-400', borderColor: 'border-slate-500/30' },
+}
+
 const CATEGORY_ORDER = [
   'TOP SEEDED',
   'HI-RES 24-BIT',
   'STUDIO ALBUMS',
+  'SINGLES',
   'LIVE VERSIONS',
   'COMPILATIONS',
+  'VINYL RIPS',
   'YOUTUBE/LOSSY',
   'OTHER'
 ]
 
-const CATEGORY_COLORS: Record<string, string> = {
-  'TOP SEEDED': 'text-amber-400 border-amber-500/30',
-  'HI-RES 24-BIT': 'text-purple-400 border-purple-500/30',
-  'STUDIO ALBUMS': 'text-blue-400 border-blue-500/30',
-  'LIVE VERSIONS': 'text-pink-400 border-pink-500/30',
-  'COMPILATIONS': 'text-cyan-400 border-cyan-500/30',
-  'YOUTUBE/LOSSY': 'text-red-400 border-red-500/30',
-  'OTHER': 'text-slate-400 border-slate-500/30',
+// Categorize a single result based on flacfetch logic
+function categorizeResult(result: ExtendedAudioSearchResult): string {
+  const isLossless = result.is_lossless === true
+  const is24Bit = result.quality_data?.bit_depth === 24
+  const seeders = result.seeders ?? 0
+  const provider = result.provider?.toLowerCase() ?? ''
+  const releaseType = result.release_type?.toLowerCase() ?? ''
+  const media = result.quality_data?.media?.toLowerCase() ?? ''
+
+  // YouTube and lossy sources
+  if (provider === 'youtube' || !isLossless) {
+    return 'YOUTUBE/LOSSY'
+  }
+
+  // Top seeded (50+ seeders, lossless)
+  if (isLossless && seeders >= 50) {
+    return 'TOP SEEDED'
+  }
+
+  // Hi-res 24-bit
+  if (isLossless && is24Bit) {
+    return 'HI-RES 24-BIT'
+  }
+
+  // Vinyl rips
+  if (isLossless && media === 'vinyl') {
+    return 'VINYL RIPS'
+  }
+
+  // Live versions
+  if (isLossless && (releaseType === 'live album' || releaseType === 'bootleg' || releaseType.includes('live'))) {
+    return 'LIVE VERSIONS'
+  }
+
+  // Compilations
+  if (isLossless && (releaseType === 'compilation' || releaseType === 'soundtrack' || releaseType === 'anthology')) {
+    return 'COMPILATIONS'
+  }
+
+  // Singles/EPs
+  if (isLossless && (releaseType === 'single' || releaseType === 'ep')) {
+    return 'SINGLES'
+  }
+
+  // Studio albums
+  if (isLossless && (releaseType === 'album' || !releaseType)) {
+    return 'STUDIO ALBUMS'
+  }
+
+  return 'OTHER'
 }
 
 export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearchDialogProps) {
-  const [results, setResults] = useState<AudioSearchResult[]>([])
+  const [results, setResults] = useState<ExtendedAudioSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSelecting, setIsSelecting] = useState<number | null>(null)
   const [error, setError] = useState("")
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  // Debug: Log component version on mount
+  useEffect(() => {
+    console.log(`[AudioSearchDialog] App version: ${APP_VERSION}`)
+  }, [])
 
   // Load results when dialog opens
   useEffect(() => {
     if (open) {
+      console.log(`[AudioSearchDialog v${APP_VERSION}] Dialog opened for job: ${jobId}`)
       loadResults()
+      setExpandedCategories(new Set()) // Reset expanded state
     }
   }, [open, jobId])
 
@@ -52,10 +144,13 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
     setIsLoading(true)
     setError("")
     try {
+      console.log(`[AudioSearchDialog v${APP_VERSION}] Loading results...`)
       const data = await api.getAudioSearchResults(jobId)
-      setResults(data.results || [])
+      console.log(`[AudioSearchDialog v${APP_VERSION}] Raw API response:`, data)
+      console.log(`[AudioSearchDialog v${APP_VERSION}] Results count: ${data.results?.length || 0}`)
+      setResults((data.results || []) as ExtendedAudioSearchResult[])
     } catch (err: any) {
-      console.error("Failed to load search results:", err)
+      console.error(`[AudioSearchDialog v${APP_VERSION}] Failed to load search results:`, err)
       setError(err.message || "Failed to load search results")
     } finally {
       setIsLoading(false)
@@ -64,31 +159,33 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
   // Group results by category
   const groupedResults = useMemo(() => {
-    const groups: Record<string, AudioSearchResult[]> = {}
+    const groups: Record<string, ExtendedAudioSearchResult[]> = {}
 
     for (const result of results) {
-      const category = result.category || 'OTHER'
+      const category = categorizeResult(result)
       if (!groups[category]) {
         groups[category] = []
       }
       groups[category].push(result)
     }
 
-    // Sort categories by predefined order
-    const sortedGroups: [string, AudioSearchResult[]][] = []
+    // Sort by category order
+    const sortedGroups: Array<{ category: string; results: ExtendedAudioSearchResult[]; config: CategoryConfig }> = []
     for (const cat of CATEGORY_ORDER) {
-      if (groups[cat]) {
-        sortedGroups.push([cat, groups[cat]])
-        delete groups[cat]
+      if (groups[cat] && groups[cat].length > 0) {
+        sortedGroups.push({
+          category: cat,
+          results: groups[cat],
+          config: CATEGORY_CONFIG[cat]
+        })
       }
-    }
-    // Add any remaining categories
-    for (const [cat, items] of Object.entries(groups)) {
-      sortedGroups.push([cat, items])
     }
 
     return sortedGroups
   }, [results])
+
+  // Count total categories
+  const totalCategories = groupedResults.length
 
   async function handleSelect(index: number) {
     setIsSelecting(index)
@@ -105,189 +202,188 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
     }
   }
 
-  function formatDuration(seconds?: number): string {
-    if (!seconds) return ""
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.round(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, "0")}`
+  function toggleCategory(category: string) {
+    setExpandedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
   }
 
-  function formatViews(views?: number): string {
-    if (!views) return ""
-    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`
-    if (views >= 1000) return `${(views / 1000).toFixed(1)}K`
-    return views.toString()
+  // Get display name - use channel for YouTube, artist for others
+  function getDisplayName(result: ExtendedAudioSearchResult): string {
+    if (result.provider === "YouTube" && result.channel) {
+      return result.channel
+    }
+    return result.artist || ""
   }
 
-  function formatSize(mb?: number): string {
-    if (!mb) return ""
-    return `${mb.toFixed(1)} MB`
+  // Format views/seeders compactly
+  function formatCount(count?: number): string {
+    if (!count && count !== 0) return "-"
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`
+    return count.toString()
+  }
+
+  // Format release metadata line
+  function formatMetadata(result: ExtendedAudioSearchResult): string {
+    const parts: string[] = []
+
+    if (result.release_type) parts.push(result.release_type)
+    if (result.year) parts.push(result.year.toString())
+    if (result.label) parts.push(result.label)
+    if (result.edition_info) parts.push(result.edition_info)
+    if (result.quality_data?.media) parts.push(result.quality_data.media)
+
+    return parts.length > 0 ? `[${parts.join(' / ')}]` : ''
+  }
+
+  // Get quality display string
+  function formatQuality(result: ExtendedAudioSearchResult): string {
+    if (result.quality) return result.quality
+
+    const qd = result.quality_data
+    if (!qd) return '-'
+
+    const parts: string[] = []
+    if (qd.format) parts.push(qd.format)
+    if (qd.bit_depth) parts.push(`${qd.bit_depth}bit`)
+    if (qd.bitrate) parts.push(`${qd.bitrate}kbps`)
+    if (qd.media) parts.push(qd.media)
+
+    return parts.join(' ') || '-'
   }
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col bg-slate-900 border-slate-700 p-0">
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-800">
-          <DialogTitle className="text-white text-lg">Select Audio Source</DialogTitle>
-          <DialogDescription className="text-slate-400">
-            Found {results.length} results across {groupedResults.length} categories
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col bg-slate-900 border-slate-700 !p-0 gap-0 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-700 shrink-0 bg-slate-900 flex items-center justify-between">
+          <DialogTitle className="text-white text-sm font-semibold flex items-center gap-2">
+            Select Audio Source
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 font-mono">v{APP_VERSION}</span>
+            <span className="text-slate-400 font-normal text-xs">
+              ({results.length} results across {totalCategories} categories)
+            </span>
+          </DialogTitle>
+        </div>
+
+        {error && (
+          <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-b border-slate-800">
+            {error}
+          </div>
+        )}
 
         {isLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-            <span className="ml-2 text-slate-400">Loading search results...</span>
+          <div className="flex-1 flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+            <span className="ml-2 text-sm text-slate-400">Loading...</span>
           </div>
-        ) : error && results.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-red-400">{error}</div>
         ) : results.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-            <Music2 className="w-12 h-12 mb-3 opacity-50" />
-            <p>No audio sources found</p>
+          <div className="flex-1 flex flex-col items-center justify-center py-12 text-slate-500">
+            <Music2 className="w-8 h-8 mb-2 opacity-50" />
+            <p className="text-sm">No audio sources found</p>
           </div>
         ) : (
-          <ScrollArea className="flex-1 px-6">
-            <div className="space-y-6 py-4">
-              {error && (
-                <div className="text-sm text-red-400 bg-red-500/10 rounded-lg p-3">
-                  {error}
-                </div>
-              )}
+          <div className="flex-1 overflow-y-auto min-h-0 p-4">
+            {/* Two-column grid on desktop */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {groupedResults.map(({ category, results: catResults, config }) => {
+                const isExpanded = expandedCategories.has(category)
+                const displayResults = isExpanded ? catResults : catResults.slice(0, config.maxDisplay)
+                const hiddenCount = catResults.length - config.maxDisplay
+                const hasMore = hiddenCount > 0
 
-              {groupedResults.map(([category, items]) => (
-                <div key={category} className="space-y-2">
-                  {/* Category Header */}
-                  <div className={`flex items-center gap-2 text-sm font-semibold ${CATEGORY_COLORS[category]?.split(' ')[0] || 'text-slate-400'}`}>
-                    <span>{category}</span>
-                    <span className="text-slate-500 font-normal">({items.length})</span>
-                  </div>
+                return (
+                  <div key={category} className="border border-slate-700 rounded-lg overflow-hidden bg-slate-800/20">
+                    {/* Category Header */}
+                    <div className={`px-3 py-2 bg-slate-800/70 flex items-center justify-between ${config.color}`}>
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <span>{category}</span>
+                        <span className="text-slate-500 font-normal">({catResults.length})</span>
+                      </div>
+                      {hasMore && (
+                        <button
+                          onClick={() => toggleCategory(category)}
+                          className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1"
+                        >
+                          {isExpanded ? (
+                            <>Show less <ChevronUp className="w-3 h-3" /></>
+                          ) : (
+                            <>+{hiddenCount} more <ChevronDown className="w-3 h-3" /></>
+                          )}
+                        </button>
+                      )}
+                    </div>
 
-                  {/* Results in category */}
-                  <div className="space-y-2">
-                    {items.map((result) => (
-                      <div
-                        key={result.index}
-                        className={`border rounded-lg p-3 hover:bg-slate-800/50 transition-colors ${
-                          CATEGORY_COLORS[category]?.split(' ')[1] || 'border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          {/* Index number */}
-                          <div className="text-slate-500 text-sm font-mono w-6 shrink-0 pt-0.5">
+                    {/* Results in category */}
+                    <div className="divide-y divide-slate-700/50">
+                      {displayResults.map((result) => (
+                        <div
+                          key={result.index}
+                          className="px-3 py-1.5 hover:bg-slate-800/50 flex items-center gap-2 text-xs"
+                        >
+                          {/* Index */}
+                          <span className="w-5 text-slate-500 font-mono shrink-0 text-[10px]">
                             {result.index + 1}.
-                          </div>
+                          </span>
 
-                          {/* Content */}
-                          <div className="flex-1 min-w-0 space-y-1.5">
-                            {/* Title row */}
-                            <div className="flex items-start gap-2">
-                              {/* Lossless badge */}
+                          {/* Main content - 2 lines */}
+                          <div className="flex-1 min-w-0">
+                            {/* Line 1: badges + artist + title + quality + size + seeders */}
+                            <div className="flex items-center gap-1 flex-wrap">
                               {result.is_lossless && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/20 text-green-400 font-medium shrink-0">
+                                <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
                                   LOSSLESS
                                 </span>
                               )}
-                              {/* Provider badge */}
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
-                                result.provider === 'RED' ? 'bg-red-600/20 text-red-400' :
-                                result.provider === 'OPS' ? 'bg-blue-600/20 text-blue-400' :
-                                result.provider === 'YouTube' ? 'bg-red-600/20 text-red-400' :
-                                'bg-slate-600/20 text-slate-400'
+                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
+                                result.provider === "YouTube" ? "bg-red-600/20 text-red-400" :
+                                result.provider === "RED" ? "bg-red-600/30 text-red-300" :
+                                result.provider === "OPS" ? "bg-blue-600/20 text-blue-400" :
+                                "bg-slate-600/20 text-slate-400"
                               }`}>
                                 {result.provider}
                               </span>
-                              {/* Artist - Title */}
-                              <span className="text-white font-medium">
-                                {result.artist}
+                              <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
+                              <span className="text-slate-500">-</span>
+                              <span className="text-white">{result.title}</span>
+                              <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-slate-400"}`}>
+                                ({formatQuality(result)})
                               </span>
-                              <span className="text-slate-400">-</span>
-                              <span className="text-white">
-                                {result.title}
-                              </span>
-                            </div>
-
-                            {/* Album/Release info row */}
-                            {(result.album || result.release_type) && (
-                              <div className="flex items-center gap-1 text-xs">
-                                <span className="text-slate-500">[</span>
-                                {result.release_type && (
-                                  <span className="text-cyan-400">{result.release_type}</span>
-                                )}
-                                {result.release_type && result.year && (
-                                  <span className="text-slate-500">/</span>
-                                )}
-                                {result.year && (
-                                  <span className="text-yellow-400">{result.year}</span>
-                                )}
-                                {(result.release_type || result.year) && result.label && (
-                                  <span className="text-slate-500">/</span>
-                                )}
-                                {result.label && (
-                                  <span className="text-slate-400 truncate max-w-[200px]">{result.label}</span>
-                                )}
-                                <span className="text-slate-500">]</span>
-                                {result.album && (
-                                  <>
-                                    <span className="text-slate-500 ml-1">-</span>
-                                    <span className="text-slate-300 truncate">{result.album}</span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Technical details row */}
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                              {/* Quality */}
-                              {result.quality && (
-                                <span className={`px-1.5 py-0.5 rounded ${
-                                  result.is_lossless ? "bg-green-600/20 text-green-400" : "bg-slate-600/30 text-slate-400"
-                                }`}>
-                                  {result.quality}
-                                </span>
-                              )}
-
-                              {/* Duration */}
-                              {result.duration && (
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {formatDuration(result.duration)}
-                                </span>
-                              )}
-
-                              {/* File size */}
-                              {result.size_mb && (
-                                <span className="flex items-center gap-1">
-                                  <FileAudio className="w-3 h-3" />
-                                  {formatSize(result.size_mb)}
-                                </span>
-                              )}
-
-                              {/* Seeders (for torrents) */}
-                              {result.seeders !== undefined && (
-                                <span className={`flex items-center gap-1 ${
+                              <span className="text-[10px] text-slate-400">{result.formatted_size || '-'}</span>
+                              {result.seeders !== undefined && result.seeders !== null ? (
+                                <span className={`text-[10px] ${
                                   result.seeders >= 50 ? 'text-green-400' :
                                   result.seeders >= 10 ? 'text-yellow-400' :
                                   'text-red-400'
                                 }`}>
-                                  <Users className="w-3 h-3" />
-                                  {result.seeders} seeders
+                                  {result.seeders} seed
                                 </span>
-                              )}
-
-                              {/* Views (for YouTube) */}
-                              {result.views && (
-                                <span className="flex items-center gap-1 text-slate-400">
-                                  <Eye className="w-3 h-3" />
-                                  {formatViews(result.views)} views
+                              ) : result.view_count !== undefined ? (
+                                <span className={`text-[10px] ${
+                                  result.view_count >= 1000000 ? 'text-green-400' :
+                                  result.view_count >= 10000 ? 'text-yellow-400' :
+                                  'text-slate-400'
+                                }`}>
+                                  {formatCount(result.view_count)} views
                                 </span>
-                              )}
+                              ) : null}
                             </div>
 
-                            {/* Filename row */}
-                            {result.filename && (
-                              <div className="text-[11px] text-slate-500 font-mono truncate">
-                                "{result.filename}"
+                            {/* Line 2: metadata + filename */}
+                            {(formatMetadata(result) || result.target_file) && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                {formatMetadata(result) && (
+                                  <span className="truncate">{formatMetadata(result)}</span>
+                                )}
+                                {result.target_file && (
+                                  <span className="font-mono truncate">"{result.target_file}"</span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -297,7 +393,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                             size="sm"
                             onClick={() => handleSelect(result.index)}
                             disabled={isSelecting !== null}
-                            className="bg-amber-600 hover:bg-amber-500 text-white shrink-0"
+                            className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-white px-2 shrink-0"
                           >
                             {isSelecting === result.index ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
@@ -306,13 +402,13 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                             )}
                           </Button>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
-          </ScrollArea>
+          </div>
         )}
       </DialogContent>
     </Dialog>

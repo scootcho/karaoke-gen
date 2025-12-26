@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { api, Job } from "@/lib/api"
+import { api, Job, getAccessToken } from "@/lib/api"
 import { useAutoMode, getAutoModeFromUrl } from "@/lib/auto-mode"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Music2, RefreshCw, Loader2, Zap, ZapOff } from "lucide-react"
+import { Music2, RefreshCw, Loader2, Zap, ZapOff, KeyRound } from "lucide-react"
 import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
-import { AuthBanner } from "@/components/auth-banner"
+import { AuthStatus } from "@/components/auth"
 import { AutoProcessor } from "@/components/AutoProcessor"
 import {
   Tooltip,
@@ -20,7 +20,13 @@ import {
 export default function HomePage() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const { enabled: autoModeEnabled, setEnabled: setAutoMode, toggle: toggleAutoMode } = useAutoMode()
+
+  // Check auth status on mount
+  useEffect(() => {
+    setIsAuthenticated(!!getAccessToken())
+  }, [])
 
   // Initialize auto-mode from URL parameter on mount
   useEffect(() => {
@@ -30,20 +36,31 @@ export default function HomePage() {
     }
   }, [setAutoMode])
 
-  // Load jobs on mount
+  // Load jobs on mount (only if authenticated)
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoadingJobs(false)
+      return
+    }
     loadJobs()
     // Poll for updates every 10 seconds
     const interval = setInterval(loadJobs, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [isAuthenticated])
 
   async function loadJobs() {
+    if (!getAccessToken()) {
+      setIsLoadingJobs(false)
+      return
+    }
     try {
       const data = await api.listJobs({ limit: 20 })
       setJobs(data)
-    } catch (err) {
-      console.error("Failed to load jobs:", err)
+    } catch (err: any) {
+      // Don't log auth errors - user just needs to authenticate
+      if (err?.status !== 401) {
+        console.error("Failed to load jobs:", err)
+      }
     } finally {
       setIsLoadingJobs(false)
     }
@@ -102,12 +119,13 @@ export default function HomePage() {
               variant="ghost"
               size="sm"
               onClick={loadJobs}
-              disabled={isLoadingJobs}
+              disabled={isLoadingJobs || !isAuthenticated}
               className="text-slate-400 hover:text-white"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
+            <AuthStatus />
           </div>
         </div>
       </header>
@@ -134,8 +152,16 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Authentication Banner */}
-        <AuthBanner />
+        {/* Unauthenticated state */}
+        {!isAuthenticated && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-6 text-center">
+            <KeyRound className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+            <h3 className="text-lg font-medium text-white mb-2">Authentication Required</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Click the Login button in the header to enter your access token
+            </p>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Submit Job Card */}
