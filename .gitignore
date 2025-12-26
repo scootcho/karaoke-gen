@@ -41,6 +41,9 @@ frontend/.pnpm-debug.log*
 
 # Testing
 frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 
 # TypeScript
 frontend/*.tsbuildinfo

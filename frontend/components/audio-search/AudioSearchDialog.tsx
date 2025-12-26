@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { api, AudioSearchResult } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -19,11 +19,12 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
   const [isSelecting, setIsSelecting] = useState(false)
   const [error, setError] = useState("")
 
-  useState(() => {
+  // Load results when dialog opens
+  useEffect(() => {
     if (open) {
       loadResults()
     }
-  })
+  }, [open, jobId])
 
   async function loadResults() {
     setIsLoading(true)

@@ -2,7 +2,11 @@
  * API client for karaoke-gen backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com';
+// In development, use relative URLs to go through Next.js proxy (avoids CORS)
+// In production (static export), use the full backend URL
+const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+  ? ''  // Relative URL - goes through Next.js proxy
+  : (process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com');
 
 // Token management - stored in localStorage (client-side only)
 let accessToken: string | null = null;
@@ -259,7 +263,9 @@ export const api = {
     artist?: string;
     title?: string;
   }> {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/review-data`);
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/review-data`, {
+      headers: getAuthHeaders()
+    });
     return handleResponse(response);
   },
   
@@ -269,6 +275,7 @@ export const api = {
   async completeReview(jobId: string): Promise<{ status: string; job_status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/complete-review`, {
       method: 'POST',
+      headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
@@ -277,7 +284,9 @@ export const api = {
    * Get instrumental options
    */
   async getInstrumentalOptions(jobId: string): Promise<InstrumentalOptionsResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/instrumental-options`);
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/instrumental-options`, {
+      headers: getAuthHeaders()
+    });
     return handleResponse(response);
   },
   
@@ -290,7 +299,7 @@ export const api = {
   ): Promise<{ status: string; job_status: string; selection: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/select-instrumental`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ selection }),
     });
     return handleResponse(response);
@@ -300,7 +309,9 @@ export const api = {
    * Get download URLs for completed job
    */
   async getDownloadUrls(jobId: string): Promise<DownloadUrlsResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/download-urls`);
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/download-urls`, {
+      headers: getAuthHeaders()
+    });
     return handleResponse(response);
   },
   
@@ -310,7 +321,7 @@ export const api = {
   async cancelJob(jobId: string, reason?: string): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/cancel`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ reason: reason || 'Cancelled by user' }),
     });
     return handleResponse(response);
@@ -322,7 +333,7 @@ export const api = {
   async deleteJob(jobId: string, deleteFiles: boolean = true): Promise<{ status: string; message: string }> {
     const response = await fetch(
       `${API_BASE_URL}/api/jobs/${jobId}?delete_files=${deleteFiles}`,
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: getAuthHeaders() }
     );
     return handleResponse(response);
   },
@@ -356,7 +367,10 @@ export const api = {
     
     const response = await fetch(`${API_BASE_URL}/api/audio-search/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(body),
     });
     
@@ -367,7 +381,9 @@ export const api = {
    * Get audio search results for a job
    */
   async getAudioSearchResults(jobId: string): Promise<AudioSearchResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/results`);
+    const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/results`, {
+      headers: getAuthHeaders()
+    });
     return handleResponse(response);
   },
   
@@ -377,8 +393,8 @@ export const api = {
   async selectAudioResult(jobId: string, index: number): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/select`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index }),
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ selection_index: index }),
     });
     return handleResponse(response);
   },
@@ -387,7 +403,9 @@ export const api = {
    * Get job logs
    */
   async getJobLogs(jobId: string, limit: number = 100): Promise<JobLog[]> {
-    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/logs?limit=${limit}`);
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/logs?limit=${limit}`, {
+      headers: getAuthHeaders()
+    });
     const data = await handleResponse<{ logs: JobLog[] }>(response);
     return data.logs || [];
   },
@@ -398,6 +416,7 @@ export const api = {
   async retryJob(jobId: string): Promise<{ status: string; job_id: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/retry`, {
       method: 'POST',
+      headers: getAuthHeaders()
     });
     return handleResponse(response);
   },
