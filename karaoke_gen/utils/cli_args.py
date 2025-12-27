@@ -243,8 +243,16 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
     # Style Configuration
     style_group = parser.add_argument_group("Style Configuration")
     style_group.add_argument(
+        "--theme",
+        help="Optional: Theme ID for pre-made styles stored in GCS (e.g., 'nomad', 'default'). "
+             "When using a theme, CDG/TXT are enabled by default. "
+             "Example: --theme=nomad",
+    )
+    style_group.add_argument(
         "--style_params_json",
-        help="Optional: Path to JSON file containing style configuration. Example: --style_params_json='/path/to/style_params.json'",
+        help="Optional: Path to JSON file containing style configuration. "
+             "Takes precedence over --theme if both are provided. "
+             "Example: --style_params_json='/path/to/style_params.json'",
     )
     style_group.add_argument(
         "--style_override",

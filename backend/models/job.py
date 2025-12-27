@@ -205,7 +205,18 @@ class Job(BaseModel):
     webhook_url: Optional[str] = None            # Webhook for notifications
     user_email: Optional[str] = None             # Email for notifications
     
-    # Style configuration (uploaded files)
+    # Theme configuration (pre-made themes from GCS)
+    theme_id: Optional[str] = None               # Theme identifier (e.g., "nomad", "default")
+    color_overrides: Dict[str, str] = Field(default_factory=dict)
+    """
+    User color overrides applied on top of theme. Keys:
+    - artist_color: Hex color for artist name (#RRGGBB)
+    - title_color: Hex color for song title
+    - sung_lyrics_color: Hex color for highlighted lyrics
+    - unsung_lyrics_color: Hex color for unhighlighted lyrics
+    """
+
+    # Style configuration (uploaded files - used when theme_id is not set)
     style_params_gcs_path: Optional[str] = None  # GCS path to style_params.json
     style_assets: Dict[str, str] = Field(default_factory=dict)
     """
@@ -409,7 +420,18 @@ class JobCreate(BaseModel):
     webhook_url: Optional[str] = None
     user_email: Optional[str] = None
     
-    # Style configuration (will be populated after file upload)
+    # Theme configuration (pre-made themes from GCS)
+    theme_id: Optional[str] = None               # Theme identifier (e.g., "nomad", "default")
+    color_overrides: Dict[str, str] = Field(default_factory=dict)
+    """
+    User color overrides applied on top of theme. Keys:
+    - artist_color: Hex color for artist name (#RRGGBB)
+    - title_color: Hex color for song title
+    - sung_lyrics_color: Hex color for highlighted lyrics
+    - unsung_lyrics_color: Hex color for unhighlighted lyrics
+    """
+
+    # Style configuration (will be populated after file upload, or from theme)
     style_params_gcs_path: Optional[str] = None
     style_assets: Dict[str, str] = Field(default_factory=dict)
     
