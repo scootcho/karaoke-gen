@@ -69,8 +69,9 @@ describe('JobCard', () => {
     render(<JobCard job={mockJob} onRefresh={mockOnRefresh} />)
 
     // Details are always visible now (no need to click to expand)
-    expect(screen.getByText(/Job ID:/)).toBeInTheDocument()
-    expect(screen.getByText('123')).toBeInTheDocument()
+    // ID is shown in format: "ID: 123 • date • status"
+    expect(screen.getByText(/ID:/)).toBeInTheDocument()
+    expect(screen.getByText(/123/)).toBeInTheDocument()
   })
 
   it('shows job actions (details always visible)', () => {
@@ -80,28 +81,7 @@ describe('JobCard', () => {
     expect(screen.getByTestId('job-actions')).toBeInTheDocument()
   })
 
-  it('shows progress bar for processing jobs', () => {
-    render(<JobCard job={mockJob} onRefresh={mockOnRefresh} />)
-
-    const progressBar = document.querySelector('[style*="width: 50%"]')
-    expect(progressBar).toBeInTheDocument()
-  })
-
-  it('does not show progress bar when progress is 0', () => {
-    const noProgressJob = { ...mockJob, progress: 0 }
-    render(<JobCard job={noProgressJob} onRefresh={mockOnRefresh} />)
-
-    const progressBar = document.querySelector('[style*="width: 0%"]')
-    expect(progressBar).not.toBeInTheDocument()
-  })
-
-  it('does not show progress bar when job is complete', () => {
-    const completeJob = { ...mockJob, status: 'complete', progress: 100 }
-    render(<JobCard job={completeJob} onRefresh={mockOnRefresh} />)
-
-    const progressBar = document.querySelector('[class*="bg-amber-500"]')
-    expect(progressBar).not.toBeInTheDocument()
-  })
+  // Note: Progress bars have been removed from JobCard in favor of a simpler design
 
   it('shows error message for failed jobs', () => {
     const failedJob = { ...mockJob, status: 'failed', error_message: 'Something went wrong' }
@@ -110,13 +90,7 @@ describe('JobCard', () => {
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
   })
 
-  it('applies orange border for interactive jobs', () => {
-    const interactiveJob = { ...mockJob, status: 'awaiting_review' }
-    const { container } = render(<JobCard job={interactiveJob} onRefresh={mockOnRefresh} />)
-
-    const card = container.firstChild
-    expect(card).toHaveClass('border-orange-500/50')
-  })
+  // Note: Orange border for interactive jobs removed - uses default slate border now
 
   it('applies green border for complete jobs', () => {
     const completeJob = { ...mockJob, status: 'complete' }
@@ -158,7 +132,7 @@ describe('JobCard', () => {
       const audioSelectionJob = { ...mockJob, status: 'awaiting_audio_selection' }
       render(<JobCard job={audioSelectionJob} onRefresh={mockOnRefresh} />)
 
-      expect(screen.getByRole('button', { name: 'Select Audio Source' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Select Audio' })).toBeInTheDocument()
     })
 
     it('shows instrumental selection button for awaiting_instrumental_selection status', () => {
@@ -198,7 +172,7 @@ describe('JobCard', () => {
       render(<JobCard job={audioJob} onRefresh={mockOnRefresh} />)
 
       expect(screen.getByText(/Will auto-select first/)).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Select Audio Source' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Select Audio' })).not.toBeInTheDocument()
     })
 
     it('shows auto-processing indicator when processing', () => {
