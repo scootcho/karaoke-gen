@@ -134,17 +134,23 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
     
-    # Terminal states - COMPLETE, PREP_COMPLETE, and CANCELLED have no transitions
-    # FAILED allows retry transitions to resume from checkpoints
+    # Terminal states - COMPLETE, PREP_COMPLETE have no transitions
+    # FAILED and CANCELLED allow retry transitions to resume from checkpoints
     # PREP_COMPLETE allows finalise-only continuation
     JobStatus.COMPLETE: [],
     JobStatus.PREP_COMPLETE: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],  # Finalise-only continues from here
     JobStatus.FAILED: [
+        JobStatus.DOWNLOADING,            # Retry from beginning (if input audio exists)
         JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
         JobStatus.REVIEW_COMPLETE,        # Retry from render stage
         JobStatus.LYRICS_COMPLETE,        # Retry from screens generation
     ],
-    JobStatus.CANCELLED: [],
+    JobStatus.CANCELLED: [
+        JobStatus.DOWNLOADING,            # Retry from beginning (if input audio exists)
+        JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
+        JobStatus.REVIEW_COMPLETE,        # Retry from render stage
+        JobStatus.LYRICS_COMPLETE,        # Retry from screens generation
+    ],
     
     # Legacy states (for backward compatibility)
     JobStatus.QUEUED: [JobStatus.PENDING],
