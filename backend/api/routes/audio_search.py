@@ -241,14 +241,17 @@ async def _download_and_start_processing(
     search_results = job.state_data.get('audio_search_results', [])
     if not search_results:
         raise HTTPException(status_code=400, detail="No search results available")
-    
+
     if selection_index < 0 or selection_index >= len(search_results):
         raise HTTPException(
             status_code=400,
             detail=f"Invalid selection index {selection_index}. Valid range: 0-{len(search_results)-1}"
         )
-    
+
     selected = search_results[selection_index]
+
+    # Get remote_search_id from state_data (stored during initial search)
+    remote_search_id = job.state_data.get('remote_search_id')
     
     # Transition to downloading state
     job_manager.transition_to_state(
@@ -273,11 +276,12 @@ async def _download_and_start_processing(
             gcs_destination = f"uploads/{job_id}/audio/"
             
             logger.info(f"Using remote download with GCS upload to: {gcs_destination}")
-            
+
             result = audio_search_service.download(
                 result_index=selection_index,
                 output_dir="",  # Not used for remote
                 gcs_path=gcs_destination,
+                remote_search_id=remote_search_id,
             )
             
             # For remote downloads, filepath is already the GCS path
@@ -303,10 +307,11 @@ async def _download_and_start_processing(
         else:
             # Local download (YouTube or fallback)
             temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
-            
+
             result = audio_search_service.download(
                 result_index=selection_index,
                 output_dir=temp_dir,
+                remote_search_id=remote_search_id,  # Pass for potential fallback scenarios
             )
             
             # Upload to GCS
@@ -542,13 +547,17 @@ async def search_audio(
             job_manager.fail_job(job_id, f"Audio search failed: {e}")
             raise HTTPException(status_code=500, detail=f"Search failed: {e}")
         
-        # Store results in job state_data
+        # Store results in job state_data, including remote_search_id if available
         results_dicts = [r.to_dict() for r in search_results]
+        state_data_update = {
+            'audio_search_results': results_dicts,
+            'audio_search_count': len(results_dicts),
+        }
+        # Store remote_search_id for use during download (important for concurrent requests)
+        if audio_search_service.last_remote_search_id:
+            state_data_update['remote_search_id'] = audio_search_service.last_remote_search_id
         job_manager.update_job(job_id, {
-            'state_data': {
-                'audio_search_results': results_dicts,
-                'audio_search_count': len(results_dicts),
-            }
+            'state_data': state_data_update
         })
         
         # If auto_download, select best and start processing

@@ -247,28 +247,32 @@ class AudioSearchService:
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        remote_search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Download audio from a cached search result.
-        
+
         This method uses the cached results from the last search() call.
         The API flow is:
         1. Client calls search() -> gets list of results
         2. Client picks an index
         3. Client calls download(index) -> gets downloaded file
-        
+
         If a remote flacfetch service is configured and the search was performed
         remotely (for torrent sources), uses the remote service for download.
-        
+
         Args:
             result_index: Index of the result to download (from search results)
             output_dir: Directory to save the downloaded file
             output_filename: Optional filename (without extension)
             gcs_path: Optional GCS path for remote uploads (e.g., "uploads/job123/audio/")
-            
+            remote_search_id: Optional search_id for remote downloads. If provided,
+                uses this instead of the cached _remote_search_id. This is important
+                for concurrent requests where the service-level cache may be stale.
+
         Returns:
             AudioDownloadResult with the downloaded file path
-            
+
         Raises:
             DownloadError: If download fails or no cached result for index
         """
@@ -278,18 +282,21 @@ class AudioSearchService:
                 f"Available indices: 0-{len(self._cached_results) - 1}. "
                 "Run search() first."
             )
-        
+
         result = self._cached_results[result_index]
-        
+
         logger.info(f"Downloading: {result.artist} - {result.title} from {result.provider}")
-        
+
+        # Use provided search_id or fall back to service-level cache
+        effective_search_id = remote_search_id or self._remote_search_id
+
         # Check if this was a remote search (torrent sources need remote download)
-        if self._remote_search_id and self._remote_client:
+        if effective_search_id and self._remote_client:
             # Check if this is a torrent source that needs remote handling
             is_torrent = result.provider in ["RED", "OPS"]
-            
+
             if is_torrent:
-                return self._download_remote(result_index, output_dir, output_filename, gcs_path)
+                return self._download_remote(result_index, output_dir, output_filename, gcs_path, effective_search_id)
         
         # Delegate to shared FlacFetcher (local download)
         fetch_result = self._fetcher.download(result, output_dir, output_filename)
@@ -304,15 +311,24 @@ class AudioSearchService:
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Download using the remote flacfetch service.
-        
+
         The remote service downloads via torrent and optionally uploads to GCS.
+
+        Args:
+            result_index: Index of the result to download
+            output_dir: Directory to save downloaded file
+            output_filename: Optional filename
+            gcs_path: Optional GCS path for remote uploads
+            search_id: Remote search ID to use (overrides self._remote_search_id)
         """
-        if not self._remote_search_id:
+        effective_search_id = search_id or self._remote_search_id
+        if not effective_search_id:
             raise DownloadError("No remote search ID - run search() first")
-        
+
         result = self._cached_results[result_index]
         
         try:
@@ -329,7 +345,7 @@ class AudioSearchService:
                 # Start download
                 download_id = loop.run_until_complete(
                     self._remote_client.download(
-                        search_id=self._remote_search_id,
+                        search_id=effective_search_id,
                         result_index=result_index,
                         output_filename=output_filename,
                         gcs_path=gcs_path,
@@ -434,22 +450,32 @@ class AudioSearchService:
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        remote_search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Async version of download for use in async routes.
-        
+
         Note: Currently wraps sync download in executor. Future optimization
         could make this fully async.
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None, 
-            lambda: self.download(result_index, output_dir, output_filename, gcs_path)
+            None,
+            lambda: self.download(result_index, output_dir, output_filename, gcs_path, remote_search_id)
         )
     
     def is_remote_enabled(self) -> bool:
         """Check if remote flacfetch service is configured."""
         return self._remote_client is not None
+
+    @property
+    def last_remote_search_id(self) -> Optional[str]:
+        """Get the search_id from the last remote search.
+
+        This should be stored in job state_data after search and passed
+        back to download() to ensure correct remote download handling.
+        """
+        return self._remote_search_id
     
     async def check_remote_health(self) -> Optional[dict]:
         """

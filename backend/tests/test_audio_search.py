@@ -547,9 +547,9 @@ class TestRemoteDownloadPath:
         
         # Call download - should route to remote
         result = service.download(0, "/tmp", gcs_path="uploads/job123/audio/")
-        
-        # Verify remote download was called
-        service._download_remote.assert_called_once_with(0, "/tmp", None, "uploads/job123/audio/")
+
+        # Verify remote download was called (includes search_id as last parameter)
+        service._download_remote.assert_called_once_with(0, "/tmp", None, "uploads/job123/audio/", "remote_search_123")
         assert result.filepath == "gs://bucket/uploads/job123/audio/Waterloo.flac"
     
     def test_download_uses_remote_for_ops_provider(self):
