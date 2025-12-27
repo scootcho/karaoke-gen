@@ -121,8 +121,8 @@ test.describe('Audio Search Dialog Screenshot', () => {
       console.log(`Button ${i}: "${text?.trim()}" visible=${visible}`);
     }
 
-    // Try multiple selectors for the Select Audio Source button (cards are no longer collapsible)
-    const selectAudioButton = page.locator('button').filter({ hasText: /Select Audio Source/i }).first();
+    // Try multiple selectors for the Select Audio button (cards are no longer collapsible)
+    const selectAudioButton = page.locator('button').filter({ hasText: /^Select Audio$/i }).first();
     const selectAudioAlt = page.locator('button').filter({ hasText: /Select Audio/i }).first();
     const selectByColor = page.locator('button.bg-blue-600, button[class*="blue-600"]').first();
 
@@ -142,7 +142,7 @@ test.describe('Audio Search Dialog Screenshot', () => {
     console.log('Select Audio button found:', buttonFound);
 
     if (buttonFound) {
-      console.log('Found existing job with Select Audio Source button');
+      console.log('Found existing job with Select Audio button');
 
       // Take screenshot before clicking
       await page.screenshot({
@@ -150,11 +150,11 @@ test.describe('Audio Search Dialog Screenshot', () => {
         fullPage: true
       });
 
-      // Click the Select Audio Source button directly (cards are no longer collapsible)
+      // Click the Select Audio button directly (cards are no longer collapsible)
       const clickTarget = await selectAudioButton.isVisible().catch(() => false)
         ? selectAudioButton
         : selectAudioAlt;
-      console.log('Clicking Select Audio Source button');
+      console.log('Clicking Select Audio button');
       await clickTarget.click();
 
       // Wait for dialog to appear
@@ -252,9 +252,9 @@ test.describe('Audio Search Dialog Screenshot', () => {
         fullPage: true
       });
 
-      // Now look for Select Audio Source button - wait up to 60 seconds for audio search to complete
-      const newSelectButton = page.locator('button').filter({ hasText: /Select Audio Source/i }).first();
-      console.log('Waiting for Select Audio Source button...');
+      // Now look for Select Audio button - wait up to 60 seconds for audio search to complete
+      const newSelectButton = page.locator('button').filter({ hasText: /Select Audio/i }).first();
+      console.log('Waiting for Select Audio button...');
 
       try {
         await newSelectButton.waitFor({ state: 'visible', timeout: 60000 });

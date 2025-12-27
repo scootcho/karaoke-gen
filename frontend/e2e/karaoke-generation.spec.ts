@@ -267,8 +267,8 @@ test.describe('Karaoke Generation', () => {
       // Take a screenshot of current state
       await page.screenshot({ path: 'test-results/job-expanded.png' });
 
-      // Look for the Select Audio Source button
-      const selectAudioBtn = page.getByRole('button', { name: /select audio source/i });
+      // Look for the Select Audio button
+      const selectAudioBtn = page.getByRole('button', { name: /select audio/i });
 
       if (await selectAudioBtn.isVisible()) {
         console.log('Opening audio selection dialog...');
@@ -319,7 +319,7 @@ test.describe('Karaoke Generation', () => {
           console.log('Dialog did not open');
         }
       } else {
-        console.log('Select Audio Source button not visible');
+        console.log('Select Audio button not visible');
         await page.screenshot({ path: 'test-results/no-select-button.png' });
       }
     } else {
