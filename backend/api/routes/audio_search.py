@@ -424,12 +424,17 @@ async def search_audio(
         effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
         effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
         effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
-        
+
+        # Apply defaults for YouTube/Dropbox distribution (for web service)
+        effective_enable_youtube_upload = body.enable_youtube_upload or settings.default_enable_youtube_upload
+        effective_brand_prefix = body.brand_prefix or settings.default_brand_prefix
+        effective_youtube_description = body.youtube_description or settings.default_youtube_description
+
         # Validate credentials if distribution services are requested
         invalid_services = []
         credential_manager = get_credential_manager()
-        
-        if body.enable_youtube_upload:
+
+        if effective_enable_youtube_upload:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
@@ -463,10 +468,10 @@ async def search_audio(
             title=body.title,
             enable_cdg=body.enable_cdg,
             enable_txt=body.enable_txt,
-            brand_prefix=body.brand_prefix,
-            enable_youtube_upload=body.enable_youtube_upload,
-            youtube_description=body.youtube_description,
-            youtube_description_template=body.youtube_description,  # video_worker reads this field
+            brand_prefix=effective_brand_prefix,
+            enable_youtube_upload=effective_enable_youtube_upload,
+            youtube_description=effective_youtube_description,
+            youtube_description_template=effective_youtube_description,  # video_worker reads this field
             discord_webhook_url=effective_discord_webhook_url,
             dropbox_path=effective_dropbox_path,
             gdrive_folder_id=effective_gdrive_folder_id,
