@@ -185,15 +185,19 @@ async def process_render_video(job_id: str) -> bool:
                     storage.download_file(audio_gcs_path, audio_path)
                     job_log.info(f"Audio downloaded: {os.path.getsize(audio_path)} bytes")
                     
-                    # Check if corrections have countdown padding and pad audio if needed
-                    # This ensures the audio matches the shifted timestamps in the corrections
+                    # Process countdown intro if needed (for songs that start too quickly)
+                    # This adds "3... 2... 1..." segment and pads audio with 3s silence
+                    # Note: Countdown is deferred to this stage (not during lyrics transcription)
+                    # so the review UI can show the original timing without the 3s shift
                     countdown_processor = CountdownProcessor(cache_dir=temp_dir, logger=logger)
-                    if countdown_processor.has_countdown(correction_result):
-                        job_log.info("Detected countdown in corrections - creating padded audio for sync")
-                        audio_path = countdown_processor.create_padded_audio_only(audio_path)
-                        job_log.info(f"Padded audio created: {audio_path}")
+                    correction_result, audio_path, padding_added, padding_seconds = countdown_processor.process(
+                        correction_result=correction_result,
+                        audio_filepath=audio_path,
+                    )
+                    if padding_added:
+                        job_log.info(f"Countdown added: {padding_seconds}s padding applied to audio and timestamps shifted")
                     else:
-                        job_log.info("No countdown detected in corrections - using original audio")
+                        job_log.info("No countdown needed - song starts after 3 seconds")
                     
                     # 6. Get or create styles using the unified style loader
                     job_log.info("Loading style configuration...")

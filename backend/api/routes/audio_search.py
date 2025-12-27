@@ -269,21 +269,41 @@ async def _download_and_start_processing(
         # Determine if this is a remote torrent download
         is_torrent_source = selected.get('provider') in ['RED', 'OPS']
         is_remote_enabled = audio_search_service.is_remote_enabled()
-        
+
+        # Check if we can use download_by_id (preferred - avoids re-searching)
+        source_id = selected.get('source_id')
+        source_name = selected.get('provider')
+        target_file = selected.get('target_file')
+        download_url = selected.get('url')
+
         # For remote torrent downloads, have flacfetch VM upload directly to GCS
         if is_torrent_source and is_remote_enabled:
             # Generate GCS path for remote upload
             gcs_destination = f"uploads/{job_id}/audio/"
-            
-            logger.info(f"Using remote download with GCS upload to: {gcs_destination}")
 
-            result = audio_search_service.download(
-                result_index=selection_index,
-                output_dir="",  # Not used for remote
-                gcs_path=gcs_destination,
-                remote_search_id=remote_search_id,
-            )
-            
+            # Use download_by_id if we have source_id (preferred - no re-search needed)
+            if source_id and source_name:
+                logger.info(f"Using download_by_id for {source_name} ID={source_id} with GCS upload to: {gcs_destination}")
+
+                result = audio_search_service.download_by_id(
+                    source_name=source_name,
+                    source_id=source_id,
+                    output_dir="",  # Not used for remote
+                    target_file=target_file,
+                    download_url=download_url,
+                    gcs_path=gcs_destination,
+                )
+            else:
+                # Fallback to search-based download (requires re-search)
+                logger.info(f"No source_id available, falling back to search-based download to: {gcs_destination}")
+
+                result = audio_search_service.download(
+                    result_index=selection_index,
+                    output_dir="",  # Not used for remote
+                    gcs_path=gcs_destination,
+                    remote_search_id=remote_search_id,
+                )
+
             # For remote downloads, filepath is already the GCS path
             if result.filepath.startswith("gs://"):
                 # Extract the path portion after the bucket name
@@ -298,35 +318,48 @@ async def _download_and_start_processing(
                 # Fallback: treat as local path (shouldn't happen for remote)
                 filename = os.path.basename(result.filepath)
                 audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
-                
+
                 logger.warning(f"Remote download returned local path: {result.filepath}, uploading manually")
                 with open(result.filepath, 'rb') as f:
                     storage_service.upload_fileobj(f, audio_gcs_path, content_type='audio/flac')
-            
+
             logger.info(f"Remote download complete, GCS path: {audio_gcs_path}")
         else:
             # Local download (YouTube or fallback)
             temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
 
-            result = audio_search_service.download(
-                result_index=selection_index,
-                output_dir=temp_dir,
-                remote_search_id=remote_search_id,  # Pass for potential fallback scenarios
-            )
-            
+            # Use download_by_id if we have source_id and remote is enabled
+            if source_id and source_name and is_remote_enabled:
+                logger.info(f"Using download_by_id for local download: {source_name} ID={source_id}")
+
+                result = audio_search_service.download_by_id(
+                    source_name=source_name,
+                    source_id=source_id,
+                    output_dir=temp_dir,
+                    target_file=target_file,
+                    download_url=download_url,
+                )
+            else:
+                # Fallback to search-based download
+                result = audio_search_service.download(
+                    result_index=selection_index,
+                    output_dir=temp_dir,
+                    remote_search_id=remote_search_id,  # Pass for potential fallback scenarios
+                )
+
             # Upload to GCS
             filename = os.path.basename(result.filepath)
             audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
-            
+
             with open(result.filepath, 'rb') as f:
                 storage_service.upload_fileobj(
                     f,
                     audio_gcs_path,
                     content_type='audio/flac'  # flacfetch typically returns FLAC
                 )
-            
+
             logger.info(f"Uploaded audio to GCS: {audio_gcs_path}")
-            
+
             # Clean up temp file
             try:
                 os.remove(result.filepath)
@@ -724,24 +757,15 @@ async def select_audio_source(
             detail=f"Job is not awaiting audio selection (status: {job.status})"
         )
     
-    # Re-instantiate the audio search service (it caches raw results from search)
-    # For production, we'd need to re-search or store raw results differently
+    # Get search service instance
+    # Note: With download_by_id, we no longer need to re-search to populate the cache.
+    # The source_id stored in job.state_data['audio_search_results'] is sufficient.
     audio_search_service = get_audio_search_service()
-    
-    # Re-run search to populate the cache
-    # This is necessary because the service caches raw results in memory
+
+    # Validate search results exist in job state_data
     search_results = job.state_data.get('audio_search_results', [])
     if not search_results:
         raise HTTPException(status_code=400, detail="No search results cached for this job")
-    
-    artist = job.audio_search_artist or job.artist
-    title = job.audio_search_title or job.title
-    
-    try:
-        # Re-search to populate cache
-        audio_search_service.search(artist, title)
-    except Exception as e:
-        logger.warning(f"Re-search failed, trying direct download: {e}")
     
     selection_info = await _download_and_start_processing(
         job_id=job_id,
