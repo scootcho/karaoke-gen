@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -452,13 +453,17 @@ class ThemeService:
         logger.info("Theme metadata cache invalidated")
 
 
-# Singleton instance for convenience
+# Singleton instance with thread-safe initialization
 _theme_service: Optional[ThemeService] = None
+_theme_service_lock = threading.Lock()
 
 
 def get_theme_service() -> ThemeService:
-    """Get or create the singleton ThemeService instance."""
+    """Get or create the singleton ThemeService instance (thread-safe)."""
     global _theme_service
     if _theme_service is None:
-        _theme_service = ThemeService()
+        with _theme_service_lock:
+            # Double-check after acquiring lock
+            if _theme_service is None:
+                _theme_service = ThemeService()
     return _theme_service

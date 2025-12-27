@@ -1,19 +1,33 @@
 #!/bin/bash
 # Upload a theme to GCS
-# Usage: ./upload-theme.sh [theme_id]
+# Usage: BRANDING_DIR=/path/to/NomadBranding ./upload-theme.sh [theme_id]
 
 set -e
 
 THEME_ID="${1:-nomad}"
 BUCKET="karaoke-gen-storage-nomadkaraoke"
 THEMES_PATH="themes"
-BRANDING_DIR="/Users/andrew/AB Dropbox/Andrew Beveridge/MediaUnsynced/Karaoke/NomadBranding"
+
+# BRANDING_DIR must be set via environment variable
+BRANDING_DIR="${BRANDING_DIR:-}"
+
+if [ -z "$BRANDING_DIR" ]; then
+    echo "Error: BRANDING_DIR environment variable must be set"
+    echo "Example: export BRANDING_DIR=/path/to/NomadBranding"
+    exit 1
+fi
+
+if [ ! -d "$BRANDING_DIR" ]; then
+    echo "Error: BRANDING_DIR does not exist: $BRANDING_DIR"
+    exit 1
+fi
 
 echo "=== Uploading theme: $THEME_ID to gs://$BUCKET/$THEMES_PATH/ ==="
+echo "Using branding assets from: $BRANDING_DIR"
 
 # Create temporary directory for processing
 TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
 
 # Function to upload the Nomad theme
 upload_nomad_theme() {
@@ -136,6 +150,25 @@ EOF
 
     echo "Uploading style_params.json..."
     gsutil cp "$TEMP_DIR/style_params.json" "gs://$BUCKET/$THEME_PATH/style_params.json"
+
+    # Validate all required branding files exist before uploading
+    echo "Validating required branding files..."
+    REQUIRED_FILES=(
+        "$BRANDING_DIR/youtube-video-description.txt"
+        "$BRANDING_DIR/AvenirNext-Bold.ttf"
+        "$BRANDING_DIR/karaoke-title-screen-background-nomad-4k.png"
+        "$BRANDING_DIR/karaoke-background-image-nomad-4k.png"
+        "$BRANDING_DIR/cdg-instrumental-background-nomad-notes.png"
+        "$BRANDING_DIR/cdg-title-screen-background-nomad-simple.png"
+    )
+
+    for file in "${REQUIRED_FILES[@]}"; do
+        if [ ! -f "$file" ]; then
+            echo "Error: Required file not found: $file"
+            exit 1
+        fi
+    done
+    echo "All required files found."
 
     echo "Uploading youtube_description.txt..."
     gsutil cp "$BRANDING_DIR/youtube-video-description.txt" "gs://$BUCKET/$THEME_PATH/youtube_description.txt"
