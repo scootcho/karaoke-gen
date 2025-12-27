@@ -1,5 +1,26 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Read version from root pyproject.toml (single source of truth)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pyprojectPath = path.join(__dirname, '..', 'pyproject.toml');
+let appVersion = '0.0.0';
+try {
+  const pyprojectContent = fs.readFileSync(pyprojectPath, 'utf-8');
+  const versionMatch = pyprojectContent.match(/^version\s*=\s*"([^"]+)"/m);
+  if (versionMatch) {
+    appVersion = versionMatch[1];
+  }
+} catch (err) {
+  console.warn('Could not read version from pyproject.toml:', err.message);
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_APP_VERSION: appVersion,
+  },
   // Only use static export for production builds (not dev)
   output: process.env.NODE_ENV === 'production' ? 'export' : undefined,
   trailingSlash: true,

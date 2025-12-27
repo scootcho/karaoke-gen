@@ -110,7 +110,7 @@ class ReviewServer:
         allowed_origins = (
             [f"http://localhost:{port}" for port in range(3000, 5174)]
             + [f"http://127.0.0.1:{port}" for port in range(3000, 5174)]
-            + ["https://lyrics.nomadkaraoke.com"]
+            + ["https://gen.nomadkaraoke.com"]
         )
         
         # Also allow custom review UI URL if set

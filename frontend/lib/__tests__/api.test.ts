@@ -2,7 +2,7 @@
  * Tests for API client
  */
 
-import { api, ApiError } from "../api"
+import { api, ApiError, extractErrorMessage } from "../api"
 
 // Mock fetch globally
 global.fetch = jest.fn()
@@ -239,5 +239,63 @@ describe("API Client", () => {
         })
       )
     })
+  })
+})
+
+describe("extractErrorMessage", () => {
+  const fallback = "Default error message"
+
+  it("should extract string detail field", () => {
+    expect(extractErrorMessage({ detail: "Error from detail" }, fallback)).toBe("Error from detail")
+  })
+
+  it("should extract string message field", () => {
+    expect(extractErrorMessage({ message: "Error from message" }, fallback)).toBe("Error from message")
+  })
+
+  it("should extract string error field", () => {
+    expect(extractErrorMessage({ error: "Error from error field" }, fallback)).toBe("Error from error field")
+  })
+
+  it("should prefer detail over message", () => {
+    expect(extractErrorMessage({ detail: "Detail", message: "Message" }, fallback)).toBe("Detail")
+  })
+
+  it("should extract nested detail.message", () => {
+    expect(extractErrorMessage({ detail: { message: "Nested message" } }, fallback)).toBe("Nested message")
+  })
+
+  it("should extract nested detail.error", () => {
+    expect(extractErrorMessage({ detail: { error: "Nested error" } }, fallback)).toBe("Nested error")
+  })
+
+  it("should stringify object detail", () => {
+    const objDetail = { code: "ERR_001", info: "More info" }
+    expect(extractErrorMessage({ detail: objDetail }, fallback)).toBe(JSON.stringify(objDetail))
+  })
+
+  it("should return fallback for null data", () => {
+    expect(extractErrorMessage(null, fallback)).toBe(fallback)
+  })
+
+  it("should return fallback for undefined data", () => {
+    expect(extractErrorMessage(undefined, fallback)).toBe(fallback)
+  })
+
+  it("should return fallback for empty object", () => {
+    expect(extractErrorMessage({}, fallback)).toBe(fallback)
+  })
+
+  it("should return fallback for numeric detail (not a string)", () => {
+    // Numbers are not extracted - only strings
+    expect(extractErrorMessage({ detail: 123 }, fallback)).toBe(fallback)
+  })
+
+  it("should handle [object Object] case that caused the original bug", () => {
+    // This is the case that caused [object Object] to be displayed
+    const problematicData = { detail: { some: "object" } }
+    const result = extractErrorMessage(problematicData, fallback)
+    expect(result).not.toBe("[object Object]")
+    expect(result).toBe('{"some":"object"}')
   })
 })

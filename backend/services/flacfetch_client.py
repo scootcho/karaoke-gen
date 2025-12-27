@@ -199,6 +199,67 @@ class FlacfetchClient:
         except httpx.HTTPStatusError as e:
             raise FlacfetchServiceError(f"Download start failed: {e.response.status_code} - {e.response.text}")
     
+    async def download_by_id(
+        self,
+        source_name: str,
+        source_id: str,
+        output_filename: Optional[str] = None,
+        target_file: Optional[str] = None,
+        download_url: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> str:
+        """
+        Start downloading directly by source ID (no prior search required).
+
+        This is useful when you have stored the source_id from a previous search
+        and want to download later without re-searching.
+
+        Args:
+            source_name: Provider name (RED, OPS, YouTube, Spotify)
+            source_id: Source-specific ID (torrent ID, video ID, track ID)
+            output_filename: Optional custom filename (without extension)
+            target_file: For torrents, specific file to extract
+            download_url: For YouTube/Spotify, direct URL (optional)
+            gcs_path: GCS path for upload (e.g., "uploads/job123/audio/")
+
+        Returns:
+            Download ID for tracking progress
+
+        Raises:
+            FlacfetchServiceError: On download start failure
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                payload = {
+                    "source_name": source_name,
+                    "source_id": source_id,
+                }
+                if output_filename:
+                    payload["output_filename"] = output_filename
+                if target_file:
+                    payload["target_file"] = target_file
+                if download_url:
+                    payload["download_url"] = download_url
+                if gcs_path:
+                    payload["upload_to_gcs"] = True
+                    payload["gcs_path"] = gcs_path
+
+                resp = await client.post(
+                    f"{self.base_url}/download-by-id",
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+
+                data = resp.json()
+                return data["download_id"]
+
+        except httpx.RequestError as e:
+            raise FlacfetchServiceError(f"Download by ID request failed: {e}")
+        except httpx.HTTPStatusError as e:
+            raise FlacfetchServiceError(f"Download by ID failed: {e.response.status_code} - {e.response.text}")
+
     async def get_download_status(self, download_id: str) -> Dict[str, Any]:
         """
         Get the current status of a download.

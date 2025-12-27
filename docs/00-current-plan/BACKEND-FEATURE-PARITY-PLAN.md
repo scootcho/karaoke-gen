@@ -249,7 +249,7 @@ This section provides a comprehensive comparison of all CLI parameters between `
 | # | Parameter | Local | Remote | Description |
 |---|-----------|-------|--------|-------------|
 | R1 | `--service-url` | N/A | 🔹 | **Backend service URL.** URL of the karaoke-gen cloud backend. Can also be set via `KARAOKE_GEN_URL` environment variable. Required for remote mode. |
-| R2 | `--review-ui-url` | N/A | 🔹 | **Lyrics review UI URL.** URL of the hosted lyrics review web application. Default: `https://lyrics.nomadkaraoke.com`. |
+| R2 | `--review-ui-url` | N/A | 🔹 | **Lyrics review UI URL.** URL of the hosted lyrics review web application. Default: `https://gen.nomadkaraoke.com/lyrics/`. |
 | R3 | `--poll-interval` | N/A | 🔹 | **Status poll frequency.** Seconds between job status checks while monitoring. Default: 5 seconds. |
 | R4 | `--environment` | N/A | 🔹 | **Job environment tag.** Tag jobs with environment label (test/production/development) for filtering and cleanup. Sent as `X-Environment` header. |
 | R5 | `--client-id` | N/A | 🔹 | **Client identifier tag.** Tag jobs with client/user identifier for filtering. Sent as `X-Client-ID` header. |

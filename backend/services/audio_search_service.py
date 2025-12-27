@@ -247,28 +247,32 @@ class AudioSearchService:
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        remote_search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Download audio from a cached search result.
-        
+
         This method uses the cached results from the last search() call.
         The API flow is:
         1. Client calls search() -> gets list of results
         2. Client picks an index
         3. Client calls download(index) -> gets downloaded file
-        
+
         If a remote flacfetch service is configured and the search was performed
         remotely (for torrent sources), uses the remote service for download.
-        
+
         Args:
             result_index: Index of the result to download (from search results)
             output_dir: Directory to save the downloaded file
             output_filename: Optional filename (without extension)
             gcs_path: Optional GCS path for remote uploads (e.g., "uploads/job123/audio/")
-            
+            remote_search_id: Optional search_id for remote downloads. If provided,
+                uses this instead of the cached _remote_search_id. This is important
+                for concurrent requests where the service-level cache may be stale.
+
         Returns:
             AudioDownloadResult with the downloaded file path
-            
+
         Raises:
             DownloadError: If download fails or no cached result for index
         """
@@ -278,18 +282,21 @@ class AudioSearchService:
                 f"Available indices: 0-{len(self._cached_results) - 1}. "
                 "Run search() first."
             )
-        
+
         result = self._cached_results[result_index]
-        
+
         logger.info(f"Downloading: {result.artist} - {result.title} from {result.provider}")
-        
+
+        # Use provided search_id or fall back to service-level cache
+        effective_search_id = remote_search_id or self._remote_search_id
+
         # Check if this was a remote search (torrent sources need remote download)
-        if self._remote_search_id and self._remote_client:
+        if effective_search_id and self._remote_client:
             # Check if this is a torrent source that needs remote handling
             is_torrent = result.provider in ["RED", "OPS"]
-            
+
             if is_torrent:
-                return self._download_remote(result_index, output_dir, output_filename, gcs_path)
+                return self._download_remote(result_index, output_dir, output_filename, gcs_path, effective_search_id)
         
         # Delegate to shared FlacFetcher (local download)
         fetch_result = self._fetcher.download(result, output_dir, output_filename)
@@ -298,21 +305,182 @@ class AudioSearchService:
         
         return fetch_result
     
+    def download_by_id(
+        self,
+        source_name: str,
+        source_id: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        target_file: Optional[str] = None,
+        download_url: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> AudioDownloadResult:
+        """
+        Download audio directly by source ID (no prior search required).
+
+        This is the preferred method when you have stored the source_id from a
+        previous search and want to download later without re-searching. This
+        avoids unnecessary API calls to private trackers.
+
+        Args:
+            source_name: Provider name (RED, OPS, YouTube, Spotify)
+            source_id: Source-specific ID (torrent ID, video ID, track ID)
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            target_file: For torrents, specific file to extract from the torrent
+            download_url: For YouTube/Spotify, direct URL (optional)
+            gcs_path: Optional GCS path for remote uploads
+
+        Returns:
+            AudioDownloadResult with the downloaded file path
+
+        Raises:
+            DownloadError: If download fails
+        """
+        logger.info(f"Download by ID: {source_name} ID={source_id}")
+
+        # For torrent sources, must use remote client
+        if source_name in ["RED", "OPS"]:
+            if not self._remote_client:
+                raise DownloadError(
+                    f"Cannot download from {source_name} without remote flacfetch service"
+                )
+            return self._download_by_id_remote(
+                source_name=source_name,
+                source_id=source_id,
+                output_dir=output_dir,
+                output_filename=output_filename,
+                target_file=target_file,
+                download_url=download_url,
+                gcs_path=gcs_path,
+            )
+
+        # For YouTube/Spotify, can use local flacfetch via FetchManager.download_by_id
+        # But we currently only have remote support, so use remote if available
+        if self._remote_client:
+            return self._download_by_id_remote(
+                source_name=source_name,
+                source_id=source_id,
+                output_dir=output_dir,
+                output_filename=output_filename,
+                target_file=target_file,
+                download_url=download_url,
+                gcs_path=gcs_path,
+            )
+
+        # Local download for YouTube/Spotify (fallback)
+        # Use the local fetcher's download_by_id if available
+        raise DownloadError(
+            f"Local download_by_id not yet implemented for {source_name}. "
+            "Configure FLACFETCH_API_URL for remote downloads."
+        )
+
+    def _download_by_id_remote(
+        self,
+        source_name: str,
+        source_id: str,
+        output_dir: str,  # Not used for remote downloads (files go to GCS or remote server)
+        output_filename: Optional[str] = None,
+        target_file: Optional[str] = None,
+        download_url: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> AudioDownloadResult:
+        """
+        Download by ID using the remote flacfetch service.
+
+        Note: output_dir is accepted for API compatibility but ignored for remote
+        downloads. Remote downloads either go to GCS (if gcs_path is set) or to
+        the remote server's download directory.
+        """
+        # output_dir is intentionally unused - remote downloads don't use local paths
+        _ = output_dir
+        try:
+            # Enable nested event loops
+            try:
+                running_loop = asyncio.get_running_loop()
+                nest_asyncio.apply(running_loop)
+            except RuntimeError:
+                pass
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # Start download
+                download_id = loop.run_until_complete(
+                    self._remote_client.download_by_id(
+                        source_name=source_name,
+                        source_id=source_id,
+                        output_filename=output_filename,
+                        target_file=target_file,
+                        download_url=download_url,
+                        gcs_path=gcs_path,
+                    )
+                )
+
+                logger.info(f"Remote download by ID started: {download_id}")
+
+                # Wait for completion
+                def log_progress(status):
+                    progress = status.get("progress", 0)
+                    speed = status.get("download_speed_kbps", 0)
+                    logger.debug(f"Download progress: {progress:.1f}% ({speed:.1f} KB/s)")
+
+                final_status = loop.run_until_complete(
+                    self._remote_client.wait_for_download(
+                        download_id,
+                        timeout=600,
+                        progress_callback=log_progress,
+                    )
+                )
+            finally:
+                loop.close()
+
+            # Determine file path
+            filepath = final_status.get("gcs_path") or final_status.get("output_path")
+
+            if not filepath:
+                raise DownloadError("Remote download completed but no file path returned")
+
+            logger.info(f"Remote download by ID complete: {filepath}")
+
+            return AudioDownloadResult(
+                filepath=filepath,
+                artist="",  # Not available without search
+                title="",   # Not available without search
+                provider=source_name,
+                quality="",  # Not available without search
+            )
+
+        except FlacfetchServiceError as e:
+            raise DownloadError(f"Remote download by ID failed: {e}") from e
+        except Exception as e:
+            logger.error(f"Remote download by ID error: {e}")
+            raise DownloadError(f"Remote download by ID failed: {e}") from e
+
     def _download_remote(
         self,
         result_index: int,
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Download using the remote flacfetch service.
-        
+
         The remote service downloads via torrent and optionally uploads to GCS.
+
+        Args:
+            result_index: Index of the result to download
+            output_dir: Directory to save downloaded file
+            output_filename: Optional filename
+            gcs_path: Optional GCS path for remote uploads
+            search_id: Remote search ID to use (overrides self._remote_search_id)
         """
-        if not self._remote_search_id:
+        effective_search_id = search_id or self._remote_search_id
+        if not effective_search_id:
             raise DownloadError("No remote search ID - run search() first")
-        
+
         result = self._cached_results[result_index]
         
         try:
@@ -329,7 +497,7 @@ class AudioSearchService:
                 # Start download
                 download_id = loop.run_until_complete(
                     self._remote_client.download(
-                        search_id=self._remote_search_id,
+                        search_id=effective_search_id,
                         result_index=result_index,
                         output_filename=output_filename,
                         gcs_path=gcs_path,
@@ -434,22 +602,54 @@ class AudioSearchService:
         output_dir: str,
         output_filename: Optional[str] = None,
         gcs_path: Optional[str] = None,
+        remote_search_id: Optional[str] = None,
     ) -> AudioDownloadResult:
         """
         Async version of download for use in async routes.
-        
+
         Note: Currently wraps sync download in executor. Future optimization
         could make this fully async.
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None, 
-            lambda: self.download(result_index, output_dir, output_filename, gcs_path)
+            None,
+            lambda: self.download(result_index, output_dir, output_filename, gcs_path, remote_search_id)
+        )
+
+    async def download_by_id_async(
+        self,
+        source_name: str,
+        source_id: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        target_file: Optional[str] = None,
+        download_url: Optional[str] = None,
+        gcs_path: Optional[str] = None,
+    ) -> AudioDownloadResult:
+        """
+        Async version of download_by_id for use in async routes.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.download_by_id(
+                source_name, source_id, output_dir, output_filename,
+                target_file, download_url, gcs_path
+            )
         )
     
     def is_remote_enabled(self) -> bool:
         """Check if remote flacfetch service is configured."""
         return self._remote_client is not None
+
+    @property
+    def last_remote_search_id(self) -> Optional[str]:
+        """Get the search_id from the last remote search.
+
+        This should be stored in job state_data after search and passed
+        back to download() to ensure correct remote download handling.
+        """
+        return self._remote_search_id
     
     async def check_remote_health(self) -> Optional[dict]:
         """

@@ -2780,7 +2780,7 @@ class TestRemoteClientContentType:
         """Provide a valid Config instance."""
         return Config(
             service_url='https://api.nomadkaraoke.com',
-            review_ui_url='https://lyrics.nomadkaraoke.com',
+            review_ui_url='https://gen.nomadkaraoke.com/lyrics/',
             poll_interval=5,
             output_dir='/tmp/output'
         )
@@ -2834,7 +2834,7 @@ class TestRemoteClientSessionSetup:
         """Provide a Config instance with auth token."""
         return Config(
             service_url='https://api.nomadkaraoke.com',
-            review_ui_url='https://lyrics.nomadkaraoke.com',
+            review_ui_url='https://gen.nomadkaraoke.com/lyrics/',
             poll_interval=5,
             output_dir='/tmp/output',
             auth_token='test-token-123',

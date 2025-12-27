@@ -1,18 +1,39 @@
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { Alert, Box, Button, Modal, Typography } from '@mui/material'
-import { useEffect, useState } from 'react'
+import { ThemeProvider } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { useEffect, useState, useMemo } from 'react'
 import { ApiClient, FileOnlyClient, LiveApiClient } from './api'
 import CorrectionMetrics from './components/CorrectionMetrics'
 import LyricsAnalyzer from './components/LyricsAnalyzer'
+import AppHeader from './components/AppHeader'
 import { CorrectionData } from './types'
+import { createAppTheme } from './theme'
+
+const THEME_STORAGE_KEY = 'nomad-karaoke-lyrics-theme'
 
 export default function App() {
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Initialize from localStorage
+    const stored = localStorage.getItem(THEME_STORAGE_KEY)
+    return stored !== 'light' // Default to dark
+  })
   const [data, setData] = useState<CorrectionData | null>(null)
   const [showMetadata, setShowMetadata] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [apiClient, setApiClient] = useState<ApiClient | null>(null)
   const [isReadOnly, setIsReadOnly] = useState(true)
   const [audioHash, setAudioHash] = useState<string>('')
+
+  // Create theme based on mode
+  const theme = useMemo(() => createAppTheme(isDarkMode ? 'dark' : 'light'), [isDarkMode])
+
+  // Handle theme toggle
+  const handleToggleTheme = () => {
+    const newIsDark = !isDarkMode
+    setIsDarkMode(newIsDark)
+    localStorage.setItem(THEME_STORAGE_KEY, newIsDark ? 'dark' : 'light')
+  }
 
   useEffect(() => {
     // Parse query parameters
@@ -145,70 +166,78 @@ export default function App() {
 
   if (!data) {
     return (
-      <Box sx={{ p: 3 }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        {isReadOnly ? (
-          <>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Running in read-only mode. Connect to an API to enable editing.
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AppHeader isDarkMode={isDarkMode} onToggleTheme={handleToggleTheme} />
+        <Box sx={{ p: 3 }}>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
             </Alert>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h4">
-                Lyrics Correction Review
+          )}
+          {isReadOnly ? (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Running in read-only mode. Connect to an API to enable editing.
+              </Alert>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h4">
+                  Lyrics Correction Review
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadFileIcon />}
+                  onClick={handleFileLoad}
+                >
+                  Load File
+                </Button>
+              </Box>
+              <Box sx={{ mb: 3 }}>
+                <CorrectionMetrics />
+              </Box>
+            </>
+          ) : (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+              <Typography variant="h6" color="text.secondary">
+                Loading Lyrics Transcription Review...
               </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<UploadFileIcon />}
-                onClick={handleFileLoad}
-              >
-                Load File
-              </Button>
             </Box>
-            <Box sx={{ mb: 3 }}>
-              <CorrectionMetrics />
-            </Box>
-          </>
-        ) : (
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
-            <Typography variant="h6" color="text.secondary">
-              Loading Lyrics Correction Review...
-            </Typography>
-          </Box>
-        )}
-      </Box>
+          )}
+        </Box>
+      </ThemeProvider>
     )
   }
 
   return (
-    <Box sx={{
-      p: 1.5,
-      pb: 3,
-      maxWidth: '100%',
-      overflowX: 'hidden'
-    }}>
-      {error && (
-        <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-      {isReadOnly && (
-        <Alert severity="info" sx={{ mb: 1 }}>
-          Running in read-only mode. Connect to an API to enable editing.
-        </Alert>
-      )}
-      <LyricsAnalyzer
-        data={data}
-        onFileLoad={handleFileLoad}
-        onShowMetadata={() => setShowMetadata(true)}
-        apiClient={apiClient}
-        isReadOnly={isReadOnly}
-        audioHash={audioHash}
-      />
-      {renderMetadataModal()}
-    </Box>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AppHeader isDarkMode={isDarkMode} onToggleTheme={handleToggleTheme} />
+      <Box sx={{
+        p: 1.5,
+        pb: 3,
+        maxWidth: '100%',
+        overflowX: 'hidden'
+      }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 1 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+        {isReadOnly && (
+          <Alert severity="info" sx={{ mb: 1 }}>
+            Running in read-only mode. Connect to an API to enable editing.
+          </Alert>
+        )}
+        <LyricsAnalyzer
+          data={data}
+          onFileLoad={handleFileLoad}
+          onShowMetadata={() => setShowMetadata(true)}
+          apiClient={apiClient}
+          isReadOnly={isReadOnly}
+          audioHash={audioHash}
+        />
+        {renderMetadataModal()}
+      </Box>
+    </ThemeProvider>
   )
 }

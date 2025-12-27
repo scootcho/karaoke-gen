@@ -42,7 +42,7 @@ const WordContainer = styled(Box, {
         '50%': { opacity: 0.5 }
     },
     '&:hover': {
-        backgroundColor: '#c8e6c9'
+        backgroundColor: 'rgba(34, 197, 94, 0.35)' // green tint hover for dark mode
     }
 }))
 
@@ -51,7 +51,7 @@ const OriginalWordLabel = styled(Box)({
     top: '-14px',
     left: '0',
     fontSize: '0.6rem',
-    color: '#666',
+    color: '#888888', // slate-400 for dark mode
     textDecoration: 'line-through',
     opacity: 0.7,
     whiteSpace: 'nowrap',
@@ -71,10 +71,10 @@ const ActionButton = styled(IconButton)(({ theme }) => ({
     minHeight: '20px',
     width: '20px',
     height: '20px',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    border: '1px solid rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'rgba(30, 41, 59, 0.9)', // slate-800 with opacity for dark mode
+    border: '1px solid rgba(248, 250, 252, 0.1)', // light border for dark mode
     '&:hover': {
-        backgroundColor: 'rgba(255, 255, 255, 1)',
+        backgroundColor: 'rgba(51, 65, 85, 1)', // slate-700 for dark mode
         transform: 'scale(1.1)'
     },
     '& .MuiSvgIcon-root': {

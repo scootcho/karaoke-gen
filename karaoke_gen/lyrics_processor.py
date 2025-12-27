@@ -385,7 +385,10 @@ class LyricsProcessor:
         
         if is_serverless and render_video:
             self.logger.info("Detected serverless environment - deferring video generation until after review")
-        
+
+        if is_serverless:
+            self.logger.info("Detected serverless environment - deferring countdown processing until after review")
+
         output_config = OutputConfig(
             output_styles_json=self.style_params_json,
             output_dir=lyrics_dir,
@@ -395,10 +398,11 @@ class LyricsProcessor:
             run_correction=True,
             generate_plain_text=True,
             generate_lrc=True,
-            generate_cdg=False,  # Also defer CDG generation to Phase 2 
+            generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
             enable_review=enable_review_setting,
             subtitle_offset_ms=self.subtitle_offset_ms,
+            add_countdown=not is_serverless,  # Defer countdown to Phase 2 (render_video_worker)
         )
 
         # Add this log entry to debug the OutputConfig

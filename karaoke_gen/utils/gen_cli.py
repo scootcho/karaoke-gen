@@ -320,7 +320,7 @@ async def async_main():
         # Check if user provided a custom value (not the default hosted URL)
         default_hosted_urls = [
             'https://gen.nomadkaraoke.com/lyrics',
-            'https://lyrics.nomadkaraoke.com'
+            'https://gen.nomadkaraoke.com/lyrics/'
         ]
         if args.review_ui_url.rstrip('/') not in [url.rstrip('/') for url in default_hosted_urls]:
             # User explicitly wants a specific URL (e.g., Vite dev server)

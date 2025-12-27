@@ -33,16 +33,17 @@ const CANVAS_PADDING = 8
 const TEXT_ABOVE_BLOCK = 14
 const RESIZE_HANDLE_SIZE = 8
 const RESIZE_HANDLE_HITAREA = 12
-const PLAYHEAD_COLOR = '#ffffff'
-const WORD_BLOCK_COLOR = '#d32f2f'
-const WORD_BLOCK_SELECTED_COLOR = '#b71c1c'
-const WORD_BLOCK_CURRENT_COLOR = '#f44336'
-const WORD_TEXT_CURRENT_COLOR = '#d32f2f'
-const UPCOMING_WORD_BG = '#fff9c4'
-const UPCOMING_WORD_TEXT = '#000000'
-const TIME_BAR_BG = '#f5f5f5'
-const TIME_BAR_TEXT = '#666666'
-const TIMELINE_BG = '#e0e0e0'
+// Dark theme colors matching karaoke-gen
+const PLAYHEAD_COLOR = '#f97316' // orange-500 for better visibility
+const WORD_BLOCK_COLOR = '#dc2626' // red-600 for dark mode
+const WORD_BLOCK_SELECTED_COLOR = '#b91c1c' // red-700 for dark mode
+const WORD_BLOCK_CURRENT_COLOR = '#ef4444' // red-500 for dark mode
+const WORD_TEXT_CURRENT_COLOR = '#fca5a5' // red-300 for dark mode
+const UPCOMING_WORD_BG = '#2a2a2a' // slate-700 for dark mode
+const UPCOMING_WORD_TEXT = '#e5e5e5' // slate-50 for dark mode
+const TIME_BAR_BG = '#1a1a1a' // slate-800 for dark mode
+const TIME_BAR_TEXT = '#888888' // slate-400 for dark mode
+const TIMELINE_BG = '#0f0f0f' // slate-900 for dark mode
 
 // Drag modes
 type DragMode = 'none' | 'selection' | 'resize' | 'move'
@@ -268,7 +269,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
             const x = timeToX(t)
             
             ctx.beginPath()
-            ctx.strokeStyle = '#999999'
+            ctx.strokeStyle = '#64748b' // slate-500 for dark mode
             ctx.lineWidth = 1
             ctx.moveTo(x, TIME_BAR_HEIGHT - 6)
             ctx.lineTo(x, TIME_BAR_HEIGHT)
@@ -280,7 +281,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
         }
 
         ctx.beginPath()
-        ctx.strokeStyle = '#cccccc'
+        ctx.strokeStyle = '#2a2a2a' // slate-700 for dark mode
         ctx.lineWidth = 1
         ctx.moveTo(0, TIME_BAR_HEIGHT)
         ctx.lineTo(canvasWidth, TIME_BAR_HEIGHT)
@@ -314,20 +315,20 @@ const TimelineCanvas = memo(function TimelineCanvas({
 
             // Draw selection border
             if (isSelected) {
-                ctx.strokeStyle = '#ffffff'
+                ctx.strokeStyle = '#f97316' // orange-500 for dark mode selection
                 ctx.lineWidth = 2
                 ctx.strokeRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT)
-                
-                // Draw resize handle (white dot on right edge) for selected words when hovered
+
+                // Draw resize handle (orange dot on right edge) for selected words when hovered
                 if (isHovered || selectedWordIds.size === 1) {
                     const handleX = bounds.startX + bounds.blockWidth - RESIZE_HANDLE_SIZE / 2
                     const handleY = bounds.y + WORD_BLOCK_HEIGHT / 2
-                    
+
                     ctx.beginPath()
-                    ctx.fillStyle = '#ffffff'
+                    ctx.fillStyle = '#f97316' // orange-500 for dark mode
                     ctx.arc(handleX, handleY, RESIZE_HANDLE_SIZE / 2, 0, Math.PI * 2)
                     ctx.fill()
-                    ctx.strokeStyle = '#666666'
+                    ctx.strokeStyle = '#0f0f0f' // slate-900 for dark mode
                     ctx.lineWidth = 1
                     ctx.stroke()
                 }
@@ -368,7 +369,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
                 
                 if (textStartX < canvasWidth - 10) {
                     const isCurrent = word.id === currentWordId
-                    ctx.fillStyle = isCurrent ? WORD_TEXT_CURRENT_COLOR : '#333333'
+                    ctx.fillStyle = isCurrent ? WORD_TEXT_CURRENT_COLOR : '#f8fafc' // slate-50 for dark mode
                     ctx.fillText(word.text, textStartX, textY)
                     rightmostTextEnd = textStartX + textWidth
                 }
@@ -405,7 +406,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
             
             ctx.beginPath()
             ctx.fillStyle = PLAYHEAD_COLOR
-            ctx.strokeStyle = '#333333'
+            ctx.strokeStyle = '#0f0f0f' // slate-900 for dark mode
             ctx.lineWidth = 1
             ctx.moveTo(playheadX - 6, 2)
             ctx.lineTo(playheadX + 6, 2)
@@ -422,7 +423,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
             ctx.stroke()
 
             ctx.beginPath()
-            ctx.strokeStyle = 'rgba(0,0,0,0.4)'
+            ctx.strokeStyle = 'rgba(0,0,0,0.6)' // Darker shadow for dark mode visibility
             ctx.lineWidth = 1
             ctx.moveTo(playheadX + 1, TIME_BAR_HEIGHT)
             ctx.lineTo(playheadX + 1, height)
