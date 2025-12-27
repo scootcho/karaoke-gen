@@ -364,12 +364,16 @@ class LyricsProcessor:
         self.logger.info(f"  rapidapi_key: {env_config.get('rapidapi_key')[:3] + '...' if env_config.get('rapidapi_key') else 'None'}")
         self.logger.info(f"  lyrics_file: {self.lyrics_file}")
 
-        # Detect if we're running in a serverless environment (Modal)
-        # Modal sets specific environment variables we can check for
+        # Detect if we're running in a serverless/cloud environment (Modal or Cloud Run)
+        # In these environments, we defer countdown processing to Phase 2 (render_video_worker)
+        # so the review UI shows the original timing without the 3s shift
         is_serverless = (
-            os.getenv("MODAL_TASK_ID") is not None or 
+            # Modal environment detection
+            os.getenv("MODAL_TASK_ID") is not None or
             os.getenv("MODAL_FUNCTION_NAME") is not None or
-            os.path.exists("/.modal")  # Modal creates this directory in containers
+            os.path.exists("/.modal") or  # Modal creates this directory in containers
+            # Cloud Run environment detection
+            os.getenv("K_SERVICE") is not None  # Cloud Run always sets this
         )
         
         # In serverless environment, disable interactive review even if skip_transcription_review=False
@@ -377,17 +381,17 @@ class LyricsProcessor:
         enable_review_setting = not self.skip_transcription_review and not is_serverless
         
         if is_serverless and not self.skip_transcription_review:
-            self.logger.info("Detected serverless environment - disabling interactive review to prevent hanging")
+            self.logger.info("Detected cloud environment (Modal/Cloud Run) - disabling interactive review to prevent hanging")
         
         # In serverless environment, disable video generation during Phase 1 to save compute
         # Video will be generated in Phase 2 after human review
         serverless_render_video = render_video and not is_serverless
         
         if is_serverless and render_video:
-            self.logger.info("Detected serverless environment - deferring video generation until after review")
+            self.logger.info("Detected cloud environment (Modal/Cloud Run) - deferring video generation until after review")
 
         if is_serverless:
-            self.logger.info("Detected serverless environment - deferring countdown processing until after review")
+            self.logger.info("Detected cloud environment (Modal/Cloud Run) - deferring countdown processing until after review")
 
         output_config = OutputConfig(
             output_styles_json=self.style_params_json,
