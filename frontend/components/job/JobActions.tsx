@@ -19,7 +19,7 @@ export function JobActions({ job, onRefresh, showLogs, onToggleLogs }: JobAction
   const [isCancelling, setIsCancelling] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const canRetry = job.status === "failed"
+  const canRetry = job.status === "failed" || job.status === "cancelled"
   const canCancel = !["complete", "failed", "cancelled"].includes(job.status)
   const canDelete = ["complete", "failed", "cancelled"].includes(job.status)
 
