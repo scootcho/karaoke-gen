@@ -624,7 +624,7 @@ export default function EditModal({
                         position: 'absolute',
                         top: 0,
                         left: 0,
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        backgroundColor: 'rgba(30, 41, 59, 0.95)', // slate-800 with opacity for dark mode
                         zIndex: 10
                     }}>
                         <CircularProgress size={60} thickness={4} />

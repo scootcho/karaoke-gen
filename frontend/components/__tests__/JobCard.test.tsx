@@ -143,12 +143,15 @@ describe('JobCard', () => {
     })
 
     it('shows lyrics review link for awaiting_review status', () => {
-      const reviewJob = { ...mockJob, status: 'awaiting_review' }
+      const reviewJob = { ...mockJob, status: 'awaiting_review', review_token: 'test-token-123' }
       render(<JobCard job={reviewJob} onRefresh={mockOnRefresh} />)
 
       const reviewLink = screen.getByText('Review Lyrics')
       expect(reviewLink).toBeInTheDocument()
-      expect(reviewLink.closest('a')).toHaveAttribute('href', expect.stringContaining('lyrics.nomadkaraoke.com'))
+      const href = reviewLink.closest('a')?.getAttribute('href') || ''
+      expect(href).toContain('gen.nomadkaraoke.com/lyrics')
+      expect(href).toContain('baseApiUrl=')
+      expect(href).toContain('reviewToken=test-token-123')
     })
 
     it('shows audio search button for awaiting_audio_selection status', () => {

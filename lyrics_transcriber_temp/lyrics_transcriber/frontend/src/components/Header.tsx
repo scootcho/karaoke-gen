@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton, Chip } from '@mui/material'
+import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import FindReplaceIcon from '@mui/icons-material/FindReplace'
@@ -129,50 +129,19 @@ export default function Header({
                 </Box>
             )}
 
-            <Box sx={{
-                display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
-                gap: 1,
-                justifyContent: 'space-between',
-                alignItems: isMobile ? 'stretch' : 'center',
-                mb: 1
-            }}>
-                <Typography variant="h4" sx={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>
-                    Nomad Karaoke: Lyrics Transcription Review
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {!isReadOnly && onAnnotationsToggle && (
-                        <Tooltip title={annotationsEnabled 
-                            ? "Click to disable annotation prompts when editing" 
-                            : "Click to enable annotation prompts when editing"
-                        }>
-                            <Chip
-                                icon={<RateReviewIcon />}
-                                label={annotationsEnabled ? "Feedback On" : "Feedback Off"}
-                                onClick={() => onAnnotationsToggle(!annotationsEnabled)}
-                                color={annotationsEnabled ? "primary" : "default"}
-                                variant={annotationsEnabled ? "filled" : "outlined"}
-                                size="small"
-                                sx={{ 
-                                    cursor: 'pointer',
-                                    '& .MuiChip-icon': { fontSize: '1rem' }
-                                }}
-                            />
-                        </Tooltip>
-                    )}
-                    {isReadOnly && (
-                        <Button
-                            variant="outlined"
-                            size="small"
-                            startIcon={<UploadFileIcon />}
-                            onClick={onFileLoad}
-                            fullWidth={isMobile}
-                        >
-                            Load File
-                        </Button>
-                    )}
+            {isReadOnly && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<UploadFileIcon />}
+                        onClick={onFileLoad}
+                        fullWidth={isMobile}
+                    >
+                        Load File
+                    </Button>
                 </Box>
-            </Box>
+            )}
 
             <Box sx={{
                 display: 'flex',
@@ -387,10 +356,10 @@ export default function Header({
                                     Timing Offset
                                 </Button>
                                 {timingOffsetMs !== 0 && (
-                                    <Typography 
-                                        variant="body2" 
-                                        sx={{ 
-                                            ml: 1, 
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            ml: 1,
                                             fontWeight: 'bold',
                                             color: theme.palette.secondary.main
                                         }}
@@ -399,6 +368,23 @@ export default function Header({
                                     </Typography>
                                 )}
                             </Box>
+                        )}
+                        {!isReadOnly && onAnnotationsToggle && (
+                            <Tooltip title={annotationsEnabled
+                                ? "Click to disable annotation prompts when editing"
+                                : "Click to enable annotation prompts when editing"
+                            }>
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={() => onAnnotationsToggle(!annotationsEnabled)}
+                                    startIcon={<RateReviewIcon />}
+                                    color={annotationsEnabled ? "primary" : "inherit"}
+                                    sx={{ minWidth: 'fit-content', height: '32px' }}
+                                >
+                                    {annotationsEnabled ? "Feedback On" : "Feedback Off"}
+                                </Button>
+                            </Tooltip>
                         )}
                         <AudioPlayer
                             apiClient={apiClient}

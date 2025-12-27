@@ -30,7 +30,7 @@ const SegmentTimeline = styled(Box)({
 const TimelineRuler = styled(Box)({
     position: 'relative',
     height: '20px',
-    borderBottom: '1px solid #ccc',
+    borderBottom: '1px solid #2a2a2a', // slate-700 for dark mode
     marginBottom: '4px'
 })
 
@@ -38,14 +38,14 @@ const TimelineMark = styled(Box)({
     position: 'absolute',
     width: '1px',
     height: '8px',
-    backgroundColor: '#999',
+    backgroundColor: '#666666', // slate-500 for dark mode
     bottom: 0
 })
 
 const TimelineLabel = styled(Typography)({
     position: 'absolute',
     fontSize: '0.65rem',
-    color: '#666',
+    color: '#888888', // slate-400 for dark mode
     bottom: '10px',
     transform: 'translateX(-50%)',
     whiteSpace: 'nowrap'
@@ -58,7 +58,7 @@ const WordsBar = styled(Box)({
     alignItems: 'stretch',
     minWidth: '100%',
     touchAction: 'pan-y', // Better mobile scrolling
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#0f0f0f', // slate-900 for dark mode
     borderRadius: '4px',
     marginBottom: '8px'
 })
@@ -84,7 +84,7 @@ const WordBar = styled(Box, {
                 ? COLORS.corrected
                 : isGap
                     ? COLORS.uncorrectedGap
-                    : '#e0e0e0',
+                    : '#2a2a2a', // slate-700 for dark mode default
         border: isLong ? '2px solid #f44336' : 'none',
         boxShadow: isLong ? '0 0 4px rgba(244, 67, 54, 0.5)' : 'none',
         '&:hover': {
@@ -101,13 +101,13 @@ const WordBar = styled(Box, {
 
 const OriginalWordLabel = styled(Typography)({
     fontSize: '0.65rem',
-    color: '#888',
+    color: '#888888', // slate-400 for dark mode
     lineHeight: 1.1,
     marginBottom: '3px',
     textDecoration: 'line-through',
     opacity: 0.85,
     fontWeight: 500,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: 'rgba(15, 23, 42, 0.8)', // slate-900 with opacity for dark mode
     padding: '1px 3px',
     borderRadius: '2px'
 })
@@ -226,7 +226,7 @@ export default function DurationTimelineView({
                                                 whiteSpace: 'nowrap',
                                                 width: '100%',
                                                 textAlign: 'center',
-                                                color: correction ? '#1b5e20' : 'inherit'
+                                                color: correction ? '#4ade80' : '#e5e5e5' // green-400 or slate-50 for dark mode
                                             }}
                                         >
                                             {word.text}
@@ -235,7 +235,7 @@ export default function DurationTimelineView({
                                             <Typography
                                                 sx={{
                                                     fontSize: '0.6rem',
-                                                    color: 'rgba(0,0,0,0.6)',
+                                                    color: 'rgba(248, 250, 252, 0.6)', // slate-50 with opacity for dark mode
                                                     lineHeight: 1,
                                                     marginTop: '3px',
                                                     fontWeight: 600

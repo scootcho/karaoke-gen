@@ -141,7 +141,22 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
               <>
                 {job.status === "awaiting_review" && (
                   <a
-                    href={`https://lyrics.nomadkaraoke.com/?job=${job.job_id}`}
+                    href={(() => {
+                      // Construct the review URL with proper baseApiUrl and reviewToken
+                      // Always use cloud backend URL since the review UI will call it directly
+                      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com'
+                      const reviewUiUrl = process.env.NEXT_PUBLIC_REVIEW_UI_URL || 'https://gen.nomadkaraoke.com/lyrics/'
+                      const baseApiUrl = `${backendUrl}/api/review/${job.job_id}`
+                      const encodedApiUrl = encodeURIComponent(baseApiUrl)
+                      let url = `${reviewUiUrl}/?baseApiUrl=${encodedApiUrl}`
+                      if (job.audio_hash) {
+                        url += `&audioHash=${encodeURIComponent(job.audio_hash)}`
+                      }
+                      if (job.review_token) {
+                        url += `&reviewToken=${encodeURIComponent(job.review_token)}`
+                      }
+                      return url
+                    })()}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white"

@@ -60,6 +60,8 @@ export interface Job {
     progress?: number;
     message?: string;
   }>;
+  review_token?: string;
+  audio_hash?: string;
 }
 
 export interface UploadJobResponse {
