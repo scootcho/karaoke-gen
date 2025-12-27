@@ -1122,9 +1122,10 @@ class TestFinaliseOnlyModels:
                 FinaliseOnlyFileRequest(filename="with_vocals.mkv", content_type="video/mkv", file_type="with_vocals"),
             ]
         )
-        
-        assert request.enable_cdg is True
-        assert request.enable_txt is True
+
+        # CDG/TXT disabled by default (requires style config)
+        assert request.enable_cdg is False
+        assert request.enable_txt is False
         assert request.brand_prefix is None
         assert request.keep_brand_code is None
         assert request.enable_youtube_upload is False
@@ -1270,13 +1271,14 @@ class TestCreateJobFromUrlRequest:
         request = CreateJobFromUrlRequest(
             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         )
-        
+
         assert request.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         assert request.artist is None
         assert request.title is None
-        assert request.enable_cdg is True
-        assert request.enable_txt is True
-    
+        # CDG/TXT disabled by default (requires style config)
+        assert request.enable_cdg is False
+        assert request.enable_txt is False
+
     def test_create_with_artist_and_title(self):
         """Test creating request with URL, artist, and title."""
         from backend.api.routes.file_upload import CreateJobFromUrlRequest

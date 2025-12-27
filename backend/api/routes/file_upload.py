@@ -56,10 +56,10 @@ class CreateJobFromUrlRequest(BaseModel):
     artist: Optional[str] = Field(None, description="Artist name (auto-detected from URL if not provided)")
     title: Optional[str] = Field(None, description="Song title (auto-detected from URL if not provided)")
     
-    # Processing options
-    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
-    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
-    
+    # Processing options (CDG/TXT require style config, disabled by default)
+    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
+    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
+
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
     enable_youtube_upload: bool = Field(False, description="Upload to YouTube")
@@ -67,19 +67,19 @@ class CreateJobFromUrlRequest(BaseModel):
     discord_webhook_url: Optional[str] = Field(None, description="Discord webhook URL for notifications")
     webhook_url: Optional[str] = Field(None, description="Generic webhook URL")
     user_email: Optional[str] = Field(None, description="User email for notifications")
-    
+
     # Distribution options (native API - preferred for remote CLI)
     dropbox_path: Optional[str] = Field(None, description="Dropbox folder path for organized output")
     gdrive_folder_id: Optional[str] = Field(None, description="Google Drive folder ID for public share uploads")
-    
+
     # Legacy distribution options (rclone - deprecated)
     organised_dir_rclone_root: Optional[str] = Field(None, description="[Deprecated] rclone remote path")
-    
+
     # Lyrics configuration
     lyrics_artist: Optional[str] = Field(None, description="Override artist name for lyrics search")
     lyrics_title: Optional[str] = Field(None, description="Override title for lyrics search")
     subtitle_offset_ms: int = Field(0, description="Subtitle timing offset in milliseconds")
-    
+
     # Audio separation model configuration
     clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
     backing_vocals_models: Optional[List[str]] = Field(None, description="Models for backing vocals separation")
@@ -102,10 +102,10 @@ class CreateJobWithUploadUrlsRequest(BaseModel):
     artist: str = Field(..., description="Artist name")
     title: str = Field(..., description="Song title")
     files: List[FileUploadRequest] = Field(..., description="List of files to upload")
-    
-    # Processing options
-    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
-    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+
+    # Processing options (CDG/TXT require style config, disabled by default)
+    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
+    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
@@ -254,9 +254,9 @@ async def upload_and_create_job(
     style_cdg_instrumental_background: Optional[UploadFile] = File(None, description="CDG instrumental background"),
     style_cdg_title_background: Optional[UploadFile] = File(None, description="CDG title screen background"),
     style_cdg_outro_background: Optional[UploadFile] = File(None, description="CDG outro screen background"),
-    # Processing options
-    enable_cdg: bool = Form(True, description="Generate CDG+MP3 package"),
-    enable_txt: bool = Form(True, description="Generate TXT+MP3 package"),
+    # Processing options (CDG/TXT require style config, disabled by default)
+    enable_cdg: bool = Form(False, description="Generate CDG+MP3 package (requires style config)"),
+    enable_txt: bool = Form(False, description="Generate TXT+MP3 package (requires style config)"),
     # Finalisation options
     brand_prefix: Optional[str] = Form(None, description="Brand code prefix (e.g., NOMAD)"),
     enable_youtube_upload: bool = Form(False, description="Upload to YouTube"),
@@ -681,10 +681,10 @@ class CreateFinaliseOnlyJobRequest(BaseModel):
     artist: str = Field(..., description="Artist name")
     title: str = Field(..., description="Song title")
     files: List[FinaliseOnlyFileRequest] = Field(..., description="List of prep output files to upload")
-    
-    # Processing options
-    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
-    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+
+    # Processing options (CDG/TXT require style config, disabled by default)
+    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
+    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")

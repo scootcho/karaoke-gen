@@ -198,8 +198,8 @@ class Job(BaseModel):
     input_media_gcs_path: Optional[str] = None   # GCS path to uploaded file
     
     # User preferences
-    enable_cdg: bool = True                      # Generate CDG+MP3 package
-    enable_txt: bool = True                      # Generate TXT+MP3 package
+    enable_cdg: bool = False                     # Generate CDG+MP3 package (requires style config)
+    enable_txt: bool = False                     # Generate TXT+MP3 package (requires style config)
     enable_youtube_upload: bool = False          # Upload to YouTube
     youtube_description: Optional[str] = None    # YouTube video description
     webhook_url: Optional[str] = None            # Webhook for notifications
@@ -400,10 +400,10 @@ class JobCreate(BaseModel):
     artist: Optional[str] = None
     title: Optional[str] = None
     filename: Optional[str] = None  # Original uploaded filename
-    
+
     # Optional preferences
-    enable_cdg: bool = True
-    enable_txt: bool = True
+    enable_cdg: bool = False  # Requires style config
+    enable_txt: bool = False  # Requires style config
     enable_youtube_upload: bool = False
     youtube_description: Optional[str] = None
     webhook_url: Optional[str] = None

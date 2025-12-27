@@ -81,13 +81,13 @@ class AudioSearchRequest(BaseModel):
     """Request to search for audio by artist and title."""
     artist: str = Field(..., description="Artist name to search for")
     title: str = Field(..., description="Song title to search for")
-    
+
     # Auto-download mode
     auto_download: bool = Field(False, description="Automatically select best result and download")
-    
-    # Processing options
-    enable_cdg: bool = Field(True, description="Generate CDG+MP3 package")
-    enable_txt: bool = Field(True, description="Generate TXT+MP3 package")
+
+    # Processing options (CDG/TXT require style config, disabled by default)
+    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
+    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")

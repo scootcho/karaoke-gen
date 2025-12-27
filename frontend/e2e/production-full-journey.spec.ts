@@ -268,7 +268,7 @@ test.describe('Production Full Karaoke Generation Journey', () => {
   });
 
   test('Step 4: Full journey - Lyrics Review', async ({ page }) => {
-    test.setTimeout(300000); // 5 minutes
+    test.setTimeout(600000); // 10 minutes - review can take time
 
     await page.goto(PROD_URL);
     await page.waitForLoadState('networkidle');
@@ -291,24 +291,130 @@ test.describe('Production Full Karaoke Generation Journey', () => {
       if (await reviewBtn.isVisible()) {
         console.log('Opening lyrics review UI...');
 
-        // The review button might open a new tab/window
+        // The review button opens a new tab with the LyricsTranscriber UI
         const [popup] = await Promise.all([
-          page.context().waitForEvent('page', { timeout: 10000 }).catch(() => null),
+          page.context().waitForEvent('page', { timeout: 15000 }).catch(() => null),
           reviewBtn.click()
         ]);
 
         if (popup) {
-          await popup.waitForLoadState('networkidle');
+          await popup.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {
+            console.log('Review UI network idle timeout - continuing anyway');
+          });
           await popup.screenshot({ path: 'test-results/prod-04-review-ui.png', fullPage: true });
           console.log(`Review UI opened: ${popup.url()}`);
 
-          // TODO: Interact with review UI if needed
-          // For now, just verify it loaded
-          await popup.close();
+          // Wait for the review UI to fully load
+          await popup.waitForTimeout(5000);
+
+          // The LyricsTranscriber review UI should have:
+          // - A preview video player
+          // - Lyrics display with timing
+          // - Edit controls
+          // - A submit/complete button
+
+          // First, let's see what buttons are available
+          const allButtons = await popup.getByRole('button').allTextContents();
+          console.log(`Available buttons in review UI: ${allButtons.join(', ')}`);
+
+          // Take a screenshot after loading
+          await popup.screenshot({ path: 'test-results/prod-04-review-ui-loaded.png', fullPage: true });
+
+          // The review flow in LyricsTranscriber is:
+          // 1. Click "Preview Video" button to generate preview
+          // 2. Wait for preview to generate (this opens a modal)
+          // 3. Click "Complete Review" in the modal to submit
+
+          // Step 1: Click "Preview Video" button
+          const previewBtn = popup.locator('button:has-text("Preview Video")').first();
+          if (await previewBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+            console.log('Found "Preview Video" button, clicking...');
+            await previewBtn.click();
+
+            // Wait for preview to generate (can take up to 30-60 seconds)
+            console.log('Waiting for preview video to generate...');
+            await popup.waitForTimeout(10000);
+            await popup.screenshot({ path: 'test-results/prod-04-preview-generating.png' });
+
+            // Step 2: Look for "Complete Review" button (appears after preview is ready or in modal)
+            let submitted = false;
+            const maxWaitAttempts = 12; // Wait up to 2 minutes for preview
+            for (let i = 0; i < maxWaitAttempts && !submitted; i++) {
+              // Check if popup is still open
+              if (popup.isClosed()) {
+                console.log('Popup closed - review may have been auto-submitted');
+                submitted = true;
+                break;
+              }
+
+              // Look for Complete Review button
+              const completeBtn = popup.locator('button:has-text("Complete Review")').first();
+              if (await completeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                console.log('Found "Complete Review" button, clicking...');
+                await completeBtn.click();
+                // Clicking Complete Review closes the popup, so catch any errors
+                await popup.waitForTimeout(3000).catch(() => {
+                  console.log('Popup closed after clicking Complete Review (expected)');
+                });
+                submitted = true;
+                console.log('Review submitted successfully!');
+              } else {
+                console.log(`Waiting for Complete Review button... (attempt ${i + 1}/${maxWaitAttempts})`);
+                await popup.waitForTimeout(10000).catch(() => {});
+                await popup.screenshot({ path: `test-results/prod-04-waiting-${i}.png` }).catch(() => {});
+              }
+            }
+
+            if (!submitted) {
+              console.log('Could not find "Complete Review" button after waiting');
+              const allButtons = await popup.getByRole('button').allTextContents().catch(() => []);
+              console.log(`Available buttons: ${allButtons.filter(b => b.trim()).join(', ')}`);
+            }
+          } else {
+            console.log('Preview Video button not found, trying direct Complete Review...');
+            // Fallback: Maybe the modal is already open
+            const completeBtn = popup.locator('button:has-text("Complete Review")').first();
+            if (await completeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+              await completeBtn.click();
+              await popup.waitForTimeout(3000);
+              console.log('Review submitted via direct Complete Review button');
+              await popup.screenshot({ path: 'test-results/prod-04-after-submit.png' });
+            } else {
+              console.log('Could not find Complete Review button');
+              const allButtons = await popup.getByRole('button').allTextContents();
+              console.log(`Available buttons: ${allButtons.filter(b => b.trim()).join(', ')}`);
+            }
+          }
+
+          // Close popup if still open
+          if (!popup.isClosed()) {
+            await popup.close().catch(() => {});
+          }
+
+          // Refresh main page to check status
+          await page.click('button:has-text("Refresh")');
+          await page.waitForTimeout(3000);
+          await page.screenshot({ path: 'test-results/prod-04-after-review.png' });
+
+          // Check if job progressed past review
+          const newStatus = await page.locator('[class*="rounded-lg"][class*="border"]').first().locator('span').allTextContents();
+          console.log(`Job status after review: ${newStatus.filter(s => s.trim()).join(', ')}`);
+
+          // Verify the job is no longer in "awaiting review" state
+          const pageTextAfter = await page.locator('body').textContent();
+          if (pageTextAfter?.toLowerCase().includes('awaiting review')) {
+            console.log('WARNING: Job still shows "awaiting review" after submission');
+          } else if (pageTextAfter?.toLowerCase().includes('review complete') ||
+                     pageTextAfter?.toLowerCase().includes('rendering') ||
+                     pageTextAfter?.toLowerCase().includes('select instrumental')) {
+            console.log('SUCCESS: Job progressed past review stage!');
+          }
+
         } else {
-          // Check if we're on a review page now
+          // No popup - might have navigated in same page
+          console.log('Review button did not open popup, checking current page...');
           await page.waitForTimeout(2000);
-          await page.screenshot({ path: 'test-results/prod-04-review-page.png' });
+          await page.screenshot({ path: 'test-results/prod-04-review-same-page.png' });
         }
       } else {
         console.log('Review button not visible');
@@ -535,10 +641,11 @@ test.describe('Production Full Karaoke Generation Journey', () => {
     // Step 4: Wait for processing and lyrics review
     console.log('=== Step 3-4: Waiting for processing and review ===');
 
-    // With auto mode, review should be auto-accepted
-    // Just monitor progress until we reach instrumental selection or complete
+    // Monitor progress and handle review stage
     attempts = 0;
     const maxProcessingAttempts = 120; // 10 minutes of processing
+    let reviewAttempts = 0;
+    const maxReviewAttempts = 3; // Try manual review completion up to 3 times
 
     while (attempts < maxProcessingAttempts) {
       await page.click('button:has-text("Refresh")');
@@ -555,6 +662,95 @@ test.describe('Production Full Karaoke Generation Journey', () => {
       } else if (pageText?.toLowerCase().includes('failed')) {
         await page.screenshot({ path: 'test-results/prod-e2e-failed.png' });
         throw new Error('Job failed during processing');
+      } else if (pageText?.toLowerCase().includes('awaiting review') || pageText?.toLowerCase().includes('review lyrics')) {
+        // Job is awaiting review - auto-mode should handle this, but let's verify
+        console.log('Job awaiting review - checking if auto-processing is working...');
+        await page.screenshot({ path: 'test-results/prod-e2e-awaiting-review.png' });
+
+        // Wait a bit for auto-processor to kick in
+        await page.waitForTimeout(10000);
+        await page.click('button:has-text("Refresh")');
+        await page.waitForTimeout(2000);
+
+        // Check if still awaiting review
+        const stillAwaiting = await page.locator('body').textContent();
+        if (stillAwaiting?.toLowerCase().includes('awaiting review') && reviewAttempts < maxReviewAttempts) {
+          console.log(`Auto-processing not completing review. Attempting manual completion (attempt ${reviewAttempts + 1}/${maxReviewAttempts})...`);
+
+          // Find the job card and try to get the job ID
+          const jobCard = page.locator('[class*="rounded-lg"][class*="border"]').filter({
+            hasText: /awaiting review/i
+          }).first();
+
+          if (await jobCard.isVisible()) {
+            // Click to expand the job
+            await jobCard.click();
+            await page.waitForTimeout(1000);
+
+            // Try to find and click "Review Lyrics" button to open review UI
+            const reviewBtn = page.getByRole('button', { name: /review lyrics/i }).or(page.getByRole('link', { name: /review lyrics/i })).first();
+
+            if (await reviewBtn.isVisible()) {
+              console.log('Opening review UI...');
+
+              // The review button opens a new tab with the LyricsTranscriber UI
+              const [popup] = await Promise.all([
+                page.context().waitForEvent('page', { timeout: 15000 }).catch(() => null),
+                reviewBtn.click()
+              ]);
+
+              if (popup) {
+                console.log(`Review UI opened: ${popup.url()}`);
+                await popup.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                await popup.screenshot({ path: `test-results/prod-e2e-review-ui-${reviewAttempts}.png`, fullPage: true });
+
+                // Wait for the review UI to fully load
+                await popup.waitForTimeout(5000);
+
+                // The review flow: Click "Preview Video" -> Wait -> Click "Complete Review"
+                const previewBtn = popup.locator('button:has-text("Preview Video")').first();
+
+                if (await previewBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                  console.log('Clicking "Preview Video" button...');
+                  await previewBtn.click();
+                  await popup.waitForTimeout(10000);
+
+                  // Wait for "Complete Review" button to appear
+                  let reviewCompleted = false;
+                  for (let i = 0; i < 6 && !reviewCompleted; i++) {
+                    const completeBtn = popup.locator('button:has-text("Complete Review")').first();
+                    if (await completeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                      console.log('Clicking "Complete Review" button...');
+                      await completeBtn.click();
+                      await popup.waitForTimeout(3000);
+                      reviewCompleted = true;
+                      console.log('Review submitted via UI');
+                    } else {
+                      console.log(`Waiting for Complete Review... (${i + 1}/6)`);
+                      await popup.waitForTimeout(10000);
+                    }
+                  }
+
+                  if (!reviewCompleted) {
+                    console.log('Could not complete review via UI');
+                    const allButtons = await popup.getByRole('button').allTextContents();
+                    console.log(`Available buttons: ${allButtons.filter(b => b.trim()).join(', ')}`);
+                  }
+                } else {
+                  console.log('Preview Video button not found');
+                }
+
+                await popup.close();
+              } else {
+                // No popup - might have navigated in same page
+                console.log('Review button did not open popup, checking current page...');
+                await page.waitForTimeout(2000);
+              }
+            }
+          }
+
+          reviewAttempts++;
+        }
       }
 
       // Log current stage
