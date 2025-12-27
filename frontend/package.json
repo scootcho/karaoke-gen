@@ -18,6 +18,9 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:record": "RECORD_FIXTURES=true playwright test",
+    "test:e2e:prod": "playwright test --config=playwright.production.config.ts",
+    "test:e2e:prod:headed": "playwright test --config=playwright.production.config.ts --headed",
+    "test:e2e:prod:debug": "playwright test --config=playwright.production.config.ts --debug",
     "test:all": "npm run test:unit && npm run test:e2e",
     "fixtures:review": "npx ts-node e2e/fixtures/review-cli.ts"
   },
