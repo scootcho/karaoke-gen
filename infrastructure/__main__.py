@@ -287,6 +287,87 @@ github_actions_iap_tunnel = gcp.projects.IAMMember(
     member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# ==================== Claude Code Automation Service Account ====================
+# This service account provides long-lived read-only access for Claude Code CLI
+# to monitor deployments, view logs, and check build status without requiring
+# frequent OAuth re-authentication.
+
+claude_automation_sa = serviceaccount.Account(
+    "claude-automation-sa",
+    account_id="claude-automation",
+    display_name="Claude Code Automation",
+    description="Service account for Claude Code CLI with read-only GCP access",
+)
+
+# Grant Cloud Run viewer permissions (view services, revisions, status)
+claude_run_viewer = gcp.projects.IAMMember(
+    "claude-automation-run-viewer",
+    project=project_id,
+    role="roles/run.viewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Logging viewer permissions (read logs)
+claude_logging_viewer = gcp.projects.IAMMember(
+    "claude-automation-logging-viewer",
+    project=project_id,
+    role="roles/logging.viewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Monitoring viewer permissions (read metrics, dashboards)
+claude_monitoring_viewer = gcp.projects.IAMMember(
+    "claude-automation-monitoring-viewer",
+    project=project_id,
+    role="roles/monitoring.viewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Cloud Build viewer permissions (view build status, logs)
+claude_cloudbuild_viewer = gcp.projects.IAMMember(
+    "claude-automation-cloudbuild-viewer",
+    project=project_id,
+    role="roles/cloudbuild.builds.viewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Cloud Trace viewer permissions (view distributed traces)
+claude_cloudtrace_viewer = gcp.projects.IAMMember(
+    "claude-automation-cloudtrace-viewer",
+    project=project_id,
+    role="roles/cloudtrace.user",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Cloud Tasks viewer permissions (view queue status)
+claude_cloudtasks_viewer = gcp.projects.IAMMember(
+    "claude-automation-cloudtasks-viewer",
+    project=project_id,
+    role="roles/cloudtasks.viewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Storage viewer permissions (list buckets, view metadata - not object content)
+claude_storage_viewer = gcp.projects.IAMMember(
+    "claude-automation-storage-viewer",
+    project=project_id,
+    role="roles/storage.objectViewer",
+    member=claude_automation_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Allow users to impersonate this service account
+# This enables using `gcloud auth application-default login --impersonate-service-account`
+# for long-lived credentials without downloadable keys
+claude_automation_impersonation = gcp.serviceaccount.IAMBinding(
+    "claude-automation-impersonation",
+    service_account_id=claude_automation_sa.name,
+    role="roles/iam.serviceAccountTokenCreator",
+    members=[
+        "user:andrew@beveridge.uk",
+        "user:admin@nomadkaraoke.com",
+    ],
+)
+
 # ==================== Cloud Tasks Queues (Phase 1 Scalability) ====================
 # These queues provide guaranteed delivery and horizontal scaling for worker tasks.
 # Workers are triggered via Cloud Tasks instead of BackgroundTasks, ensuring:
@@ -551,6 +632,9 @@ pulumi.export("backend_default_url", "https://karaoke-backend-ipzqd2k4yq-uc.a.ru
 # GitHub Actions CD exports
 pulumi.export("github_actions_service_account", github_actions_sa.email)
 pulumi.export("workload_identity_provider", workload_identity_provider.name)
+
+# Claude Code automation exports
+pulumi.export("claude_automation_service_account", claude_automation_sa.email)
 
 # Cloud Tasks queue exports (Phase 1 scalability)
 pulumi.export("audio_worker_queue", audio_worker_queue.name)
