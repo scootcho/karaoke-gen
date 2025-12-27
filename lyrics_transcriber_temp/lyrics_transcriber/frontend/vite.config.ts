@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Allow connections from karaoke-gen frontend running on different port
+    // Enable CORS for local development
     cors: true,
   },
   build: {

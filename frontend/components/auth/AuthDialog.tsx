@@ -28,6 +28,7 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
     if (token.trim()) {
       setAccessToken(token.trim())
       setError("")
+      setToken("")  // Clear token from state for security
       onSuccess()
     } else {
       setError("Please enter a valid token")

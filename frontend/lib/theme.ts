@@ -17,6 +17,9 @@ export function useTheme() {
     if (stored === "light" || stored === "dark") {
       setThemeState(stored)
       applyTheme(stored)
+    } else {
+      // Apply default theme to DOM when no valid stored value exists
+      applyTheme("dark")
     }
   }, [])
 

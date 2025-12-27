@@ -398,7 +398,7 @@ class LyricsProcessor:
             run_correction=True,
             generate_plain_text=True,
             generate_lrc=True,
-            generate_cdg=False,  # Also defer CDG generation to Phase 2
+            generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
             enable_review=enable_review_setting,
             subtitle_offset_ms=self.subtitle_offset_ms,

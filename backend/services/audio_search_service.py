@@ -379,7 +379,7 @@ class AudioSearchService:
         self,
         source_name: str,
         source_id: str,
-        output_dir: str,
+        output_dir: str,  # Not used for remote downloads (files go to GCS or remote server)
         output_filename: Optional[str] = None,
         target_file: Optional[str] = None,
         download_url: Optional[str] = None,
@@ -387,7 +387,13 @@ class AudioSearchService:
     ) -> AudioDownloadResult:
         """
         Download by ID using the remote flacfetch service.
+
+        Note: output_dir is accepted for API compatibility but ignored for remote
+        downloads. Remote downloads either go to GCS (if gcs_path is set) or to
+        the remote server's download directory.
         """
+        # output_dir is intentionally unused - remote downloads don't use local paths
+        _ = output_dir
         try:
             # Enable nested event loops
             try:
