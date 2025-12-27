@@ -22,10 +22,12 @@ from typing import Optional, List, Dict, Any, Tuple
 from pydantic import BaseModel, Field
 
 from backend.models.job import JobCreate, JobStatus
+from backend.models.theme import ColorOverrides
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
 from backend.services.credential_manager import get_credential_manager, CredentialStatus
+from backend.services.theme_service import get_theme_service
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.services.metrics import metrics
@@ -51,14 +53,18 @@ class CreateJobFromUrlRequest(BaseModel):
     """Request to create a job from a YouTube/online URL."""
     # Required fields
     url: str = Field(..., description="YouTube or other video URL to download audio from")
-    
+
     # Optional fields - will be auto-detected from URL if not provided
     artist: Optional[str] = Field(None, description="Artist name (auto-detected from URL if not provided)")
     title: Optional[str] = Field(None, description="Song title (auto-detected from URL if not provided)")
-    
-    # Processing options (CDG/TXT require style config, disabled by default)
-    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
-    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
+
+    # Theme configuration (use pre-made theme from GCS)
+    theme_id: Optional[str] = Field(None, description="Theme ID to use (e.g., 'nomad', 'default'). If set, CDG/TXT are enabled by default.")
+    color_overrides: Optional[Dict[str, str]] = Field(None, description="Color overrides: artist_color, title_color, sung_lyrics_color, unsung_lyrics_color (hex #RRGGBB)")
+
+    # Processing options (CDG/TXT require style config or theme, disabled by default unless theme is set)
+    enable_cdg: Optional[bool] = Field(None, description="Generate CDG+MP3 package. Default: True if theme_id set, False otherwise")
+    enable_txt: Optional[bool] = Field(None, description="Generate TXT+MP3 package. Default: True if theme_id set, False otherwise")
 
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
@@ -103,9 +109,13 @@ class CreateJobWithUploadUrlsRequest(BaseModel):
     title: str = Field(..., description="Song title")
     files: List[FileUploadRequest] = Field(..., description="List of files to upload")
 
-    # Processing options (CDG/TXT require style config, disabled by default)
-    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
-    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
+    # Theme configuration (use pre-made theme from GCS)
+    theme_id: Optional[str] = Field(None, description="Theme ID to use (e.g., 'nomad', 'default'). If set, CDG/TXT are enabled by default.")
+    color_overrides: Optional[Dict[str, str]] = Field(None, description="Color overrides: artist_color, title_color, sung_lyrics_color, unsung_lyrics_color (hex #RRGGBB)")
+
+    # Processing options (CDG/TXT require style config or theme, disabled by default unless theme is set)
+    enable_cdg: Optional[bool] = Field(None, description="Generate CDG+MP3 package. Default: True if theme_id set, False otherwise")
+    enable_txt: Optional[bool] = Field(None, description="Generate TXT+MP3 package. Default: True if theme_id set, False otherwise")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
@@ -226,7 +236,7 @@ ALLOWED_FONT_EXTENSIONS = {'.ttf', '.otf', '.woff', '.woff2'}
 async def _trigger_workers_parallel(job_id: str) -> None:
     """
     Trigger both audio and lyrics workers in parallel.
-    
+
     FastAPI's BackgroundTasks runs async tasks sequentially, so we use
     asyncio.gather to ensure both workers start at the same time.
     """
@@ -234,6 +244,83 @@ async def _trigger_workers_parallel(job_id: str) -> None:
         worker_service.trigger_audio_worker(job_id),
         worker_service.trigger_lyrics_worker(job_id)
     )
+
+
+def _resolve_cdg_txt_defaults(
+    theme_id: Optional[str],
+    enable_cdg: Optional[bool],
+    enable_txt: Optional[bool]
+) -> Tuple[bool, bool]:
+    """
+    Resolve CDG/TXT settings based on theme and explicit settings.
+
+    When a theme is selected, CDG and TXT are enabled by default.
+    Explicit True/False values always override the default.
+
+    Args:
+        theme_id: Theme identifier (if any)
+        enable_cdg: Explicit CDG setting (None means use default)
+        enable_txt: Explicit TXT setting (None means use default)
+
+    Returns:
+        Tuple of (resolved_enable_cdg, resolved_enable_txt)
+    """
+    # Default based on whether theme is set
+    default_enabled = theme_id is not None
+
+    # Resolve with explicit override taking precedence
+    resolved_cdg = enable_cdg if enable_cdg is not None else default_enabled
+    resolved_txt = enable_txt if enable_txt is not None else default_enabled
+
+    return resolved_cdg, resolved_txt
+
+
+def _prepare_theme_for_job(
+    job_id: str,
+    theme_id: str,
+    color_overrides: Optional[Dict[str, str]] = None
+) -> Tuple[str, Dict[str, str], Optional[str]]:
+    """
+    Prepare theme style files for a job.
+
+    Args:
+        job_id: The job ID
+        theme_id: Theme identifier
+        color_overrides: Optional color override dict
+
+    Returns:
+        Tuple of (style_params_gcs_path, style_assets, youtube_description)
+
+    Raises:
+        HTTPException: If theme not found
+    """
+    theme_service = get_theme_service()
+
+    # Verify theme exists
+    if not theme_service.theme_exists(theme_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Theme not found: {theme_id}. Use GET /api/themes to list available themes."
+        )
+
+    # Convert dict to ColorOverrides model if provided
+    color_overrides_model = None
+    if color_overrides:
+        color_overrides_model = ColorOverrides(**color_overrides)
+
+    # Prepare job style from theme
+    style_params_path, style_assets = theme_service.prepare_job_style(
+        job_id=job_id,
+        theme_id=theme_id,
+        color_overrides=color_overrides_model
+    )
+
+    # Get YouTube description template if available
+    youtube_desc = theme_service.get_youtube_description(theme_id)
+
+    logger.info(f"Prepared theme '{theme_id}' for job {job_id}")
+
+    return style_params_path, style_assets, youtube_desc
 
 
 @router.post("/jobs/upload")
@@ -682,9 +769,13 @@ class CreateFinaliseOnlyJobRequest(BaseModel):
     title: str = Field(..., description="Song title")
     files: List[FinaliseOnlyFileRequest] = Field(..., description="List of prep output files to upload")
 
-    # Processing options (CDG/TXT require style config, disabled by default)
-    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
-    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
+    # Theme configuration (use pre-made theme from GCS)
+    theme_id: Optional[str] = Field(None, description="Theme ID to use (e.g., 'nomad', 'default'). If set, CDG/TXT are enabled by default.")
+    color_overrides: Optional[Dict[str, str]] = Field(None, description="Color overrides: artist_color, title_color, sung_lyrics_color, unsung_lyrics_color (hex #RRGGBB)")
+
+    # Processing options (CDG/TXT require style config or theme, disabled by default unless theme is set)
+    enable_cdg: Optional[bool] = Field(None, description="Generate CDG+MP3 package. Default: True if theme_id set, False otherwise")
+    enable_txt: Optional[bool] = Field(None, description="Generate TXT+MP3 package. Default: True if theme_id set, False otherwise")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
@@ -859,17 +950,27 @@ async def create_job_with_upload_urls(
         
         # Extract request metadata for tracking
         request_metadata = extract_request_metadata(request, created_from="signed_url_upload")
-        
+
         # Get original audio filename
         audio_file = audio_files[0]
-        
+
+        # Resolve CDG/TXT defaults based on theme
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            body.theme_id, body.enable_cdg, body.enable_txt
+        )
+
+        # Check if style_params is being uploaded (overrides theme)
+        has_style_params_upload = any(f.file_type == 'style_params' for f in body.files)
+
         # Create job
         job_create = JobCreate(
             artist=body.artist,
             title=body.title,
             filename=audio_file.filename,
-            enable_cdg=body.enable_cdg,
-            enable_txt=body.enable_txt,
+            theme_id=body.theme_id,
+            color_overrides=body.color_overrides or {},
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
             brand_prefix=body.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
@@ -889,11 +990,26 @@ async def create_job_with_upload_urls(
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
-        
+
         # Record job creation metric
         metrics.record_job_created(job_id, source="upload")
-        
+
         logger.info(f"Created job {job_id} for {body.artist} - {body.title} (signed URL upload flow)")
+
+        # If theme is set and no style_params uploaded, prepare theme style now
+        if body.theme_id and not has_style_params_upload:
+            style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
+                job_id, body.theme_id, body.color_overrides
+            )
+            # Update job with theme style data
+            update_data = {
+                'style_params_gcs_path': style_params_path,
+                'style_assets': style_assets,
+            }
+            if youtube_desc and not body.youtube_description:
+                update_data['youtube_description_template'] = youtube_desc
+            job_manager.update_job(job_id, update_data)
+            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
         
         # Generate signed upload URLs for each file
         upload_urls = []
@@ -1245,19 +1361,26 @@ async def create_job_from_url(
         
         # Extract request metadata for tracking
         request_metadata = extract_request_metadata(request, created_from="url")
-        
+
         # Use provided artist/title or leave as None (will be auto-detected by audio worker)
         artist = body.artist
         title = body.title
-        
+
+        # Resolve CDG/TXT defaults based on theme
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            body.theme_id, body.enable_cdg, body.enable_txt
+        )
+
         # Create job with URL
         job_create = JobCreate(
             url=body.url,
             artist=artist,
             title=title,
             filename=None,  # No file uploaded
-            enable_cdg=body.enable_cdg,
-            enable_txt=body.enable_txt,
+            theme_id=body.theme_id,
+            color_overrides=body.color_overrides or {},
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
             brand_prefix=body.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
@@ -1277,9 +1400,24 @@ async def create_job_from_url(
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
-        
+
         # Record job creation metric
         metrics.record_job_created(job_id, source="url")
+
+        # If theme is set, prepare theme style now
+        if body.theme_id:
+            style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
+                job_id, body.theme_id, body.color_overrides
+            )
+            # Update job with theme style data
+            update_data = {
+                'style_params_gcs_path': style_params_path,
+                'style_assets': style_assets,
+            }
+            if youtube_desc and not body.youtube_description:
+                update_data['youtube_description_template'] = youtube_desc
+            job_manager.update_job(job_id, update_data)
+            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
         
         logger.info(f"Created URL-based job {job_id} for URL: {body.url}")
         if artist:
@@ -1462,14 +1600,24 @@ async def create_finalise_only_job(
         
         # Extract request metadata
         request_metadata = extract_request_metadata(request, created_from="finalise_only_upload")
-        
+
+        # Resolve CDG/TXT defaults based on theme
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            body.theme_id, body.enable_cdg, body.enable_txt
+        )
+
+        # Check if style_params is being uploaded (overrides theme)
+        has_style_params_upload = any(f.file_type == 'style_params' for f in body.files)
+
         # Create job with finalise_only=True
         job_create = JobCreate(
             artist=body.artist,
             title=body.title,
             filename="finalise_only",  # No single audio file - using prep outputs
-            enable_cdg=body.enable_cdg,
-            enable_txt=body.enable_txt,
+            theme_id=body.theme_id,
+            color_overrides=body.color_overrides or {},
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
             brand_prefix=body.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
@@ -1482,11 +1630,26 @@ async def create_finalise_only_job(
         )
         job = job_manager.create_job(job_create)
         job_id = job.job_id
-        
+
         # Record job creation metric
         metrics.record_job_created(job_id, source="finalise")
-        
+
         logger.info(f"Created finalise-only job {job_id} for {body.artist} - {body.title}")
+
+        # If theme is set and no style_params uploaded, prepare theme style now
+        if body.theme_id and not has_style_params_upload:
+            style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
+                job_id, body.theme_id, body.color_overrides
+            )
+            # Update job with theme style data
+            update_data = {
+                'style_params_gcs_path': style_params_path,
+                'style_assets': style_assets,
+            }
+            if youtube_desc and not body.youtube_description:
+                update_data['youtube_description_template'] = youtube_desc
+            job_manager.update_job(job_id, update_data)
+            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
         
         # Generate signed upload URLs for each file
         upload_urls = []

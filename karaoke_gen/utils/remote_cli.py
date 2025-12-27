@@ -292,6 +292,8 @@ class RemoteKaraokeClient:
         # Two-phase workflow (Batch 6)
         prep_only: bool = False,
         keep_brand_code: Optional[str] = None,
+        # Theme system
+        theme_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job from a YouTube/online URL.
@@ -322,6 +324,7 @@ class RemoteKaraokeClient:
             clean_instrumental_model: Model for clean instrumental separation
             backing_vocals_models: List of models for backing vocals separation
             other_stems_models: List of models for other stems (bass, drums, etc.)
+            theme_id: Theme ID from GCS themes (e.g., 'nomad', 'default')
         """
         self.logger.info(f"Submitting URL-based job: {url}")
         
@@ -367,7 +370,10 @@ class RemoteKaraokeClient:
             create_request['prep_only'] = prep_only
         if keep_brand_code:
             create_request['keep_brand_code'] = keep_brand_code
-        
+        # Theme system
+        if theme_id:
+            create_request['theme_id'] = theme_id
+
         self.logger.info(f"Creating URL-based job at {self.config.service_url}/api/jobs/create-from-url")
         
         response = self._request('POST', '/api/jobs/create-from-url', json=create_request)
@@ -396,9 +402,9 @@ class RemoteKaraokeClient:
         return result
     
     def submit_job(
-        self, 
-        filepath: str, 
-        artist: str, 
+        self,
+        filepath: str,
+        artist: str,
         title: str,
         style_params_path: Optional[str] = None,
         enable_cdg: bool = True,
@@ -425,6 +431,8 @@ class RemoteKaraokeClient:
         # Two-phase workflow (Batch 6)
         prep_only: bool = False,
         keep_brand_code: Optional[str] = None,
+        # Theme system
+        theme_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a new karaoke generation job with optional style configuration.
@@ -456,6 +464,7 @@ class RemoteKaraokeClient:
             backing_vocals_models: List of models for backing vocals separation
             other_stems_models: List of models for other stems (bass, drums, etc.)
             existing_instrumental: Path to existing instrumental file to use instead of AI separation
+            theme_id: Theme ID from GCS themes (e.g., 'nomad', 'default')
         """
         file_path = Path(filepath)
         
@@ -574,7 +583,10 @@ class RemoteKaraokeClient:
             create_request['prep_only'] = prep_only
         if keep_brand_code:
             create_request['keep_brand_code'] = keep_brand_code
-        
+        # Theme system
+        if theme_id:
+            create_request['theme_id'] = theme_id
+
         response = self._request('POST', '/api/jobs/create-with-upload-urls', json=create_request)
         
         if response.status_code != 200:
@@ -1195,6 +1207,8 @@ class RemoteKaraokeClient:
         clean_instrumental_model: Optional[str] = None,
         backing_vocals_models: Optional[list] = None,
         other_stems_models: Optional[list] = None,
+        # Theme system
+        theme_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Search for audio by artist and title (Batch 5 - Flacfetch integration).
@@ -1247,7 +1261,10 @@ class RemoteKaraokeClient:
             request_data['backing_vocals_models'] = backing_vocals_models
         if other_stems_models:
             request_data['other_stems_models'] = other_stems_models
-        
+        # Theme system
+        if theme_id:
+            request_data['theme_id'] = theme_id
+
         # Prepare style files for upload if provided
         style_files = []
         local_style_files: Dict[str, str] = {}  # file_type -> local_path
@@ -3029,6 +3046,8 @@ def main():
         logger.info(f"Searching for: {artist} - {title}")
         if getattr(args, 'auto_download', False) or config.non_interactive:
             logger.info(f"Auto-download: enabled (will auto-select best source)")
+        if getattr(args, 'theme', None):
+            logger.info(f"Theme: {args.theme}")
         if args.style_params_json:
             logger.info(f"Style: {args.style_params_json}")
         logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
@@ -3070,6 +3089,8 @@ def main():
                 clean_instrumental_model=getattr(args, 'clean_instrumental_model', None),
                 backing_vocals_models=getattr(args, 'backing_vocals_models', None),
                 other_stems_models=getattr(args, 'other_stems_models', None),
+                # Theme system
+                theme_id=getattr(args, 'theme', None),
             )
             
             job_id = result.get('job_id')
@@ -3106,6 +3127,8 @@ def main():
         logger.info(f"Title: {title}")
     if not artist and not title and is_url_input:
         logger.info(f"Artist/Title: (will be auto-detected from URL)")
+    if getattr(args, 'theme', None):
+        logger.info(f"Theme: {args.theme}")
     if args.style_params_json:
         logger.info(f"Style: {args.style_params_json}")
     logger.info(f"CDG: {args.enable_cdg}, TXT: {args.enable_txt}")
@@ -3206,6 +3229,8 @@ def main():
                 # Two-phase workflow (Batch 6)
                 prep_only=getattr(args, 'prep_only', False),
                 keep_brand_code=keep_brand_code_value,
+                # Theme system
+                theme_id=getattr(args, 'theme', None),
             )
         else:
             # File-based job submission
@@ -3238,6 +3263,8 @@ def main():
                 # Two-phase workflow (Batch 6)
                 prep_only=getattr(args, 'prep_only', False),
                 keep_brand_code=keep_brand_code_value,
+                # Theme system
+                theme_id=getattr(args, 'theme', None),
             )
         job_id = result.get('job_id')
         style_assets = result.get('style_assets_uploaded', [])
