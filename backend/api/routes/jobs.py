@@ -336,12 +336,27 @@ async def get_review_data(
     
     # Get URLs from file_urls
     corrections_url = job.file_urls.get('lyrics', {}).get('corrections')
-    audio_url = job.file_urls.get('lyrics', {}).get('audio')
-    
-    if not corrections_url or not audio_url:
+
+    # For audio, try multiple sources in order of preference:
+    # 1. Explicit lyrics audio (if worker uploaded it)
+    # 2. Lead vocals stem (best for reviewing lyrics sync)
+    # 3. Input media (original audio)
+    audio_url = (
+        job.file_urls.get('lyrics', {}).get('audio') or
+        job.file_urls.get('stems', {}).get('lead_vocals') or
+        job.input_media_gcs_path
+    )
+
+    if not corrections_url:
         raise HTTPException(
             status_code=500,
-            detail="Review data not available"
+            detail="Corrections data not available"
+        )
+
+    if not audio_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Audio not available for review"
         )
     
     # Generate signed URLs for direct access
