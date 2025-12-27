@@ -31,6 +31,12 @@ from .video_generator import VideoGenerator
 from .video_background_processor import VideoBackgroundProcessor
 from .audio_fetcher import create_audio_fetcher, AudioFetcherError, NoResultsError, UserCancelledError
 
+# Import lyrics_transcriber components for post-review countdown and video rendering
+from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.types import CorrectionResult
+from lyrics_transcriber.core.config import OutputConfig as LyricsOutputConfig
+
 
 class KaraokePrep:
     def __init__(
@@ -691,6 +697,112 @@ class KaraokePrep:
                     self.logger.info("Skipping processing of separation results as separation was not run.")
 
                 self.logger.info("=== Parallel Processing Complete ===")
+
+            # === POST-TRANSCRIPTION: Add countdown and render video ===
+            # Since lyrics_processor.py now always defers countdown and video rendering,
+            # we handle it here after human review is complete. This ensures the review UI
+            # shows accurate, unshifted timestamps (same behavior as cloud backend).
+            if processed_track.get("lyrics") and self.render_video:
+                self.logger.info("=== Processing Countdown and Video Rendering ===")
+
+                from .utils import sanitize_filename
+                sanitized_artist = sanitize_filename(self.artist)
+                sanitized_title = sanitize_filename(self.title)
+                lyrics_dir = os.path.join(track_output_dir, "lyrics")
+
+                # Find the corrections JSON file
+                corrections_filename = f"{sanitized_artist} - {sanitized_title} (Lyrics Corrections).json"
+                corrections_filepath = os.path.join(lyrics_dir, corrections_filename)
+
+                if os.path.exists(corrections_filepath):
+                    self.logger.info(f"Loading corrections from: {corrections_filepath}")
+
+                    with open(corrections_filepath, 'r', encoding='utf-8') as f:
+                        corrections_data = json.load(f)
+
+                    # Convert to CorrectionResult
+                    correction_result = CorrectionResult.from_dict(corrections_data)
+                    self.logger.info(f"Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
+
+                    # Get the audio file path
+                    audio_path = processed_track["input_audio_wav"]
+
+                    # Add countdown intro if needed (songs that start within 3 seconds)
+                    self.logger.info("Processing countdown intro (if needed)...")
+                    cache_dir = os.path.join(track_output_dir, "cache")
+                    os.makedirs(cache_dir, exist_ok=True)
+
+                    countdown_processor = CountdownProcessor(
+                        cache_dir=cache_dir,
+                        logger=self.logger,
+                    )
+
+                    correction_result, audio_path, padding_added, padding_seconds = countdown_processor.process(
+                        correction_result=correction_result,
+                        audio_filepath=audio_path,
+                    )
+
+                    # Update processed_track with countdown info
+                    processed_track["countdown_padding_added"] = padding_added
+                    processed_track["countdown_padding_seconds"] = padding_seconds
+                    if padding_added:
+                        processed_track["padded_vocals_audio"] = audio_path
+                        self.logger.info(
+                            f"=== COUNTDOWN PADDING ADDED ===\n"
+                            f"Added {padding_seconds}s padding to audio and shifted timestamps.\n"
+                            f"Instrumental tracks will be padded after separation to maintain sync."
+                        )
+                    else:
+                        self.logger.info("No countdown needed - song starts after 3 seconds")
+
+                    # Save the updated corrections with countdown timestamps
+                    updated_corrections_data = correction_result.to_dict()
+                    with open(corrections_filepath, 'w', encoding='utf-8') as f:
+                        json.dump(updated_corrections_data, f, indent=2)
+                    self.logger.info(f"Saved countdown-adjusted corrections to: {corrections_filepath}")
+
+                    # Render video with lyrics
+                    self.logger.info("Rendering karaoke video with synchronized lyrics...")
+
+                    output_config = LyricsOutputConfig(
+                        output_dir=lyrics_dir,
+                        cache_dir=cache_dir,
+                        output_styles_json=self.style_params_json,
+                        render_video=True,
+                        generate_cdg=False,
+                        generate_plain_text=True,
+                        generate_lrc=True,
+                        video_resolution="4k",
+                        subtitle_offset_ms=self.subtitle_offset_ms,
+                    )
+
+                    output_generator = OutputGenerator(output_config, self.logger)
+                    output_prefix = f"{sanitized_artist} - {sanitized_title}"
+
+                    outputs = output_generator.generate_outputs(
+                        transcription_corrected=correction_result,
+                        audio_filepath=audio_path,
+                        output_prefix=output_prefix,
+                    )
+
+                    # Copy video to expected location in parent directory
+                    if outputs and outputs.get("video_filepath"):
+                        source_video = outputs["video_filepath"]
+                        dest_video = os.path.join(track_output_dir, f"{artist_title} (With Vocals).mkv")
+                        shutil.copy2(source_video, dest_video)
+                        self.logger.info(f"Video rendered successfully: {dest_video}")
+                        processed_track["with_vocals_video"] = dest_video
+
+                        # Update ASS filepath for video background processing
+                        if outputs.get("ass_filepath"):
+                            processed_track["ass_filepath"] = outputs["ass_filepath"]
+                    else:
+                        self.logger.warning("Video rendering did not produce expected output")
+                else:
+                    self.logger.warning(f"Corrections file not found: {corrections_filepath}")
+                    self.logger.warning("Skipping countdown processing and video rendering")
+            elif not self.render_video:
+                self.logger.info("Video rendering disabled - skipping countdown and video generation")
 
             # Apply video background if requested and lyrics were processed
             if self.video_background_processor and processed_track.get("lyrics"):

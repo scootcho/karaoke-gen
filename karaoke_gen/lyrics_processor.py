@@ -364,35 +364,20 @@ class LyricsProcessor:
         self.logger.info(f"  rapidapi_key: {env_config.get('rapidapi_key')[:3] + '...' if env_config.get('rapidapi_key') else 'None'}")
         self.logger.info(f"  lyrics_file: {self.lyrics_file}")
 
-        # Detect if we're running in a serverless environment (Modal)
-        # Modal sets specific environment variables we can check for
-        is_serverless = (
-            os.getenv("MODAL_TASK_ID") is not None or 
-            os.getenv("MODAL_FUNCTION_NAME") is not None or
-            os.path.exists("/.modal")  # Modal creates this directory in containers
-        )
-        
-        # In serverless environment, disable interactive review even if skip_transcription_review=False
-        # This preserves CLI behavior while fixing serverless hanging
-        enable_review_setting = not self.skip_transcription_review and not is_serverless
-        
-        if is_serverless and not self.skip_transcription_review:
-            self.logger.info("Detected serverless environment - disabling interactive review to prevent hanging")
-        
-        # In serverless environment, disable video generation during Phase 1 to save compute
-        # Video will be generated in Phase 2 after human review
-        serverless_render_video = render_video and not is_serverless
-        
-        if is_serverless and render_video:
-            self.logger.info("Detected serverless environment - deferring video generation until after review")
-
-        if is_serverless:
-            self.logger.info("Detected serverless environment - deferring countdown processing until after review")
+        # Always defer countdown and video rendering to a later phase.
+        # This ensures the review UI (both local and cloud) shows original timing
+        # without the 3-second countdown shift. The caller is responsible for:
+        # - Local CLI: karaoke_gen.py adds countdown and renders video after transcription
+        # - Cloud backend: render_video_worker.py adds countdown and renders video
+        #
+        # This design ensures consistent behavior regardless of environment,
+        # and the review UI always shows accurate, unshifted timestamps.
+        self.logger.info("Deferring countdown and video rendering to post-review phase")
 
         output_config = OutputConfig(
             output_styles_json=self.style_params_json,
             output_dir=lyrics_dir,
-            render_video=serverless_render_video,  # Disable video in serverless Phase 1
+            render_video=False,  # Always defer - caller handles video rendering after countdown
             fetch_lyrics=True,
             run_transcription=not self.skip_transcription,
             run_correction=True,
@@ -400,9 +385,9 @@ class LyricsProcessor:
             generate_lrc=True,
             generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
-            enable_review=enable_review_setting,
+            enable_review=not self.skip_transcription_review,  # Honor the caller's setting
             subtitle_offset_ms=self.subtitle_offset_ms,
-            add_countdown=not is_serverless,  # Defer countdown to Phase 2 (render_video_worker)
+            add_countdown=False,  # Always defer - caller handles countdown after review
         )
 
         # Add this log entry to debug the OutputConfig
