@@ -2,6 +2,14 @@
 
 This document contains guidelines and rules for AI assistants working on this codebase.
 
+## Core Principles
+
+**Always be testing.** Proactively evaluate, read, run, fix, and improve tests whenever you touch any part of the system—frontend, backend, infrastructure. Every code change should be thoroughly tested. Leave everything better tested than you found it.
+
+**Always be documenting.** Continuously read, write, improve, update, and organize markdown documentation. Reference existing docs and keep them accurate as the codebase evolves.
+
+**Build for maintainability.** Keep code SOLID, modular, and clean. Favor simplicity and clarity. Future developers (and AI agents) will thank you.
+
 ## Branching Workflow
 
 **Never commit directly to `main`.** Always work on a feature branch.
