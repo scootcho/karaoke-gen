@@ -577,7 +577,7 @@ test.describe('Production Full Karaoke Generation Journey', () => {
       await instrumentalJob.click();
       await page.waitForTimeout(1000);
 
-      const selectBtn = page.getByRole('button', { name: /select instrumental/i });
+      const selectBtn = page.getByRole('button', { name: /select instrumental/i }).first();
       if (await selectBtn.isVisible()) {
         await selectBtn.click();
         await page.waitForTimeout(2000);
