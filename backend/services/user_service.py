@@ -64,8 +64,8 @@ class UserService:
                 return None
 
             return User(**doc.to_dict())
-        except Exception as e:
-            logger.error(f"Error getting user {email}: {e}")
+        except Exception:
+            logger.exception(f"Error getting user {email}")
             return None
 
     def get_or_create_user(self, email: str) -> User:
@@ -88,8 +88,8 @@ class UserService:
             user.updated_at = datetime.utcnow()
             doc_ref = self.db.collection(USERS_COLLECTION).document(user.email.lower())
             doc_ref.set(user.model_dump(mode='json'))
-        except Exception as e:
-            logger.error(f"Error saving user {user.email}: {e}")
+        except Exception:
+            logger.exception(f"Error saving user {user.email}")
             raise
 
     def update_user(self, email: str, **updates) -> Optional[User]:
@@ -99,8 +99,8 @@ class UserService:
             doc_ref = self.db.collection(USERS_COLLECTION).document(email.lower())
             doc_ref.update(updates)
             return self.get_user(email)
-        except Exception as e:
-            logger.error(f"Error updating user {email}: {e}")
+        except Exception:
+            logger.exception(f"Error updating user {email}")
             return None
 
     def list_users(self, limit: int = 100, include_inactive: bool = False) -> List[User]:
@@ -116,8 +116,8 @@ class UserService:
 
             docs = query.stream()
             return [User(**doc.to_dict()) for doc in docs]
-        except Exception as e:
-            logger.error(f"Error listing users: {e}")
+        except Exception:
+            logger.exception("Error listing users")
             return []
 
     def get_user_public(self, email: str) -> Optional[UserPublic]:
@@ -230,8 +230,8 @@ class UserService:
             logger.info(f"Magic link verified for {email_or_error}")
             return True, user, "Successfully authenticated"
 
-        except Exception as e:
-            logger.exception(f"Error verifying magic link: {e}")
+        except Exception:
+            logger.exception("Error verifying magic link")
             return False, None, "An error occurred during verification"
 
     # =========================================================================
@@ -303,8 +303,8 @@ class UserService:
 
             return True, user, "Valid session"
 
-        except Exception as e:
-            logger.error(f"Error validating session: {e}")
+        except Exception:
+            logger.exception("Error validating session")
             return False, None, "An error occurred during validation"
 
     def revoke_session(self, token: str) -> bool:
@@ -314,8 +314,8 @@ class UserService:
             doc_ref.update({'is_active': False})
             logger.info("Session revoked")
             return True
-        except Exception as e:
-            logger.error(f"Error revoking session: {e}")
+        except Exception:
+            logger.exception("Error revoking session")
             return False
 
     def revoke_all_sessions(self, user_email: str) -> int:
@@ -334,8 +334,8 @@ class UserService:
 
             logger.info(f"Revoked {count} sessions for {user_email}")
             return count
-        except Exception as e:
-            logger.error(f"Error revoking sessions: {e}")
+        except Exception:
+            logger.exception("Error revoking sessions")
             return 0
 
     # =========================================================================
@@ -387,7 +387,7 @@ class UserService:
             return True, new_balance, f"Added {amount} credits"
 
         except Exception as e:
-            logger.error(f"Error adding credits to {email}: {e}")
+            logger.exception(f"Error adding credits to {email}")
             return False, 0, f"Failed to add credits: {e}"
 
     def deduct_credit(
@@ -460,7 +460,7 @@ class UserService:
             return success, new_balance, message
 
         except Exception as e:
-            logger.error(f"Error deducting credit from {email}: {e}")
+            logger.exception(f"Error deducting credit from {email}")
             return False, 0, f"Failed to deduct credit: {e}"
 
     def refund_credit(
@@ -500,8 +500,8 @@ class UserService:
             self.update_user(email, role=role.value)
             logger.info(f"Admin {admin_email} set role for {email} to {role.value}")
             return True
-        except Exception as e:
-            logger.error(f"Error setting user role: {e}")
+        except Exception:
+            logger.exception("Error setting user role")
             return False
 
     def disable_user(self, email: str, admin_email: str) -> bool:
@@ -511,8 +511,8 @@ class UserService:
             self.revoke_all_sessions(email)
             logger.info(f"Admin {admin_email} disabled user {email}")
             return True
-        except Exception as e:
-            logger.error(f"Error disabling user: {e}")
+        except Exception:
+            logger.exception("Error disabling user")
             return False
 
     def enable_user(self, email: str, admin_email: str) -> bool:
@@ -521,8 +521,8 @@ class UserService:
             self.update_user(email, is_active=True)
             logger.info(f"Admin {admin_email} enabled user {email}")
             return True
-        except Exception as e:
-            logger.error(f"Error enabling user: {e}")
+        except Exception:
+            logger.exception("Error enabling user")
             return False
 
     def increment_jobs_completed(self, email: str) -> bool:
@@ -534,8 +534,8 @@ class UserService:
 
             self.update_user(email, total_jobs_completed=user.total_jobs_completed + 1)
             return True
-        except Exception as e:
-            logger.error(f"Error incrementing jobs completed for {email}: {e}")
+        except Exception:
+            logger.exception(f"Error incrementing jobs completed for {email}")
             return False
 
 

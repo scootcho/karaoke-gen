@@ -19,7 +19,7 @@ interface AuthStatusProps {
 }
 
 export function AuthStatus({ onAuthChange }: AuthStatusProps) {
-  const { user, logout, fetchUser, isLoading } = useAuth()
+  const { user, logout } = useAuth()
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -41,8 +41,9 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
   }
 
   const handleBuyCredits = () => {
-    // Navigate to buy.nomadkaraoke.com with email prefilled if available
-    const buyUrl = new URL("https://buy.nomadkaraoke.com")
+    // Navigate to buy site with email prefilled if available
+    const buyBaseUrl = process.env.NEXT_PUBLIC_BUY_URL || "https://buy.nomadkaraoke.com"
+    const buyUrl = new URL(buyBaseUrl)
     if (user?.email) {
       buyUrl.searchParams.set("email", user.email)
     }

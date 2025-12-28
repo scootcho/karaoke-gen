@@ -104,8 +104,8 @@ class SendGridEmailProvider(EmailProvider):
                 logger.error(f"SendGrid returned status {response.status_code}")
                 return False
 
-        except Exception as e:
-            logger.error(f"Failed to send email via SendGrid: {e}")
+        except Exception:
+            logger.exception("Failed to send email via SendGrid")
             return False
 
 
