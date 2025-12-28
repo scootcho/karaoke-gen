@@ -798,6 +798,166 @@ class TestRemoteDownloadPath:
         assert result.filepath == "/tmp/test.flac"
 
 
+class TestAudioSearchThemeSupport:
+    """Test theme support in audio search requests.
+
+    These tests verify that theme_id and color_overrides are properly:
+    1. Accepted in AudioSearchRequest model
+    2. Passed through to JobCreate
+    3. Result in correct CDG/TXT defaults when theme is set
+    """
+
+    def test_audio_search_request_accepts_theme_id(self):
+        """Test AudioSearchRequest model has theme_id field."""
+        from backend.api.routes.audio_search import AudioSearchRequest
+
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad"
+        )
+
+        assert request.theme_id == "nomad"
+
+    def test_audio_search_request_accepts_color_overrides(self):
+        """Test AudioSearchRequest model has color_overrides field."""
+        from backend.api.routes.audio_search import AudioSearchRequest
+
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad",
+            color_overrides={
+                "artist_color": "#ff0000",
+                "title_color": "#00ff00",
+            }
+        )
+
+        assert request.color_overrides["artist_color"] == "#ff0000"
+        assert request.color_overrides["title_color"] == "#00ff00"
+
+    def test_audio_search_request_theme_defaults_cdg_txt(self):
+        """Test that when theme_id is set, CDG/TXT defaults to enabled.
+
+        This is the key behavior: selecting a theme should automatically
+        enable CDG and TXT output formats.
+        """
+        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+
+        # When theme_id is set, enable_cdg/enable_txt should default to True
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad"
+            # enable_cdg and enable_txt are None (not specified)
+        )
+
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            request.theme_id, request.enable_cdg, request.enable_txt
+        )
+
+        assert resolved_cdg is True, "CDG should be enabled by default when theme is set"
+        assert resolved_txt is True, "TXT should be enabled by default when theme is set"
+
+    def test_audio_search_request_no_theme_no_cdg_txt(self):
+        """Test that without theme_id, CDG/TXT defaults to disabled."""
+        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song"
+            # No theme_id, no enable_cdg, no enable_txt
+        )
+
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            request.theme_id, request.enable_cdg, request.enable_txt
+        )
+
+        assert resolved_cdg is False, "CDG should be disabled by default without theme"
+        assert resolved_txt is False, "TXT should be disabled by default without theme"
+
+    def test_explicit_cdg_txt_overrides_theme_default(self):
+        """Test that explicit enable_cdg/enable_txt values override theme defaults."""
+        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+
+        # Theme set (would default to True), but explicitly disabled
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad",
+            enable_cdg=False,
+            enable_txt=False,
+        )
+
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            request.theme_id, request.enable_cdg, request.enable_txt
+        )
+
+        assert resolved_cdg is False, "Explicit False should override theme default"
+        assert resolved_txt is False, "Explicit False should override theme default"
+
+    def test_explicit_cdg_txt_enables_without_theme(self):
+        """Test that explicit True enables CDG/TXT even without theme."""
+        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+
+        # No theme (would default to False), but explicitly enabled
+        request = AudioSearchRequest(
+            artist="Test Artist",
+            title="Test Song",
+            enable_cdg=True,
+            enable_txt=True,
+        )
+
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            request.theme_id, request.enable_cdg, request.enable_txt
+        )
+
+        assert resolved_cdg is True, "Explicit True should enable CDG without theme"
+        assert resolved_txt is True, "Explicit True should enable TXT without theme"
+
+    def test_job_create_receives_theme_from_audio_search(self):
+        """Test that JobCreate model can receive theme_id and color_overrides."""
+        job_create = JobCreate(
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad",
+            color_overrides={
+                "artist_color": "#ff0000",
+                "sung_lyrics_color": "#00ff00"
+            },
+            enable_cdg=True,
+            enable_txt=True,
+        )
+
+        assert job_create.theme_id == "nomad"
+        assert job_create.color_overrides["artist_color"] == "#ff0000"
+        assert job_create.color_overrides["sung_lyrics_color"] == "#00ff00"
+        assert job_create.enable_cdg is True
+        assert job_create.enable_txt is True
+
+    def test_job_model_stores_theme_configuration(self):
+        """Test Job model stores theme configuration correctly."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            artist="Test Artist",
+            title="Test Song",
+            theme_id="nomad",
+            color_overrides={
+                "artist_color": "#ff0000"
+            },
+            enable_cdg=True,
+            enable_txt=True,
+        )
+
+        assert job.theme_id == "nomad"
+        assert job.color_overrides["artist_color"] == "#ff0000"
+        assert job.enable_cdg is True
+        assert job.enable_txt is True
+
+
 class TestFlacfetchIntegration:
     """
     Integration tests that verify flacfetch imports work correctly.

@@ -85,9 +85,13 @@ class AudioSearchRequest(BaseModel):
     # Auto-download mode
     auto_download: bool = Field(False, description="Automatically select best result and download")
 
-    # Processing options (CDG/TXT require style config, disabled by default)
-    enable_cdg: bool = Field(False, description="Generate CDG+MP3 package (requires style config)")
-    enable_txt: bool = Field(False, description="Generate TXT+MP3 package (requires style config)")
+    # Theme configuration
+    theme_id: Optional[str] = Field(None, description="Theme ID to use (e.g., 'nomad', 'default'). If set, CDG/TXT are enabled by default.")
+    color_overrides: Optional[Dict[str, str]] = Field(None, description="Color overrides: artist_color, title_color, sung_lyrics_color, unsung_lyrics_color (hex #RRGGBB)")
+
+    # Processing options (CDG/TXT require style config or theme, disabled by default unless theme is set)
+    enable_cdg: Optional[bool] = Field(None, description="Generate CDG+MP3 package. Default: True if theme_id set, False otherwise")
+    enable_txt: Optional[bool] = Field(None, description="Generate TXT+MP3 package. Default: True if theme_id set, False otherwise")
     
     # Finalisation options
     brand_prefix: Optional[str] = Field(None, description="Brand code prefix (e.g., NOMAD)")
@@ -178,6 +182,35 @@ class AudioSelectResponse(BaseModel):
     selected_title: str
     selected_artist: str
     selected_provider: str
+
+
+def _resolve_cdg_txt_defaults(
+    theme_id: Optional[str],
+    enable_cdg: Optional[bool],
+    enable_txt: Optional[bool]
+) -> Tuple[bool, bool]:
+    """
+    Resolve CDG/TXT settings based on theme and explicit settings.
+
+    When a theme is selected, CDG and TXT are enabled by default.
+    Explicit True/False values always override the default.
+
+    Args:
+        theme_id: Theme identifier (if any)
+        enable_cdg: Explicit CDG setting (None means use default)
+        enable_txt: Explicit TXT setting (None means use default)
+
+    Returns:
+        Tuple of (resolved_enable_cdg, resolved_enable_txt)
+    """
+    # Default based on whether theme is set
+    default_enabled = theme_id is not None
+
+    # Explicit values override defaults, None uses default
+    resolved_cdg = enable_cdg if enable_cdg is not None else default_enabled
+    resolved_txt = enable_txt if enable_txt is not None else default_enabled
+
+    return resolved_cdg, resolved_txt
 
 
 def extract_request_metadata(request: Request, created_from: str = "audio_search") -> Dict[str, Any]:
@@ -461,13 +494,20 @@ async def search_audio(
         
         # Extract request metadata
         request_metadata = extract_request_metadata(request, created_from="audio_search")
-        
+
+        # Resolve CDG/TXT defaults based on theme
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            body.theme_id, body.enable_cdg, body.enable_txt
+        )
+
         # Create job
         job_create = JobCreate(
             artist=body.artist,
             title=body.title,
-            enable_cdg=body.enable_cdg,
-            enable_txt=body.enable_txt,
+            theme_id=body.theme_id,
+            color_overrides=body.color_overrides or {},
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
             brand_prefix=effective_brand_prefix,
             enable_youtube_upload=effective_enable_youtube_upload,
             youtube_description=effective_youtube_description,
