@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useState, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, CheckCircle, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,10 +13,15 @@ function VerifyMagicLinkContent() {
   const searchParams = useSearchParams()
   const [state, setState] = useState<VerifyState>("loading")
   const [errorMessage, setErrorMessage] = useState("")
+  const hasVerified = useRef(false)
 
   const { verifyMagicLink, user, error } = useAuth()
 
   useEffect(() => {
+    // Prevent duplicate verification attempts
+    if (hasVerified.current) return
+    hasVerified.current = true
+
     const token = searchParams.get("token")
 
     if (!token) {
@@ -36,12 +41,14 @@ function VerifyMagicLinkContent() {
         }, 2000)
       } else {
         setState("error")
-        setErrorMessage(error || "Invalid or expired link")
+        // Get error from auth store at this point
+        const authStore = useAuth.getState()
+        setErrorMessage(authStore.error || "Invalid or expired link")
       }
     }
 
     verify()
-  }, [searchParams, verifyMagicLink, router, error])
+  }, [searchParams, verifyMagicLink, router])
 
   return (
     <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-xl p-8 text-center">

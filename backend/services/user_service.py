@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 USERS_COLLECTION = "users"
 MAGIC_LINKS_COLLECTION = "magic_links"
 SESSIONS_COLLECTION = "sessions"
+PROCESSED_STRIPE_SESSIONS_COLLECTION = "processed_stripe_sessions"
 
 # Token/session configuration
 MAGIC_LINK_EXPIRY_MINUTES = 15
@@ -383,6 +384,10 @@ class UserService:
                 credit_transactions=[t.model_dump(mode='json') for t in transactions]
             )
 
+            # Mark Stripe session as processed for idempotency
+            if stripe_session_id:
+                self._mark_stripe_session_processed(stripe_session_id, email, amount)
+
             logger.info(f"Added {amount} credits to {email} ({reason}). New balance: {new_balance}")
             return True, new_balance, f"Added {amount} credits"
 
@@ -493,6 +498,8 @@ class UserService:
         Used to ensure idempotency of webhook processing - prevents
         duplicate credit additions if Stripe sends the same webhook twice.
 
+        Uses a dedicated collection for O(1) lookup instead of scanning all users.
+
         Args:
             stripe_session_id: The Stripe checkout session ID
 
@@ -500,23 +507,39 @@ class UserService:
             True if this session was already processed
         """
         try:
-            # Search all users for a credit transaction with this stripe_session_id
-            # This is a collection group query approach - search through all users
-            users_query = self.db.collection(USERS_COLLECTION).stream()
-
-            for user_doc in users_query:
-                user_data = user_doc.to_dict()
-                credit_transactions = user_data.get('credit_transactions', [])
-                for txn in credit_transactions:
-                    if txn.get('stripe_session_id') == stripe_session_id:
-                        logger.info(f"Stripe session {stripe_session_id} already processed for {user_data.get('email')}")
-                        return True
-
+            doc_ref = self.db.collection(PROCESSED_STRIPE_SESSIONS_COLLECTION).document(stripe_session_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                logger.info(f"Stripe session {stripe_session_id} already processed")
+                return True
             return False
         except Exception:
             logger.exception(f"Error checking if stripe session {stripe_session_id} was processed")
             # On error, return False to allow processing (better to risk duplicate than block)
             return False
+
+    def _mark_stripe_session_processed(self, stripe_session_id: str, email: str, amount: int) -> None:
+        """
+        Mark a Stripe session as processed.
+
+        Called after successfully adding credits from a Stripe webhook.
+
+        Args:
+            stripe_session_id: The Stripe checkout session ID
+            email: User email who received the credits
+            amount: Number of credits added
+        """
+        try:
+            doc_ref = self.db.collection(PROCESSED_STRIPE_SESSIONS_COLLECTION).document(stripe_session_id)
+            doc_ref.set({
+                'stripe_session_id': stripe_session_id,
+                'email': email,
+                'amount': amount,
+                'processed_at': datetime.utcnow()
+            })
+        except Exception:
+            # Log but don't fail - the credits were already added
+            logger.exception(f"Error marking stripe session {stripe_session_id} as processed")
 
     # =========================================================================
     # Admin Operations
