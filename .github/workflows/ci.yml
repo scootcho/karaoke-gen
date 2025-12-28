@@ -47,7 +47,6 @@ jobs:
             infra:
               - 'infrastructure/**'
             deps:
-              - 'pyproject.toml'
               - 'poetry.lock'
 
       - name: Summary
