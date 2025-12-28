@@ -385,10 +385,15 @@ export const api = {
   },
   
   /**
-   * Get the base download URL for a file
+   * Get the download URL for a file, including authentication token
    */
   getDownloadUrl(jobId: string, category: string, fileKey: string): string {
-    return `${API_BASE_URL}/api/jobs/${jobId}/download/${category}/${fileKey}`;
+    const baseUrl = `${API_BASE_URL}/api/jobs/${jobId}/download/${category}/${fileKey}`;
+    const token = getAccessToken();
+    if (token) {
+      return `${baseUrl}?token=${encodeURIComponent(token)}`;
+    }
+    return baseUrl;
   },
   
   /**
@@ -563,6 +568,20 @@ export const api = {
   async logout(): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/users/auth/logout`, {
       method: 'POST',
+      headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+  },
+
+  // ==========================================================================
+  // Version API endpoint
+  // ==========================================================================
+
+  /**
+   * Get backend service info including version
+   */
+  async getBackendInfo(): Promise<{ service: string; version: string; status: string }> {
+    const response = await fetch(`${API_BASE_URL}/`, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);

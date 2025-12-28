@@ -6,7 +6,8 @@ import type { VideoThemeSummary } from "@/lib/video-themes"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Palette, AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Palette, AlertCircle, Eye, EyeOff } from "lucide-react"
 
 interface ThemeSelectorProps {
   value?: string
@@ -18,6 +19,7 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
   const [themes, setThemes] = useState<VideoThemeSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   useEffect(() => {
     async function loadThemes() {
@@ -52,11 +54,11 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
   if (loading) {
     return (
       <div className="space-y-2">
-        <Label className="text-slate-200 flex items-center gap-2">
+        <Label className="flex items-center gap-2" style={{ color: 'var(--text)' }}>
           <Palette className="w-4 h-4" />
           Video Theme
         </Label>
-        <Skeleton className="h-10 w-full bg-slate-700" />
+        <Skeleton className="h-10 w-full" style={{ backgroundColor: 'var(--secondary)' }} />
       </div>
     )
   }
@@ -64,7 +66,7 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
   if (error || themes.length === 0) {
     return (
       <div className="space-y-2">
-        <Label className="text-slate-200 flex items-center gap-2">
+        <Label className="flex items-center gap-2" style={{ color: 'var(--text)' }}>
           <Palette className="w-4 h-4" />
           Video Theme
         </Label>
@@ -78,7 +80,7 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="theme-select" className="text-slate-200 flex items-center gap-2">
+      <Label htmlFor="theme-select" className="flex items-center gap-2" style={{ color: 'var(--text)' }}>
         <Palette className="w-4 h-4" />
         Video Theme
       </Label>
@@ -90,16 +92,16 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
       >
         <SelectTrigger
           id="theme-select"
-          className="bg-slate-800 border-slate-700 text-white"
+          style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
         >
           <SelectValue placeholder="Select a theme..." />
         </SelectTrigger>
-        <SelectContent className="bg-slate-800 border-slate-700">
+        <SelectContent style={{ backgroundColor: 'var(--card)', borderColor: 'var(--card-border)' }}>
           {themes.map((theme) => (
             <SelectItem
               key={theme.id}
               value={theme.id}
-              className="text-white hover:bg-slate-700 focus:bg-slate-700"
+              style={{ color: 'var(--text)' }}
             >
               <div className="flex items-center gap-2">
                 <span>{theme.name}</span>
@@ -112,13 +114,26 @@ export function ThemeSelector({ value, onChange, disabled }: ThemeSelectorProps)
         </SelectContent>
       </Select>
 
-      {/* Theme description and preview */}
-      {selectedTheme && (
+      {/* Theme preview toggle */}
+      {selectedTheme?.thumbnail_url && (
         <div className="mt-2 space-y-2">
-          <p className="text-sm text-slate-400">{selectedTheme.description}</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview(!showPreview)}
+            className="px-0"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {showPreview ? (
+              <><EyeOff className="w-4 h-4 mr-1.5" />Hide preview</>
+            ) : (
+              <><Eye className="w-4 h-4 mr-1.5" />Show preview</>
+            )}
+          </Button>
 
-          {selectedTheme.thumbnail_url && (
-            <div className="relative w-full aspect-video max-w-xs rounded-lg overflow-hidden border border-slate-700">
+          {showPreview && (
+            <div className="relative w-full aspect-video max-w-xs rounded-lg overflow-hidden border" style={{ borderColor: 'var(--card-border)' }}>
               <img
                 src={selectedTheme.thumbnail_url}
                 alt={`${selectedTheme.name} preview`}

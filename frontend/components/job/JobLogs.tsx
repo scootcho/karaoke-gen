@@ -34,7 +34,7 @@ export function JobLogs({ jobId, limit = 50 }: JobLogsProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-4 text-slate-400">
+      <div className="flex items-center justify-center py-4" style={{ color: 'var(--text-muted)' }}>
         <Loader2 className="w-4 h-4 animate-spin mr-2" />
         Loading logs...
       </div>
@@ -52,14 +52,14 @@ export function JobLogs({ jobId, limit = 50 }: JobLogsProps) {
 
   if (logs.length === 0) {
     return (
-      <div className="text-center py-4 text-slate-500 text-sm">
+      <div className="text-center py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
         No logs available
       </div>
     )
   }
 
   return (
-    <div className="bg-slate-900 rounded border border-slate-700 p-3 max-h-64 overflow-y-auto">
+    <div className="rounded border p-3 max-h-64 overflow-y-auto" style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--card-border)' }}>
       <div className="space-y-1 font-mono text-xs">
         {logs.map((log, index) => (
           <div
@@ -68,10 +68,11 @@ export function JobLogs({ jobId, limit = 50 }: JobLogsProps) {
               log.level === "ERROR" ? "text-red-400" :
               log.level === "WARNING" ? "text-yellow-400" :
               log.level === "INFO" ? "text-blue-400" :
-              "text-slate-400"
+              ""
             }`}
+            style={log.level !== "ERROR" && log.level !== "WARNING" && log.level !== "INFO" ? { color: 'var(--text-muted)' } : undefined}
           >
-            <span className="text-slate-600 shrink-0">
+            <span className="shrink-0" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
               {new Date(log.timestamp).toLocaleTimeString()}
             </span>
             <span className="shrink-0 font-semibold w-12">

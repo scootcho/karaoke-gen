@@ -10,6 +10,7 @@ import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
 import { AuthStatus } from "@/components/auth"
 import { AutoProcessor } from "@/components/AutoProcessor"
+import { VersionFooter } from "@/components/version-footer"
 import { useTheme } from "@/lib/theme"
 import {
   Tooltip,
@@ -229,17 +230,7 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t mt-12 py-6" style={{ borderColor: 'var(--card-border)' }}>
-        <div className="px-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-          <p>
-            Powered by{" "}
-            <a href="https://github.com/nomadkaraoke/karaoke-gen" className="text-amber-500 hover:underline">
-              karaoke-gen
-            </a>
-          </p>
-        </div>
-      </footer>
+      <VersionFooter />
     </div>
   )
 }
