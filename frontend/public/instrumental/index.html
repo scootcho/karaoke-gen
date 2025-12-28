@@ -58,8 +58,16 @@
         }
         
         .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
             font-size: 1.25rem;
             font-weight: 600;
+        }
+
+        .logo-img {
+            height: 24px;
+            width: auto;
         }
         
         .track-info {
@@ -680,7 +688,7 @@
             app.innerHTML = `
                 <div class="header">
                     <div class="header-left">
-                        <span class="logo">🎤 Instrumental Review</span>
+                        <span class="logo"><img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" class="logo-img"> Instrumental Review</span>
                         <span class="track-info">${escapeHtml(analysisData.artist) || ''} ${analysisData.artist && analysisData.title ? '–' : ''} ${escapeHtml(analysisData.title) || ''}</span>
                     </div>
                     <div class="header-right">
