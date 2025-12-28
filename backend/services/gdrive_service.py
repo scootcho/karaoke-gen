@@ -136,8 +136,10 @@ class GoogleDriveService:
         logger.info(f"Looking for folder '{folder_name}' in parent {parent_id}")
 
         # Search for existing folder
+        # Escape single quotes in folder name for Google Drive API query syntax
+        escaped_folder_name = folder_name.replace("'", "\\'")
         query = (
-            f"name='{folder_name}' and '{parent_id}' in parents "
+            f"name='{escaped_folder_name}' and '{parent_id}' in parents "
             f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
         )
         results = self.service.files().list(q=query, fields="files(id, name)").execute()
@@ -203,8 +205,10 @@ class GoogleDriveService:
 
         # Check for existing file with same name
         if replace_existing:
+            # Escape single quotes in filename for Google Drive API query syntax
+            escaped_filename = filename.replace("'", "\\'")
             query = (
-                f"name='{filename}' and '{parent_id}' in parents and trashed=false"
+                f"name='{escaped_filename}' and '{parent_id}' in parents and trashed=false"
             )
             results = self.service.files().list(q=query, fields="files(id)").execute()
             for existing_file in results.get("files", []):
