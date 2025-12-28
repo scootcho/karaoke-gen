@@ -56,8 +56,8 @@ export default defineConfig({
     // Screenshot on failure
     screenshot: 'only-on-failure',
 
-    // Video on failure (helpful for debugging flows)
-    video: 'on-first-retry',
+    // Video recording (set to 'on' to always record, 'on-first-retry' for failures only)
+    video: 'on',
 
     // Increase timeout for real API calls
     actionTimeout: 30000,

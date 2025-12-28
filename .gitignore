@@ -12,6 +12,9 @@ tests/outputs
 /input
 /output/
 
+# Cloud Infra
+.emulator-logs
+
 # Next.js / React Frontend (./frontend)
 node_modules/
 frontend/node_modules/
