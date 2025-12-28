@@ -638,14 +638,10 @@ jobs:
       BASE_IMAGE_NAME: karaoke-backend-base
       APP_IMAGE_NAME: karaoke-backend
     steps:
-      # ============================================
-      # Check if deployment is needed FIRST
-      # ============================================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: false
-          fetch-depth: 0  # Need full history for tag check
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -655,26 +651,15 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
 
-      - name: Extract version and check if deployment needed
+      - name: Extract version
         id: version_check
         run: |
           VERSION=$(poetry version --short)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📋 Current version: $VERSION"
-
-          if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
-            echo "needs_deploy=false" >> $GITHUB_OUTPUT
-            echo "⏭️  Tag v$VERSION already exists - skipping backend deployment"
-            echo "   (Bump version in pyproject.toml to trigger a new deployment)"
-          else
-            echo "needs_deploy=true" >> $GITHUB_OUTPUT
-            echo "✨ Tag v$VERSION does not exist - proceeding with deployment"
-          fi
-
-      # No disk cleanup needed - self-hosted runner has 200GB SSD
+          echo "🚀 Deploying on every push to main"
 
       - name: Authenticate to Google Cloud (Workload Identity)
-        if: steps.version_check.outputs.needs_deploy == 'true'
         id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -682,13 +667,11 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        if: steps.version_check.outputs.needs_deploy == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: "latest"
 
       - name: Configure Docker for Artifact Registry
-        if: steps.version_check.outputs.needs_deploy == 'true'
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
       # ============================================
@@ -698,11 +681,9 @@ jobs:
       # ============================================
 
       - name: Set up Docker Buildx
-        if: steps.version_check.outputs.needs_deploy == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Calculate base image hash
-        if: steps.version_check.outputs.needs_deploy == 'true'
         id: base-hash
         run: |
           # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
@@ -711,7 +692,6 @@ jobs:
           echo "📋 Base content hash: $CURRENT_HASH"
 
       - name: Check if base image exists and is current
-        if: steps.version_check.outputs.needs_deploy == 'true'
         id: check-base
         run: |
           BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
@@ -738,7 +718,7 @@ jobs:
           fi
 
       - name: Build and push base image (if needed)
-        if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
+        if: steps.check-base.outputs.needs_rebuild == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -759,7 +739,6 @@ jobs:
           provenance: false
 
       - name: Build and push app image
-        if: steps.version_check.outputs.needs_deploy == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -780,7 +759,6 @@ jobs:
       # ============================================
 
       - name: Deploy to Cloud Run
-        if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
           VERSION="${{ steps.version_check.outputs.version }}"
           IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}"
@@ -806,7 +784,6 @@ jobs:
             --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest,DEFAULT_DISCORD_WEBHOOK_URL=discord-releases-webhook:latest,ADMIN_TOKENS=admin-tokens:latest,RED_API_KEY=red-api-key:latest,RED_API_URL=red-api-url:latest,OPS_API_KEY=ops-api-key:latest,OPS_API_URL=ops-api-url:latest,FLACFETCH_API_URL=flacfetch-api-url:latest,FLACFETCH_API_KEY=flacfetch-api-key:latest"
 
       - name: Verify deployment and version
-        if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
           EXPECTED_VERSION="${{ steps.version_check.outputs.version }}"
           SERVICE_URL=$(gcloud run services describe karaoke-backend \
@@ -847,7 +824,7 @@ jobs:
           done
 
       - name: Summary
-        if: steps.version_check.outputs.needs_deploy == 'true' && success()
+        if: success()
         run: |
           echo "🎉 Deployment successful!"
           echo "Version: ${{ steps.version_check.outputs.version }}"
@@ -857,12 +834,3 @@ jobs:
           echo ""
           echo "📊 Built on self-hosted GCP runner (200GB SSD, no disk space issues)"
           echo "   Runner: gcp-runner with 4 vCPU, 16GB RAM"
-
-      - name: Skipped deployment summary
-        if: steps.version_check.outputs.needs_deploy == 'false'
-        run: |
-          echo "⏭️  Backend deployment skipped - version ${{ steps.version_check.outputs.version }} already deployed"
-          echo ""
-          echo "To deploy a new version:"
-          echo "  1. Update version in pyproject.toml"
-          echo "  2. Commit and push to main"
