@@ -63,6 +63,7 @@ export interface Job {
     message?: string;
   }>;
   review_token?: string;
+  instrumental_token?: string;
   audio_hash?: string;
 }
 
