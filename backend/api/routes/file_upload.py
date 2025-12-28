@@ -15,6 +15,7 @@ import json
 import logging
 import tempfile
 import os
+from dataclasses import dataclass
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body, Depends
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
@@ -275,6 +276,46 @@ def _resolve_cdg_txt_defaults(
     return resolved_cdg, resolved_txt
 
 
+@dataclass
+class EffectiveDistributionSettings:
+    """Settings with defaults applied from environment variables."""
+    dropbox_path: Optional[str]
+    gdrive_folder_id: Optional[str]
+    discord_webhook_url: Optional[str]
+    brand_prefix: Optional[str]
+
+
+def _get_effective_distribution_settings(
+    dropbox_path: Optional[str] = None,
+    gdrive_folder_id: Optional[str] = None,
+    discord_webhook_url: Optional[str] = None,
+    brand_prefix: Optional[str] = None,
+) -> EffectiveDistributionSettings:
+    """
+    Get distribution settings with defaults applied from environment variables.
+
+    This ensures consistent handling of defaults across all job creation endpoints.
+    Each parameter, if not provided (None), falls back to the corresponding
+    environment variable configured in settings.
+
+    Args:
+        dropbox_path: Explicit Dropbox path or None for default
+        gdrive_folder_id: Explicit Google Drive folder ID or None for default
+        discord_webhook_url: Explicit Discord webhook URL or None for default
+        brand_prefix: Explicit brand prefix or None for default
+
+    Returns:
+        EffectiveDistributionSettings with defaults applied
+    """
+    settings = get_settings()
+    return EffectiveDistributionSettings(
+        dropbox_path=dropbox_path or settings.default_dropbox_path,
+        gdrive_folder_id=gdrive_folder_id or settings.default_gdrive_folder_id,
+        discord_webhook_url=discord_webhook_url or settings.default_discord_webhook_url,
+        brand_prefix=brand_prefix or settings.default_brand_prefix,
+    )
+
+
 def _prepare_theme_for_job(
     job_id: str,
     theme_id: str,
@@ -435,38 +476,42 @@ async def upload_and_create_job(
                 )
         
         # Apply default distribution settings from environment if not provided
-        settings = get_settings()
-        effective_dropbox_path = dropbox_path or settings.default_dropbox_path
-        effective_gdrive_folder_id = gdrive_folder_id or settings.default_gdrive_folder_id
-        effective_discord_webhook_url = discord_webhook_url or settings.default_discord_webhook_url
-        
-        if effective_dropbox_path and not dropbox_path:
-            logger.info(f"Using default dropbox_path: {effective_dropbox_path}")
-        if effective_gdrive_folder_id and not gdrive_folder_id:
-            logger.info(f"Using default gdrive_folder_id: {effective_gdrive_folder_id}")
-        if effective_discord_webhook_url and not discord_webhook_url:
+        dist = _get_effective_distribution_settings(
+            dropbox_path=dropbox_path,
+            gdrive_folder_id=gdrive_folder_id,
+            discord_webhook_url=discord_webhook_url,
+            brand_prefix=brand_prefix,
+        )
+
+        if dist.dropbox_path and not dropbox_path:
+            logger.info(f"Using default dropbox_path: {dist.dropbox_path}")
+        if dist.gdrive_folder_id and not gdrive_folder_id:
+            logger.info(f"Using default gdrive_folder_id: {dist.gdrive_folder_id}")
+        if dist.discord_webhook_url and not discord_webhook_url:
             logger.info("Using default discord_webhook_url (from env)")
-        
+        if dist.brand_prefix and not brand_prefix:
+            logger.info(f"Using default brand_prefix: {dist.brand_prefix}")
+
         # Validate credentials for requested distribution services (including defaults)
         # This prevents accepting jobs that will fail later due to missing credentials
         invalid_services = []
         credential_manager = get_credential_manager()
-        
+
         if enable_youtube_upload:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
-        
-        if effective_dropbox_path:
+
+        if dist.dropbox_path:
             result = credential_manager.check_dropbox_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"dropbox ({result.message})")
-        
-        if effective_gdrive_folder_id:
+
+        if dist.gdrive_folder_id:
             result = credential_manager.check_gdrive_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"gdrive ({result.message})")
-        
+
         if invalid_services:
             raise HTTPException(
                 status_code=400,
@@ -527,15 +572,15 @@ async def upload_and_create_job(
             color_overrides=parsed_color_overrides,
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
-            brand_prefix=brand_prefix,
+            brand_prefix=dist.brand_prefix,
             enable_youtube_upload=enable_youtube_upload,
             youtube_description=youtube_description,
-            discord_webhook_url=effective_discord_webhook_url,
+            discord_webhook_url=dist.discord_webhook_url,
             webhook_url=webhook_url,
             user_email=user_email,
             # Native API distribution (preferred for remote CLI)
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
             # Legacy rclone distribution (deprecated)
             organised_dir_rclone_root=organised_dir_rclone_root,
             # Lyrics configuration (overrides for search/transcription)
@@ -659,20 +704,20 @@ async def upload_and_create_job(
             if theme_style_params_path:
                 update_data['style_params_gcs_path'] = theme_style_params_path
 
-        if brand_prefix:
-            update_data['brand_prefix'] = brand_prefix
-        if effective_discord_webhook_url:
-            update_data['discord_webhook_url'] = effective_discord_webhook_url
+        if dist.brand_prefix:
+            update_data['brand_prefix'] = dist.brand_prefix
+        if dist.discord_webhook_url:
+            update_data['discord_webhook_url'] = dist.discord_webhook_url
         # Use theme YouTube description if no custom one provided
         effective_youtube_description = youtube_description or theme_youtube_desc
         if effective_youtube_description:
             update_data['youtube_description_template'] = effective_youtube_description
-        
+
         # Native API distribution (use effective values which include defaults)
-        if effective_dropbox_path:
-            update_data['dropbox_path'] = effective_dropbox_path
-        if effective_gdrive_folder_id:
-            update_data['gdrive_folder_id'] = effective_gdrive_folder_id
+        if dist.dropbox_path:
+            update_data['dropbox_path'] = dist.dropbox_path
+        if dist.gdrive_folder_id:
+            update_data['gdrive_folder_id'] = dist.gdrive_folder_id
         
         # Legacy rclone distribution (deprecated)
         if organised_dir_rclone_root:
@@ -728,21 +773,21 @@ async def upload_and_create_job(
         
         # Build distribution services info for response
         distribution_services: Dict[str, Any] = {}
-        
-        if effective_dropbox_path:
+
+        if dist.dropbox_path:
             dropbox_result = credential_manager.check_dropbox_credentials()
             distribution_services["dropbox"] = {
                 "enabled": True,
-                "path": effective_dropbox_path,
+                "path": dist.dropbox_path,
                 "credentials_valid": dropbox_result.status == CredentialStatus.VALID,
                 "using_default": dropbox_path is None,
             }
-        
-        if effective_gdrive_folder_id:
+
+        if dist.gdrive_folder_id:
             gdrive_result = credential_manager.check_gdrive_credentials()
             distribution_services["gdrive"] = {
                 "enabled": True,
-                "folder_id": effective_gdrive_folder_id,
+                "folder_id": dist.gdrive_folder_id,
                 "credentials_valid": gdrive_result.status == CredentialStatus.VALID,
                 "using_default": gdrive_folder_id is None,
             }
@@ -754,7 +799,7 @@ async def upload_and_create_job(
                 "credentials_valid": youtube_result.status == CredentialStatus.VALID,
             }
         
-        if effective_discord_webhook_url:
+        if dist.discord_webhook_url:
             distribution_services["discord"] = {
                 "enabled": True,
                 "using_default": discord_webhook_url is None,
@@ -971,32 +1016,34 @@ async def create_job_with_upload_urls(
                     status_code=400,
                     detail=f"Invalid file extension '{ext}' for file_type '{file_info.file_type}'. Allowed: {allowed_extensions}"
                 )
-        
+
         # Apply default distribution settings from environment if not provided
-        settings = get_settings()
-        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
-        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
-        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
-        
+        dist = _get_effective_distribution_settings(
+            dropbox_path=body.dropbox_path,
+            gdrive_folder_id=body.gdrive_folder_id,
+            discord_webhook_url=body.discord_webhook_url,
+            brand_prefix=body.brand_prefix,
+        )
+
         # Validate credentials for requested distribution services
         invalid_services = []
         credential_manager = get_credential_manager()
-        
+
         if body.enable_youtube_upload:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
-        
-        if effective_dropbox_path:
+
+        if dist.dropbox_path:
             result = credential_manager.check_dropbox_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"dropbox ({result.message})")
-        
-        if effective_gdrive_folder_id:
+
+        if dist.gdrive_folder_id:
             result = credential_manager.check_gdrive_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"gdrive ({result.message})")
-        
+
         if invalid_services:
             raise HTTPException(
                 status_code=400,
@@ -1007,7 +1054,7 @@ async def create_job_with_upload_urls(
                     "auth_url": "/api/auth/status"
                 }
             )
-        
+
         # Extract request metadata for tracking
         request_metadata = extract_request_metadata(request, created_from="signed_url_upload")
 
@@ -1031,14 +1078,14 @@ async def create_job_with_upload_urls(
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
-            brand_prefix=body.brand_prefix,
+            brand_prefix=dist.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
-            discord_webhook_url=effective_discord_webhook_url,
+            discord_webhook_url=dist.discord_webhook_url,
             webhook_url=body.webhook_url,
             user_email=body.user_email,
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
             organised_dir_rclone_root=body.organised_dir_rclone_root,
             lyrics_artist=body.lyrics_artist,
             lyrics_title=body.lyrics_title,
@@ -1382,32 +1429,34 @@ async def create_job_from_url(
                 status_code=400,
                 detail="Invalid URL. Please provide a valid YouTube, Vimeo, SoundCloud, or other supported video URL."
             )
-        
+
         # Apply default distribution settings from environment if not provided
-        settings = get_settings()
-        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
-        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
-        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
-        
+        dist = _get_effective_distribution_settings(
+            dropbox_path=body.dropbox_path,
+            gdrive_folder_id=body.gdrive_folder_id,
+            discord_webhook_url=body.discord_webhook_url,
+            brand_prefix=body.brand_prefix,
+        )
+
         # Validate credentials for requested distribution services
         invalid_services = []
         credential_manager = get_credential_manager()
-        
+
         if body.enable_youtube_upload:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
-        
-        if effective_dropbox_path:
+
+        if dist.dropbox_path:
             result = credential_manager.check_dropbox_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"dropbox ({result.message})")
-        
-        if effective_gdrive_folder_id:
+
+        if dist.gdrive_folder_id:
             result = credential_manager.check_gdrive_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"gdrive ({result.message})")
-        
+
         if invalid_services:
             raise HTTPException(
                 status_code=400,
@@ -1418,7 +1467,7 @@ async def create_job_from_url(
                     "auth_url": "/api/auth/status"
                 }
             )
-        
+
         # Extract request metadata for tracking
         request_metadata = extract_request_metadata(request, created_from="url")
 
@@ -1441,14 +1490,14 @@ async def create_job_from_url(
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
-            brand_prefix=body.brand_prefix,
+            brand_prefix=dist.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
-            discord_webhook_url=effective_discord_webhook_url,
+            discord_webhook_url=dist.discord_webhook_url,
             webhook_url=body.webhook_url,
             user_email=body.user_email,
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
             organised_dir_rclone_root=body.organised_dir_rclone_root,
             lyrics_artist=body.lyrics_artist,
             lyrics_title=body.lyrics_title,
@@ -1623,30 +1672,32 @@ async def create_finalise_only_job(
                 )
         
         # Apply default distribution settings
-        settings = get_settings()
-        effective_dropbox_path = body.dropbox_path or settings.default_dropbox_path
-        effective_gdrive_folder_id = body.gdrive_folder_id or settings.default_gdrive_folder_id
-        effective_discord_webhook_url = body.discord_webhook_url or settings.default_discord_webhook_url
-        
+        dist = _get_effective_distribution_settings(
+            dropbox_path=body.dropbox_path,
+            gdrive_folder_id=body.gdrive_folder_id,
+            discord_webhook_url=body.discord_webhook_url,
+            brand_prefix=body.brand_prefix,
+        )
+
         # Validate distribution credentials if services are requested
         invalid_services = []
         credential_manager = get_credential_manager()
-        
+
         if body.enable_youtube_upload:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
-        
-        if effective_dropbox_path:
+
+        if dist.dropbox_path:
             result = credential_manager.check_dropbox_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"dropbox ({result.message})")
-        
-        if effective_gdrive_folder_id:
+
+        if dist.gdrive_folder_id:
             result = credential_manager.check_gdrive_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"gdrive ({result.message})")
-        
+
         if invalid_services:
             raise HTTPException(
                 status_code=400,
@@ -1657,7 +1708,7 @@ async def create_finalise_only_job(
                     "auth_url": "/api/auth/status"
                 }
             )
-        
+
         # Extract request metadata
         request_metadata = extract_request_metadata(request, created_from="finalise_only_upload")
 
@@ -1678,12 +1729,12 @@ async def create_finalise_only_job(
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
-            brand_prefix=body.brand_prefix,
+            brand_prefix=dist.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
-            discord_webhook_url=effective_discord_webhook_url,
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
+            discord_webhook_url=dist.discord_webhook_url,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
             finalise_only=True,
             keep_brand_code=body.keep_brand_code,
             request_metadata=request_metadata,
