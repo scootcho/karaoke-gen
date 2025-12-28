@@ -140,6 +140,35 @@ Migrated from Cloud Build to GitHub Actions for:
 
 Human review time varies (5-15 min typical).
 
+### Gitignore Patterns for Monorepos
+
+**Problem**: Root `.gitignore` had `lib/` to ignore Python lib directories, but this also ignored `buy-site/lib/` (frontend code).
+
+**Solution**: Use negation patterns for frontend directories:
+```gitignore
+# Python lib directories
+lib/
+lib64/
+# But allow frontend lib directories
+!frontend/lib/
+!buy-site/lib/
+```
+
+**Lesson**: When adding gitignore patterns, consider their effect on subdirectories, especially in monorepos with multiple languages.
+
+### Firestore Transactions for Race Conditions
+
+**Problem**: Magic link verification had a race condition - concurrent requests could both verify the same token before it was marked as used.
+
+**Solution**: Use Firestore transactions for atomic read-check-update operations:
+```python
+@firestore.transactional
+def verify_in_transaction(transaction):
+    doc = doc_ref.get(transaction=transaction)
+    # Check conditions...
+    transaction.update(doc_ref, {'used': True})
+```
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
@@ -149,3 +178,5 @@ Human review time varies (5-15 min typical).
 3. **Design for async human review upfront** - Avoided rearchitecting after discovering ReviewServer blocks
 
 4. **Keep docs minimal and current** - Less documentation, but always accurate
+
+5. **Check gitignore early for new directories** - Especially when adding frontend `lib/` directories

@@ -19,7 +19,9 @@
 | Instrumental selection | Working |
 | Multi-format encoding | Working |
 | Token-based auth | Working |
-| Payment flow | Not started |
+| Magic link auth | In Progress (PR #90) |
+| Payment flow (Stripe) | In Progress (PR #90) |
+| Beta tester program | In Progress (PR #90) |
 
 ## Known Issues
 

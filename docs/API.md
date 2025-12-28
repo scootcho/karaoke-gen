@@ -174,10 +174,109 @@ Common status codes:
 - `404` - Job not found
 - `500` - Server error
 
+## User Authentication (PR #90)
+
+### Send Magic Link
+
+```http
+POST /api/users/auth/magic-link
+Content-Type: application/json
+
+{"email": "user@example.com"}
+```
+
+### Verify Magic Link
+
+```http
+GET /api/users/auth/verify?token=TOKEN
+```
+
+Returns session token and user info.
+
+### Get Current User
+
+```http
+GET /api/users/me
+Authorization: Bearer SESSION_TOKEN
+```
+
+### Logout
+
+```http
+POST /api/users/auth/logout
+Authorization: Bearer SESSION_TOKEN
+```
+
+## Credits & Payments (PR #90)
+
+### List Credit Packages
+
+```http
+GET /api/users/credits/packages
+```
+
+No auth required. Returns available packages and prices.
+
+### Create Checkout Session
+
+```http
+POST /api/users/credits/checkout
+Content-Type: application/json
+
+{"package_id": "5_credits", "email": "user@example.com"}
+```
+
+Returns Stripe checkout URL.
+
+### Stripe Webhook
+
+```http
+POST /api/users/webhooks/stripe
+```
+
+Handles `checkout.session.completed` events.
+
+## Beta Tester Program (PR #90)
+
+### Enroll as Beta Tester
+
+```http
+POST /api/users/beta/enroll
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "promise_text": "I promise to provide feedback...",
+  "accept_corrections_work": true
+}
+```
+
+Returns 1 free credit and session token.
+
+### Submit Feedback
+
+```http
+POST /api/users/beta/feedback
+Authorization: Bearer SESSION_TOKEN
+Content-Type: application/json
+
+{
+  "overall_rating": 4,
+  "ease_of_use_rating": 5,
+  "lyrics_accuracy_rating": 4,
+  "correction_experience_rating": 3,
+  "what_went_well": "...",
+  "what_could_improve": "..."
+}
+```
+
+Bonus credit for detailed feedback (50+ chars).
+
 ## Rate Limits
 
 No rate limits currently implemented.
 
 ## Webhooks
 
-Not yet implemented. Jobs must be polled for status.
+Stripe webhooks implemented at `/api/users/webhooks/stripe`.
+Job status webhooks not yet implemented.
