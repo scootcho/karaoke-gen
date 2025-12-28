@@ -72,11 +72,13 @@ Do not attempt to work around auth issues or make assumptions about credentials.
 
 ## Version Management
 
-When committing and pushing changes, always bump the patch version in `pyproject.toml`.
+When committing and pushing **code changes**, bump the patch version in `pyproject.toml`.
 
 The version is located at `tool.poetry.version` in `pyproject.toml`. For example, if the current version is `0.70.3`, bump it to `0.70.4`.
 
-This ensures every commit pushed to the repository has a unique version number for tracking and deployment purposes.
+**Skip version bumps** for documentation-only changes (e.g., updating `CLAUDE.md`, `README.md`, or other markdown files) that don't affect deployed code.
+
+This ensures every code release has a unique version number for tracking and deployment purposes.
 
 ## Testing Requirements
 
