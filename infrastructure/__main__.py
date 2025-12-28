@@ -1400,8 +1400,8 @@ cp -r /opt/pyenv/versions/3.13.0/* $TOOL_CACHE/Python/3.13.0/x64/
 # Create marker file that setup-python looks for
 touch $TOOL_CACHE/Python/3.13.0/x64.complete
 
-# Fix permissions
-chown -R runner:runner $TOOL_CACHE
+# Fix permissions - must own entire _work directory, not just _tool
+chown -R runner:runner /home/runner/actions-runner/_work
 
 echo "Python 3.13 added to tool cache"
 
