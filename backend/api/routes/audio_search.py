@@ -537,7 +537,28 @@ async def search_audio(
             'audio_search_title': body.title,
             'auto_download': body.auto_download,
         })
-        
+
+        # If theme is set and no custom style files are being uploaded, prepare theme style now
+        # This copies the theme's style_params.json to the job folder so LyricsTranscriber
+        # can access the style configuration for preview videos
+        if body.theme_id and not body.style_files:
+            from backend.api.routes.file_upload import _prepare_theme_for_job
+            try:
+                style_params_path, theme_style_assets, youtube_desc = _prepare_theme_for_job(
+                    job_id, body.theme_id, body.color_overrides
+                )
+                theme_update = {
+                    'style_params_gcs_path': style_params_path,
+                    'style_assets': theme_style_assets,
+                }
+                if youtube_desc and not effective_youtube_description:
+                    theme_update['youtube_description_template'] = youtube_desc
+                job_manager.update_job(job_id, theme_update)
+                logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
+            except Exception as e:
+                logger.warning(f"Failed to prepare theme '{body.theme_id}' for job {job_id}: {e}")
+                # Continue without theme - job can still be processed with defaults
+
         # Handle style file uploads if provided
         style_upload_urls: List[StyleUploadUrl] = []
         style_assets = {}
