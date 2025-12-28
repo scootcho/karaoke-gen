@@ -1255,7 +1255,7 @@ apt-get install -y \\
 
 # ==================== Docker ====================
 echo "Installing Docker..."
-curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --batch --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -1264,23 +1264,38 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin do
 systemctl enable docker
 systemctl start docker
 
-# ==================== Python 3.13 ====================
-echo "Installing Python 3.13..."
-add-apt-repository -y ppa:deadsnakes/ppa || true
-apt-get update
-apt-get install -y python3.13 python3.13-venv python3.13-dev python3-pip || {
-    # Fallback: build from source if PPA not available
-    echo "PPA not available, installing Python 3.13 from source..."
-    apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libreadline-dev libffi-dev libsqlite3-dev wget libbz2-dev
-    cd /tmp
-    wget https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tgz
-    tar -xf Python-3.13.0.tgz
-    cd Python-3.13.0
-    ./configure --enable-optimizations
-    make -j $(nproc)
-    make altinstall
-    ln -sf /usr/local/bin/python3.13 /usr/bin/python3.13
-}
+# ==================== Python 3.13 via pyenv ====================
+# setup-python action on self-hosted runners needs Python in the tool cache
+echo "Installing Python 3.13 via pyenv..."
+
+# Install pyenv dependencies
+apt-get install -y make build-essential libssl-dev zlib1g-dev \\
+  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \\
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+
+# Install pyenv system-wide
+export PYENV_ROOT=/opt/pyenv
+curl https://pyenv.run | bash
+
+# Add to system profile for future sessions
+cat > /etc/profile.d/pyenv.sh << 'PYENV_PROFILE'
+export PYENV_ROOT=/opt/pyenv
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+PYENV_PROFILE
+
+# Source pyenv for current session
+export PATH="/opt/pyenv/bin:$PATH"
+eval "$(/opt/pyenv/bin/pyenv init -)"
+
+# Install Python 3.13
+/opt/pyenv/bin/pyenv install 3.13.0
+/opt/pyenv/bin/pyenv global 3.13.0
+
+# Create symlinks for system-wide access
+ln -sf /opt/pyenv/shims/python3.13 /usr/local/bin/python3.13
+ln -sf /opt/pyenv/shims/python3 /usr/local/bin/python3
+ln -sf /opt/pyenv/shims/pip3 /usr/local/bin/pip3
 
 # ==================== Node.js 20 ====================
 echo "Installing Node.js 20..."
@@ -1288,14 +1303,12 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
 # ==================== Java 21 (for Firestore emulator) ====================
-echo "Installing Java 21..."
-apt-get install -y openjdk-21-jdk || {
-    # Fallback: use Temurin
-    curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg
-    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/adoptium.list
-    apt-get update
-    apt-get install -y temurin-21-jdk
-}
+echo "Installing Java 21 via Temurin..."
+# Use Temurin (Adoptium) - more reliable than Debian repos
+curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --batch --dearmor -o /usr/share/keyrings/adoptium.gpg
+echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/adoptium.list
+apt-get update
+apt-get install -y temurin-21-jdk
 
 # ==================== FFmpeg ====================
 echo "Installing FFmpeg..."
@@ -1308,7 +1321,7 @@ ln -sf /root/.local/bin/poetry /usr/local/bin/poetry
 
 # ==================== Google Cloud SDK ====================
 echo "Installing Google Cloud SDK..."
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --batch --dearmor -o /usr/share/keyrings/cloud.google.gpg
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
 apt-get update
 apt-get install -y google-cloud-cli google-cloud-cli-firestore-emulator
@@ -1374,6 +1387,23 @@ echo "Installing runner service..."
 
 echo "GitHub Actions runner setup complete at $(date)"
 echo "Runner registered with labels: self-hosted,linux,x64,gcp,large-disk"
+
+# ==================== Setup Python in tool cache ====================
+# setup-python action looks for Python in RUNNER_TOOL_CACHE/_tool/Python
+echo "Setting up Python 3.13 in tool cache for setup-python action..."
+TOOL_CACHE="/home/runner/actions-runner/_work/_tool"
+mkdir -p $TOOL_CACHE/Python/3.13.0/x64
+
+# Copy pyenv Python to tool cache
+cp -r /opt/pyenv/versions/3.13.0/* $TOOL_CACHE/Python/3.13.0/x64/
+
+# Create marker file that setup-python looks for
+touch $TOOL_CACHE/Python/3.13.0/x64.complete
+
+# Fix permissions
+chown -R runner:runner $TOOL_CACHE
+
+echo "Python 3.13 added to tool cache"
 
 # ==================== Docker cleanup cron ====================
 # Prevent disk from filling up with old Docker images
