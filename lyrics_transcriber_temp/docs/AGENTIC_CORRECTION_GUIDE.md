@@ -43,11 +43,38 @@ export DISABLE_LLM_CACHE=1                 # Disable response caching
 
 ### Supported LLM Providers
 
-| Provider | Model Format | API Key Required |
-|----------|-------------|------------------|
+| Provider | Model Format | Authentication |
+|----------|-------------|----------------|
+| **Vertex AI** (GCP) | `vertexai/gemini-3-flash-preview` | GCP service account (ADC) |
 | **OpenAI** | `openai/gpt-4`, `openai/gpt-4-turbo` | `OPENAI_API_KEY` |
 | **Anthropic** | `anthropic/claude-3-sonnet-20240229` | `ANTHROPIC_API_KEY` |
 | **Ollama** (local) | `ollama/llama3.2:latest`, `ollama/mistral:latest` | None |
+
+### Using with Vertex AI (Recommended for Cloud Deployment)
+
+Vertex AI uses Google Cloud's Application Default Credentials (ADC) for authentication. No API key is needed - it uses your GCP service account automatically.
+
+**Cloud Run / GKE:**
+```bash
+# Set environment variables
+export USE_AGENTIC_AI=1
+export AGENTIC_AI_MODEL="vertexai/gemini-3-flash-preview"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GCP_LOCATION="us-central1"  # Optional, defaults to us-central1
+```
+
+The service account must have the `roles/aiplatform.user` IAM role.
+
+**Local Development:**
+```bash
+# Authenticate with GCP
+gcloud auth application-default login
+
+# Set environment
+export USE_AGENTIC_AI=1
+export AGENTIC_AI_MODEL="vertexai/gemini-3-flash-preview"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+```
 
 ### Using with Ollama (Local, Free)
 

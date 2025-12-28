@@ -39,9 +39,28 @@ from backend.services.metrics import metrics
 
 # Import from karaoke_gen package
 from karaoke_gen.lyrics_processor import LyricsProcessor
+from backend.config import get_settings
 
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_agentic_ai():
+    """Configure environment variables for agentic AI correction.
+
+    The lyrics_transcriber library reads these directly from environment.
+    This ensures the settings from backend config are available.
+    """
+    settings = get_settings()
+
+    # Enable agentic AI if configured
+    if settings.use_agentic_ai:
+        os.environ["USE_AGENTIC_AI"] = "1"
+        os.environ["AGENTIC_AI_MODEL"] = settings.agentic_ai_model
+        logger.info(f"Agentic AI enabled with model: {settings.agentic_ai_model}")
+    else:
+        os.environ["USE_AGENTIC_AI"] = "0"
+        logger.info("Agentic AI disabled")
 
 
 # Loggers to capture for lyrics worker (top-level package loggers only)
@@ -119,7 +138,10 @@ async def process_lyrics_transcription(job_id: str) -> bool:
     start_time = time.time()
     job_manager = JobManager()
     storage = StorageService()
-    
+
+    # Configure agentic AI before any lyrics processing
+    _configure_agentic_ai()
+
     # Create job logger for remote debugging FIRST
     job_log = create_job_logger(job_id, "lyrics")
     
