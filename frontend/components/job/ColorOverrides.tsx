@@ -31,14 +31,15 @@ function ColorField({ id, label, description, value, onChange, disabled }: Color
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <Label htmlFor={id} className="text-sm text-slate-300">
+        <Label htmlFor={id} className="text-sm" style={{ color: 'var(--text)' }}>
           {label}
         </Label>
         {value && (
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="text-xs text-slate-500 hover:text-slate-300"
+            className="text-xs"
+            style={{ color: 'var(--text-muted)' }}
             disabled={disabled}
           >
             Reset
@@ -47,8 +48,8 @@ function ColorField({ id, label, description, value, onChange, disabled }: Color
       </div>
       <div className="flex items-center gap-2">
         <div
-          className="w-8 h-8 rounded border border-slate-600 flex-shrink-0"
-          style={{ backgroundColor: value || "#333333" }}
+          className="w-8 h-8 rounded border flex-shrink-0"
+          style={{ backgroundColor: value || "#333333", borderColor: 'var(--card-border)' }}
         />
         <Input
           id={id}
@@ -64,7 +65,8 @@ function ColorField({ id, label, description, value, onChange, disabled }: Color
             }
           }}
           disabled={disabled}
-          className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 font-mono text-sm"
+          className="font-mono text-sm"
+          style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
         />
         <Input
           type="color"
@@ -74,7 +76,7 @@ function ColorField({ id, label, description, value, onChange, disabled }: Color
           className="w-10 h-8 p-0 border-0 bg-transparent cursor-pointer"
         />
       </div>
-      <p className="text-xs text-slate-500">{description}</p>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{description}</p>
     </div>
   )
 }
@@ -106,7 +108,8 @@ export function ColorOverridesPanel({ value, onChange, disabled }: ColorOverride
         <Button
           variant="ghost"
           type="button"
-          className="w-full justify-between px-3 py-2 h-auto text-slate-300 hover:text-white hover:bg-slate-700/50"
+          className="w-full justify-between px-3 py-2 h-auto"
+          style={{ color: 'var(--text)' }}
         >
           <span className="flex items-center gap-2">
             <Paintbrush className="w-4 h-4" />
@@ -126,9 +129,9 @@ export function ColorOverridesPanel({ value, onChange, disabled }: ColorOverride
       </CollapsibleTrigger>
 
       <CollapsibleContent className="mt-2">
-        <div className="space-y-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        <div className="space-y-4 p-4 rounded-lg border" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--secondary)' }}>
           <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
               Override theme colors (optional)
             </p>
             {hasAnyOverrides && (
@@ -138,7 +141,7 @@ export function ColorOverridesPanel({ value, onChange, disabled }: ColorOverride
                 size="sm"
                 onClick={handleResetAll}
                 disabled={disabled}
-                className="text-slate-400 hover:text-white"
+                style={{ color: 'var(--text-muted)' }}
               >
                 <RotateCcw className="w-3 h-3 mr-1" />
                 Reset All
