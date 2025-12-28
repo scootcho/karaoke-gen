@@ -30,9 +30,8 @@ async function loadFixtureData(page: import('@playwright/test').Page) {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles(fixturePath);
 
-  // Wait for data to load - the segments should appear
-  // First segment should have "Hello," as first word
-  await page.waitForTimeout(1000); // Give time for React to render
+  // Wait for data to load by asserting expected content appears
+  await expect(page.getByText('Hello,')).toBeVisible({ timeout: 5000 });
 }
 
 test.describe('Agentic Correction Workflow', () => {
@@ -55,35 +54,21 @@ test.describe('Agentic Correction Workflow', () => {
   test('should load correction data from JSON file', async ({ page }) => {
     await loadFixtureData(page);
 
-    // Check that the page has rendered content (not just the initial loading state)
-    // The corrected_segments should be rendered
-    const pageContent = await page.content();
-
     // Verify we're no longer in loading state
-    await expect(page.getByText('Loading Lyrics Correction Review...')).not.toBeVisible({ timeout: 5000 }).catch(() => {
-      // If loading text was never there, that's fine
-    });
+    await expect(page.getByText('Loading Lyrics Correction Review...')).not.toBeVisible();
 
-    // Take a screenshot for debugging
-    await page.screenshot({ path: 'test-results/file-loaded.png' });
-
-    // Log what's on the page
-    console.log('Page has "Hello":', pageContent.includes('Hello'));
+    // Verify expected content from fixture is visible
+    await expect(page.getByText('Hello,')).toBeVisible();
   });
 
   test('should render transcription view after loading data', async ({ page }) => {
     await loadFixtureData(page);
 
-    // Wait for any segment content to appear
-    // The TranscriptionView should show the segments
-    await page.waitForTimeout(2000);
+    // Wait for transcription content to render
+    await expect(page.getByText('Hello,')).toBeVisible();
 
-    // Take a screenshot to see what's rendered
-    await page.screenshot({ path: 'test-results/transcription-view.png' });
-
-    // Check if there's any segment container visible
-    const hasSegments = await page.locator('[data-testid="segment"], .segment, .lyrics-segment').count();
-    console.log('Number of segments found:', hasSegments);
+    // Verify the Corrected Transcription header is visible
+    await expect(page.getByText('Corrected Transcription')).toBeVisible();
   });
 });
 
@@ -111,14 +96,9 @@ test.describe('UI Components', () => {
   test('should have correction metrics component', async ({ page }) => {
     await page.goto('/');
 
-    // The CorrectionMetrics component should be present
-    // It may show "No data" or similar initially
-    const metricsSection = page.locator('[data-testid="correction-metrics"], .MuiPaper-root');
-    const metricsCount = await metricsSection.count();
-    console.log('Metrics sections found:', metricsCount);
-
-    // At least the page structure should be there
-    expect(metricsCount).toBeGreaterThan(0);
+    // The page structure should be there with Paper components
+    const metricsSection = page.locator('.MuiPaper-root');
+    await expect(metricsSection.first()).toBeVisible();
   });
 });
 
@@ -136,8 +116,10 @@ test.describe('File Upload Flow', () => {
     const loadButton = page.getByRole('button', { name: /load file/i });
     await loadButton.click();
 
-    // Wait a bit for the dialog
-    await page.waitForTimeout(500);
+    // Wait for the file chooser event to be processed
+    await page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => {
+      // Event already fired
+    });
 
     // Verify file chooser was triggered
     expect(fileChooserOpened).toBe(true);
@@ -153,88 +135,73 @@ test.describe('Review Mode', () => {
   test('should show Review Mode toggle when agentic data is loaded', async ({ page }) => {
     await loadFixtureData(page);
 
-    // Wait for data to load and render
-    await page.waitForTimeout(2000);
-
-    // Take a screenshot to see the UI state
-    await page.screenshot({ path: 'test-results/review-mode-toggle.png' });
+    // Wait for content to load
+    await expect(page.getByText('Hello,')).toBeVisible();
 
     // The Review Mode toggle should be visible when agentic corrections are present
-    // It will appear as "Review Off" chip initially
+    // It will appear as "Review Off" chip initially (only in non-read-only mode with agentic data)
+    // Note: In read-only mode, the toggle won't appear
     const reviewChip = page.getByText(/Review Off|Review Mode/i);
     const chipCount = await reviewChip.count();
-    console.log('Review mode chip found:', chipCount);
+
+    // Log for debugging purposes (will show in test output)
+    if (chipCount === 0) {
+      // Review toggle only shows in edit mode, not read-only mode
+      // This is expected behavior when loading files in read-only mode
+    }
   });
 
   test('should show batch actions panel when Review Mode is enabled', async ({ page }) => {
     await loadFixtureData(page);
 
-    // Wait for data to load
-    await page.waitForTimeout(2000);
+    // Wait for content to load
+    await expect(page.getByText('Hello,')).toBeVisible();
 
-    // Find and click the Review Mode toggle
+    // Find the Review Mode toggle (only visible in non-read-only mode)
     const reviewToggle = page.getByText(/Review Off/i);
-    if (await reviewToggle.isVisible()) {
+
+    if (await reviewToggle.isVisible({ timeout: 2000 }).catch(() => false)) {
       await reviewToggle.click();
 
       // Wait for the batch actions panel to appear
-      await page.waitForTimeout(500);
-
-      // Take a screenshot
-      await page.screenshot({ path: 'test-results/batch-actions-panel.png' });
-
-      // Check for batch action buttons
-      const acceptHighConfidence = page.getByRole('button', { name: /Accept High Confidence/i });
-      const acceptAll = page.getByRole('button', { name: /Accept All/i });
-      const revertAll = page.getByRole('button', { name: /Revert All/i });
-
-      console.log('Accept High Confidence visible:', await acceptHighConfidence.isVisible());
-      console.log('Accept All visible:', await acceptAll.isVisible());
-      console.log('Revert All visible:', await revertAll.isVisible());
+      await expect(page.getByRole('button', { name: /Accept High Confidence/i })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: /Accept All/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Revert All/i })).toBeVisible();
     }
   });
 
   test('should render corrected words with original text preview', async ({ page }) => {
     await loadFixtureData(page);
 
-    // Wait for data to load
-    await page.waitForTimeout(2000);
+    // Wait for transcription content to load
+    await expect(page.getByText('Hello,')).toBeVisible();
 
-    // Take a screenshot of the transcription view
-    await page.screenshot({ path: 'test-results/corrected-words.png' });
-
-    // Look for the CorrectedWordWithActions components
-    // They should show the original word as a strikethrough above the corrected word
-    const pageContent = await page.content();
-    console.log('Page has corrections rendered:', pageContent.length);
+    // Verify correction-related content is rendered
+    // The corrected word "now" should be visible (from fixture: "you're" -> "now")
+    await expect(page.getByText('now')).toBeVisible();
   });
 
   test('should toggle Review Mode on and off', async ({ page }) => {
     await loadFixtureData(page);
 
-    await page.waitForTimeout(2000);
+    // Wait for content to load
+    await expect(page.getByText('Hello,')).toBeVisible();
 
-    // Find the Review toggle
+    // Find the Review toggle (only visible in non-read-only mode)
     const reviewOff = page.getByText(/Review Off/i);
 
-    if (await reviewOff.isVisible()) {
+    if (await reviewOff.isVisible({ timeout: 2000 }).catch(() => false)) {
       // Click to enable Review Mode
       await reviewOff.click();
-      await page.waitForTimeout(500);
 
-      // Screenshot with Review Mode ON
-      await page.screenshot({ path: 'test-results/review-mode-on.png' });
+      // Should now show "Review Mode" label (in filled state)
+      await expect(page.getByText(/Review Mode/i).first()).toBeVisible();
 
-      // Should now show "Review Mode" label
-      const reviewOn = page.getByText(/Review Mode/i).first();
-      if (await reviewOn.isVisible()) {
-        // Click to disable Review Mode
-        await reviewOn.click();
-        await page.waitForTimeout(500);
+      // Click to disable Review Mode
+      await page.getByText(/Review Mode/i).first().click();
 
-        // Screenshot with Review Mode OFF
-        await page.screenshot({ path: 'test-results/review-mode-off.png' });
-      }
+      // Should show "Review Off" again
+      await expect(page.getByText(/Review Off/i)).toBeVisible();
     }
   });
 });
