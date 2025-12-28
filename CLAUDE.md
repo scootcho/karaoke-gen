@@ -128,3 +128,25 @@ Individual test commands:
 
 **Do not commit or push code that fails tests. Fix any test failures before proceeding.**
 
+## Related Projects
+
+### flacfetch
+
+**Location:** `/Users/andrew/Projects/flacfetch`
+
+The `flacfetch` package is a dependency of karaoke-gen that we also own. When working on features that interact with flacfetch, you can read and modify its code directly.
+
+**Workflow for flacfetch changes:**
+
+1. Navigate to `/Users/andrew/Projects/flacfetch`
+2. Create a worktree and make changes (same branching rules apply)
+3. Run tests and ensure they pass
+4. Bump the version in flacfetch's `pyproject.toml`
+5. Commit, push, and create a PR
+6. Wait for CI workflow to complete and auto-release the new version
+7. Return to karaoke-gen and update the poetry dependency:
+   ```bash
+   poetry update flacfetch
+   ```
+8. Commit the updated `poetry.lock` in karaoke-gen
+
