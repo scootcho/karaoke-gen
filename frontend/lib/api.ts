@@ -522,6 +522,20 @@ export const api = {
     const data = await handleResponse<{ description: string | null }>(response);
     return data.description;
   },
+
+  // ==========================================================================
+  // Version API endpoint
+  // ==========================================================================
+
+  /**
+   * Get backend service info including version
+   */
+  async getBackendInfo(): Promise<{ service: string; version: string; status: string }> {
+    const response = await fetch(`${API_BASE_URL}/`, {
+      headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+  },
 };
 
 export { ApiError };

@@ -124,7 +124,8 @@ export function JobActions({ job, onRefresh, showLogs, onToggleLogs }: JobAction
         size="sm"
         variant="ghost"
         onClick={onToggleLogs}
-        className="text-xs text-slate-400 hover:text-white"
+        className="text-xs"
+        style={{ color: 'var(--text-muted)' }}
       >
         <FileText className="w-3 h-3 mr-1" />
         {showLogs ? "Hide" : "Show"} Logs
