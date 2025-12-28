@@ -1418,35 +1418,40 @@ chmod +x /etc/cron.daily/docker-cleanup
 echo "Setup complete!"
 """
 
-# GitHub runner VM instance
-github_runner_vm = gcp.compute.Instance(
-    "github-runner",
-    name="github-runner",
-    machine_type="e2-standard-4",  # 4 vCPU, 16GB RAM - good for Docker builds
-    zone="us-central1-a",
-    boot_disk=gcp.compute.InstanceBootDiskArgs(
-        initialize_params=gcp.compute.InstanceBootDiskInitializeParamsArgs(
-            image="debian-cloud/debian-12",
-            size=200,  # GB - plenty for Docker builds and caches
-            type="pd-ssd",  # SSD for faster I/O
+# GitHub runner VM instances (multiple runners for parallel job execution)
+NUM_RUNNERS = 5
+github_runner_vms = []
+
+for i in range(1, NUM_RUNNERS + 1):
+    vm = gcp.compute.Instance(
+        f"github-runner-{i}",
+        name=f"github-runner-{i}",
+        machine_type="e2-standard-4",  # 4 vCPU, 16GB RAM - good for Docker builds
+        zone="us-central1-a",
+        boot_disk=gcp.compute.InstanceBootDiskArgs(
+            initialize_params=gcp.compute.InstanceBootDiskInitializeParamsArgs(
+                image="debian-cloud/debian-12",
+                size=200,  # GB - plenty for Docker builds and caches
+                type="pd-ssd",  # SSD for faster I/O
+            ),
         ),
-    ),
-    network_interfaces=[gcp.compute.InstanceNetworkInterfaceArgs(
-        network="default",
-        access_configs=[gcp.compute.InstanceNetworkInterfaceAccessConfigArgs()],  # Ephemeral IP is fine
-    )],
-    service_account=gcp.compute.InstanceServiceAccountArgs(
-        email=github_runner_sa.email,
-        scopes=["cloud-platform"],
-    ),
-    metadata_startup_script=GITHUB_RUNNER_STARTUP_SCRIPT,
-    tags=["github-runner"],
-    allow_stopping_for_update=True,
-    # Ensure the secret exists before creating the VM
-    opts=pulumi.ResourceOptions(depends_on=[github_runner_pat_secret]),
-)
+        network_interfaces=[gcp.compute.InstanceNetworkInterfaceArgs(
+            network="default",
+            access_configs=[gcp.compute.InstanceNetworkInterfaceAccessConfigArgs()],  # Ephemeral IP is fine
+        )],
+        service_account=gcp.compute.InstanceServiceAccountArgs(
+            email=github_runner_sa.email,
+            scopes=["cloud-platform"],
+        ),
+        metadata_startup_script=GITHUB_RUNNER_STARTUP_SCRIPT,
+        tags=["github-runner"],
+        allow_stopping_for_update=True,
+        # Ensure the secret exists before creating the VM
+        opts=pulumi.ResourceOptions(depends_on=[github_runner_pat_secret]),
+    )
+    github_runner_vms.append(vm)
 
 # Export GitHub runner resources
-pulumi.export("github_runner_vm_name", github_runner_vm.name)
+pulumi.export("github_runner_vm_names", [vm.name for vm in github_runner_vms])
 pulumi.export("github_runner_service_account", github_runner_sa.email)
 
