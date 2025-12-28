@@ -1423,11 +1423,31 @@ docker system prune -af --filter "until=168h"
 CRON
 chmod +x /etc/cron.daily/docker-cleanup
 
+# ==================== Pre-warm Docker images ====================
+# Pre-fetch commonly used Docker images to speed up first CI runs
+echo "Pre-warming Docker images for faster CI builds..."
+
+# Configure Docker to authenticate with Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+# Pull base images used by deploy-backend job (largest layers, most benefit from caching)
+echo "Pulling karaoke-backend-base image..."
+docker pull us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest || true
+
+echo "Pulling karaoke-backend image..."
+docker pull us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest || true
+
+# Pull GCS emulator image used by backend-emulator-tests job
+echo "Pulling fake-gcs-server image..."
+docker pull fsouza/fake-gcs-server:latest || true
+
+echo "Docker images pre-warmed"
+
 echo "Setup complete!"
 """
 
 # GitHub runner VM instances (multiple runners for parallel job execution)
-NUM_RUNNERS = 10
+NUM_RUNNERS = 20
 github_runner_vms = []
 
 for i in range(1, NUM_RUNNERS + 1):
@@ -1455,10 +1475,10 @@ for i in range(1, NUM_RUNNERS + 1):
         tags=["github-runner"],
         allow_stopping_for_update=True,
         # Ensure the secret exists before creating the VM
-        # For existing runners (1-5), ignore startup script changes to avoid replacement
+        # For existing runners (1-10), ignore startup script changes to avoid replacement
         opts=pulumi.ResourceOptions(
             depends_on=[github_runner_pat_secret],
-            ignore_changes=["metadataStartupScript"] if i <= 5 else None,
+            ignore_changes=["metadataStartupScript"] if i <= 10 else None,
         ),
     )
     github_runner_vms.append(vm)

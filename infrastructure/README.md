@@ -262,7 +262,7 @@ Multiple GCP VMs run self-hosted GitHub Actions runners to:
 
 ### Specs
 
-- **Instances**: 10x e2-standard-4 (4 vCPU, 16GB RAM each)
+- **Instances**: 20x e2-standard-4 (4 vCPU, 16GB RAM each)
 - **Disk**: 200GB SSD per runner
 - **Pre-installed**: Docker, Python 3.13, Node.js 20, Java 21, Poetry, FFmpeg, gcloud CLI
 - **Labels**: `self-hosted`, `linux`, `x64`, `gcp`, `large-disk`
@@ -285,7 +285,7 @@ Multiple GCP VMs run self-hosted GitHub Actions runners to:
 
 4. Verify the runners registered:
    - Go to https://github.com/nomadkaraoke/karaoke-gen/settings/actions/runners
-   - You should see `gcp-runner-github-runner-1` through `gcp-runner-github-runner-10`
+   - You should see `gcp-runner-github-runner-1` through `gcp-runner-github-runner-20`
 
 ### Usage in Workflows
 
@@ -325,7 +325,7 @@ gcloud compute ssh github-runner-N --zone=us-central1-a -- \
 
 **List all runners:**
 ```bash
-for i in {1..10}; do
+for i in {1..20}; do
   echo "=== github-runner-$i ==="
   gcloud compute instances describe github-runner-$i --zone=us-central1-a --format='get(status)'
 done
