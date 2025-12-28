@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     url: 'https://buy.nomadkaraoke.com',
     images: [
       {
-        url: 'https://nomadkaraoke.com/logo.png',
+        url: 'https://gen.nomadkaraoke.com/nomad-logo.png',
         width: 512,
         height: 512,
         alt: 'Nomad Karaoke',

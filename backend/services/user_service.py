@@ -176,49 +176,62 @@ class UserService:
 
     def verify_magic_link(self, token: str) -> Tuple[bool, Optional[User], str]:
         """
-        Verify a magic link token.
+        Verify a magic link token using a Firestore transaction to prevent race conditions.
 
         Returns:
             (success, user, message)
         """
         try:
             doc_ref = self.db.collection(MAGIC_LINKS_COLLECTION).document(token)
-            doc = doc_ref.get()
 
-            if not doc.exists:
-                return False, None, "Invalid or expired link"
+            @firestore.transactional
+            def verify_in_transaction(transaction):
+                """Atomically verify and mark magic link as used."""
+                doc = doc_ref.get(transaction=transaction)
 
-            magic_link = MagicLinkToken(**doc.to_dict())
+                if not doc.exists:
+                    return False, None, "Invalid or expired link"
 
-            # Check if already used
-            if magic_link.used:
-                return False, None, "This link has already been used"
+                magic_link = MagicLinkToken(**doc.to_dict())
 
-            # Check expiry
-            if datetime.utcnow() > magic_link.expires_at:
-                return False, None, "This link has expired"
+                # Check if already used
+                if magic_link.used:
+                    return False, None, "This link has already been used"
 
-            # Mark as used
-            doc_ref.update({
-                'used': True,
-                'used_at': datetime.utcnow()
-            })
+                # Check expiry
+                if datetime.utcnow() > magic_link.expires_at:
+                    return False, None, "This link has expired"
 
-            # Get user and mark email as verified
-            user = self.get_user(magic_link.email)
+                # Mark as used atomically within transaction
+                transaction.update(doc_ref, {
+                    'used': True,
+                    'used_at': datetime.utcnow()
+                })
+
+                return True, magic_link.email, "Success"
+
+            # Execute the transaction
+            transaction = self.db.transaction()
+            success, email_or_error, message = verify_in_transaction(transaction)
+
+            if not success:
+                return False, None, message
+
+            # Get user and mark email as verified (outside transaction)
+            user = self.get_user(email_or_error)
             if user:
                 self.update_user(
-                    magic_link.email,
+                    email_or_error,
                     email_verified=True,
                     last_login_at=datetime.utcnow()
                 )
-                user = self.get_user(magic_link.email)  # Refresh
+                user = self.get_user(email_or_error)  # Refresh
 
-            logger.info(f"Magic link verified for {magic_link.email}")
+            logger.info(f"Magic link verified for {email_or_error}")
             return True, user, "Successfully authenticated"
 
         except Exception as e:
-            logger.error(f"Error verifying magic link: {e}")
+            logger.exception(f"Error verifying magic link: {e}")
             return False, None, "An error occurred during verification"
 
     # =========================================================================

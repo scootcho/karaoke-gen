@@ -182,7 +182,11 @@ class StripeService:
         try:
             metadata = session.get('metadata', {})
             user_email = metadata.get('user_email') or session.get('customer_email')
-            credits = int(metadata.get('credits', 0))
+            try:
+                credits = int(metadata.get('credits', 0))
+            except (ValueError, TypeError):
+                logger.error(f"Invalid credits metadata in session {session.get('id')}: {metadata.get('credits')}")
+                return False, user_email, 0, "Invalid credit amount in session metadata"
             package_id = metadata.get('package_id')
 
             if not user_email:

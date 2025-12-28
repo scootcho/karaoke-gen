@@ -145,17 +145,14 @@ export const useAuth = create<AuthStore>()(
           set({ user, isLoading: false })
           return true
         } catch {
-          // Fallback: treat as admin token if it contains 'admin'
-          // This maintains backwards compatibility
-          const isAdmin = token.toLowerCase().includes("admin")
-          const user: User = {
-            token,
-            email: 'admin@nomadkaraoke.com',
-            role: isAdmin ? "admin" : "user",
-            credits: isAdmin ? 999 : 3,
-          }
-          set({ user, isLoading: false })
-          return true
+          // Token validation failed - clear token and reject
+          clearAccessToken()
+          set({
+            user: null,
+            isLoading: false,
+            error: 'Invalid token or server unavailable'
+          })
+          return false
         }
       },
     }),
