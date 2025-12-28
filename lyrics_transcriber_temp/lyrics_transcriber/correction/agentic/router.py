@@ -5,6 +5,9 @@ from typing import Dict, Any
 
 from .providers.config import ProviderConfig
 
+# Default model for cloud deployments - Gemini 3 Flash via Vertex AI
+DEFAULT_CLOUD_MODEL = "vertexai/gemini-3-flash-preview"
+
 
 class ModelRouter:
     """Rules-based routing by gap type/length/uncertainty (scaffold)."""
@@ -14,22 +17,23 @@ class ModelRouter:
 
     def choose_model(self, gap_type: str, uncertainty: float) -> str:
         """Choose appropriate model based on gap characteristics.
-        
+
         Returns model identifier in format "provider/model" for LangChain:
-        - "ollama/gpt-oss:latest" for local Ollama models
-        - "openai/gpt-4" for OpenAI models  
+        - "vertexai/gemini-3-flash-preview" for Gemini via Vertex AI (default)
+        - "ollama/llama3.2:latest" for local Ollama models
+        - "openai/gpt-4" for OpenAI models
         - "anthropic/claude-3-sonnet-20240229" for Anthropic models
         """
-        # Simple baseline per technical guidance
+        # Check for explicit model override from environment
+        env_model = os.getenv("AGENTIC_AI_MODEL")
+        if env_model:
+            return env_model
+
+        # Privacy mode: use local Ollama
         if self._config.privacy_mode:
-            # Use the actual model from env, or default to a common Ollama model
-            return os.getenv("AGENTIC_AI_MODEL", "ollama/gpt-oss:latest")
-        
-        # For high-uncertainty gaps, use Claude (best reasoning)
-        if uncertainty > 0.5:
-            return "anthropic/claude-3-sonnet-20240229"
-        
-        # Default to GPT-4 for general cases
-        return "openai/gpt-4"
+            return "ollama/llama3.2:latest"
+
+        # Default to Gemini 3 Flash for all cases (fast, cost-effective)
+        return DEFAULT_CLOUD_MODEL
 
 

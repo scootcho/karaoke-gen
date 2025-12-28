@@ -18,6 +18,10 @@ class ProviderConfig:
     privacy_mode: bool
     cache_dir: str
 
+    # GCP/Vertex AI settings
+    gcp_project_id: Optional[str] = None
+    gcp_location: str = "us-central1"
+
     request_timeout_seconds: float = 30.0
     max_retries: int = 2
     retry_backoff_base_seconds: float = 0.2
@@ -46,6 +50,8 @@ class ProviderConfig:
             openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
             privacy_mode=os.getenv("PRIVACY_MODE", "false").lower() in {"1", "true", "yes"},
             cache_dir=cache_dir,
+            gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT_ID"),
+            gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             request_timeout_seconds=float(os.getenv("AGENTIC_TIMEOUT_SECONDS", "30.0")),
             max_retries=int(os.getenv("AGENTIC_MAX_RETRIES", "2")),
             retry_backoff_base_seconds=float(os.getenv("AGENTIC_BACKOFF_BASE_SECONDS", "0.2")),

@@ -155,6 +155,8 @@ class ModelFactory:
                 return self._create_openai_model(model_name, callbacks, config)
             elif provider == "anthropic":
                 return self._create_anthropic_model(model_name, callbacks, config)
+            elif provider in ("vertexai", "google"):
+                return self._create_vertexai_model(model_name, callbacks, config)
             else:
                 raise ValueError(f"Unsupported provider: {provider}")
         except ImportError as e:
@@ -197,7 +199,7 @@ class ModelFactory:
     ) -> Any:
         """Create ChatAnthropic model."""
         from langchain_anthropic import ChatAnthropic
-        
+
         model = ChatAnthropic(
             model=model_name,
             timeout=config.request_timeout_seconds,
@@ -205,5 +207,26 @@ class ModelFactory:
             callbacks=callbacks,
         )
         logger.debug(f"🤖 Created Anthropic model: {model_name}")
+        return model
+
+    def _create_vertexai_model(
+        self, model_name: str, callbacks: List[Any], config: ProviderConfig
+    ) -> Any:
+        """Create ChatVertexAI model for Google Gemini via Vertex AI.
+
+        Uses Application Default Credentials (ADC) for authentication.
+        In Cloud Run, this uses the service account automatically.
+        Locally, run: gcloud auth application-default login
+        """
+        from langchain_google_vertexai import ChatVertexAI
+
+        model = ChatVertexAI(
+            model=model_name,
+            project=config.gcp_project_id,
+            location=config.gcp_location,
+            max_retries=config.max_retries,
+            callbacks=callbacks,
+        )
+        logger.debug(f"🤖 Created Vertex AI model: {model_name} (project={config.gcp_project_id})")
         return model
 
