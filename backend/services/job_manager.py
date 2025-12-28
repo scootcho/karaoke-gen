@@ -61,6 +61,11 @@ class JobManager:
             discord_webhook_url=job_create.discord_webhook_url,
             dropbox_path=job_create.dropbox_path,
             gdrive_folder_id=job_create.gdrive_folder_id,
+            # Theme configuration
+            theme_id=job_create.theme_id,
+            color_overrides=job_create.color_overrides,
+            style_params_gcs_path=job_create.style_params_gcs_path,
+            style_assets=job_create.style_assets,
             # Two-phase workflow (Batch 6)
             prep_only=job_create.prep_only,
             finalise_only=job_create.finalise_only,

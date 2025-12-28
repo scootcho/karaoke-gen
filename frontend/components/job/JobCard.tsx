@@ -3,54 +3,69 @@
 import { useState } from "react"
 import { Job } from "@/lib/api"
 import { useAutoMode } from "@/lib/auto-mode"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Loader2, CheckCircle2, XCircle, Clock, AlertCircle,
-  ChevronDown, ChevronUp, ExternalLink, Zap
-} from "lucide-react"
+import { Loader2, ExternalLink, Zap } from "lucide-react"
 import { JobActions } from "./JobActions"
 import { JobLogs } from "./JobLogs"
 import { OutputLinks } from "./OutputLinks"
-import { InstrumentalSelector } from "./InstrumentalSelector"
 import { AudioSearchDialog } from "../audio-search/AudioSearchDialog"
+import { getJobStep, formatStepIndicator, getJobProgressPercent } from "@/lib/job-status"
 
-// Status badge styling
-const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  pending: { color: "bg-slate-500", icon: <Clock className="w-3 h-3" />, label: "Pending" },
-  searching_audio: { color: "bg-blue-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Searching Audio" },
-  awaiting_audio_selection: { color: "bg-orange-500", icon: <AlertCircle className="w-3 h-3" />, label: "Select Audio" },
-  downloading: { color: "bg-blue-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Downloading" },
-  downloading_audio: { color: "bg-blue-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Downloading" },
-  separating_stage1: { color: "bg-purple-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Separating (1/2)" },
-  separating_stage2: { color: "bg-purple-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Separating (2/2)" },
-  audio_complete: { color: "bg-purple-600", icon: <CheckCircle2 className="w-3 h-3" />, label: "Audio Ready" },
-  transcribing: { color: "bg-amber-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Transcribing" },
-  correcting: { color: "bg-amber-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Correcting" },
-  lyrics_complete: { color: "bg-amber-600", icon: <CheckCircle2 className="w-3 h-3" />, label: "Lyrics Ready" },
-  generating_screens: { color: "bg-cyan-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Generating Screens" },
-  awaiting_review: { color: "bg-orange-500", icon: <AlertCircle className="w-3 h-3" />, label: "Awaiting Review" },
-  in_review: { color: "bg-orange-600", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "In Review" },
-  review_complete: { color: "bg-teal-500", icon: <CheckCircle2 className="w-3 h-3" />, label: "Review Complete" },
-  rendering_video: { color: "bg-indigo-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Rendering Video" },
-  awaiting_instrumental_selection: { color: "bg-pink-500", icon: <AlertCircle className="w-3 h-3" />, label: "Select Instrumental" },
-  instrumental_selected: { color: "bg-pink-600", icon: <CheckCircle2 className="w-3 h-3" />, label: "Instrumental Selected" },
-  generating_video: { color: "bg-violet-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Generating Video" },
-  encoding: { color: "bg-violet-600", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Encoding" },
-  packaging: { color: "bg-violet-700", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Packaging" },
-  uploading: { color: "bg-green-500", icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Uploading" },
-  complete: { color: "bg-green-600", icon: <CheckCircle2 className="w-3 h-3" />, label: "Complete" },
-  failed: { color: "bg-red-600", icon: <XCircle className="w-3 h-3" />, label: "Failed" },
-  cancelled: { color: "bg-gray-500", icon: <XCircle className="w-3 h-3" />, label: "Cancelled" },
+/**
+ * StatusIndicator component - Shows step-based progress with visual indicator
+ *
+ * Displays: "[4/10] Processing..." with colored text and optional progress bar
+ */
+function StatusIndicator({ job }: { job: Job }) {
+  const { step, total, label, isBlocking, color } = getJobStep(job)
+  const formattedStatus = formatStepIndicator(step, total, label)
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={color}>{formattedStatus}</span>
+      {isBlocking && (
+        <span className="text-amber-400 text-[10px] font-medium uppercase tracking-wide">
+          Action needed
+        </span>
+      )}
+    </span>
+  )
 }
 
-export function StatusBadge({ status }: { status: string }) {
-  const config = statusConfig[status] || { color: "bg-gray-500", icon: <Clock className="w-3 h-3" />, label: status }
+/**
+ * Progress bar component - Visual indicator of job progress
+ */
+function ProgressBar({ job }: { job: Job }) {
+  const progressPercent = getJobProgressPercent(job)
+  const { step, color } = getJobStep(job)
+
+  // Don't show progress bar for terminal states
+  if (step === 0 || job.status === "complete" || job.status === "prep_complete") {
+    return null
+  }
+
+  // Map color class to background color for the bar
+  const barColorMap: Record<string, string> = {
+    "text-slate-400": "bg-slate-400",
+    "text-blue-400": "bg-blue-400",
+    "text-purple-400": "bg-purple-400",
+    "text-teal-400": "bg-teal-400",
+    "text-cyan-400": "bg-cyan-400",
+    "text-amber-400": "bg-amber-400",
+    "text-indigo-400": "bg-indigo-400",
+    "text-pink-400": "bg-pink-400",
+    "text-violet-400": "bg-violet-400",
+    "text-green-400": "bg-green-400",
+  }
+  const barColor = barColorMap[color] || "bg-blue-400"
+
   return (
-    <Badge className={`${config.color} text-white gap-1`}>
-      {config.icon}
-      {config.label}
-    </Badge>
+    <div className="w-full h-1 bg-slate-700/50 rounded-full mt-2 overflow-hidden">
+      <div
+        className={`h-full ${barColor} rounded-full transition-all duration-500 ease-out`}
+        style={{ width: `${progressPercent}%` }}
+      />
+    </div>
   )
 }
 
@@ -60,14 +75,13 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, onRefresh }: JobCardProps) {
-  const [showDetails, setShowDetails] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [showAudioSearch, setShowAudioSearch] = useState(false)
-  const [showInstrumentalSelector, setShowInstrumentalSelector] = useState(false)
   const { enabled: autoModeEnabled, isProcessing: isAutoProcessing } = useAutoMode()
 
   const createdAt = new Date(job.created_at).toLocaleString()
   const isInteractive = job.status === "awaiting_review" ||
+                        job.status === "in_review" ||
                         job.status === "awaiting_instrumental_selection" ||
                         job.status === "awaiting_audio_selection"
   const isComplete = job.status === "complete"
@@ -81,129 +95,149 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
     isAutoProcessing(`${job.job_id}-audio`)
   )
 
+  // Build review URL for awaiting_review status
+  const getReviewUrl = () => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com'
+    const reviewUiUrl = process.env.NEXT_PUBLIC_REVIEW_UI_URL || 'https://gen.nomadkaraoke.com/lyrics/'
+    const baseApiUrl = `${backendUrl}/api/review/${job.job_id}`
+    const encodedApiUrl = encodeURIComponent(baseApiUrl)
+    let url = `${reviewUiUrl}/?baseApiUrl=${encodedApiUrl}`
+    if (job.audio_hash) {
+      url += `&audioHash=${encodeURIComponent(job.audio_hash)}`
+    }
+    if (job.review_token) {
+      url += `&reviewToken=${encodeURIComponent(job.review_token)}`
+    }
+    return url
+  }
+
+  // Build instrumental review URL for awaiting_instrumental_selection status
+  const getInstrumentalUrl = () => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com'
+    const baseApiUrl = `${backendUrl}/api/jobs/${job.job_id}`
+    const encodedApiUrl = encodeURIComponent(baseApiUrl)
+    let url = `/instrumental/?baseApiUrl=${encodedApiUrl}`
+    if (job.instrumental_token) {
+      url += `&instrumentalToken=${encodeURIComponent(job.instrumental_token)}`
+    }
+    return url
+  }
+
+  // Render primary action button based on status
+  const renderPrimaryAction = () => {
+    if (autoModeEnabled && isInteractive) {
+      return (
+        <div className="flex items-center gap-1 text-xs text-amber-400">
+          {isBeingAutoProcessed ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Auto-processing...
+            </>
+          ) : (
+            <>
+              <Zap className="w-3 h-3" />
+              Will auto-{job.status === "awaiting_review" || job.status === "in_review" ? "accept" :
+                         job.status === "awaiting_instrumental_selection" ? "select clean" :
+                         "select first"}
+            </>
+          )}
+        </div>
+      )
+    }
+
+    if (job.status === "awaiting_review" || job.status === "in_review") {
+      return (
+        <a
+          href={getReviewUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Review Lyrics
+        </a>
+      )
+    }
+
+    if (job.status === "awaiting_audio_selection") {
+      return (
+        <Button
+          size="sm"
+          onClick={() => setShowAudioSearch(true)}
+          className="text-xs h-7 px-3 bg-blue-600 hover:bg-blue-500"
+        >
+          Select Audio
+        </Button>
+      )
+    }
+
+    if (job.status === "awaiting_instrumental_selection") {
+      return (
+        <a
+          href={getInstrumentalUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Select Instrumental
+        </a>
+      )
+    }
+
+    return null
+  }
+
   return (
-    <div 
-      className={`rounded-lg border p-3 transition-colors
-        ${isInteractive ? "border-orange-500/50 bg-orange-500/5" : "border-slate-700 bg-slate-800/30"}
+    <div
+      className={`rounded-lg border p-3 transition-colors border-slate-700 bg-slate-800/30
         ${isComplete ? "border-green-500/30" : ""}
         ${isFailed ? "border-red-500/30" : ""}`}
     >
-      <div 
-        className="flex items-start justify-between gap-3 cursor-pointer"
-        onClick={() => setShowDetails(!showDetails)}
-      >
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-white truncate">
-            {job.artist || "Unknown"} - {job.title || "Unknown"}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">{createdAt}</p>
-          {job.progress > 0 && job.progress < 100 && isProcessing && (
-            <div className="mt-2 h-1 rounded-full bg-slate-700 overflow-hidden">
-              <div 
-                className="h-full bg-amber-500 transition-all duration-500"
-                style={{ width: `${job.progress}%` }}
-              />
-            </div>
-          )}
+      {/* Header row with title */}
+      <p className="font-medium text-white truncate">
+        {job.artist || "Unknown"} - {job.title || "Unknown"}
+      </p>
+
+      {/* Meta row: ID, date, status */}
+      <p className="text-xs text-slate-500 mt-1">
+        <span className="text-slate-600">ID:</span> {job.job_id} <span className="text-slate-600">•</span> {createdAt} <span className="text-slate-600">•</span> <StatusIndicator job={job} />
+      </p>
+
+      {/* Progress bar for active jobs */}
+      <ProgressBar job={job} />
+
+      {/* Error message if any */}
+      {job.error_message && (
+        <div className="mt-2 text-xs text-red-400 bg-red-500/10 rounded p-2 break-words">
+          {job.error_message}
         </div>
+      )}
+
+      {/* Output links for completed jobs */}
+      {isComplete && (
+        <div className="mt-2">
+          <OutputLinks jobId={job.job_id} />
+        </div>
+      )}
+
+      {/* Actions row: Cancel/secondary on left, primary action on right */}
+      <div className="mt-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <StatusBadge status={job.status} />
-          {showDetails ? (
-            <ChevronUp className="w-4 h-4 text-slate-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          )}
-        </div>
-      </div>
-
-      {showDetails && (
-        <div className="mt-3 pt-3 border-t border-slate-700 space-y-3">
-          <p className="text-xs text-slate-400">
-            <span className="text-slate-500">Job ID:</span> {job.job_id}
-          </p>
-          
-          {job.error_message && (
-            <div className="text-xs text-red-400 bg-red-500/10 rounded p-2 break-words">
-              {job.error_message}
-            </div>
-          )}
-
-          {isInteractive && (
-            <div className="flex flex-wrap gap-2">
-              {autoModeEnabled ? (
-                // Auto-mode indicator
-                <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded">
-                  {isBeingAutoProcessed ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Auto-processing...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-3 h-3" />
-                      Will auto-{job.status === "awaiting_review" ? "accept" :
-                                 job.status === "awaiting_instrumental_selection" ? "select clean" :
-                                 "select first"}
-                    </>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {job.status === "awaiting_review" && (
-                    <a
-                      href={`https://lyrics.nomadkaraoke.com/?job=${job.job_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-500 text-white"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Review Lyrics
-                    </a>
-                  )}
-                  {job.status === "awaiting_audio_selection" && (
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowAudioSearch(true)
-                      }}
-                      className="text-xs bg-blue-600 hover:bg-blue-500"
-                    >
-                      Select Audio Source
-                    </Button>
-                  )}
-                  {job.status === "awaiting_instrumental_selection" && (
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowInstrumentalSelector(true)
-                      }}
-                      className="text-xs bg-pink-600 hover:bg-pink-500"
-                    >
-                      Select Instrumental
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {isComplete && (
-            <OutputLinks jobId={job.job_id} />
-          )}
-
-          <JobActions 
-            job={job} 
-            onRefresh={onRefresh} 
+          <JobActions
+            job={job}
+            onRefresh={onRefresh}
             showLogs={showLogs}
             onToggleLogs={() => setShowLogs(!showLogs)}
           />
+        </div>
+        {renderPrimaryAction()}
+      </div>
 
-          {showLogs && (
-            <JobLogs jobId={job.job_id} />
-          )}
+      {/* Expandable logs */}
+      {showLogs && (
+        <div className="mt-2">
+          <JobLogs jobId={job.job_id} />
         </div>
       )}
 
@@ -211,13 +245,6 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
         jobId={job.job_id}
         open={showAudioSearch}
         onClose={() => setShowAudioSearch(false)}
-        onSelect={onRefresh}
-      />
-
-      <InstrumentalSelector
-        jobId={job.job_id}
-        open={showInstrumentalSelector}
-        onClose={() => setShowInstrumentalSelector(false)}
         onSelect={onRefresh}
       />
     </div>

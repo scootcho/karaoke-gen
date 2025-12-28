@@ -60,8 +60,16 @@
         .logo {
             font-size: 1.25rem;
             font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
-        
+
+        .logo-img {
+            height: 40px;
+            width: auto;
+        }
+
         .track-info {
             font-size: 0.9rem;
             color: var(--text-muted);
@@ -568,6 +576,143 @@
             font-size: 1.5rem;
             color: var(--success);
         }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .app {
+                padding: 12px;
+                gap: 8px;
+                height: auto;
+                min-height: 100vh;
+                overflow-y: auto;
+            }
+
+            body {
+                overflow: auto;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .header-left {
+                width: 100%;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .logo {
+                font-size: 1rem;
+            }
+
+            .logo-img {
+                height: 32px;
+            }
+
+            .waveform-player {
+                flex: none;
+                min-height: 200px;
+            }
+
+            .waveform-toolbar {
+                flex-wrap: wrap;
+                padding: 8px 12px;
+                gap: 8px;
+            }
+
+            .toolbar-left,
+            .toolbar-center,
+            .toolbar-right {
+                flex-wrap: wrap;
+            }
+
+            .audio-toggle-group {
+                order: 10;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .bottom-section {
+                flex-direction: column;
+            }
+
+            .mute-panel {
+                max-height: none;
+            }
+
+            .selection-panel {
+                width: 100%;
+            }
+
+            .selection-option {
+                padding: 12px;
+            }
+
+            .btn {
+                min-height: 44px;
+                padding: 8px 12px;
+            }
+
+            .btn-icon {
+                width: 44px;
+                height: 44px;
+            }
+
+            .audio-toggle {
+                padding: 8px 12px;
+                min-height: 40px;
+            }
+
+            .zoom-btn {
+                width: 40px;
+                height: 40px;
+            }
+
+            .time-display {
+                font-size: 0.9rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app {
+                padding: 8px;
+            }
+
+            .header-left {
+                flex-wrap: wrap;
+            }
+
+            .track-info {
+                width: 100%;
+                margin-top: 4px;
+            }
+
+            .waveform-toolbar {
+                padding: 6px 8px;
+            }
+
+            .toolbar-center {
+                width: 100%;
+                justify-content: center;
+                order: -1;
+            }
+
+            .toolbar-left {
+                order: 1;
+            }
+
+            .toolbar-right {
+                order: 2;
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
     </style>
 </head>
 <body>
@@ -641,7 +786,8 @@
                 
                 if (waveformRes.ok) {
                     waveformData = await waveformRes.json();
-                    duration = waveformData.duration;
+                    // API returns duration_seconds, not duration
+                    duration = waveformData.duration_seconds || 0;
                 }
                 
                 // Set initial selection based on recommendation
@@ -679,7 +825,7 @@
             app.innerHTML = `
                 <div class="header">
                     <div class="header-left">
-                        <span class="logo">🎤 Instrumental Review</span>
+                        <span class="logo"><img src="https://gen.nomadkaraoke.com/nomad-karaoke-logo.svg" alt="Nomad Karaoke" class="logo-img" onerror="this.style.display='none'"> Instrumental Review</span>
                         <span class="track-info">${escapeHtml(analysisData.artist) || ''} ${analysisData.artist && analysisData.title ? '–' : ''} ${escapeHtml(analysisData.title) || ''}</span>
                     </div>
                     <div class="header-right">
@@ -969,8 +1115,14 @@
             canvas.onmousedown = (e) => {
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
+
+                // Guard against invalid duration
+                if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(rect.width) || rect.width <= 0) {
+                    return;
+                }
+
                 const time = (x / rect.width) * duration;
-                
+
                 // Shift+drag to select mute region
                 if (e.shiftKey) {
                     isDragging = true;
@@ -993,18 +1145,26 @@
             
             const endDrag = (e) => {
                 if (!isDragging) return;
-                
+
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
+
+                // Guard against invalid duration
+                if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(rect.width) || rect.width <= 0) {
+                    isDragging = false;
+                    showSelectionOverlay(false);
+                    return;
+                }
+
                 const time = (x / rect.width) * duration;
-                
+
                 const start = Math.min(dragStartTime, time);
                 const end = Math.max(dragStartTime, time);
-                
+
                 if (end - start > 0.5) {
                     addRegion(start, end);
                 }
-                
+
                 isDragging = false;
                 showSelectionOverlay(false);
             };
@@ -1090,14 +1250,15 @@
         
         function seekTo(time, autoPlay = true) {
             const audio = document.getElementById('audio-player');
-            if (audio) {
-                audio.currentTime = time;
-                currentTime = time;
-                updatePlayhead();
-                // Auto-play when seeking via click (if not already playing)
-                if (autoPlay && !isPlaying) {
-                    audio.play();
-                }
+            // Guard against non-finite time values (NaN, Infinity)
+            if (!audio || !Number.isFinite(time)) return;
+
+            audio.currentTime = time;
+            currentTime = time;
+            updatePlayhead();
+            // Auto-play when seeking via click (if not already playing)
+            if (autoPlay && !isPlaying) {
+                audio.play();
             }
         }
         
@@ -1155,6 +1316,8 @@
         }
         
         function formatTime(seconds) {
+            // Guard against NaN/Infinity
+            if (!Number.isFinite(seconds)) return '0:00';
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs.toString().padStart(2, '0')}`;

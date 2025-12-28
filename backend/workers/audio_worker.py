@@ -405,10 +405,14 @@ async def download_audio(
         Path to downloaded audio file, or None if failed
     """
     try:
+        from karaoke_gen.utils import sanitize_filename
+
         # Case 1: File was uploaded to GCS
         if job.input_media_gcs_path:
             logger.info(f"Job {job_id}: Downloading uploaded file from GCS: {job.input_media_gcs_path}")
-            local_path = os.path.join(temp_dir, job.filename or "input.flac")
+            # Sanitize filename to handle Unicode chars that cause HTTP header encoding issues
+            safe_filename = sanitize_filename(job.filename) if job.filename else "input.flac"
+            local_path = os.path.join(temp_dir, safe_filename)
             storage.download_file(job.input_media_gcs_path, local_path)
             logger.info(f"Job {job_id}: Downloaded uploaded file to {local_path}")
             return local_path

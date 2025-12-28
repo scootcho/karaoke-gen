@@ -187,7 +187,7 @@ export default function TranscriptionView({
                             width: '100%',
                             mb: 0,
                             '&:hover': {
-                                backgroundColor: 'rgba(0, 0, 0, 0.03)'
+                                backgroundColor: 'rgba(248, 250, 252, 0.04)' // slate-50 hover for dark mode
                             }
                         }}>
                             <SegmentControls>

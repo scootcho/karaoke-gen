@@ -134,17 +134,23 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
     
-    # Terminal states - COMPLETE, PREP_COMPLETE, and CANCELLED have no transitions
-    # FAILED allows retry transitions to resume from checkpoints
+    # Terminal states - COMPLETE, PREP_COMPLETE have no transitions
+    # FAILED and CANCELLED allow retry transitions to resume from checkpoints
     # PREP_COMPLETE allows finalise-only continuation
     JobStatus.COMPLETE: [],
     JobStatus.PREP_COMPLETE: [JobStatus.AWAITING_INSTRUMENTAL_SELECTION, JobStatus.FAILED],  # Finalise-only continues from here
     JobStatus.FAILED: [
+        JobStatus.DOWNLOADING,            # Retry from beginning (if input audio exists)
         JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
         JobStatus.REVIEW_COMPLETE,        # Retry from render stage
         JobStatus.LYRICS_COMPLETE,        # Retry from screens generation
     ],
-    JobStatus.CANCELLED: [],
+    JobStatus.CANCELLED: [
+        JobStatus.DOWNLOADING,            # Retry from beginning (if input audio exists)
+        JobStatus.INSTRUMENTAL_SELECTED,  # Retry from video generation
+        JobStatus.REVIEW_COMPLETE,        # Retry from render stage
+        JobStatus.LYRICS_COMPLETE,        # Retry from screens generation
+    ],
     
     # Legacy states (for backward compatibility)
     JobStatus.QUEUED: [JobStatus.PENDING],
@@ -192,14 +198,25 @@ class Job(BaseModel):
     input_media_gcs_path: Optional[str] = None   # GCS path to uploaded file
     
     # User preferences
-    enable_cdg: bool = True                      # Generate CDG+MP3 package
-    enable_txt: bool = True                      # Generate TXT+MP3 package
+    enable_cdg: bool = False                     # Generate CDG+MP3 package (requires style config)
+    enable_txt: bool = False                     # Generate TXT+MP3 package (requires style config)
     enable_youtube_upload: bool = False          # Upload to YouTube
     youtube_description: Optional[str] = None    # YouTube video description
     webhook_url: Optional[str] = None            # Webhook for notifications
     user_email: Optional[str] = None             # Email for notifications
     
-    # Style configuration (uploaded files)
+    # Theme configuration (pre-made themes from GCS)
+    theme_id: Optional[str] = None               # Theme identifier (e.g., "nomad", "default")
+    color_overrides: Dict[str, str] = Field(default_factory=dict)
+    """
+    User color overrides applied on top of theme. Keys:
+    - artist_color: Hex color for artist name (#RRGGBB)
+    - title_color: Hex color for song title
+    - sung_lyrics_color: Hex color for highlighted lyrics
+    - unsung_lyrics_color: Hex color for unhighlighted lyrics
+    """
+
+    # Style configuration (uploaded files - used when theme_id is not set)
     style_params_gcs_path: Optional[str] = None  # GCS path to style_params.json
     style_assets: Dict[str, str] = Field(default_factory=dict)
     """
@@ -394,16 +411,27 @@ class JobCreate(BaseModel):
     artist: Optional[str] = None
     title: Optional[str] = None
     filename: Optional[str] = None  # Original uploaded filename
-    
+
     # Optional preferences
-    enable_cdg: bool = True
-    enable_txt: bool = True
+    enable_cdg: bool = False  # Requires style config
+    enable_txt: bool = False  # Requires style config
     enable_youtube_upload: bool = False
     youtube_description: Optional[str] = None
     webhook_url: Optional[str] = None
     user_email: Optional[str] = None
     
-    # Style configuration (will be populated after file upload)
+    # Theme configuration (pre-made themes from GCS)
+    theme_id: Optional[str] = None               # Theme identifier (e.g., "nomad", "default")
+    color_overrides: Dict[str, str] = Field(default_factory=dict)
+    """
+    User color overrides applied on top of theme. Keys:
+    - artist_color: Hex color for artist name (#RRGGBB)
+    - title_color: Hex color for song title
+    - sung_lyrics_color: Hex color for highlighted lyrics
+    - unsung_lyrics_color: Hex color for unhighlighted lyrics
+    """
+
+    # Style configuration (will be populated after file upload, or from theme)
     style_params_gcs_path: Optional[str] = None
     style_assets: Dict[str, str] = Field(default_factory=dict)
     

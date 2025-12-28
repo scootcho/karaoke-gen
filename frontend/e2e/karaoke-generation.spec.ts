@@ -181,9 +181,10 @@ test.describe('Karaoke Generation', () => {
     await page.waitForTimeout(2000);
 
     // Check for either success (job appears) or error message
-    const hasError = await page.locator('.text-red-400').isVisible();
+    const errorDiv = page.locator('div.text-red-400').first();
+    const hasError = await errorDiv.isVisible().catch(() => false);
     if (hasError) {
-      const errorText = await page.locator('.text-red-400').textContent();
+      const errorText = await errorDiv.textContent();
       console.log('Search error:', errorText);
     }
 
@@ -232,8 +233,8 @@ test.describe('Karaoke Generation', () => {
       await page.waitForTimeout(10000);
 
       // Check for error
-      const errorLocator = page.locator('.text-red-400');
-      if (await errorLocator.isVisible()) {
+      const errorLocator = page.locator('div.text-red-400').first();
+      if (await errorLocator.isVisible().catch(() => false)) {
         const errorText = await errorLocator.textContent();
         console.log('Error:', errorText);
 
@@ -266,8 +267,8 @@ test.describe('Karaoke Generation', () => {
       // Take a screenshot of current state
       await page.screenshot({ path: 'test-results/job-expanded.png' });
 
-      // Look for the Select Audio Source button
-      const selectAudioBtn = page.getByRole('button', { name: /select audio source/i });
+      // Look for the Select Audio button
+      const selectAudioBtn = page.getByRole('button', { name: /select audio/i });
 
       if (await selectAudioBtn.isVisible()) {
         console.log('Opening audio selection dialog...');
@@ -318,7 +319,7 @@ test.describe('Karaoke Generation', () => {
           console.log('Dialog did not open');
         }
       } else {
-        console.log('Select Audio Source button not visible');
+        console.log('Select Audio button not visible');
         await page.screenshot({ path: 'test-results/no-select-button.png' });
       }
     } else {

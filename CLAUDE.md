@@ -1,103 +1,97 @@
-# Project Guidelines for AI Assistants
+# Karaoke-Gen AI Assistant Guidelines
 
-This document contains guidelines and rules for AI assistants working on this codebase.
+## Project Overview
 
-## Branching Workflow
+**Karaoke video generation platform** - CLI tool and web service that creates professional karaoke videos with synchronized lyrics.
 
-**Never commit directly to `main`.** Always work on a feature branch.
+- **Production**: <https://gen.nomadkaraoke.com> (frontend), <https://api.nomadkaraoke.com> (backend)
+- **CLI**: `karaoke-gen` (local), `karaoke-gen-remote` (cloud)
+- **Repo**: <https://github.com/nomadkaraoke/karaoke-gen>
 
-Create descriptive branch names like `feature/add-discord-notifications`, `fix/audio-sync-issue`, or `refactor/cleanup-api-routes`.
+## Quick Reference
 
-### Using Git Worktrees
+| What | Where |
+|------|-------|
+| Current status | `docs/README.md` |
+| Architecture | `docs/ARCHITECTURE.md` |
+| Dev setup & testing | `docs/DEVELOPMENT.md` |
+| API reference | `docs/API.md` |
+| Past learnings | `docs/LESSONS-LEARNED.md` |
 
-**For non-trivial changes** (new features, multi-file edits, refactors):
-- Create a git worktree in the parent folder before making any file changes:
+## Tech Stack
+
+- **Backend**: FastAPI on Cloud Run, Firestore, GCS, Secret Manager
+- **Frontend**: Next.js on Cloudflare Pages
+- **Processing**: Modal (GPU audio separation), AudioShake/Whisper (transcription)
+- **Infra**: Pulumi IaC, GitHub Actions CI/CD
+
+## Essential Rules
+
+### Git Workflow
+- **Never commit directly to `main`** - always use feature branches
+- **Use git worktrees** for all changes:
   ```bash
-  git worktree add ../karaoke-gen-feat-xyz feature/xyz
+  git worktree add -b feature/xyz ../karaoke-gen-feat-xyz main
   ```
-- This keeps the main directory clean on `main` and enables parallel work on multiple features
-- Name the worktree folder descriptively, e.g., `../karaoke-gen-fix-audio-sync`
+- Create PR with summary, changes, testing info
+- Merge only after CI passes
 
-**For trivial changes** (typos, single-line fixes):
-- Creating a branch in the current directory is acceptable
-- Use `git checkout -b fix/typo-xyz` before making changes
-
-**Cleanup:** When done with a worktree, remove it with:
+### Testing (Required Before Commit)
 ```bash
-git worktree remove ../karaoke-gen-feat-xyz
+# Backend (10 min timeout, limit output)
+make test 2>&1 | tail -n 500
+
+# Frontend
+cd frontend && npm run test:all 2>&1 | tail -n 200
 ```
 
-### Creating a Pull Request
+### Version Bumping
+- Bump `tool.poetry.version` in `pyproject.toml` for code changes
+- Skip for docs-only changes
 
-Once all changes are complete, tests pass, and commits are pushed, create a PR with:
+### Infrastructure
+- All GCP changes via Pulumi in `infrastructure/`
+- `gcloud` CLI for reading/debugging only
+- Stop and notify user on auth issues
 
-1. **Summary** - Brief overview of the changes
-2. **Changes Made** - List of specific modifications
-3. **Testing** - How changes were tested (unit tests, manual testing)
-4. **Related Issues** - Reference any GitHub issues (e.g., "Fixes #123")
+## Documentation Maintenance
 
-Only merge after review and CI checks pass.
-
-## Infrastructure Changes
-
-All Google Cloud infrastructure (IAM, Cloud Storage, Cloud Run, Secret Manager, Artifact Registry, etc.) must be managed via **Pulumi IaC** in the `infrastructure/` folder.
+### Structure
+```text
+docs/
+├── README.md          # Current status + navigation (UPDATE THIS)
+├── ARCHITECTURE.md    # System design
+├── DEVELOPMENT.md     # Dev setup, testing, deployment
+├── API.md             # Backend API reference
+├── LESSONS-LEARNED.md # Key insights for future agents
+└── archive/           # Historical docs (YYYY-MM-DD-topic.md)
+```
 
 ### Rules
+1. **Before merging PRs**: Run `/docs-review` to check if docs need updating
+2. **Periodically**: Run `/docs-maintain` to verify docs are organized
+3. **For significant work**: Create `docs/archive/YYYY-MM-DD-topic.md`
+4. **Add learnings**: Update `docs/LESSONS-LEARNED.md` with insights
+5. **Keep status current**: Update `docs/README.md` when project state changes
 
-- **Reading/querying** with `gcloud` CLI is fine for investigation and debugging
-- **Temporary changes** via `gcloud` CLI or Console are acceptable for urgent fixes or experimentation, but **must be cleaned up** and properly codified in the IaC afterward
-- **Permanent changes** must go through Pulumi — never leave `gcloud` or Console changes as the final state
+### What Goes Where
+- **README.md**: Current status, known issues, quick links
+- **ARCHITECTURE.md**: System design, data flow, tech decisions
+- **DEVELOPMENT.md**: Setup, testing, deployment, CI/CD
+- **API.md**: Endpoints, request/response formats
+- **LESSONS-LEARNED.md**: What worked, what didn't, gotchas
+- **archive/**: Completed work, session summaries, old plans
 
-### Workflow
+## Related Projects
 
-1. Make changes in `infrastructure/`
-2. Run `pulumi preview` and verify the output
-3. Run `pulumi up` to apply
+### flacfetch
+Location: `/Users/andrew/Projects/flacfetch`
 
-### Authentication Issues
+Workflow: Make changes on `main`, bump version, push, wait for CI, then `poetry update flacfetch` in karaoke-gen.
 
-If you encounter any authentication issues with `gcloud` or `pulumi` (e.g., expired tokens, permission errors), **stop and notify the user** so they can run the appropriate auth commands in their external terminal:
+## Pre-Commit Checklist
 
-```bash
-gcloud auth login
-gcloud auth application-default login
-```
-
-Do not attempt to work around auth issues or make assumptions about credentials.
-
-## Version Management
-
-When committing and pushing changes, always bump the patch version in `pyproject.toml`.
-
-The version is located at `tool.poetry.version` in `pyproject.toml`. For example, if the current version is `0.70.3`, bump it to `0.70.4`.
-
-This ensures every commit pushed to the repository has a unique version number for tracking and deployment purposes.
-
-## Testing Requirements
-
-**Before committing and pushing ANY changes, you MUST run the full test suite.**
-
-### Test Command
-
-```bash
-make test 2>&1 | tail -n 500
-```
-
-**Important for AI agents:**
-- Set a **10 minute timeout** when running tests (they can take a while with emulators)
-- Always pipe output through `tail -n 500` to limit output and preserve context window
-- The tail output will show test results and any failures at the end
-
-This is the **only command you need**. It runs all tests in order and fails fast if any test fails:
-1. Unit tests (karaoke_gen package) with coverage check
-2. Backend unit tests
-3. E2E integration tests with emulators (auto-starts/stops emulators)
-
-### Pre-commit Checklist
-
-- [ ] `make test` passes
-- [ ] Version in `pyproject.toml` has been bumped
-- [ ] `coderabbit review --plain` has been run to get comprehensive analysis and suggestions for cleaner, more maintainable code. Apply the feedback to improve accessibility, structure, and best practices.
-
-**Do not commit or push code that fails tests. Fix any test failures before proceeding.**
-
+- [ ] Tests pass (`make test` / `npm run test:all`)
+- [ ] Version bumped (if code changed)
+- [ ] `/docs-review` run (check for doc updates)
+- [ ] PR created with clear description

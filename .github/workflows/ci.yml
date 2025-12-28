@@ -17,12 +17,120 @@ concurrency:
 
 jobs:
   # ============================================
-  # PACKAGE TESTS (karaoke-gen Python CLI)
+  # PATH FILTERING - Determine what changed
+  # Only needed for PRs (main branch skips tests)
+  # ============================================
+
+  changes:
+    name: "Detect Changes"
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      package: ${{ steps.filter.outputs.package }}
+      infra: ${{ steps.filter.outputs.infra }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            package:
+              - 'karaoke_gen/**'
+              - 'lyrics_transcriber_temp/**'
+              - 'tests/**'
+            infra:
+              - 'infrastructure/**'
+            deps:
+              - 'poetry.lock'
+
+      - name: Summary
+        run: |
+          echo "### Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Area | Changed |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ steps.filter.outputs.frontend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ steps.filter.outputs.backend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | ${{ steps.filter.outputs.package }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Infrastructure | ${{ steps.filter.outputs.infra }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependencies | ${{ steps.filter.outputs.deps }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # FRONTEND TESTS (PRs only - main skips tests)
+  # ============================================
+
+  frontend-unit-tests:
+    name: "Frontend - Unit Tests"
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.ref != 'refs/heads/main' && needs.changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Run unit tests with coverage
+        working-directory: frontend
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
+  frontend-build:
+    name: "Frontend - Build"
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.ref != 'refs/heads/main' && needs.changes.outputs.frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://api.nomadkaraoke.com
+        run: npm run build
+
+  # ============================================
+  # PACKAGE TESTS (PRs only - main skips tests)
   # ============================================
 
   package-unit-tests:
     name: "Package - Unit Tests (70% coverage)"
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +147,14 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
       - name: Install dependencies
         run: poetry install --with dev
 
@@ -46,6 +162,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Cache spaCy model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spacy
+          key: spacy-en_core_web_sm-${{ runner.os }}
 
       - name: Install spaCy language models
         run: poetry run python -m spacy download en_core_web_sm
@@ -65,6 +187,8 @@ jobs:
   package-integration-tests:
     name: "Package - Integration Tests"
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,6 +205,14 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
       - name: Install dependencies
         run: poetry install --with dev
 
@@ -89,16 +221,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+      - name: Cache spaCy model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spacy
+          key: spacy-en_core_web_sm-${{ runner.os }}
+
       - name: Install spaCy language models
         run: poetry run python -m spacy download en_core_web_sm
 
       - name: Run integration tests
         run: poetry run pytest tests/integration/ -v
 
-  package-build:
-    name: "Package - Build & Install"
-    runs-on: ubuntu-latest
-    needs: [package-unit-tests, package-integration-tests]
+  package-build-test:
+    name: "Package - Build & Install (Test)"
+    runs-on: [self-hosted, linux, gcp]
+    needs: [changes, package-unit-tests, package-integration-tests]
+    if: >-
+      github.ref != 'refs/heads/main' && always() &&
+      (needs.package-unit-tests.result == 'success' || needs.package-unit-tests.result == 'skipped') &&
+      (needs.package-integration-tests.result == 'success' || needs.package-integration-tests.result == 'skipped') &&
+      (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -118,36 +261,20 @@ jobs:
       - name: Build package
         run: poetry build
 
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          haskell: true
-          dotnet: false
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-
       - name: Test package installation
         run: |
           pip install dist/*.whl
           python -m karaoke_gen.utils.gen_cli --help
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-dist
-          path: dist/
-          retention-days: 1
-
   # ============================================
-  # BACKEND TESTS (Cloud Run API service)
+  # BACKEND TESTS (PRs only - main skips tests)
   # ============================================
 
   backend-unit-tests:
     name: "Backend - Unit Tests"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
+    needs: changes
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -182,15 +309,10 @@ jobs:
 
   backend-emulator-tests:
     name: "Backend - Emulator Integration Tests"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
+    needs: changes
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          df -h
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -212,14 +334,6 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "21"
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          version: "latest"
-
-      - name: Install Firestore emulator
-        run: gcloud components install beta cloud-firestore-emulator --quiet
 
       - name: Install dependencies
         run: poetry install
@@ -243,6 +357,8 @@ jobs:
   backend-lint:
     name: "Backend - Code Quality"
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -260,6 +376,14 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-lint-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-lint-${{ runner.os }}-py3.13-
+
       - name: Install dependencies
         run: poetry install
 
@@ -269,8 +393,77 @@ jobs:
           echo "✅ Basic syntax validation passed"
 
   # ============================================
-  # DEPLOYMENTS (main branch only)
+  # CI GATE - Required status check for PRs
+  # Only runs on PRs, not on main
   # ============================================
+
+  ci-gate:
+    name: "CI Gate"
+    runs-on: ubuntu-latest
+    needs: [frontend-unit-tests, frontend-build, package-unit-tests, package-integration-tests, backend-unit-tests, backend-emulator-tests, backend-lint]
+    if: github.ref != 'refs/heads/main' && always()
+    steps:
+      - name: Check results
+        run: |
+          results=(
+            "${{ needs.frontend-unit-tests.result }}"
+            "${{ needs.frontend-build.result }}"
+            "${{ needs.package-unit-tests.result }}"
+            "${{ needs.package-integration-tests.result }}"
+            "${{ needs.backend-unit-tests.result }}"
+            "${{ needs.backend-emulator-tests.result }}"
+            "${{ needs.backend-lint.result }}"
+          )
+          for result in "${results[@]}"; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "❌ CI failed"
+              exit 1
+            fi
+          done
+          echo "✅ CI passed"
+
+  # ============================================
+  # DEPLOYMENTS (main branch only)
+  # Tests already passed on PR, so we skip them here
+  # ============================================
+
+  package-build:
+    name: "Package - Build"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
+      - name: Build package
+        run: poetry build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-dist
+          path: dist/
+          retention-days: 1
 
   package-publish:
     name: "Deploy - Publish to PyPI"
@@ -363,17 +556,16 @@ jobs:
     name: "Deploy - Frontend (GitHub Pages)"
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js with caching
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Enable Yarn (for lyrics frontend)
         run: corepack enable
@@ -390,6 +582,14 @@ jobs:
         run: npm run build
 
       # ===== Build Lyrics Review Frontend (Vite) =====
+      - name: Cache Yarn dependencies (lyrics frontend)
+        uses: actions/cache@v4
+        with:
+          path: lyrics_transcriber_temp/lyrics_transcriber/frontend/node_modules
+          key: yarn-lyrics-${{ runner.os }}-${{ hashFiles('lyrics_transcriber_temp/lyrics_transcriber/frontend/yarn.lock') }}
+          restore-keys: |
+            yarn-lyrics-${{ runner.os }}-
+
       - name: Install lyrics frontend dependencies
         working-directory: lyrics_transcriber_temp/lyrics_transcriber/frontend
         run: yarn install --frozen-lockfile
@@ -426,20 +626,28 @@ jobs:
 
   deploy-backend:
     name: "Deploy - Backend (Cloud Run)"
-    runs-on: ubuntu-latest
-    needs: [backend-unit-tests, backend-emulator-tests, backend-lint]
+    runs-on: [self-hosted, linux, gcp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
       id-token: write
+    env:
+      REGISTRY: us-central1-docker.pkg.dev
+      PROJECT_ID: nomadkaraoke
+      REPOSITORY: karaoke-repo
+      BASE_IMAGE_NAME: karaoke-backend-base
+      APP_IMAGE_NAME: karaoke-backend
     steps:
+      # ============================================
+      # Check if deployment is needed FIRST
+      # ============================================
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 0  # Need full history for tag check
 
-      - name: Set up Python (for version extraction)
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -453,7 +661,7 @@ jobs:
           VERSION=$(poetry version --short)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📋 Current version: $VERSION"
-          
+
           if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
             echo "needs_deploy=false" >> $GITHUB_OUTPUT
             echo "⏭️  Tag v$VERSION already exists - skipping backend deployment"
@@ -462,6 +670,8 @@ jobs:
             echo "needs_deploy=true" >> $GITHUB_OUTPUT
             echo "✨ Tag v$VERSION does not exist - proceeding with deployment"
           fi
+
+      # No disk cleanup needed - self-hosted runner has 200GB SSD
 
       - name: Authenticate to Google Cloud (Workload Identity)
         if: steps.version_check.outputs.needs_deploy == 'true'
@@ -477,21 +687,37 @@ jobs:
         with:
           version: "latest"
 
-      - name: Check if base image needs rebuild
+      - name: Configure Docker for Artifact Registry
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      # ============================================
+      # Docker Build with BuildKit + Registry Cache
+      # This replaces expensive Cloud Build with free GitHub Actions
+      # Registry cache persists between builds for fast rebuilds
+      # ============================================
+
+      - name: Set up Docker Buildx
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Calculate base image hash
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        id: base-hash
+        run: |
+          # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
+          CURRENT_HASH=$(cat poetry.lock backend/Dockerfile.base | sha256sum | cut -d' ' -f1)
+          echo "hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
+          echo "📋 Base content hash: $CURRENT_HASH"
+
+      - name: Check if base image exists and is current
         if: steps.version_check.outputs.needs_deploy == 'true'
         id: check-base
         run: |
-          echo "🔍 Checking if base image needs rebuild..."
+          BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
 
-          # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
-          CURRENT_HASH=$(cat poetry.lock backend/Dockerfile.base | sha256sum | cut -d' ' -f1)
-          echo "Current combined hash (poetry.lock + Dockerfile.base): $CURRENT_HASH"
-
-          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-          BASE_IMAGE="us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest"
+          # Try to get the existing base image's hash label
           EXISTING_HASH=""
-
           if docker pull $BASE_IMAGE 2>/dev/null; then
             EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
             # Fallback to old label name for backwards compatibility
@@ -500,10 +726,10 @@ jobs:
             fi
             echo "Existing base image hash: $EXISTING_HASH"
           else
-            echo "⚠️ No existing base image found"
+            echo "⚠️ No existing base image found - will build"
           fi
 
-          if [ "$CURRENT_HASH" != "$EXISTING_HASH" ]; then
+          if [ "${{ steps.base-hash.outputs.hash }}" != "$EXISTING_HASH" ]; then
             echo "🔄 Base image needs rebuild (poetry.lock or Dockerfile.base changed)"
             echo "needs_rebuild=true" >> $GITHUB_OUTPUT
           else
@@ -511,88 +737,73 @@ jobs:
             echo "needs_rebuild=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Rebuild base image (if needed)
+      - name: Build and push base image (if needed)
         if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
-        run: |
-          echo "🏗️ Rebuilding base image with updated dependencies..."
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile.base
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
+          # Registry cache for ALL layers (mode=max) - persists between builds
+          # ignore-error=true allows build to continue if cache doesn't exist yet
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,mode=max,ignore-error=true
+          build-args: |
+            BUILD_DATE=${{ github.run_id }}
+            BUILD_ID=${{ github.sha }}
+            BASE_CONTENT_HASH=${{ steps.base-hash.outputs.hash }}
+          # Provenance disabled for smaller image and faster push
+          provenance: false
 
-          BASE_BUILD_ID=$(gcloud builds submit \
-            --config=cloudbuild-base.yaml \
-            --project=nomadkaraoke \
-            --format='value(id)' \
-            --async \
-            .)
+      - name: Build and push app image
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:v${{ steps.version_check.outputs.version }}
+          # Registry cache for app layers
+          # ignore-error=true allows build to continue if cache doesn't exist yet
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,mode=max,ignore-error=true
+          provenance: false
 
-          echo "Base Build ID: $BASE_BUILD_ID"
-          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BASE_BUILD_ID?project=nomadkaraoke"
+      # ============================================
+      # Deploy to Cloud Run
+      # ============================================
 
-          echo "Waiting for base image build to complete..."
-          while true; do
-            BUILD_STATUS=$(gcloud builds describe $BASE_BUILD_ID --project=nomadkaraoke --format='value(status)')
-            echo "Base build status: $BUILD_STATUS"
-
-            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
-              echo "✅ Base image build completed successfully"
-              break
-            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
-              echo "❌ Base image build failed with status: $BUILD_STATUS"
-              echo ""
-              echo "==================== BUILD LOGS ===================="
-              gcloud logging read "resource.type=build AND resource.labels.build_id=$BASE_BUILD_ID" \
-                --project=nomadkaraoke \
-                --format="value(textPayload)" \
-                --limit=200 \
-                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
-              echo "===================================================="
-              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke 2>&1 || true
-              exit 1
-            fi
-
-            sleep 30
-          done
-
-      - name: Trigger Cloud Build
+      - name: Deploy to Cloud Run
         if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
-          echo "🚀 Triggering Cloud Build for deployment..."
-          echo "Commit: ${{ github.sha }}"
-          echo "Version: ${{ steps.version_check.outputs.version }}"
+          VERSION="${{ steps.version_check.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}"
 
-          BUILD_ID=$(gcloud builds submit \
-            --config=cloudbuild.yaml \
-            --project=nomadkaraoke \
-            --format='value(id)' \
-            --async \
-            .)
+          echo "🚀 Deploying to Cloud Run..."
+          echo "Image: $IMAGE"
+          echo "Version: $VERSION"
 
-          echo "Build ID: $BUILD_ID"
-          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
-
-          echo "Waiting for build to complete..."
-          while true; do
-            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
-            echo "Build status: $BUILD_STATUS"
-
-            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
-              echo "✅ Build completed successfully"
-              break
-            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
-              echo "❌ Build failed with status: $BUILD_STATUS"
-              echo ""
-              echo "==================== BUILD LOGS ===================="
-              gcloud logging read "resource.type=build AND resource.labels.build_id=$BUILD_ID" \
-                --project=nomadkaraoke \
-                --format="value(textPayload)" \
-                --limit=200 \
-                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
-              echo "===================================================="
-              echo ""
-              gcloud builds log $BUILD_ID --project=nomadkaraoke 2>&1 || true
-              exit 1
-            fi
-
-            sleep 30
-          done
+          gcloud run deploy karaoke-backend \
+            --image $IMAGE \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 16Gi \
+            --cpu 8 \
+            --cpu-boost \
+            --execution-environment gen2 \
+            --timeout 1800 \
+            --concurrency 1 \
+            --max-instances 50 \
+            --min-instances 0 \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=karaoke-gen-storage-${{ env.PROJECT_ID }},FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run,KARAOKE_GEN_VERSION=$VERSION,DEFAULT_DROPBOX_PATH=/MediaUnsynced/Karaoke/Tracks-Organized,DEFAULT_GDRIVE_FOLDER_ID=1laRKAyxo0v817SstfM5XkpbWiNKNAMSX,ENABLE_CLOUD_TASKS=true,CLOUD_RUN_SERVICE_URL=https://api.nomadkaraoke.com,GCP_REGION=us-central1,DEFAULT_ENABLE_YOUTUBE_UPLOAD=true,DEFAULT_BRAND_PREFIX=NOMAD" \
+            --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest,DEFAULT_DISCORD_WEBHOOK_URL=discord-releases-webhook:latest,ADMIN_TOKENS=admin-tokens:latest,RED_API_KEY=red-api-key:latest,RED_API_URL=red-api-url:latest,OPS_API_KEY=ops-api-key:latest,OPS_API_URL=ops-api-url:latest,FLACFETCH_API_URL=flacfetch-api-url:latest,FLACFETCH_API_KEY=flacfetch-api-key:latest"
 
       - name: Verify deployment and version
         if: steps.version_check.outputs.needs_deploy == 'true'
@@ -604,22 +815,22 @@ jobs:
 
           echo "Service URL: $SERVICE_URL"
           echo "Expected version: $EXPECTED_VERSION"
-          
+
           # Wait for new revision to be ready
           echo "Waiting for new revision to be ready..."
           sleep 15
-          
+
           # Basic health check
           curl -f "$SERVICE_URL/api/health" || exit 1
           echo "✅ Service is healthy"
-          
+
           # Version verification with retries (Cloud Run may take time to route to new revision)
           MAX_RETRIES=6
           RETRY_DELAY=10
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Checking deployed version (attempt $i/$MAX_RETRIES)..."
             DEPLOYED_VERSION=$(curl -sf "$SERVICE_URL/api/health/detailed" | jq -r '.version // empty')
-            
+
             if [ "$DEPLOYED_VERSION" = "$EXPECTED_VERSION" ]; then
               echo "✅ Version verified: $DEPLOYED_VERSION"
               break
@@ -643,7 +854,10 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
-          
+          echo ""
+          echo "📊 Built on self-hosted GCP runner (200GB SSD, no disk space issues)"
+          echo "   Runner: gcp-runner with 4 vCPU, 16GB RAM"
+
       - name: Skipped deployment summary
         if: steps.version_check.outputs.needs_deploy == 'false'
         run: |

@@ -52,7 +52,7 @@ class OutputGenerator:
 
         self.logger.info(f"Initializing OutputGenerator with config: {self.config}")
 
-        # Load output styles from JSON if provided
+        # Load output styles from JSON if provided, otherwise use defaults
         if self.config.output_styles_json and os.path.exists(self.config.output_styles_json):
             try:
                 with open(self.config.output_styles_json, "r") as f:
@@ -67,9 +67,10 @@ class OutputGenerator:
                     self.logger.warning(f"Failed to load output styles file: {str(e)}")
                     self.config.styles = {}
         else:
-            # No styles file provided or doesn't exist
+            # No styles file provided or doesn't exist - use defaults
             if self.config.render_video or self.config.generate_cdg:
-                raise ValueError(f"Output styles file required for video/CDG generation but not found: {self.config.output_styles_json}")
+                self.logger.info("No output styles file provided, using default karaoke styles")
+                self.config.styles = self._get_default_styles()
             else:
                 self.config.styles = {}
 
@@ -241,6 +242,52 @@ class OutputGenerator:
         line_height = 50 if resolution == "360p" else font_size
 
         return resolution_dims, font_size, line_height
+
+    def _get_default_styles(self) -> dict:
+        """Get default styles for video/CDG generation when no styles file is provided."""
+        return {
+            "karaoke": {
+                # Video background
+                "background_color": "#000000",
+                "background_image": None,
+                # Font settings
+                "font": "Arial",
+                "font_path": "",  # Must be string, not None (for ASS generator)
+                "ass_name": "Default",
+                # Colors in "R, G, B, A" format (required by ASS)
+                "primary_color": "112, 112, 247, 255",
+                "secondary_color": "255, 255, 255, 255",
+                "outline_color": "26, 58, 235, 255",
+                "back_color": "0, 0, 0, 0",
+                # Boolean style options
+                "bold": False,
+                "italic": False,
+                "underline": False,
+                "strike_out": False,
+                # Numeric style options (all required for ASS)
+                "scale_x": 100,
+                "scale_y": 100,
+                "spacing": 0,
+                "angle": 0.0,
+                "border_style": 1,
+                "outline": 1,
+                "shadow": 0,
+                "margin_l": 0,
+                "margin_r": 0,
+                "margin_v": 0,
+                "encoding": 0,
+                # Layout settings
+                "max_line_length": 40,
+                "top_padding": 200,
+                "font_size": 100,
+            },
+            "cdg": {
+                "font_path": None,
+                "instrumental_background": None,
+                "title_screen_background": None,
+                "outro_background": None,
+            },
+        }
 
     def write_corrections_data(self, correction_result: CorrectionResult, output_prefix: str) -> str:
         """Write corrections data to JSON file."""

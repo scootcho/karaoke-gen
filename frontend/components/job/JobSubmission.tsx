@@ -2,10 +2,14 @@
 
 import { useState } from "react"
 import { api, ApiError } from "@/lib/api"
+import type { ColorOverrides } from "@/lib/video-themes"
+import { cleanColorOverrides } from "@/lib/video-themes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ThemeSelector } from "./ThemeSelector"
+import { ColorOverridesPanel } from "./ColorOverrides"
 import { Upload, Youtube, Music, Loader2 } from "lucide-react"
 
 interface JobSubmissionProps {
@@ -31,6 +35,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   const [searchArtist, setSearchArtist] = useState("")
   const [searchTitle, setSearchTitle] = useState("")
 
+  // Theme selection (shared across all tabs)
+  const [selectedTheme, setSelectedTheme] = useState<string | undefined>()
+  const [colorOverrides, setColorOverrides] = useState<ColorOverrides>({})
+
   async function handleUploadSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
@@ -46,7 +54,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
     setIsSubmitting(true)
     try {
-      await api.uploadJob(uploadFile, uploadArtist.trim(), uploadTitle.trim())
+      await api.uploadJob(uploadFile, uploadArtist.trim(), uploadTitle.trim(), {
+        theme_id: selectedTheme,
+        color_overrides: cleanColorOverrides(colorOverrides),
+      })
       setUploadFile(null)
       setUploadArtist("")
       setUploadTitle("")
@@ -76,7 +87,11 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       await api.createJobFromUrl(
         youtubeUrl.trim(),
         youtubeArtist.trim() || undefined,
-        youtubeTitle.trim() || undefined
+        youtubeTitle.trim() || undefined,
+        {
+          theme_id: selectedTheme,
+          color_overrides: cleanColorOverrides(colorOverrides),
+        }
       )
       setYoutubeUrl("")
       setYoutubeArtist("")
@@ -104,7 +119,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
     setIsSubmitting(true)
     try {
-      await api.searchAudio(searchArtist.trim(), searchTitle.trim())
+      await api.searchAudio(searchArtist.trim(), searchTitle.trim(), false, {
+        theme_id: selectedTheme,
+        color_overrides: cleanColorOverrides(colorOverrides),
+      })
       setSearchArtist("")
       setSearchTitle("")
       onJobCreated()
@@ -129,18 +147,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <TabsList className="grid w-full grid-cols-3 bg-slate-800">
-        <TabsTrigger value="upload" className="gap-2 data-[state=active]:bg-slate-700">
-          <Upload className="w-4 h-4" />
-          Upload
+      <TabsList className="grid w-full grid-cols-3 bg-slate-800 h-auto">
+        <TabsTrigger value="upload" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Upload className="w-4 h-4 shrink-0" />
+          <span className="truncate">Upload</span>
         </TabsTrigger>
-        <TabsTrigger value="url" className="gap-2 data-[state=active]:bg-slate-700">
-          <Youtube className="w-4 h-4" />
-          URL
+        <TabsTrigger value="url" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Youtube className="w-4 h-4 shrink-0" />
+          <span className="truncate">URL</span>
         </TabsTrigger>
-        <TabsTrigger value="search" className="gap-2 data-[state=active]:bg-slate-700">
-          <Music className="w-4 h-4" />
-          Search
+        <TabsTrigger value="search" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Music className="w-4 h-4 shrink-0" />
+          <span className="truncate">Search</span>
         </TabsTrigger>
       </TabsList>
 
@@ -175,7 +193,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="upload-artist" className="text-slate-200">Artist</Label>
               <Input
@@ -198,6 +216,20 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
+          </div>
+
+          {/* Theme Selection */}
+          <div className="space-y-4 pt-4 border-t border-slate-700">
+            <ThemeSelector
+              value={selectedTheme}
+              onChange={setSelectedTheme}
+              disabled={isSubmitting}
+            />
+            <ColorOverridesPanel
+              value={colorOverrides}
+              onChange={setColorOverrides}
+              disabled={isSubmitting}
+            />
           </div>
 
           {error && activeTab === "upload" && (
@@ -239,7 +271,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="youtube-artist" className="text-slate-200">Artist (optional)</Label>
               <Input
@@ -262,6 +294,20 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
+          </div>
+
+          {/* Theme Selection */}
+          <div className="space-y-4 pt-4 border-t border-slate-700">
+            <ThemeSelector
+              value={selectedTheme}
+              onChange={setSelectedTheme}
+              disabled={isSubmitting}
+            />
+            <ColorOverridesPanel
+              value={colorOverrides}
+              onChange={setColorOverrides}
+              disabled={isSubmitting}
+            />
           </div>
 
           {error && activeTab === "url" && (
@@ -287,7 +333,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
       <TabsContent value="search" className="mt-4">
         <form onSubmit={handleSearchSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="search-artist" className="text-slate-200">Artist</Label>
               <Input
@@ -310,6 +356,20 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               />
             </div>
+          </div>
+
+          {/* Theme Selection */}
+          <div className="space-y-4 pt-4 border-t border-slate-700">
+            <ThemeSelector
+              value={selectedTheme}
+              onChange={setSelectedTheme}
+              disabled={isSubmitting}
+            />
+            <ColorOverridesPanel
+              value={colorOverrides}
+              onChange={setColorOverrides}
+              disabled={isSubmitting}
+            />
           </div>
 
           {error && activeTab === "search" && (

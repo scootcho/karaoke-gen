@@ -31,6 +31,12 @@ from .video_generator import VideoGenerator
 from .video_background_processor import VideoBackgroundProcessor
 from .audio_fetcher import create_audio_fetcher, AudioFetcherError, NoResultsError, UserCancelledError
 
+# Import lyrics_transcriber components for post-review countdown and video rendering
+from lyrics_transcriber.output.countdown_processor import CountdownProcessor
+from lyrics_transcriber.output.generator import OutputGenerator
+from lyrics_transcriber.types import CorrectionResult
+from lyrics_transcriber.core.config import OutputConfig as LyricsOutputConfig
+
 
 class KaraokePrep:
     def __init__(
@@ -482,41 +488,56 @@ class KaraokePrep:
                     self.logger.info(f"Found existing media files matching extractor '{self.extractor}', skipping download/conversion.")
 
                 elif getattr(self, '_use_audio_fetcher', False):
-                    # Use flacfetch to search and download audio
-                    self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
-                    
                     try:
-                        # Search and download audio using the AudioFetcher
-                        fetch_result = self.audio_fetcher.search_and_download(
-                            artist=self.artist,
-                            title=self.title,
-                            output_dir=track_output_dir,
-                            output_filename=f"{artist_title} (flacfetch)",
-                            auto_select=self.auto_download,
-                        )
-                        
-                        # Update extractor to reflect the actual provider used
-                        self.extractor = f"flacfetch-{fetch_result.provider}"
-                        
+                        # Check if this is a URL download or search+download
+                        if getattr(self, '_use_url_download', False):
+                            # Direct URL download (e.g., YouTube URL)
+                            self.logger.info(f"Using flacfetch to download from URL: {self.url}")
+
+                            fetch_result = self.audio_fetcher.download_from_url(
+                                url=self.url,
+                                output_dir=track_output_dir,
+                                output_filename=f"{artist_title} (youtube)" if artist_title != "Unknown - Unknown" else None,
+                                artist=self.artist,
+                                title=self.title,
+                            )
+
+                            # Update extractor to reflect the source
+                            self.extractor = "youtube"
+                        else:
+                            # Use flacfetch to search and download audio
+                            self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
+
+                            fetch_result = self.audio_fetcher.search_and_download(
+                                artist=self.artist,
+                                title=self.title,
+                                output_dir=track_output_dir,
+                                output_filename=f"{artist_title} (flacfetch)",
+                                auto_select=self.auto_download,
+                            )
+
+                            # Update extractor to reflect the actual provider used
+                            self.extractor = f"flacfetch-{fetch_result.provider}"
+
                         # Set up the output paths
                         output_filename_no_extension = os.path.join(track_output_dir, f"{artist_title} ({self.extractor})")
-                        
+
                         # Copy/move the downloaded file to the expected location
                         processed_track["input_media"] = self.file_handler.download_audio_from_fetcher_result(
                             fetch_result.filepath, output_filename_no_extension
                         )
-                        
+
                         self.logger.info(f"Audio downloaded from {fetch_result.provider}: {processed_track['input_media']}")
-                        
+
                         # Convert to WAV for audio processing
                         self.logger.info("Converting downloaded audio to WAV for processing...")
                         processed_track["input_audio_wav"] = self.file_handler.convert_to_wav(
                             processed_track["input_media"], output_filename_no_extension
                         )
-                        
+
                         # No still image for audio-only downloads
                         processed_track["input_still_image"] = None
-                        
+
                     except UserCancelledError:
                         # User cancelled - propagate up to CLI for graceful exit
                         raise
@@ -691,6 +712,113 @@ class KaraokePrep:
                     self.logger.info("Skipping processing of separation results as separation was not run.")
 
                 self.logger.info("=== Parallel Processing Complete ===")
+
+            # === POST-TRANSCRIPTION: Add countdown and render video ===
+            # Since lyrics_processor.py now always defers countdown and video rendering,
+            # we handle it here after human review is complete. This ensures the review UI
+            # shows accurate, unshifted timestamps (same behavior as cloud backend).
+            if processed_track.get("lyrics") and self.render_video:
+                self.logger.info("=== Processing Countdown and Video Rendering ===")
+
+                from .utils import sanitize_filename
+                sanitized_artist = sanitize_filename(self.artist)
+                sanitized_title = sanitize_filename(self.title)
+                lyrics_dir = os.path.join(track_output_dir, "lyrics")
+
+                # Find the corrections JSON file
+                corrections_filename = f"{sanitized_artist} - {sanitized_title} (Lyrics Corrections).json"
+                corrections_filepath = os.path.join(lyrics_dir, corrections_filename)
+
+                if os.path.exists(corrections_filepath):
+                    self.logger.info(f"Loading corrections from: {corrections_filepath}")
+
+                    with open(corrections_filepath, 'r', encoding='utf-8') as f:
+                        corrections_data = json.load(f)
+
+                    # Convert to CorrectionResult
+                    correction_result = CorrectionResult.from_dict(corrections_data)
+                    self.logger.info(f"Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
+
+                    # Get the audio file path
+                    audio_path = processed_track["input_audio_wav"]
+
+                    # Add countdown intro if needed (songs that start within 3 seconds)
+                    self.logger.info("Processing countdown intro (if needed)...")
+                    cache_dir = os.path.join(track_output_dir, "cache")
+                    os.makedirs(cache_dir, exist_ok=True)
+
+                    countdown_processor = CountdownProcessor(
+                        cache_dir=cache_dir,
+                        logger=self.logger,
+                    )
+
+                    correction_result, audio_path, padding_added, padding_seconds = countdown_processor.process(
+                        correction_result=correction_result,
+                        audio_filepath=audio_path,
+                    )
+
+                    # Update processed_track with countdown info
+                    processed_track["countdown_padding_added"] = padding_added
+                    processed_track["countdown_padding_seconds"] = padding_seconds
+                    if padding_added:
+                        processed_track["padded_vocals_audio"] = audio_path
+                        self.logger.info(
+                            f"=== COUNTDOWN PADDING ADDED ===\n"
+                            f"Added {padding_seconds}s padding to audio and shifted timestamps.\n"
+                            f"Instrumental tracks will be padded after separation to maintain sync."
+                        )
+                    else:
+                        self.logger.info("No countdown needed - song starts after 3 seconds")
+
+                    # Save the updated corrections with countdown timestamps
+                    updated_corrections_data = correction_result.to_dict()
+                    with open(corrections_filepath, 'w', encoding='utf-8') as f:
+                        json.dump(updated_corrections_data, f, indent=2)
+                    self.logger.info(f"Saved countdown-adjusted corrections to: {corrections_filepath}")
+
+                    # Render video with lyrics
+                    self.logger.info("Rendering karaoke video with synchronized lyrics...")
+
+                    output_config = LyricsOutputConfig(
+                        output_dir=lyrics_dir,
+                        cache_dir=cache_dir,
+                        output_styles_json=self.style_params_json,
+                        render_video=True,
+                        generate_cdg=False,
+                        generate_plain_text=True,
+                        generate_lrc=True,
+                        video_resolution="4k",
+                        subtitle_offset_ms=self.subtitle_offset_ms,
+                    )
+
+                    output_generator = OutputGenerator(output_config, self.logger)
+                    output_prefix = f"{sanitized_artist} - {sanitized_title}"
+
+                    outputs = output_generator.generate_outputs(
+                        transcription_corrected=correction_result,
+                        lyrics_results={},  # Lyrics already written during transcription phase
+                        audio_filepath=audio_path,
+                        output_prefix=output_prefix,
+                    )
+
+                    # Copy video to expected location in parent directory
+                    if outputs and outputs.video:
+                        source_video = outputs.video
+                        dest_video = os.path.join(track_output_dir, f"{artist_title} (With Vocals).mkv")
+                        shutil.copy2(source_video, dest_video)
+                        self.logger.info(f"Video rendered successfully: {dest_video}")
+                        processed_track["with_vocals_video"] = dest_video
+
+                        # Update ASS filepath for video background processing
+                        if outputs.ass:
+                            processed_track["ass_filepath"] = outputs.ass
+                    else:
+                        self.logger.warning("Video rendering did not produce expected output")
+                else:
+                    self.logger.warning(f"Corrections file not found: {corrections_filepath}")
+                    self.logger.warning("Skipping countdown processing and video rendering")
+            elif not self.render_video:
+                self.logger.info("Video rendering disabled - skipping countdown and video generation")
 
             # Apply video background if requested and lyrics were processed
             if self.video_background_processor and processed_track.get("lyrics"):
@@ -991,6 +1119,10 @@ class KaraokePrep:
 
         return tracks
 
+    def _is_url(self, string: str) -> bool:
+        """Check if a string is a URL."""
+        return string is not None and (string.startswith("http://") or string.startswith("https://"))
+
     async def process(self):
         if self.input_media is not None and os.path.isdir(self.input_media):
             self.logger.info(f"Input media {self.input_media} is a local folder, processing each file individually...")
@@ -998,10 +1130,45 @@ class KaraokePrep:
         elif self.input_media is not None and os.path.isfile(self.input_media):
             self.logger.info(f"Input media {self.input_media} is a local file, audio download will be skipped")
             return [await self.prep_single_track()]
+        elif self.input_media is not None and self._is_url(self.input_media):
+            # URL provided - download directly via flacfetch
+            self.logger.info(f"Input media {self.input_media} is a URL, downloading via flacfetch...")
+
+            # Extract video ID for metadata if it's a YouTube URL
+            video_id = None
+            youtube_patterns = [
+                r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/v/([a-zA-Z0-9_-]{11})',
+            ]
+            for pattern in youtube_patterns:
+                match = re.search(pattern, self.input_media)
+                if match:
+                    video_id = match.group(1)
+                    break
+
+            # Set up the extracted_info for metadata consistency
+            self.extracted_info = {
+                "title": f"{self.artist} - {self.title}" if self.artist and self.title else video_id or "Unknown",
+                "artist": self.artist or "",
+                "track_title": self.title or "",
+                "extractor_key": "youtube",
+                "id": video_id or self.input_media,
+                "url": self.input_media,
+                "source": "youtube",
+            }
+            self.extractor = "youtube"
+            self.url = self.input_media
+
+            # Mark that we need to use audio fetcher for URL download
+            self._use_audio_fetcher = True
+            self._use_url_download = True  # New flag for URL-based download
+
+            return [await self.prep_single_track()]
         elif self.artist and self.title:
             # No input file provided - use flacfetch to search and download audio
             self.logger.info(f"No input file provided, using flacfetch to search for: {self.artist} - {self.title}")
-            
+
             # Set up the extracted_info for metadata consistency
             self.extracted_info = {
                 "title": f"{self.artist} - {self.title}",
@@ -1014,13 +1181,12 @@ class KaraokePrep:
             }
             self.extractor = "flacfetch"
             self.url = None  # URL will be determined by flacfetch
-            
+
             # Mark that we need to use audio fetcher for download
             self._use_audio_fetcher = True
-            
+
             return [await self.prep_single_track()]
         else:
             raise ValueError(
-                "Either a local file path or both artist and title must be provided. "
-                "URL-based input has been replaced with flacfetch audio fetching."
+                "Either a local file path, a URL, or both artist and title must be provided."
             )

@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     default_discord_webhook_url: Optional[str] = (
         os.getenv("DEFAULT_DISCORD_WEBHOOK_URL", "").strip() or None
     )
+
+    # Default values for web service jobs (YouTube/Dropbox distribution)
+    default_enable_youtube_upload: bool = os.getenv("DEFAULT_ENABLE_YOUTUBE_UPLOAD", "false").lower() in ("true", "1", "yes")
+    default_brand_prefix: Optional[str] = os.getenv("DEFAULT_BRAND_PREFIX")
+    default_youtube_description: str = os.getenv(
+        "DEFAULT_YOUTUBE_DESCRIPTION",
+        "Karaoke video created with Nomad Karaoke (https://nomadkaraoke.com)\n\n"
+        "AI-powered vocal separation and synchronized lyrics.\n\n"
+        "#karaoke #music #singing #instrumental #lyrics"
+    )
     
     # Secret Manager cache
     _secret_cache: Dict[str, str] = {}

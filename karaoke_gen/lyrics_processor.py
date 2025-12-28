@@ -170,15 +170,15 @@ class LyricsProcessor:
     def _check_transcription_providers(self) -> dict:
         """
         Check which transcription providers are configured and return their status.
-        
+
         Returns:
             dict with 'configured' (list of provider names) and 'missing' (list of missing configs)
         """
         load_dotenv()
-        
+
         configured = []
         missing = []
-        
+
         # Check AudioShake
         audioshake_token = os.getenv("AUDIOSHAKE_API_TOKEN")
         if audioshake_token:
@@ -187,7 +187,7 @@ class LyricsProcessor:
         else:
             missing.append("AudioShake (AUDIOSHAKE_API_TOKEN)")
             self.logger.debug("AudioShake transcription provider: not configured (missing AUDIOSHAKE_API_TOKEN)")
-        
+
         # Check Whisper via RunPod
         runpod_key = os.getenv("RUNPOD_API_KEY")
         whisper_id = os.getenv("WHISPER_RUNPOD_ID")
@@ -203,7 +203,16 @@ class LyricsProcessor:
         else:
             missing.append("Whisper (RUNPOD_API_KEY + WHISPER_RUNPOD_ID)")
             self.logger.debug("Whisper transcription provider: not configured")
-        
+
+        # Check Local Whisper (whisper-timestamped)
+        try:
+            import whisper_timestamped
+            configured.append("Local Whisper")
+            self.logger.debug("Local Whisper transcription provider: configured (whisper-timestamped installed)")
+        except ImportError:
+            missing.append("Local Whisper (pip install karaoke-gen[local-whisper])")
+            self.logger.debug("Local Whisper transcription provider: not configured (whisper-timestamped not installed)")
+
         return {"configured": configured, "missing": missing}
 
     def _build_transcription_provider_error_message(self, missing_providers: list) -> str:
@@ -221,11 +230,17 @@ class LyricsProcessor:
             "   - Set environment variable: AUDIOSHAKE_API_TOKEN=your_token\n"
             "   - Get an API key at: https://www.audioshake.ai/\n"
             "\n"
-            "2. Whisper via RunPod (Open-source alternative)\n"
+            "2. Whisper via RunPod (Cloud-based open-source)\n"
             "   - Set environment variables:\n"
             "     RUNPOD_API_KEY=your_key\n"
             "     WHISPER_RUNPOD_ID=your_endpoint_id\n"
             "   - Set up a Whisper endpoint at: https://www.runpod.io/\n"
+            "\n"
+            "3. Local Whisper (No cloud required - runs on your machine)\n"
+            "   - Install with: pip install karaoke-gen[local-whisper]\n"
+            "   - For CPU-only: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu\n"
+            "                   pip install karaoke-gen[local-whisper]\n"
+            "   - Requires 2-10GB RAM depending on model size\n"
             "\n"
             "ALTERNATIVES:\n"
             "\n"
@@ -348,6 +363,10 @@ class LyricsProcessor:
         # Create config objects for LyricsTranscriber
         transcriber_config = TranscriberConfig(
             audioshake_api_token=env_config.get("audioshake_api_token"),
+            runpod_api_key=env_config.get("runpod_api_key"),
+            whisper_runpod_id=env_config.get("whisper_runpod_id"),
+            # Local Whisper is enabled by default as a fallback when no cloud providers are configured
+            enable_local_whisper=True,
         )
 
         lyrics_config = LyricsConfig(
@@ -364,41 +383,30 @@ class LyricsProcessor:
         self.logger.info(f"  rapidapi_key: {env_config.get('rapidapi_key')[:3] + '...' if env_config.get('rapidapi_key') else 'None'}")
         self.logger.info(f"  lyrics_file: {self.lyrics_file}")
 
-        # Detect if we're running in a serverless environment (Modal)
-        # Modal sets specific environment variables we can check for
-        is_serverless = (
-            os.getenv("MODAL_TASK_ID") is not None or 
-            os.getenv("MODAL_FUNCTION_NAME") is not None or
-            os.path.exists("/.modal")  # Modal creates this directory in containers
-        )
-        
-        # In serverless environment, disable interactive review even if skip_transcription_review=False
-        # This preserves CLI behavior while fixing serverless hanging
-        enable_review_setting = not self.skip_transcription_review and not is_serverless
-        
-        if is_serverless and not self.skip_transcription_review:
-            self.logger.info("Detected serverless environment - disabling interactive review to prevent hanging")
-        
-        # In serverless environment, disable video generation during Phase 1 to save compute
-        # Video will be generated in Phase 2 after human review
-        serverless_render_video = render_video and not is_serverless
-        
-        if is_serverless and render_video:
-            self.logger.info("Detected serverless environment - deferring video generation until after review")
-        
+        # Always defer countdown and video rendering to a later phase.
+        # This ensures the review UI (both local and cloud) shows original timing
+        # without the 3-second countdown shift. The caller is responsible for:
+        # - Local CLI: karaoke_gen.py adds countdown and renders video after transcription
+        # - Cloud backend: render_video_worker.py adds countdown and renders video
+        #
+        # This design ensures consistent behavior regardless of environment,
+        # and the review UI always shows accurate, unshifted timestamps.
+        self.logger.info("Deferring countdown and video rendering to post-review phase")
+
         output_config = OutputConfig(
             output_styles_json=self.style_params_json,
             output_dir=lyrics_dir,
-            render_video=serverless_render_video,  # Disable video in serverless Phase 1
+            render_video=False,  # Always defer - caller handles video rendering after countdown
             fetch_lyrics=True,
             run_transcription=not self.skip_transcription,
             run_correction=True,
             generate_plain_text=True,
             generate_lrc=True,
-            generate_cdg=False,  # Also defer CDG generation to Phase 2 
+            generate_cdg=False,  # CDG generation disabled (not currently supported)
             video_resolution="4k",
-            enable_review=enable_review_setting,
+            enable_review=not self.skip_transcription_review,  # Honor the caller's setting
             subtitle_offset_ms=self.subtitle_offset_ms,
+            add_countdown=False,  # Always defer - caller handles countdown after review
         )
 
         # Add this log entry to debug the OutputConfig

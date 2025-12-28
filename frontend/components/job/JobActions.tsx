@@ -19,7 +19,7 @@ export function JobActions({ job, onRefresh, showLogs, onToggleLogs }: JobAction
   const [isCancelling, setIsCancelling] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const canRetry = job.status === "failed"
+  const canRetry = job.status === "failed" || job.status === "cancelled"
   const canCancel = !["complete", "failed", "cancelled"].includes(job.status)
   const canDelete = ["complete", "failed", "cancelled"].includes(job.status)
 
@@ -65,16 +65,43 @@ export function JobActions({ job, onRefresh, showLogs, onToggleLogs }: JobAction
 
   return (
     <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={onToggleLogs}
-        className="text-xs text-slate-400 hover:text-white"
-      >
-        <FileText className="w-3 h-3 mr-1" />
-        {showLogs ? "Hide" : "Show"} Logs
-      </Button>
+      {/* Cancel button first (red) */}
+      {canCancel && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleCancel}
+          disabled={isCancelling}
+          className="text-xs text-red-400 hover:text-red-300"
+        >
+          {isCancelling ? (
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          ) : (
+            <XCircle className="w-3 h-3 mr-1" />
+          )}
+          Cancel
+        </Button>
+      )}
 
+      {/* Delete button (red) */}
+      {canDelete && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="text-xs text-red-400 hover:text-red-300"
+        >
+          {isDeleting ? (
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          ) : (
+            <Trash2 className="w-3 h-3 mr-1" />
+          )}
+          Delete
+        </Button>
+      )}
+
+      {/* Retry button */}
       {canRetry && (
         <Button
           size="sm"
@@ -92,39 +119,16 @@ export function JobActions({ job, onRefresh, showLogs, onToggleLogs }: JobAction
         </Button>
       )}
 
-      {canCancel && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleCancel}
-          disabled={isCancelling}
-          className="text-xs text-orange-400 hover:text-orange-300"
-        >
-          {isCancelling ? (
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-          ) : (
-            <XCircle className="w-3 h-3 mr-1" />
-          )}
-          Cancel
-        </Button>
-      )}
-
-      {canDelete && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="text-xs text-red-400 hover:text-red-300"
-        >
-          {isDeleting ? (
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-          ) : (
-            <Trash2 className="w-3 h-3 mr-1" />
-          )}
-          Delete
-        </Button>
-      )}
+      {/* Show/Hide Logs */}
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={onToggleLogs}
+        className="text-xs text-slate-400 hover:text-white"
+      >
+        <FileText className="w-3 h-3 mr-1" />
+        {showLogs ? "Hide" : "Show"} Logs
+      </Button>
     </div>
   )
 }

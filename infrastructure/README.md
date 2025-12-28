@@ -254,10 +254,76 @@ The function uses environment variables:
 
 Known gaps are configured in `main.py` and should match your local `validate_and_sync.py`.
 
+## Self-Hosted GitHub Actions Runner
+
+A dedicated GCP VM runs self-hosted GitHub Actions runners to solve disk space issues
+on GitHub-hosted runners (14GB vs 200GB).
+
+### Specs
+
+- **Instance**: e2-standard-4 (4 vCPU, 16GB RAM)
+- **Disk**: 200GB SSD
+- **Pre-installed**: Docker, Python 3.13, Node.js 20, Java 21, Poetry, FFmpeg, gcloud CLI
+- **Labels**: `self-hosted`, `linux`, `x64`, `gcp`, `large-disk`
+
+### Setup
+
+1. Create a GitHub Personal Access Token (PAT) with `repo` scope:
+   - Go to https://github.com/settings/tokens
+   - Generate new token (classic)
+   - Select `repo` scope (full control of private repositories)
+   - Copy the token
+
+2. Add the PAT to Secret Manager:
+   ```bash
+   echo -n "ghp_your_token_here" | \
+     gcloud secrets versions add github-runner-pat --data-file=-
+   ```
+
+3. Run `pulumi up` to create the runner VM
+
+4. Verify the runner registered:
+   - Go to https://github.com/nomadkaraoke/karaoke-gen/settings/actions/runners
+   - You should see `gcp-runner-github-runner` with status "Idle"
+
+### Usage in Workflows
+
+Jobs that need more disk space use the self-hosted runner:
+
+```yaml
+jobs:
+  build:
+    runs-on: [self-hosted, linux, gcp]
+    steps:
+      - uses: actions/checkout@v4
+      # ... rest of job
+```
+
+### Troubleshooting
+
+**Runner not appearing in GitHub:**
+```bash
+# Check startup logs
+gcloud compute ssh github-runner --zone=us-central1-a -- \
+  "sudo cat /var/log/github-runner-startup.log"
+```
+
+**Re-register runner:**
+```bash
+# Restart the VM to re-run startup script
+gcloud compute instances reset github-runner --zone=us-central1-a
+```
+
+**Check runner service status:**
+```bash
+gcloud compute ssh github-runner --zone=us-central1-a -- \
+  "sudo systemctl status actions.runner.*"
+```
+
 ## Next Steps
 
 1. Run `pulumi up` to create infrastructure
-2. Add secret values
+2. Add secret values (including GitHub runner PAT)
 3. Build and deploy Cloud Run service
 4. Deploy GDrive validator function
 5. Update documentation to reference Pulumi workflow

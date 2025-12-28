@@ -2,6 +2,8 @@
  * API client for karaoke-gen backend
  */
 
+import type { VideoThemeSummary, VideoThemeDetail, ThemesListResponse, ThemeDetailResponse, ColorOverrides } from './video-themes';
+
 // In development, use relative URLs to go through Next.js proxy (avoids CORS)
 // In production (static export), use the full backend URL
 const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
@@ -60,6 +62,9 @@ export interface Job {
     progress?: number;
     message?: string;
   }>;
+  review_token?: string;
+  instrumental_token?: string;
+  audio_hash?: string;
 }
 
 export interface UploadJobResponse {
@@ -143,6 +148,26 @@ class ApiError extends Error {
   }
 }
 
+// Exported for testing
+export function extractErrorMessage(data: any, fallback: string): string {
+  // Handle various error response formats
+  if (typeof data?.detail === 'string') return data.detail;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error === 'string') return data.error;
+  // Handle nested error objects
+  if (data?.detail?.message) return String(data.detail.message);
+  if (data?.detail?.error) return String(data.detail.error);
+  // If detail is an object, try to stringify it meaningfully
+  if (data?.detail && typeof data.detail === 'object') {
+    try {
+      return JSON.stringify(data.detail);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let data;
@@ -152,7 +177,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
       data = { detail: response.statusText };
     }
     throw new ApiError(
-      data.detail || data.message || 'API request failed',
+      extractErrorMessage(data, `Request failed with status ${response.status}`),
       response.status,
       data
     );
@@ -198,13 +223,15 @@ export const api = {
       enable_txt?: boolean;
       brand_prefix?: string;
       enable_youtube_upload?: boolean;
+      theme_id?: string;
+      color_overrides?: ColorOverrides;
     }
   ): Promise<UploadJobResponse> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('artist', artist);
     formData.append('title', title);
-    
+
     if (options?.enable_cdg !== undefined) {
       formData.append('enable_cdg', String(options.enable_cdg));
     }
@@ -217,13 +244,19 @@ export const api = {
     if (options?.enable_youtube_upload !== undefined) {
       formData.append('enable_youtube_upload', String(options.enable_youtube_upload));
     }
-    
+    if (options?.theme_id) {
+      formData.append('theme_id', options.theme_id);
+    }
+    if (options?.color_overrides) {
+      formData.append('color_overrides', JSON.stringify(options.color_overrides));
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/jobs/upload`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: formData,
     });
-    
+
     return handleResponse<UploadJobResponse>(response);
   },
   
@@ -239,6 +272,8 @@ export const api = {
       enable_txt?: boolean;
       brand_prefix?: string;
       enable_youtube_upload?: boolean;
+      theme_id?: string;
+      color_overrides?: ColorOverrides;
     }
   ): Promise<{ status: string; job_id: string; message: string }> {
     const body: Record<string, any> = { url };
@@ -248,7 +283,9 @@ export const api = {
     if (options?.enable_txt !== undefined) body.enable_txt = options.enable_txt;
     if (options?.brand_prefix) body.brand_prefix = options.brand_prefix;
     if (options?.enable_youtube_upload !== undefined) body.enable_youtube_upload = options.enable_youtube_upload;
-    
+    if (options?.theme_id) body.theme_id = options.theme_id;
+    if (options?.color_overrides) body.color_overrides = options.color_overrides;
+
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-from-url`, {
       method: 'POST',
       headers: {
@@ -257,7 +294,7 @@ export const api = {
       },
       body: JSON.stringify(body),
     });
-    
+
     return handleResponse(response);
   },
   
@@ -365,6 +402,8 @@ export const api = {
       enable_txt?: boolean;
       brand_prefix?: string;
       enable_youtube_upload?: boolean;
+      theme_id?: string;
+      color_overrides?: ColorOverrides;
     }
   ): Promise<AudioSearchResponse> {
     const body: Record<string, any> = { artist, title, auto_download: autoDownload };
@@ -372,7 +411,9 @@ export const api = {
     if (options?.enable_txt !== undefined) body.enable_txt = options.enable_txt;
     if (options?.brand_prefix) body.brand_prefix = options.brand_prefix;
     if (options?.enable_youtube_upload !== undefined) body.enable_youtube_upload = options.enable_youtube_upload;
-    
+    if (options?.theme_id) body.theme_id = options.theme_id;
+    if (options?.color_overrides) body.color_overrides = options.color_overrides;
+
     const response = await fetch(`${API_BASE_URL}/api/audio-search/search`, {
       method: 'POST',
       headers: {
@@ -381,7 +422,7 @@ export const api = {
       },
       body: JSON.stringify(body),
     });
-    
+
     return handleResponse(response);
   },
   
@@ -427,6 +468,54 @@ export const api = {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
+  },
+
+  // ==========================================================================
+  // Theme API endpoints
+  // ==========================================================================
+
+  /**
+   * List all available video themes
+   */
+  async listThemes(): Promise<VideoThemeSummary[]> {
+    const response = await fetch(`${API_BASE_URL}/api/themes`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse<ThemesListResponse>(response);
+    return data.themes;
+  },
+
+  /**
+   * Get full details for a specific theme
+   */
+  async getTheme(themeId: string): Promise<VideoThemeDetail> {
+    const response = await fetch(`${API_BASE_URL}/api/themes/${themeId}`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse<ThemeDetailResponse>(response);
+    return data.theme;
+  },
+
+  /**
+   * Get preview URL for a theme
+   */
+  async getThemePreview(themeId: string): Promise<string | null> {
+    const response = await fetch(`${API_BASE_URL}/api/themes/${themeId}/preview`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse<{ preview_url: string | null }>(response);
+    return data.preview_url;
+  },
+
+  /**
+   * Get YouTube description template for a theme
+   */
+  async getThemeYoutubeDescription(themeId: string): Promise<string | null> {
+    const response = await fetch(`${API_BASE_URL}/api/themes/${themeId}/youtube-description`, {
+      headers: getAuthHeaders()
+    });
+    const data = await handleResponse<{ description: string | null }>(response);
+    return data.description;
   },
 };
 

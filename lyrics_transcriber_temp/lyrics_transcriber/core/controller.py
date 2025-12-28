@@ -7,6 +7,7 @@ from lyrics_transcriber.types import LyricsData, TranscriptionResult, Correction
 from lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber
 from lyrics_transcriber.transcribers.audioshake import AudioShakeTranscriber, AudioShakeConfig
 from lyrics_transcriber.transcribers.whisper import WhisperTranscriber, WhisperConfig
+from lyrics_transcriber.transcribers.local_whisper import LocalWhisperTranscriber, LocalWhisperConfig
 from lyrics_transcriber.lyrics.base_lyrics_provider import BaseLyricsProvider, LyricsProviderConfig
 from lyrics_transcriber.lyrics.genius import GeniusProvider
 from lyrics_transcriber.lyrics.spotify import SpotifyProvider
@@ -205,6 +206,34 @@ class LyricsTranscriber:
             }
         else:
             self.logger.debug("Skipping Whisper transcriber - missing runpod_api_key or whisper_runpod_id")
+
+        # Local Whisper - lowest priority, fallback when cloud services unavailable
+        if self.transcriber_config.enable_local_whisper:
+            # Check if whisper-timestamped is available
+            try:
+                import whisper_timestamped  # noqa: F401
+
+                self.logger.debug("Initializing LocalWhisper transcriber")
+                transcribers["local_whisper"] = {
+                    "instance": LocalWhisperTranscriber(
+                        cache_dir=self.output_config.cache_dir,
+                        config=LocalWhisperConfig(
+                            model_size=self.transcriber_config.local_whisper_model_size,
+                            device=self.transcriber_config.local_whisper_device,
+                            cache_dir=self.transcriber_config.local_whisper_cache_dir,
+                            language=self.transcriber_config.local_whisper_language,
+                        ),
+                        logger=self.logger,
+                    ),
+                    "priority": 3,  # Local Whisper has lowest priority (fallback)
+                }
+            except ImportError:
+                self.logger.debug(
+                    "Skipping LocalWhisper transcriber - whisper-timestamped not installed. "
+                    "Install with: pip install karaoke-gen[local-whisper]"
+                )
+        else:
+            self.logger.debug("Skipping LocalWhisper transcriber - disabled via enable_local_whisper=False")
 
         return transcribers
 
@@ -442,7 +471,7 @@ class LyricsTranscriber:
         # Whisper/RunPod status
         has_runpod_key = bool(self.transcriber_config.runpod_api_key)
         has_whisper_id = bool(self.transcriber_config.whisper_runpod_id)
-        
+
         if has_runpod_key and has_whisper_id:
             self.logger.debug("  - Whisper (RunPod): CONFIGURED (API key and endpoint ID provided)")
         elif has_runpod_key:
@@ -451,6 +480,19 @@ class LyricsTranscriber:
             self.logger.debug("  - Whisper (RunPod): PARTIALLY CONFIGURED (missing RUNPOD_API_KEY)")
         else:
             self.logger.debug("  - Whisper (RunPod): NOT CONFIGURED (missing RUNPOD_API_KEY and WHISPER_RUNPOD_ID)")
+
+        # Local Whisper status
+        if self.transcriber_config.enable_local_whisper:
+            try:
+                import whisper_timestamped  # noqa: F401
+                self.logger.debug(
+                    f"  - LocalWhisper: AVAILABLE (model={self.transcriber_config.local_whisper_model_size}, "
+                    f"device={self.transcriber_config.local_whisper_device or 'auto'})"
+                )
+            except ImportError:
+                self.logger.debug("  - LocalWhisper: ENABLED but whisper-timestamped not installed")
+        else:
+            self.logger.debug("  - LocalWhisper: DISABLED (enable_local_whisper=False)")
 
     def correct_lyrics(self) -> None:
         """Run lyrics correction using transcription and internet lyrics."""

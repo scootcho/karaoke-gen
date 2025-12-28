@@ -336,12 +336,27 @@ async def get_review_data(
     
     # Get URLs from file_urls
     corrections_url = job.file_urls.get('lyrics', {}).get('corrections')
-    audio_url = job.file_urls.get('lyrics', {}).get('audio')
-    
-    if not corrections_url or not audio_url:
+
+    # For audio, try multiple sources in order of preference:
+    # 1. Explicit lyrics audio (if worker uploaded it)
+    # 2. Lead vocals stem (best for reviewing lyrics sync)
+    # 3. Input media (original audio)
+    audio_url = (
+        job.file_urls.get('lyrics', {}).get('audio') or
+        job.file_urls.get('stems', {}).get('lead_vocals') or
+        job.input_media_gcs_path
+    )
+
+    if not corrections_url:
         raise HTTPException(
             status_code=500,
-            detail="Review data not available"
+            detail="Corrections data not available"
+        )
+
+    if not audio_url:
+        raise HTTPException(
+            status_code=500,
+            detail="Audio not available for review"
         )
     
     # Generate signed URLs for direct access
@@ -1097,32 +1112,34 @@ async def retry_job(
     auth_data: Tuple[str, UserType, int] = Depends(require_auth)
 ) -> dict:
     """
-    Retry a failed job from the last successful checkpoint.
-    
-    This endpoint allows resuming jobs that failed during:
+    Retry a failed or cancelled job from the last successful checkpoint.
+
+    This endpoint allows resuming jobs that failed or were cancelled during:
+    - Audio processing (re-runs from beginning if input audio exists)
     - Video generation (re-runs video worker)
     - Encoding (re-runs video worker)
     - Packaging (re-runs video worker)
-    
+
     The retry logic determines the appropriate stage to resume from
     based on what files/state already exist.
     """
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    if job.status != JobStatus.FAILED:
+
+    if job.status not in [JobStatus.FAILED, JobStatus.CANCELLED]:
         raise HTTPException(
             status_code=400,
-            detail=f"Only failed jobs can be retried (current status: {job.status})"
+            detail=f"Only failed or cancelled jobs can be retried (current status: {job.status})"
         )
     
     try:
         # Determine retry point based on what's already complete
         error_details = job.error_details or {}
         error_stage = error_details.get('stage', 'unknown')
-        
-        logger.info(f"Job {job_id}: Retrying from failed stage '{error_stage}'")
+        original_status = job.status
+
+        logger.info(f"Job {job_id}: Retrying from {original_status} state (error stage: '{error_stage}')")
         
         # Check what state exists to determine retry point
         file_urls = job.file_urls or {}
@@ -1230,11 +1247,46 @@ async def retry_job(
                 "retry_stage": "screens_generation"
             }
         
+        # If we have input audio (uploaded or from URL), restart from beginning
+        elif job.input_media_gcs_path or job.url:
+            logger.info(f"Job {job_id}: Has input audio, restarting from beginning")
+
+            # Clear error state and any partial progress
+            job_manager.update_job(job_id, {
+                'error_message': None,
+                'error_details': None,
+                'state_data': {},  # Clear parallel worker progress
+            })
+
+            # Reset to DOWNLOADING and trigger audio worker
+            if not job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.DOWNLOADING,
+                progress=5,
+                message=f"Restarting job from {original_status} state"
+            ):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to transition job status for retry"
+                )
+
+            # Trigger audio worker (which kicks off parallel audio + lyrics processing)
+            background_tasks.add_task(worker_service.trigger_audio_worker, job_id)
+            background_tasks.add_task(worker_service.trigger_lyrics_worker, job_id)
+
+            return {
+                "status": "success",
+                "job_id": job_id,
+                "job_status": "downloading",
+                "message": f"Job restarted from {original_status} state",
+                "retry_stage": "from_beginning"
+            }
+
         else:
-            # Can't determine a safe retry point, need to restart from beginning
+            # No input audio available - job needs to be resubmitted
             raise HTTPException(
                 status_code=400,
-                detail="Cannot determine safe retry point. Job may need to be resubmitted."
+                detail="Cannot retry: no input audio available. Job must be resubmitted."
             )
         
     except HTTPException:

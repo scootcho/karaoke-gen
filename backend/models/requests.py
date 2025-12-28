@@ -12,8 +12,8 @@ class URLSubmissionRequest(BaseModel):
     title: Optional[str] = None   # Auto-detected if not provided
     
     # Optional preferences
-    enable_cdg: bool = True
-    enable_txt: bool = True
+    enable_cdg: bool = False  # Requires style config
+    enable_txt: bool = False  # Requires style config
     enable_youtube_upload: bool = False
     youtube_description: Optional[str] = None
     webhook_url: Optional[str] = None
@@ -24,10 +24,10 @@ class UploadSubmissionRequest(BaseModel):
     """Request to submit a job from an uploaded file."""
     artist: str
     title: str
-    
+
     # Optional preferences
-    enable_cdg: bool = True
-    enable_txt: bool = True
+    enable_cdg: bool = False  # Requires style config
+    enable_txt: bool = False  # Requires style config
     enable_youtube_upload: bool = False
     youtube_description: Optional[str] = None
     webhook_url: Optional[str] = None

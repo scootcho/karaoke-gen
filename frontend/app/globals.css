@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Matching instrumental review UI color scheme */
+  /* Dark theme (default) - Matching instrumental review UI color scheme */
   --bg: #0f0f0f;
   --card: #1a1a1a;
   --card-border: #2a2a2a;
@@ -39,6 +39,25 @@
   --input: var(--secondary);
   --ring: var(--primary);
   --radius: 0.5rem;
+}
+
+:root.light {
+  /* Light theme */
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --card-border: #e2e8f0;
+  --waveform-bg: #f1f5f9;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --secondary: #f1f5f9;
+  --secondary-hover: #e2e8f0;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --pink: #ec4899;
+  --blue: #60a5fa;
 }
 
 @theme inline {

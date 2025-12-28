@@ -12,6 +12,9 @@ tests/outputs
 /input
 /output/
 
+# Cloud Infra
+.emulator-logs
+
 # Next.js / React Frontend (./frontend)
 node_modules/
 frontend/node_modules/
@@ -224,3 +227,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 flacfetch
+
+# Test output directories
+Rick Astley*/
