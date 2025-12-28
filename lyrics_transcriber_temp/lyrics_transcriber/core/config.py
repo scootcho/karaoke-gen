@@ -11,6 +11,13 @@ class TranscriberConfig:
     runpod_api_key: Optional[str] = None
     whisper_runpod_id: Optional[str] = None
 
+    # Local Whisper configuration
+    enable_local_whisper: bool = True  # Enabled by default as fallback
+    local_whisper_model_size: str = "medium"  # tiny, base, small, medium, large
+    local_whisper_device: Optional[str] = None  # None for auto-detect, or cpu/cuda/mps
+    local_whisper_cache_dir: Optional[str] = None  # Custom model download location
+    local_whisper_language: Optional[str] = None  # None for auto-detect
+
 
 @dataclass
 class LyricsConfig:
