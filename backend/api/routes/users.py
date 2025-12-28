@@ -32,7 +32,7 @@ from backend.models.user import (
 from backend.services.user_service import get_user_service, UserService
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
-from backend.api.dependencies import require_auth, require_admin
+from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
 
 
@@ -497,7 +497,6 @@ async def submit_beta_feedback(
 
     # Save feedback to Firestore
     import uuid
-    from datetime import datetime
 
     feedback = BetaTesterFeedback(
         id=str(uuid.uuid4()),

@@ -51,12 +51,12 @@ class ConsoleEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None
     ) -> bool:
-        logger.info(f"=" * 60)
+        logger.info("=" * 60)
         logger.info(f"EMAIL TO: {to_email}")
         logger.info(f"SUBJECT: {subject}")
-        logger.info(f"-" * 60)
+        logger.info("-" * 60)
         logger.info(text_content or html_content)
-        logger.info(f"=" * 60)
+        logger.info("=" * 60)
         return True
 
 
