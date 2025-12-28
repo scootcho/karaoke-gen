@@ -985,11 +985,7 @@ class TestAudioSearchThemePreparation:
         # Import the endpoint module to access internal functions
         from backend.api.routes import audio_search as audio_search_module
 
-        # Check if _prepare_theme_for_job helper exists in audio_search
-        # If this function doesn't exist, the test will fail - indicating the bug
-        has_prepare_function = hasattr(audio_search_module, '_prepare_theme_for_job')
-
-        # Also check if there's an import of prepare_job_style from theme_service
+        # Check if there's an import of prepare_job_style from theme_service
         source_code_path = audio_search_module.__file__
         with open(source_code_path, 'r') as f:
             source_code = f.read()
