@@ -57,8 +57,82 @@ describe('getJobStep', () => {
       expect(result.label).toBe('Downloading audio');
     });
 
-    it('returns step 3 for downloading status', () => {
+    it('returns step 3 for downloading status without worker progress', () => {
       const job = createJob('downloading');
+      const result = getJobStep(job);
+      expect(result.step).toBe(3);
+      expect(result.label).toBe('Downloading');
+    });
+
+    it('returns step 3 for downloading with empty state_data', () => {
+      const job = createJob('downloading', {});
+      const result = getJobStep(job);
+      expect(result.step).toBe(3);
+      expect(result.label).toBe('Downloading');
+    });
+  });
+
+  describe('Step 3→4 Transition: Downloading with active workers', () => {
+    // When backend status is "downloading" but workers are actively running,
+    // the frontend should show step 4 (Processing) to avoid appearing stuck
+
+    it('returns step 4 when downloading with active audio worker', () => {
+      const job = createJob('downloading', {
+        audio_progress: { stage: 'separating_stage1', progress: 10 },
+      });
+      const result = getJobStep(job);
+      expect(result.step).toBe(4);
+      expect(result.color).toBe('text-purple-400');
+    });
+
+    it('returns step 4 when downloading with active lyrics worker', () => {
+      const job = createJob('downloading', {
+        lyrics_progress: { stage: 'transcribing', progress: 10 },
+      });
+      const result = getJobStep(job);
+      expect(result.step).toBe(4);
+      expect(result.color).toBe('text-purple-400');
+    });
+
+    it('returns step 4 with combined label when both workers active', () => {
+      const job = createJob('downloading', {
+        audio_progress: { stage: 'separating_stage1', progress: 10 },
+        lyrics_progress: { stage: 'transcribing', progress: 10 },
+      });
+      const result = getJobStep(job);
+      expect(result.step).toBe(4);
+      expect(result.label).toMatch(/Audio.*\+.*Transcribing|Transcribing.*\+.*Audio/);
+    });
+
+    it('shows only active worker when one is complete', () => {
+      const job = createJob('downloading', {
+        audio_progress: { stage: 'audio_complete' },
+        lyrics_progress: { stage: 'transcribing' },
+        audio_complete: true,
+      });
+      const result = getJobStep(job);
+      expect(result.step).toBe(4);
+      expect(result.label).toBe('Transcribing');
+    });
+
+    it('shows processing complete when both workers done', () => {
+      const job = createJob('downloading', {
+        audio_progress: { stage: 'audio_complete' },
+        lyrics_progress: { stage: 'lyrics_complete' },
+        audio_complete: true,
+        lyrics_complete: true,
+      });
+      const result = getJobStep(job);
+      expect(result.step).toBe(4);
+      expect(result.label).toBe('Processing complete');
+    });
+
+    it('returns step 3 when state_data has no stage info', () => {
+      // state_data exists but no actual progress stage set
+      const job = createJob('downloading', {
+        audio_progress: {},
+        lyrics_progress: {},
+      });
       const result = getJobStep(job);
       expect(result.step).toBe(3);
       expect(result.label).toBe('Downloading');

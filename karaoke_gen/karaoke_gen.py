@@ -488,41 +488,56 @@ class KaraokePrep:
                     self.logger.info(f"Found existing media files matching extractor '{self.extractor}', skipping download/conversion.")
 
                 elif getattr(self, '_use_audio_fetcher', False):
-                    # Use flacfetch to search and download audio
-                    self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
-                    
                     try:
-                        # Search and download audio using the AudioFetcher
-                        fetch_result = self.audio_fetcher.search_and_download(
-                            artist=self.artist,
-                            title=self.title,
-                            output_dir=track_output_dir,
-                            output_filename=f"{artist_title} (flacfetch)",
-                            auto_select=self.auto_download,
-                        )
-                        
-                        # Update extractor to reflect the actual provider used
-                        self.extractor = f"flacfetch-{fetch_result.provider}"
-                        
+                        # Check if this is a URL download or search+download
+                        if getattr(self, '_use_url_download', False):
+                            # Direct URL download (e.g., YouTube URL)
+                            self.logger.info(f"Using flacfetch to download from URL: {self.url}")
+
+                            fetch_result = self.audio_fetcher.download_from_url(
+                                url=self.url,
+                                output_dir=track_output_dir,
+                                output_filename=f"{artist_title} (youtube)" if artist_title != "Unknown - Unknown" else None,
+                                artist=self.artist,
+                                title=self.title,
+                            )
+
+                            # Update extractor to reflect the source
+                            self.extractor = f"youtube"
+                        else:
+                            # Use flacfetch to search and download audio
+                            self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
+
+                            fetch_result = self.audio_fetcher.search_and_download(
+                                artist=self.artist,
+                                title=self.title,
+                                output_dir=track_output_dir,
+                                output_filename=f"{artist_title} (flacfetch)",
+                                auto_select=self.auto_download,
+                            )
+
+                            # Update extractor to reflect the actual provider used
+                            self.extractor = f"flacfetch-{fetch_result.provider}"
+
                         # Set up the output paths
                         output_filename_no_extension = os.path.join(track_output_dir, f"{artist_title} ({self.extractor})")
-                        
+
                         # Copy/move the downloaded file to the expected location
                         processed_track["input_media"] = self.file_handler.download_audio_from_fetcher_result(
                             fetch_result.filepath, output_filename_no_extension
                         )
-                        
+
                         self.logger.info(f"Audio downloaded from {fetch_result.provider}: {processed_track['input_media']}")
-                        
+
                         # Convert to WAV for audio processing
                         self.logger.info("Converting downloaded audio to WAV for processing...")
                         processed_track["input_audio_wav"] = self.file_handler.convert_to_wav(
                             processed_track["input_media"], output_filename_no_extension
                         )
-                        
+
                         # No still image for audio-only downloads
                         processed_track["input_still_image"] = None
-                        
+
                     except UserCancelledError:
                         # User cancelled - propagate up to CLI for graceful exit
                         raise
@@ -1103,6 +1118,10 @@ class KaraokePrep:
 
         return tracks
 
+    def _is_url(self, string: str) -> bool:
+        """Check if a string is a URL."""
+        return string is not None and (string.startswith("http://") or string.startswith("https://"))
+
     async def process(self):
         if self.input_media is not None and os.path.isdir(self.input_media):
             self.logger.info(f"Input media {self.input_media} is a local folder, processing each file individually...")
@@ -1110,10 +1129,45 @@ class KaraokePrep:
         elif self.input_media is not None and os.path.isfile(self.input_media):
             self.logger.info(f"Input media {self.input_media} is a local file, audio download will be skipped")
             return [await self.prep_single_track()]
+        elif self.input_media is not None and self._is_url(self.input_media):
+            # URL provided - download directly via flacfetch
+            self.logger.info(f"Input media {self.input_media} is a URL, downloading via flacfetch...")
+
+            # Extract video ID for metadata if it's a YouTube URL
+            video_id = None
+            youtube_patterns = [
+                r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/v/([a-zA-Z0-9_-]{11})',
+            ]
+            for pattern in youtube_patterns:
+                match = re.search(pattern, self.input_media)
+                if match:
+                    video_id = match.group(1)
+                    break
+
+            # Set up the extracted_info for metadata consistency
+            self.extracted_info = {
+                "title": f"{self.artist} - {self.title}" if self.artist and self.title else video_id or "Unknown",
+                "artist": self.artist or "",
+                "track_title": self.title or "",
+                "extractor_key": "youtube",
+                "id": video_id or self.input_media,
+                "url": self.input_media,
+                "source": "youtube",
+            }
+            self.extractor = "youtube"
+            self.url = self.input_media
+
+            # Mark that we need to use audio fetcher for URL download
+            self._use_audio_fetcher = True
+            self._use_url_download = True  # New flag for URL-based download
+
+            return [await self.prep_single_track()]
         elif self.artist and self.title:
             # No input file provided - use flacfetch to search and download audio
             self.logger.info(f"No input file provided, using flacfetch to search for: {self.artist} - {self.title}")
-            
+
             # Set up the extracted_info for metadata consistency
             self.extracted_info = {
                 "title": f"{self.artist} - {self.title}",
@@ -1126,13 +1180,12 @@ class KaraokePrep:
             }
             self.extractor = "flacfetch"
             self.url = None  # URL will be determined by flacfetch
-            
+
             # Mark that we need to use audio fetcher for download
             self._use_audio_fetcher = True
-            
+
             return [await self.prep_single_track()]
         else:
             raise ValueError(
-                "Either a local file path or both artist and title must be provided. "
-                "URL-based input has been replaced with flacfetch audio fetching."
+                "Either a local file path, a URL, or both artist and title must be provided."
             )

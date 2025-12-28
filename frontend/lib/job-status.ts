@@ -88,6 +88,20 @@ const STATUS_CONFIG: Record<
 const TOTAL_STEPS = 10;
 
 /**
+ * Check if parallel workers (audio/lyrics) are actively running.
+ * This is indicated by state_data containing audio_progress or lyrics_progress.
+ */
+function isParallelProcessingActive(job: Job): boolean {
+  if (!job.state_data) return false;
+
+  const audioProgress = job.state_data.audio_progress as { stage?: string } | undefined;
+  const lyricsProgress = job.state_data.lyrics_progress as { stage?: string } | undefined;
+
+  // Workers are active if we have progress data with a stage
+  return !!(audioProgress?.stage || lyricsProgress?.stage);
+}
+
+/**
  * Get the step information for a job based on its status.
  *
  * @param job - The job object with status and optional state_data
@@ -105,6 +119,21 @@ export function getJobStep(job: Job): JobStep {
       label: status.replace(/_/g, " "),
       isBlocking: false,
       color: "text-slate-400",
+    };
+  }
+
+  // Special case: "downloading" status but parallel workers are actually running.
+  // The backend sets status to "downloading" when audio download completes and workers start,
+  // but doesn't update to step 4 statuses until screens_worker runs.
+  // Show step 4 with detailed progress to avoid appearing "stuck" at downloading.
+  if (status === "downloading" && isParallelProcessingActive(job)) {
+    const enhancedLabel = getParallelProcessingLabel(job, "Processing");
+    return {
+      step: 4,
+      total: TOTAL_STEPS,
+      label: enhancedLabel,
+      isBlocking: false,
+      color: "text-purple-400", // Same as step 4 processing color
     };
   }
 

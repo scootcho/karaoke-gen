@@ -566,7 +566,115 @@ class TestAsync:
         basic_karaoke_gen.input_media = None  # Not a file
         basic_karaoke_gen.artist = "Test Artist"
         basic_karaoke_gen.title = None  # Missing title
-        
+
         # Test that ValueError is raised
-        with pytest.raises(ValueError, match="Either a local file path or both artist and title must be provided"):
+        with pytest.raises(ValueError, match="Either a local file path.*or both artist and title must be provided"):
             await basic_karaoke_gen.process()
+
+    @pytest.mark.asyncio
+    async def test_process_with_youtube_url(self, basic_karaoke_gen):
+        """Test processing with a YouTube URL as input."""
+        # Setup - YouTube URL input
+        basic_karaoke_gen.input_media = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        basic_karaoke_gen.artist = "Rick Astley"
+        basic_karaoke_gen.title = "Never Gonna Give You Up"
+
+        # Mock dependencies
+        with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
+            mock_prep_single_track.return_value = {"track": "result"}
+
+            result = await basic_karaoke_gen.process()
+
+            # Verify prep_single_track was called
+            mock_prep_single_track.assert_called_once()
+
+            # Verify URL mode was enabled
+            assert basic_karaoke_gen._use_audio_fetcher is True
+            assert basic_karaoke_gen._use_url_download is True
+            assert basic_karaoke_gen.extractor == "youtube"
+            assert basic_karaoke_gen.url == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+            # Verify the result
+            assert len(result) == 1
+            assert result[0] == {"track": "result"}
+
+    @pytest.mark.asyncio
+    async def test_process_with_youtube_url_without_artist_title(self, basic_karaoke_gen):
+        """Test processing with a YouTube URL but no artist/title."""
+        # Setup - YouTube URL input without artist/title
+        basic_karaoke_gen.input_media = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        basic_karaoke_gen.artist = None
+        basic_karaoke_gen.title = None
+
+        # Mock dependencies
+        with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
+            mock_prep_single_track.return_value = {"track": "result"}
+
+            result = await basic_karaoke_gen.process()
+
+            # Verify URL mode was enabled
+            assert basic_karaoke_gen._use_audio_fetcher is True
+            assert basic_karaoke_gen._use_url_download is True
+
+            # Verify extracted info has video ID as fallback
+            assert basic_karaoke_gen.extracted_info["id"] == "dQw4w9WgXcQ"
+
+    @pytest.mark.asyncio
+    async def test_process_with_youtu_be_short_url(self, basic_karaoke_gen):
+        """Test processing with a youtu.be short URL."""
+        # Setup - Short URL input
+        basic_karaoke_gen.input_media = "https://youtu.be/dQw4w9WgXcQ"
+        basic_karaoke_gen.artist = "Rick Astley"
+        basic_karaoke_gen.title = "Never Gonna Give You Up"
+
+        # Mock dependencies
+        with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
+            mock_prep_single_track.return_value = {"track": "result"}
+
+            result = await basic_karaoke_gen.process()
+
+            # Verify URL mode was enabled
+            assert basic_karaoke_gen._use_audio_fetcher is True
+            assert basic_karaoke_gen._use_url_download is True
+            assert basic_karaoke_gen.url == "https://youtu.be/dQw4w9WgXcQ"
+
+
+class TestKaraokePrepIsUrlHelper:
+    """Tests for KaraokePrep._is_url() helper method."""
+
+    @pytest.fixture
+    def karaoke_prep(self, tmp_path):
+        """Create a KaraokePrep instance for testing."""
+        from karaoke_gen.karaoke_gen import KaraokePrep
+        return KaraokePrep(
+            artist="Test",
+            title="Test",
+            output_dir=str(tmp_path),
+        )
+
+    def test_is_url_http(self, karaoke_prep):
+        """Test _is_url detects http URLs."""
+        assert karaoke_prep._is_url("http://example.com") is True
+
+    def test_is_url_https(self, karaoke_prep):
+        """Test _is_url detects https URLs."""
+        assert karaoke_prep._is_url("https://www.youtube.com/watch?v=abc") is True
+
+    def test_is_url_youtube(self, karaoke_prep):
+        """Test _is_url detects YouTube URLs."""
+        assert karaoke_prep._is_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ") is True
+        assert karaoke_prep._is_url("https://youtu.be/dQw4w9WgXcQ") is True
+
+    def test_is_url_local_path(self, karaoke_prep):
+        """Test _is_url returns False for local paths."""
+        assert karaoke_prep._is_url("/path/to/file.mp3") is False
+        assert karaoke_prep._is_url("./relative/path.wav") is False
+        assert karaoke_prep._is_url("file.flac") is False
+
+    def test_is_url_none(self, karaoke_prep):
+        """Test _is_url returns False for None."""
+        assert karaoke_prep._is_url(None) is False
+
+    def test_is_url_empty_string(self, karaoke_prep):
+        """Test _is_url returns False for empty string."""
+        assert karaoke_prep._is_url("") is False
