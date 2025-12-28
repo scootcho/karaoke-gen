@@ -136,6 +136,10 @@ class EmailService:
             logger.warning("No email provider configured, using console logging")
             return ConsoleEmailProvider()
 
+    def is_configured(self) -> bool:
+        """Check if a real email provider is configured (not just console logging)."""
+        return isinstance(self.provider, SendGridEmailProvider)
+
     def send_magic_link(self, email: str, token: str) -> bool:
         """
         Send a magic link email for authentication.
