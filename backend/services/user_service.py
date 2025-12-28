@@ -15,6 +15,7 @@ from typing import Optional, List, Tuple
 
 from google.cloud import firestore
 from google.cloud.firestore_v1 import FieldFilter
+from google.cloud.firestore_v1 import Increment
 
 from backend.config import get_settings
 from backend.models.user import (
@@ -359,6 +360,22 @@ class UserService:
             (success, new_balance, message)
         """
         try:
+            # For Stripe sessions, atomically check and mark as processed
+            # Uses create() which fails if document exists - ensures idempotency
+            if stripe_session_id:
+                doc_ref = self.db.collection(PROCESSED_STRIPE_SESSIONS_COLLECTION).document(stripe_session_id)
+                try:
+                    doc_ref.create({
+                        'stripe_session_id': stripe_session_id,
+                        'email': email.lower(),
+                        'amount': amount,
+                        'processed_at': datetime.utcnow()
+                    })
+                except Exception:
+                    # Document already exists - this session was already processed
+                    logger.info(f"Stripe session {stripe_session_id} already processed (idempotent skip)")
+                    return False, 0, "Session already processed"
+
             email = email.lower()
             user = self.get_or_create_user(email)
 
@@ -383,10 +400,6 @@ class UserService:
                 credits=new_balance,
                 credit_transactions=[t.model_dump(mode='json') for t in transactions]
             )
-
-            # Mark Stripe session as processed for idempotency
-            if stripe_session_id:
-                self._mark_stripe_session_processed(stripe_session_id, email, amount)
 
             logger.info(f"Added {amount} credits to {email} ({reason}). New balance: {new_balance}")
             return True, new_balance, f"Added {amount} credits"
@@ -581,13 +594,18 @@ class UserService:
             return False
 
     def increment_jobs_completed(self, email: str) -> bool:
-        """Increment the completed jobs counter for a user."""
+        """Increment the completed jobs counter for a user using atomic increment."""
         try:
-            user = self.get_user(email)
-            if not user:
+            # Check user exists first
+            if not self.get_user(email):
                 return False
 
-            self.update_user(email, total_jobs_completed=user.total_jobs_completed + 1)
+            # Use atomic increment to prevent race conditions
+            doc_ref = self.db.collection(USERS_COLLECTION).document(email.lower())
+            doc_ref.update({
+                'total_jobs_completed': Increment(1),
+                'updated_at': datetime.utcnow()
+            })
             return True
         except Exception:
             logger.exception(f"Error incrementing jobs completed for {email}")
