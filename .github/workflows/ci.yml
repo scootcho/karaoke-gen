@@ -17,12 +17,94 @@ concurrency:
 
 jobs:
   # ============================================
+  # PATH FILTERING - Determine what changed
+  # ============================================
+
+  changes:
+    name: "Detect Changes"
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      package: ${{ steps.filter.outputs.package }}
+      infra: ${{ steps.filter.outputs.infra }}
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+            package:
+              - 'karaoke_gen/**'
+              - 'lyrics_transcriber_temp/**'
+              - 'tests/**'
+            infra:
+              - 'infrastructure/**'
+            deps:
+              - 'pyproject.toml'
+              - 'poetry.lock'
+
+      - name: Summary
+        run: |
+          echo "### Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Area | Changed |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ${{ steps.filter.outputs.frontend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | ${{ steps.filter.outputs.backend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | ${{ steps.filter.outputs.package }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Infrastructure | ${{ steps.filter.outputs.infra }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependencies | ${{ steps.filter.outputs.deps }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # FRONTEND TESTS
+  # ============================================
+
+  frontend-unit-tests:
+    name: "Frontend - Unit Tests"
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Run unit tests with coverage
+        working-directory: frontend
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+
+  # ============================================
   # PACKAGE TESTS (karaoke-gen Python CLI)
   # ============================================
 
   package-unit-tests:
     name: "Package - Unit Tests (70% coverage)"
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +121,14 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
       - name: Install dependencies
         run: poetry install --with dev
 
@@ -46,6 +136,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Cache spaCy model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spacy
+          key: spacy-en_core_web_sm-${{ runner.os }}
 
       - name: Install spaCy language models
         run: poetry run python -m spacy download en_core_web_sm
@@ -65,6 +161,8 @@ jobs:
   package-integration-tests:
     name: "Package - Integration Tests"
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,6 +179,14 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
       - name: Install dependencies
         run: poetry install --with dev
 
@@ -88,6 +194,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Cache spaCy model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/spacy
+          key: spacy-en_core_web_sm-${{ runner.os }}
 
       - name: Install spaCy language models
         run: poetry run python -m spacy download en_core_web_sm
@@ -98,7 +210,8 @@ jobs:
   package-build:
     name: "Package - Build & Install"
     runs-on: ubuntu-latest
-    needs: [package-unit-tests, package-integration-tests]
+    needs: [changes, package-unit-tests, package-integration-tests]
+    if: ${{ always() && (needs.package-unit-tests.result == 'success' || needs.package-unit-tests.result == 'skipped') && (needs.package-integration-tests.result == 'success' || needs.package-integration-tests.result == 'skipped') && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,6 +227,14 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
 
       - name: Build package
         run: poetry build
@@ -148,6 +269,8 @@ jobs:
   backend-unit-tests:
     name: "Backend - Unit Tests"
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -164,6 +287,14 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-backend-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-backend-${{ runner.os }}-py3.13-
 
       - name: Install dependencies
         run: poetry install
@@ -183,6 +314,8 @@ jobs:
   backend-emulator-tests:
     name: "Backend - Emulator Integration Tests"
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
     steps:
       - name: Free disk space
         run: |
@@ -206,6 +339,14 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-backend-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-backend-${{ runner.os }}-py3.13-
 
       - name: Set up Java 21 (required by Firestore emulator)
         uses: actions/setup-java@v4
@@ -243,6 +384,8 @@ jobs:
   backend-lint:
     name: "Backend - Code Quality"
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -259,6 +402,14 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-lint-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-lint-${{ runner.os }}-py3.13-
 
       - name: Install dependencies
         run: poetry install
@@ -362,7 +513,8 @@ jobs:
   deploy-frontend:
     name: "Deploy - Frontend (GitHub Pages)"
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [frontend-unit-tests]
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.frontend-unit-tests.result == 'success' || needs.frontend-unit-tests.result == 'skipped') }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -370,10 +522,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js with caching
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Enable Yarn (for lyrics frontend)
         run: corepack enable
@@ -390,6 +544,14 @@ jobs:
         run: npm run build
 
       # ===== Build Lyrics Review Frontend (Vite) =====
+      - name: Cache Yarn dependencies (lyrics frontend)
+        uses: actions/cache@v4
+        with:
+          path: lyrics_transcriber_temp/lyrics_transcriber/frontend/node_modules
+          key: yarn-lyrics-${{ runner.os }}-${{ hashFiles('lyrics_transcriber_temp/lyrics_transcriber/frontend/yarn.lock') }}
+          restore-keys: |
+            yarn-lyrics-${{ runner.os }}-
+
       - name: Install lyrics frontend dependencies
         working-directory: lyrics_transcriber_temp/lyrics_transcriber/frontend
         run: yarn install --frozen-lockfile
@@ -428,7 +590,7 @@ jobs:
     name: "Deploy - Backend (Cloud Run)"
     runs-on: ubuntu-latest
     needs: [backend-unit-tests, backend-emulator-tests, backend-lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.backend-unit-tests.result == 'success' || needs.backend-unit-tests.result == 'skipped') && (needs.backend-emulator-tests.result == 'success' || needs.backend-emulator-tests.result == 'skipped') && (needs.backend-lint.result == 'success' || needs.backend-lint.result == 'skipped') }}
     permissions:
       contents: read
       id-token: write
@@ -453,7 +615,7 @@ jobs:
           VERSION=$(poetry version --short)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📋 Current version: $VERSION"
-          
+
           if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
             echo "needs_deploy=false" >> $GITHUB_OUTPUT
             echo "⏭️  Tag v$VERSION already exists - skipping backend deployment"
@@ -604,22 +766,22 @@ jobs:
 
           echo "Service URL: $SERVICE_URL"
           echo "Expected version: $EXPECTED_VERSION"
-          
+
           # Wait for new revision to be ready
           echo "Waiting for new revision to be ready..."
           sleep 15
-          
+
           # Basic health check
           curl -f "$SERVICE_URL/api/health" || exit 1
           echo "✅ Service is healthy"
-          
+
           # Version verification with retries (Cloud Run may take time to route to new revision)
           MAX_RETRIES=6
           RETRY_DELAY=10
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Checking deployed version (attempt $i/$MAX_RETRIES)..."
             DEPLOYED_VERSION=$(curl -sf "$SERVICE_URL/api/health/detailed" | jq -r '.version // empty')
-            
+
             if [ "$DEPLOYED_VERSION" = "$EXPECTED_VERSION" ]; then
               echo "✅ Version verified: $DEPLOYED_VERSION"
               break
@@ -643,7 +805,7 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
-          
+
       - name: Skipped deployment summary
         if: steps.version_check.outputs.needs_deploy == 'false'
         run: |
