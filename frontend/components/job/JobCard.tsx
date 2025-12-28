@@ -60,7 +60,7 @@ function ProgressBar({ job }: { job: Job }) {
   const barColor = barColorMap[color] || "bg-blue-400"
 
   return (
-    <div className="w-full h-1 bg-slate-700/50 rounded-full mt-2 overflow-hidden">
+    <div className="w-full h-1 rounded-full mt-2 overflow-hidden" style={{ backgroundColor: 'var(--secondary)' }}>
       <div
         className={`h-full ${barColor} rounded-full transition-all duration-500 ease-out`}
         style={{ width: `${progressPercent}%` }}
@@ -190,18 +190,22 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
 
   return (
     <div
-      className={`rounded-lg border p-3 transition-colors border-slate-700 bg-slate-800/30
+      className={`rounded-lg border p-3 transition-colors
         ${isComplete ? "border-green-500/30" : ""}
         ${isFailed ? "border-red-500/30" : ""}`}
+      style={{
+        borderColor: isComplete || isFailed ? undefined : 'var(--card-border)',
+        backgroundColor: 'var(--card)',
+      }}
     >
       {/* Header row with title */}
-      <p className="font-medium text-white truncate">
+      <p className="font-medium truncate" style={{ color: 'var(--text)' }}>
         {job.artist || "Unknown"} - {job.title || "Unknown"}
       </p>
 
       {/* Meta row: ID, date, status */}
-      <p className="text-xs text-slate-500 mt-1">
-        <span className="text-slate-600">ID:</span> {job.job_id} <span className="text-slate-600">•</span> {createdAt} <span className="text-slate-600">•</span> <StatusIndicator job={job} />
+      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+        <span style={{ opacity: 0.7 }}>ID:</span> {job.job_id} <span style={{ opacity: 0.7 }}>•</span> {createdAt} <span style={{ opacity: 0.7 }}>•</span> <StatusIndicator job={job} />
       </p>
 
       {/* Progress bar for active jobs */}

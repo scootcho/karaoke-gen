@@ -42,7 +42,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-slate-400">
+      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
         <Loader2 className="w-3 h-3 animate-spin" />
         Loading downloads...
       </div>
@@ -56,7 +56,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
       {/* Combined Output Links */}
       {hasOutputs && (
         <div className="space-y-2">
-          <p className="text-xs text-slate-400 font-medium">Outputs:</p>
+          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Outputs:</p>
           <div className="flex flex-wrap gap-2">
             {/* Distribution Links */}
             {youtubeUrl && (
@@ -107,7 +107,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.cdg_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -117,7 +117,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.txt_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -129,7 +129,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
       )}
 
       {!hasOutputs && (
-        <p className="text-xs text-slate-500">No outputs available yet</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No outputs available yet</p>
       )}
     </div>
   )

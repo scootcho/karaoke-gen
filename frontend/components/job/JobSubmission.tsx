@@ -147,16 +147,28 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <TabsList className="grid w-full grid-cols-3 h-auto" style={{ backgroundColor: 'var(--secondary)' }}>
-        <TabsTrigger value="search" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
+      <TabsList className="grid w-full grid-cols-3 h-auto rounded-lg p-1" style={{ backgroundColor: 'var(--secondary)' }}>
+        <TabsTrigger
+          value="search"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=inactive]:opacity-70"
+          style={{ color: 'var(--text)' }}
+        >
           <Music className="w-4 h-4 shrink-0" />
           <span className="truncate">Search</span>
         </TabsTrigger>
-        <TabsTrigger value="upload" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
+        <TabsTrigger
+          value="upload"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=inactive]:opacity-70"
+          style={{ color: 'var(--text)' }}
+        >
           <Upload className="w-4 h-4 shrink-0" />
           <span className="truncate">Upload</span>
         </TabsTrigger>
-        <TabsTrigger value="url" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
+        <TabsTrigger
+          value="url"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=inactive]:opacity-70"
+          style={{ color: 'var(--text)' }}
+        >
           <Youtube className="w-4 h-4 shrink-0" />
           <span className="truncate">URL</span>
         </TabsTrigger>
