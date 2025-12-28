@@ -264,6 +264,36 @@ class AudioFetcher(ABC):
         """
         pass
 
+    @abstractmethod
+    def download_from_url(
+        self,
+        url: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        artist: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> AudioFetchResult:
+        """
+        Download audio directly from a URL (e.g., YouTube URL).
+
+        This bypasses the search step and downloads directly from the provided URL.
+        Useful when the user provides a specific YouTube URL rather than artist/title.
+
+        Args:
+            url: The URL to download from (e.g., YouTube video URL)
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            artist: Optional artist name for metadata
+            title: Optional title for metadata
+
+        Returns:
+            AudioFetchResult with the downloaded file path
+
+        Raises:
+            DownloadError: If download fails
+        """
+        pass
+
 
 class FlacFetchAudioFetcher(AudioFetcher):
     """
@@ -644,6 +674,94 @@ class FlacFetchAudioFetcher(AudioFetcher):
             raise
         except Exception as e:
             raise DownloadError(f"Failed to download {artist} - {title}: {e}") from e
+
+    def download_from_url(
+        self,
+        url: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        artist: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> AudioFetchResult:
+        """
+        Download audio directly from a URL (e.g., YouTube URL).
+
+        Uses flacfetch's download_by_id() method which supports direct YouTube downloads.
+
+        Args:
+            url: The URL to download from (e.g., YouTube video URL)
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            artist: Optional artist name for metadata
+            title: Optional title for metadata
+
+        Returns:
+            AudioFetchResult with the downloaded file path
+
+        Raises:
+            DownloadError: If download fails
+        """
+        import re
+
+        manager = self._get_manager()
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Detect source type from URL
+        source_name = "YouTube"  # Default to YouTube for now
+        source_id = None
+
+        # Extract YouTube video ID from URL
+        youtube_patterns = [
+            r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})',
+            r'youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+            r'youtube\.com/v/([a-zA-Z0-9_-]{11})',
+        ]
+        for pattern in youtube_patterns:
+            match = re.search(pattern, url)
+            if match:
+                source_id = match.group(1)
+                break
+
+        if not source_id:
+            # For other URLs, use the full URL as the source_id
+            source_id = url
+
+        # Generate filename if not provided
+        if output_filename is None:
+            if artist and title:
+                output_filename = f"{artist} - {title}"
+            else:
+                output_filename = source_id
+
+        self.logger.info(f"Downloading from URL: {url}")
+
+        try:
+            filepath = manager.download_by_id(
+                source_name=source_name,
+                source_id=source_id,
+                output_path=output_dir,
+                output_filename=output_filename,
+                download_url=url,  # Pass full URL for direct download
+            )
+
+            if not filepath:
+                raise DownloadError(f"Download returned no file path for URL: {url}")
+
+            self.logger.info(f"Downloaded to: {filepath}")
+
+            return AudioFetchResult(
+                filepath=filepath,
+                artist=artist or "",
+                title=title or "",
+                provider=source_name,
+                duration=None,  # Could extract from yt-dlp info if needed
+                quality=None,
+            )
+
+        except Exception as e:
+            raise DownloadError(f"Failed to download from URL {url}: {e}") from e
 
     def _interruptible_search(self, manager, query) -> list:
         """
@@ -1547,6 +1665,106 @@ class RemoteFlacFetchAudioFetcher(AudioFetcher):
             except (KeyboardInterrupt, EOFError):
                 print("\nCancelled")
                 raise UserCancelledError("Selection cancelled by user (Ctrl+C)")
+
+    def download_from_url(
+        self,
+        url: str,
+        output_dir: str,
+        output_filename: Optional[str] = None,
+        artist: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> AudioFetchResult:
+        """
+        Download audio directly from a URL (e.g., YouTube URL).
+
+        For YouTube URLs, this uses local flacfetch since YouTube downloads
+        don't require the remote flacfetch infrastructure (no torrents).
+
+        Args:
+            url: The URL to download from (e.g., YouTube video URL)
+            output_dir: Directory to save the downloaded file
+            output_filename: Optional filename (without extension)
+            artist: Optional artist name for metadata
+            title: Optional title for metadata
+
+        Returns:
+            AudioFetchResult with the downloaded file path
+
+        Raises:
+            DownloadError: If download fails
+        """
+        import re
+
+        self.logger.info(f"[RemoteFlacFetcher] Downloading from URL: {url}")
+        self.logger.info(f"[RemoteFlacFetcher] Using local flacfetch for YouTube download (no remote API needed)")
+
+        try:
+            # Use local flacfetch for YouTube downloads - no need for remote API
+            # This avoids needing yt-dlp directly in karaoke-gen
+            from flacfetch.core.manager import FetchManager
+            from flacfetch.providers.youtube import YoutubeProvider
+            from flacfetch.downloaders.youtube import YoutubeDownloader
+
+            # Create a minimal local manager for YouTube downloads
+            manager = FetchManager()
+            manager.add_provider(YoutubeProvider())
+            manager.register_downloader("YouTube", YoutubeDownloader())
+
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Extract video ID from URL
+            source_id = None
+            youtube_patterns = [
+                r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/v/([a-zA-Z0-9_-]{11})',
+            ]
+            for pattern in youtube_patterns:
+                match = re.search(pattern, url)
+                if match:
+                    source_id = match.group(1)
+                    break
+
+            if not source_id:
+                source_id = url
+
+            # Generate filename if not provided
+            if output_filename is None:
+                if artist and title:
+                    output_filename = f"{artist} - {title}"
+                else:
+                    output_filename = source_id
+
+            # Use flacfetch's download_by_id for direct URL download
+            filepath = manager.download_by_id(
+                source_name="YouTube",
+                source_id=source_id,
+                output_path=output_dir,
+                output_filename=output_filename,
+                download_url=url,
+            )
+
+            if not filepath:
+                raise DownloadError(f"Download returned no file path for URL: {url}")
+
+            self.logger.info(f"[RemoteFlacFetcher] Downloaded to: {filepath}")
+
+            return AudioFetchResult(
+                filepath=filepath,
+                artist=artist or "",
+                title=title or "",
+                provider="YouTube",
+                duration=None,
+                quality=None,
+            )
+
+        except ImportError as e:
+            raise DownloadError(
+                f"flacfetch is required for URL downloads but import failed: {e}"
+            )
+        except Exception as e:
+            raise DownloadError(f"Failed to download from URL {url}: {e}") from e
 
 
 # Alias for shorter name
