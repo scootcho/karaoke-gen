@@ -76,7 +76,7 @@ Run Whisper directly on your local machine using whisper-timestamped. Works on C
 
 ```bash
 # Install with local Whisper support
-pip install karaoke-gen[local-whisper]
+pip install "karaoke-gen[local-whisper]"
 
 # Optional: Configure model size (tiny, base, small, medium, large)
 export WHISPER_MODEL_SIZE="medium"
@@ -98,7 +98,7 @@ export WHISPER_DEVICE="cpu"
 ```bash
 # Pre-install CPU-only PyTorch first
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install karaoke-gen[local-whisper]
+pip install "karaoke-gen[local-whisper]"
 ```
 
 Local Whisper runs automatically as a fallback when no cloud transcription services are configured.
@@ -633,7 +633,7 @@ Whisper models are downloaded on first use (~1-3GB depending on size). If downlo
 #### whisper-timestamped Not Found
 If you get "whisper-timestamped is not installed":
 ```bash
-pip install karaoke-gen[local-whisper]
+pip install "karaoke-gen[local-whisper]"
 # Or install directly:
 pip install whisper-timestamped
 ```
