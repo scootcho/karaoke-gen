@@ -11,12 +11,13 @@ class TranscriberConfig:
     runpod_api_key: Optional[str] = None
     whisper_runpod_id: Optional[str] = None
 
-    # Local Whisper configuration
+    # Local Whisper configuration - reads from environment variables with sensible defaults
+    # Environment variables: WHISPER_MODEL_SIZE, WHISPER_DEVICE, WHISPER_CACHE_DIR, WHISPER_LANGUAGE
     enable_local_whisper: bool = True  # Enabled by default as fallback
-    local_whisper_model_size: str = "medium"  # tiny, base, small, medium, large
-    local_whisper_device: Optional[str] = None  # None for auto-detect, or cpu/cuda/mps
-    local_whisper_cache_dir: Optional[str] = None  # Custom model download location
-    local_whisper_language: Optional[str] = None  # None for auto-detect
+    local_whisper_model_size: str = field(default_factory=lambda: os.getenv("WHISPER_MODEL_SIZE", "medium"))
+    local_whisper_device: Optional[str] = field(default_factory=lambda: os.getenv("WHISPER_DEVICE"))
+    local_whisper_cache_dir: Optional[str] = field(default_factory=lambda: os.getenv("WHISPER_CACHE_DIR"))
+    local_whisper_language: Optional[str] = field(default_factory=lambda: os.getenv("WHISPER_LANGUAGE"))
 
 
 @dataclass
