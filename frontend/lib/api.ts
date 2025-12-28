@@ -384,10 +384,15 @@ export const api = {
   },
   
   /**
-   * Get the base download URL for a file
+   * Get the download URL for a file, including authentication token
    */
   getDownloadUrl(jobId: string, category: string, fileKey: string): string {
-    return `${API_BASE_URL}/api/jobs/${jobId}/download/${category}/${fileKey}`;
+    const baseUrl = `${API_BASE_URL}/api/jobs/${jobId}/download/${category}/${fileKey}`;
+    const token = getAccessToken();
+    if (token) {
+      return `${baseUrl}?token=${encodeURIComponent(token)}`;
+    }
+    return baseUrl;
   },
   
   /**
