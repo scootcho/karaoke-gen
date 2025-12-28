@@ -18,17 +18,14 @@ Create descriptive branch names like `feature/add-discord-notifications`, `fix/a
 
 ### Using Git Worktrees
 
-**For non-trivial changes** (new features, multi-file edits, refactors):
-- Create a git worktree in the parent folder before making any file changes:
-  ```bash
-  git worktree add ../karaoke-gen-feat-xyz feature/xyz
-  ```
+**All changes require a git worktree.** Since all changes must go through a PR, always create a worktree in the parent folder before making any file changes:
+
+```bash
+git worktree add -b feature/xyz ../karaoke-gen-feat-xyz main
+```
+
 - This keeps the main directory clean on `main` and enables parallel work on multiple features
 - Name the worktree folder descriptively, e.g., `../karaoke-gen-fix-audio-sync`
-
-**For trivial changes** (typos, single-line fixes):
-- Creating a branch in the current directory is acceptable
-- Use `git checkout -b fix/typo-xyz` before making changes
 
 **Cleanup:** When done with a worktree, remove it with:
 ```bash
@@ -75,11 +72,13 @@ Do not attempt to work around auth issues or make assumptions about credentials.
 
 ## Version Management
 
-When committing and pushing changes, always bump the patch version in `pyproject.toml`.
+When committing and pushing **code changes**, bump the patch version in `pyproject.toml`.
 
 The version is located at `tool.poetry.version` in `pyproject.toml`. For example, if the current version is `0.70.3`, bump it to `0.70.4`.
 
-This ensures every commit pushed to the repository has a unique version number for tracking and deployment purposes.
+**Skip version bumps** for documentation-only changes (e.g., updating `CLAUDE.md`, `README.md`, or other markdown files) that don't affect deployed code.
+
+This ensures every code release has a unique version number for tracking and deployment purposes.
 
 ## Testing Requirements
 
@@ -128,4 +127,26 @@ Individual test commands:
 - [ ] `coderabbit review --plain` has been run to get comprehensive analysis and suggestions for cleaner, more maintainable code. Apply the feedback to improve accessibility, structure, and best practices.
 
 **Do not commit or push code that fails tests. Fix any test failures before proceeding.**
+
+## Related Projects
+
+### flacfetch
+
+**Location:** `/Users/andrew/Projects/flacfetch`
+
+The `flacfetch` package is a dependency of karaoke-gen that we also own. When working on features that interact with flacfetch, you can read and modify its code directly.
+
+**Workflow for flacfetch changes:**
+
+1. Navigate to `/Users/andrew/Projects/flacfetch`
+2. Make changes directly on `main` (no PR required for this repo)
+3. Run tests and ensure they pass
+4. Bump the version in flacfetch's `pyproject.toml`
+5. Commit and push to `main`
+6. Wait for CI workflow to complete and auto-release the new version
+7. Return to karaoke-gen and update the poetry dependency:
+   ```bash
+   poetry update flacfetch
+   ```
+8. Commit the updated `poetry.lock` in karaoke-gen
 
