@@ -94,6 +94,48 @@ if job.input_media_gcs_path:
     await trigger_worker()
 ```
 
+### Stale Object References After Async Operations
+
+**Problem**: Fetching a job object, then calling async functions that update the job in the database, then using the original object's data to make another update - this overwrites the async function's changes.
+
+```python
+# BAD - loses distribution results
+job = job_manager.get_job(job_id)  # Fetch job
+await _handle_native_distribution(...)  # Updates job.state_data in DB
+job_manager.update_job(job_id, {
+    'state_data': {**job.state_data, 'foo': 'bar'}  # STALE! Overwrites dropbox_link!
+})
+```
+
+**Solution**: Either re-fetch the job, or include async results explicitly:
+```python
+# GOOD - include results from async operation
+job_manager.update_job(job_id, {
+    'state_data': {
+        **job.state_data,
+        'dropbox_link': result.get('dropbox_link'),  # From distribution
+        'gdrive_files': result.get('gdrive_files'),
+    }
+})
+```
+
+### Google Drive API Query Escaping
+
+**Problem**: Single quotes in filenames break Google Drive API queries.
+
+```python
+# BAD - fails for "Nobody's Home"
+query = f"name='{filename}' and '{parent_id}' in parents"
+# Results in: name='NOMAD-1187 - Artist - Nobody's Home.mp4' → 400 Invalid Value
+```
+
+**Solution**: Escape single quotes with backslash:
+```python
+# GOOD
+escaped = filename.replace("'", "\\'")
+query = f"name='{escaped}' and '{parent_id}' in parents"
+```
+
 ## Testing Insights
 
 ### Emulator Tests Catch Real Bugs
