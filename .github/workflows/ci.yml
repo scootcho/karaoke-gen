@@ -271,6 +271,13 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          df -h
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
