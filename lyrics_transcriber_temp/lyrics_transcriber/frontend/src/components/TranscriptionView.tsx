@@ -54,7 +54,12 @@ export default function TranscriptionView({
     onPlaySegment,
     currentTime = 0,
     anchors = [],
-    onDataChange
+    onDataChange,
+    reviewMode = false,
+    onRevertCorrection,
+    onEditCorrection,
+    onAcceptCorrection,
+    onShowCorrectionDetail
 }: TranscriptionViewProps) {
     const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null)
     const [viewMode, setViewMode] = useState<'text' | 'duration'>('text')
@@ -237,6 +242,11 @@ export default function TranscriptionView({
                                     currentTime={currentTime}
                                     gaps={data.gap_sequences}
                                     corrections={data.corrections}
+                                    reviewMode={reviewMode}
+                                    onRevertCorrection={onRevertCorrection}
+                                    onEditCorrection={onEditCorrection}
+                                    onAcceptCorrection={onAcceptCorrection}
+                                    onShowCorrectionDetail={onShowCorrectionDetail}
                                 />
                             </TextContainer>
                         </Box>

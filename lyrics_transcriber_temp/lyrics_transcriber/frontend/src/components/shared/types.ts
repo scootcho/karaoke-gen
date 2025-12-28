@@ -85,6 +85,12 @@ export interface TranscriptionViewProps {
     anchors?: AnchorSequence[]
     flashingHandler?: string | null
     onDataChange?: (updatedData: CorrectionData) => void
+    // Review mode props for agentic corrections
+    reviewMode?: boolean
+    onRevertCorrection?: (wordId: string) => void
+    onEditCorrection?: (wordId: string) => void
+    onAcceptCorrection?: (wordId: string) => void
+    onShowCorrectionDetail?: (wordId: string) => void
 }
 
 // Add LinePosition type here since it's used in multiple places

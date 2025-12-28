@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton } from '@mui/material'
+import { Box, Button, Typography, useMediaQuery, useTheme, Switch, FormControlLabel, Tooltip, Paper, IconButton, Chip } from '@mui/material'
 import LockIcon from '@mui/icons-material/Lock'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import FindReplaceIcon from '@mui/icons-material/FindReplace'
@@ -8,6 +8,9 @@ import RedoIcon from '@mui/icons-material/Redo'
 import TimerIcon from '@mui/icons-material/Timer'
 import RestoreIcon from '@mui/icons-material/Restore'
 import RateReviewIcon from '@mui/icons-material/RateReview'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import HighlightOffIcon from '@mui/icons-material/HighlightOff'
 import { CorrectionData, InteractionMode } from '../types'
 import CorrectionMetrics from './CorrectionMetrics'
 import AgenticCorrectionMetrics from './AgenticCorrectionMetrics'
@@ -44,6 +47,13 @@ interface HeaderProps {
     canRedo: boolean
     annotationsEnabled?: boolean
     onAnnotationsToggle?: (enabled: boolean) => void
+    // Review mode props
+    reviewMode?: boolean
+    onReviewModeToggle?: (enabled: boolean) => void
+    // Batch action props
+    onAcceptAllCorrections?: () => void
+    onAcceptHighConfidenceCorrections?: () => void
+    onRevertAllCorrections?: () => void
 }
 
 export default function Header({
@@ -70,6 +80,11 @@ export default function Header({
     canRedo,
     annotationsEnabled = true,
     onAnnotationsToggle,
+    reviewMode = false,
+    onReviewModeToggle,
+    onAcceptAllCorrections,
+    onAcceptHighConfidenceCorrections,
+    onRevertAllCorrections,
 }: HeaderProps) {
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -129,33 +144,81 @@ export default function Header({
                 </Box>
             )}
 
-            {isReadOnly && (
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-                    <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<UploadFileIcon />}
-                        onClick={onFileLoad}
-                        fullWidth={isMobile}
-                    >
-                        Load File
-                    </Button>
+            <Box sx={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                gap: 1,
+                justifyContent: 'space-between',
+                alignItems: isMobile ? 'stretch' : 'center',
+                mb: 1
+            }}>
+                <Typography variant="h4" sx={{ fontSize: isMobile ? '1.3rem' : '1.5rem' }}>
+                    Nomad Karaoke: Lyrics Transcription Review
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {!isReadOnly && isAgenticMode && onReviewModeToggle && (
+                        <Tooltip title={reviewMode
+                            ? "Hide inline correction actions"
+                            : "Show inline actions on all corrections for quick review"
+                        }>
+                            <Chip
+                                icon={<VisibilityIcon />}
+                                label={reviewMode ? "Review Mode" : "Review Off"}
+                                onClick={() => onReviewModeToggle(!reviewMode)}
+                                color={reviewMode ? "secondary" : "default"}
+                                variant={reviewMode ? "filled" : "outlined"}
+                                size="small"
+                                sx={{
+                                    cursor: 'pointer',
+                                    '& .MuiChip-icon': { fontSize: '1rem' }
+                                }}
+                            />
+                        </Tooltip>
+                    )}
+                    {!isReadOnly && onAnnotationsToggle && (
+                        <Tooltip title={annotationsEnabled
+                            ? "Click to disable annotation prompts when editing"
+                            : "Click to enable annotation prompts when editing"
+                        }>
+                            <Chip
+                                icon={<RateReviewIcon />}
+                                label={annotationsEnabled ? "Feedback On" : "Feedback Off"}
+                                onClick={() => onAnnotationsToggle(!annotationsEnabled)}
+                                color={annotationsEnabled ? "primary" : "default"}
+                                variant={annotationsEnabled ? "filled" : "outlined"}
+                                size="small"
+                                sx={{
+                                    cursor: 'pointer',
+                                    '& .MuiChip-icon': { fontSize: '1rem' }
+                                }}
+                            />
+                        </Tooltip>
+                    )}
+                    {isReadOnly && (
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<UploadFileIcon />}
+                            onClick={onFileLoad}
+                            fullWidth={isMobile}
+                        >
+                            Load File
+                        </Button>
+                    )}
                 </Box>
-            )}
+            </Box>
 
             <Box sx={{
                 display: 'flex',
                 gap: 1,
                 mb: 1,
                 flexDirection: isMobile ? 'column' : 'row',
-                height: isMobile ? 'auto' : '140px',
-                minHeight: isMobile ? 'auto' : '140px'
+                height: '140px'
             }}>
                 <Box sx={{
-                    width: isMobile ? '100%' : '280px',
-                    minWidth: isMobile ? '100%' : '280px',
+                    width: '280px',
                     position: 'relative',
-                    height: isMobile ? 'auto' : '100%'
+                    height: '100%'
                 }}>
                     {isAgenticMode ? (
                         <AgenticCorrectionMetrics
@@ -252,6 +315,65 @@ export default function Header({
                 </Box>
             </Box>
 
+            {/* Batch Actions Panel - shown when review mode is enabled */}
+            {!isReadOnly && reviewMode && isAgenticMode && data.corrections?.length > 0 && (
+                <Paper sx={{ p: 0.8, mb: 1, backgroundColor: 'action.hover' }}>
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: 1,
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        justifyContent: 'space-between'
+                    }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                            Batch Actions ({data.corrections.length} corrections)
+                        </Typography>
+                        <Box sx={{
+                            display: 'flex',
+                            gap: 1,
+                            flexWrap: 'wrap'
+                        }}>
+                            {onAcceptHighConfidenceCorrections && (
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    color="success"
+                                    startIcon={<CheckCircleIcon />}
+                                    onClick={onAcceptHighConfidenceCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Accept High Confidence ({data.corrections.filter(c => c.confidence >= 0.8).length})
+                                </Button>
+                            )}
+                            {onAcceptAllCorrections && (
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="success"
+                                    startIcon={<CheckCircleIcon />}
+                                    onClick={onAcceptAllCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Accept All
+                                </Button>
+                            )}
+                            {onRevertAllCorrections && (
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="error"
+                                    startIcon={<HighlightOffIcon />}
+                                    onClick={onRevertAllCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Revert All
+                                </Button>
+                            )}
+                        </Box>
+                    </Box>
+                </Paper>
+            )}
+
             <Paper sx={{ p: 0.8, mb: 1 }}>
                 <Box sx={{
                     display: 'flex',
@@ -263,18 +385,17 @@ export default function Header({
                 }}>
                     <Box sx={{
                         display: 'flex',
-                        gap: 0.5,
-                        flexDirection: 'row',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        minHeight: '44px'
+                        gap: 1,
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'flex-start' : 'center',
+                        height: '32px'
                     }}>
                         <ModeSelector
                             effectiveMode={effectiveMode}
                             onChange={onModeChange}
                         />
                         {!isReadOnly && (
-                            <Box sx={{ display: 'flex', height: '44px', alignItems: 'center' }}>
+                            <Box sx={{ display: 'flex', height: '32px' }}>
                                 <Tooltip title="Undo">
                                     <span>
                                         <IconButton
@@ -285,8 +406,8 @@ export default function Header({
                                                 border: `1px solid ${theme.palette.divider}`,
                                                 borderRadius: '4px',
                                                 mx: 0.25,
-                                                height: '44px',
-                                                width: '44px'
+                                                height: '32px',
+                                                width: '32px'
                                             }}
                                         >
                                             <UndoIcon fontSize="small" />
@@ -303,8 +424,8 @@ export default function Header({
                                                 border: `1px solid ${theme.palette.divider}`,
                                                 borderRadius: '4px',
                                                 mx: 0.25,
-                                                height: '44px',
-                                                width: '44px'
+                                                height: '32px',
+                                                width: '32px'
                                             }}
                                         >
                                             <RedoIcon fontSize="small" />
@@ -359,10 +480,10 @@ export default function Header({
                                     Timing Offset
                                 </Button>
                                 {timingOffsetMs !== 0 && (
-                                    <Typography
-                                        variant="body2"
-                                        sx={{
-                                            ml: 1,
+                                    <Typography 
+                                        variant="body2" 
+                                        sx={{ 
+                                            ml: 1, 
                                             fontWeight: 'bold',
                                             color: theme.palette.secondary.main
                                         }}
@@ -371,23 +492,6 @@ export default function Header({
                                     </Typography>
                                 )}
                             </Box>
-                        )}
-                        {!isReadOnly && onAnnotationsToggle && (
-                            <Tooltip title={annotationsEnabled
-                                ? "Click to disable annotation prompts when editing"
-                                : "Click to enable annotation prompts when editing"
-                            }>
-                                <Button
-                                    variant="outlined"
-                                    size="small"
-                                    onClick={() => onAnnotationsToggle(!annotationsEnabled)}
-                                    startIcon={<RateReviewIcon />}
-                                    color={annotationsEnabled ? "primary" : "inherit"}
-                                    sx={{ minWidth: 'fit-content', height: '32px' }}
-                                >
-                                    {annotationsEnabled ? "Feedback On" : "Feedback Off"}
-                                </Button>
-                            </Tooltip>
                         )}
                         <AudioPlayer
                             apiClient={apiClient}
