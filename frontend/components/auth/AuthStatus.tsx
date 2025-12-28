@@ -1,9 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { KeyRound, LogOut } from "lucide-react"
+import { User, LogOut, CreditCard, Coins, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { getAccessToken, clearAccessToken } from "@/lib/api"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/lib/auth"
 import { AuthDialog } from "./AuthDialog"
 
 interface AuthStatusProps {
@@ -11,38 +19,95 @@ interface AuthStatusProps {
 }
 
 export function AuthStatus({ onAuthChange }: AuthStatusProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { user, logout } = useAuth()
   const [showAuthDialog, setShowAuthDialog] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
+  // Avoid hydration mismatch
   useEffect(() => {
-    setIsAuthenticated(!!getAccessToken())
+    setMounted(true)
   }, [])
 
-  const handleLogout = () => {
-    clearAccessToken()
-    setIsAuthenticated(false)
+  const handleLogout = async () => {
+    await logout()
     onAuthChange?.()
     window.location.reload()
   }
 
   const handleAuthSuccess = () => {
-    setIsAuthenticated(true)
     setShowAuthDialog(false)
     onAuthChange?.()
     window.location.reload()
   }
 
-  if (isAuthenticated) {
+  const handleBuyCredits = () => {
+    // Navigate to buy site with email prefilled if available
+    const buyBaseUrl = process.env.NEXT_PUBLIC_BUY_URL || "https://buy.nomadkaraoke.com"
+    const buyUrl = new URL(buyBaseUrl)
+    if (user?.email) {
+      buyUrl.searchParams.set("email", user.email)
+    }
+    window.open(buyUrl.toString(), "_blank")
+  }
+
+  // Don't render until mounted (avoids hydration issues)
+  if (!mounted) {
+    return null
+  }
+
+  if (user) {
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleLogout}
-        className="text-slate-400 hover:text-white min-h-[40px] px-2 sm:px-3"
-      >
-        <LogOut className="w-4 h-4 sm:mr-2" />
-        <span className="hidden sm:inline">Logout</span>
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-300 hover:text-white flex items-center gap-2 min-h-[40px] px-2 sm:px-3"
+          >
+            <User className="w-4 h-4" />
+            <span className="hidden sm:inline max-w-[150px] truncate">
+              {user.display_name || user.email}
+            </span>
+            <span className="flex items-center gap-1 text-amber-400 font-medium">
+              <Coins className="w-3 h-3" />
+              {user.credits}
+            </span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 bg-slate-900 border-slate-700">
+          <DropdownMenuLabel className="text-slate-400 font-normal">
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium text-white">
+                {user.display_name || "Karaoke Fan"}
+              </p>
+              <p className="text-xs text-slate-500 truncate">{user.email}</p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator className="bg-slate-700" />
+          <DropdownMenuItem
+            className="text-slate-300 focus:text-white focus:bg-slate-800 cursor-default"
+            disabled
+          >
+            <Coins className="w-4 h-4 mr-2 text-amber-400" />
+            <span>{user.credits} credits available</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleBuyCredits}
+            className="text-slate-300 focus:text-white focus:bg-slate-800"
+          >
+            <CreditCard className="w-4 h-4 mr-2" />
+            <span>Buy More Credits</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-slate-700" />
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="text-red-400 focus:text-red-300 focus:bg-slate-800"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            <span>Sign Out</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 

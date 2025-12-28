@@ -1,0 +1,195 @@
+# Stripe Setup Guide
+
+This guide walks you through setting up Stripe for the Nomad Karaoke payment system.
+
+## Prerequisites
+
+- A Stripe account (sign up at https://stripe.com)
+- Access to Google Cloud Secret Manager (for secure credential storage)
+- The Nomad Karaoke backend deployed and running
+
+## 1. Get Your Stripe API Keys
+
+1. Log in to your Stripe Dashboard: https://dashboard.stripe.com
+2. Go to **Developers** > **API keys**
+3. You'll need two keys:
+   - **Publishable key** (starts with `pk_live_` or `pk_test_`)
+   - **Secret key** (starts with `sk_live_` or `sk_test_`)
+
+> **Important**: Never commit your secret key to version control. Always use environment variables or Secret Manager.
+
+## 2. Store Keys in Google Cloud Secret Manager
+
+Store your Stripe keys securely in Secret Manager:
+
+```bash
+# Store the secret key
+echo -n "sk_live_your_key_here" | gcloud secrets create stripe-secret-key --data-file=-
+
+# Store the webhook secret (after step 3)
+echo -n "whsec_your_webhook_secret" | gcloud secrets create stripe-webhook-secret --data-file=-
+```
+
+## 3. Set Up Webhook Endpoint
+
+Webhooks notify your backend when payments complete.
+
+### In Stripe Dashboard:
+
+1. Go to **Developers** > **Webhooks**
+2. Click **Add endpoint**
+3. Enter your endpoint URL: `https://api.nomadkaraoke.com/api/users/webhooks/stripe`
+4. Select events to listen to:
+   - `checkout.session.completed` (required - adds credits)
+   - `checkout.session.expired` (optional - logging)
+   - `payment_intent.payment_failed` (optional - logging)
+5. Click **Add endpoint**
+6. Copy the **Signing secret** (starts with `whsec_`)
+7. Store it in Secret Manager (see step 2)
+
+## 4. Configure Environment Variables
+
+Set these environment variables for your backend:
+
+```bash
+# Required
+STRIPE_SECRET_KEY=sk_live_your_key_here
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+
+# Optional (defaults shown)
+FRONTEND_URL=https://gen.nomadkaraoke.com
+BUY_URL=https://buy.nomadkaraoke.com
+```
+
+### For Cloud Run deployment:
+
+```bash
+gcloud run services update karaoke-backend \
+  --set-secrets=STRIPE_SECRET_KEY=stripe-secret-key:latest \
+  --set-secrets=STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest
+```
+
+## 5. Configure Email Service (SendGrid)
+
+For sending magic link and purchase confirmation emails:
+
+1. Sign up for SendGrid: https://sendgrid.com
+2. Create an API key with "Mail Send" permissions
+3. Store it in Secret Manager:
+
+```bash
+echo -n "SG.your_sendgrid_api_key" | gcloud secrets create sendgrid-api-key --data-file=-
+```
+
+4. Set environment variables:
+
+```bash
+SENDGRID_API_KEY=SG.your_sendgrid_api_key
+EMAIL_FROM=noreply@nomadkaraoke.com
+EMAIL_FROM_NAME=Nomad Karaoke
+```
+
+## 6. Test the Integration
+
+### Test Mode
+
+Use test keys (starting with `pk_test_` and `sk_test_`) for testing:
+
+1. Use Stripe's test card: `4242 4242 4242 4242`
+2. Any future expiration date
+3. Any 3-digit CVC
+
+### Verify Webhook Delivery
+
+1. In Stripe Dashboard, go to **Developers** > **Webhooks**
+2. Click on your endpoint
+3. View recent webhook attempts and their status
+4. Use the "Send test webhook" feature to verify connectivity
+
+## Credit Packages
+
+The system comes with these default packages:
+
+| Package | Credits | Price | Per Credit |
+|---------|---------|-------|------------|
+| 1 Credit | 1 | $5.00 | $5.00 |
+| 3 Credits | 3 | $12.00 | $4.00 (20% off) |
+| 5 Credits | 5 | $17.50 | $3.50 (30% off) |
+| 10 Credits | 10 | $30.00 | $3.00 (40% off) |
+
+To modify packages, edit `backend/services/stripe_service.py`:
+
+```python
+CREDIT_PACKAGES = {
+    "1_credit": {
+        "credits": 1,
+        "price_cents": 500,
+        "name": "1 Karaoke Credit",
+        "description": "Create 1 professional karaoke video",
+    },
+    # Add more packages...
+}
+```
+
+## Admin Features
+
+### Issue Free Credits
+
+Admins can issue free credits via the API:
+
+```bash
+curl -X POST https://api.nomadkaraoke.com/api/users/admin/credits \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "amount": 5,
+    "reason": "Beta tester reward"
+  }'
+```
+
+### View Users
+
+```bash
+curl https://api.nomadkaraoke.com/api/users/admin/users \
+  -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
+```
+
+## Troubleshooting
+
+### Webhook Not Receiving Events
+
+1. Verify the endpoint URL is correct and publicly accessible
+2. Check the webhook signing secret matches
+3. Ensure your server returns 2xx status codes
+4. Check Cloud Run logs for errors
+
+### Credits Not Adding
+
+1. Verify `checkout.session.completed` event is being received
+2. Check that `metadata` contains `user_email` and `credits`
+3. Review backend logs for errors in `stripe_webhook` handler
+
+### Email Not Sending
+
+1. Verify SendGrid API key is valid
+2. Check sender email is verified in SendGrid
+3. Review SendGrid activity logs
+
+## Security Considerations
+
+1. **Never expose secret keys** - Use environment variables or Secret Manager
+2. **Always verify webhook signatures** - The code does this automatically
+3. **Use HTTPS** - All Stripe communication must be over HTTPS
+4. **Monitor webhook logs** - Watch for failed deliveries or suspicious activity
+5. **Set up alerts** - Configure Stripe to alert on unusual activity
+
+## Going Live Checklist
+
+- [ ] Switch from test to live API keys
+- [ ] Update webhook endpoint to use live signing secret
+- [ ] Verify email sending works with real addresses
+- [ ] Test a real purchase with a small amount
+- [ ] Set up Stripe Radar for fraud protection
+- [ ] Configure Stripe tax settings if applicable
+- [ ] Review and enable appropriate Stripe email receipts

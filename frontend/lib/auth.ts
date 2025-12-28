@@ -2,43 +2,172 @@
 
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { User } from "./types"
+import type { User, UserPublic } from "./types"
+import { api, setAccessToken, clearAccessToken, getAccessToken } from "./api"
 
 interface AuthStore {
   user: User | null
-  login: (token: string) => Promise<boolean>
-  logout: () => void
+  isLoading: boolean
+  error: string | null
+
+  // Actions
+  sendMagicLink: (email: string) => Promise<boolean>
+  verifyMagicLink: (token: string) => Promise<boolean>
+  fetchUser: () => Promise<boolean>
+  logout: () => Promise<void>
   updateCredits: (credits: number) => void
+  clearError: () => void
+
+  // For legacy token-based auth (admin tokens)
+  loginWithToken: (token: string) => Promise<boolean>
 }
 
 export const useAuth = create<AuthStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
-      login: async (token: string) => {
-        // In a real app, validate token with backend
-        // For demo, parse token to determine role
+      isLoading: false,
+      error: null,
+
+      sendMagicLink: async (email: string) => {
+        set({ isLoading: true, error: null })
         try {
-          const isAdmin = token.toLowerCase().includes("admin")
-          const user: User = {
-            token,
-            role: isAdmin ? "admin" : "user",
-            credits: isAdmin ? 999 : 3,
-          }
-          set({ user })
+          await api.sendMagicLink(email)
+          set({ isLoading: false })
           return true
-        } catch {
+        } catch (err) {
+          set({
+            isLoading: false,
+            error: err instanceof Error ? err.message : 'Failed to send magic link'
+          })
           return false
         }
       },
-      logout: () => set({ user: null }),
+
+      verifyMagicLink: async (token: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          const response = await api.verifyMagicLink(token)
+
+          // Store the session token
+          setAccessToken(response.session_token)
+
+          // Create user from response
+          const user: User = {
+            token: response.session_token,
+            email: response.user.email,
+            role: response.user.role,
+            credits: response.user.credits,
+            display_name: response.user.display_name,
+            total_jobs_created: response.user.total_jobs_created,
+            total_jobs_completed: response.user.total_jobs_completed,
+          }
+
+          set({ user, isLoading: false })
+          return true
+        } catch (err) {
+          set({
+            isLoading: false,
+            error: err instanceof Error ? err.message : 'Invalid or expired link'
+          })
+          return false
+        }
+      },
+
+      fetchUser: async () => {
+        const token = getAccessToken()
+        if (!token) {
+          set({ user: null })
+          return false
+        }
+
+        set({ isLoading: true })
+        try {
+          const response = await api.getCurrentUser()
+
+          const user: User = {
+            token,
+            email: response.user.email,
+            role: response.user.role,
+            credits: response.user.credits,
+            display_name: response.user.display_name,
+            total_jobs_created: response.user.total_jobs_created,
+            total_jobs_completed: response.user.total_jobs_completed,
+          }
+
+          set({ user, isLoading: false })
+          return true
+        } catch {
+          // Session may have expired
+          clearAccessToken()
+          set({ user: null, isLoading: false })
+          return false
+        }
+      },
+
+      logout: async () => {
+        try {
+          await api.logout()
+        } catch {
+          // Ignore errors, just clear local state
+        }
+        clearAccessToken()
+        set({ user: null, error: null })
+      },
+
       updateCredits: (credits: number) =>
         set((state) => ({
           user: state.user ? { ...state.user, credits } : null,
         })),
+
+      clearError: () => set({ error: null }),
+
+      // Legacy token-based auth for admin tokens
+      loginWithToken: async (token: string) => {
+        set({ isLoading: true, error: null })
+        try {
+          // Store the token
+          setAccessToken(token)
+
+          // Try to fetch user profile
+          const response = await api.getCurrentUser()
+
+          const user: User = {
+            token,
+            email: response.user.email,
+            role: response.user.role,
+            credits: response.user.credits,
+            display_name: response.user.display_name,
+            total_jobs_created: response.user.total_jobs_created,
+            total_jobs_completed: response.user.total_jobs_completed,
+          }
+
+          set({ user, isLoading: false })
+          return true
+        } catch {
+          // Token validation failed - clear token and reject
+          clearAccessToken()
+          set({
+            user: null,
+            isLoading: false,
+            error: 'Invalid token or server unavailable'
+          })
+          return false
+        }
+      },
     }),
     {
       name: "nomad-karaoke-auth",
+      partialize: (state) => ({ user: state.user }),
     },
   ),
 )
+
+// Initialize auth state on page load
+if (typeof window !== 'undefined') {
+  const token = getAccessToken()
+  if (token) {
+    // Fetch fresh user data on page load
+    useAuth.getState().fetchUser()
+  }
+}

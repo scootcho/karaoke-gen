@@ -1,0 +1,819 @@
+"""
+User and authentication API routes.
+
+Handles:
+- Magic link authentication (send, verify)
+- Session management (logout)
+- User profile and credits
+- Stripe checkout and webhooks
+- Admin user management
+"""
+import logging
+from typing import Optional, Tuple
+from fastapi import APIRouter, HTTPException, Depends, Request, Header
+from pydantic import BaseModel, EmailStr
+
+from backend.models.user import (
+    UserRole,
+    UserPublic,
+    SendMagicLinkRequest,
+    SendMagicLinkResponse,
+    VerifyMagicLinkResponse,
+    AddCreditsRequest,
+    AddCreditsResponse,
+    UserListResponse,
+    BetaTesterStatus,
+    BetaTesterEnrollRequest,
+    BetaTesterEnrollResponse,
+    BetaFeedbackRequest,
+    BetaFeedbackResponse,
+    BetaTesterFeedback,
+)
+from backend.services.user_service import get_user_service, UserService
+from backend.services.email_service import get_email_service, EmailService
+from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
+from backend.api.dependencies import require_admin
+from backend.services.auth_service import UserType
+
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+# =============================================================================
+# Request/Response Models
+# =============================================================================
+
+class CreateCheckoutRequest(BaseModel):
+    """Request to create a Stripe checkout session."""
+    package_id: str
+    email: EmailStr
+
+
+class CreateCheckoutResponse(BaseModel):
+    """Response with checkout URL."""
+    status: str
+    checkout_url: str
+    message: str
+
+
+class CreditPackage(BaseModel):
+    """Credit package information."""
+    id: str
+    credits: int
+    price_cents: int
+    name: str
+    description: str
+
+
+class CreditPackagesResponse(BaseModel):
+    """Response listing available credit packages."""
+    packages: list[CreditPackage]
+
+
+class UserProfileResponse(BaseModel):
+    """Response with user profile."""
+    user: UserPublic
+    has_session: bool
+
+
+class LogoutResponse(BaseModel):
+    """Response after logout."""
+    status: str
+    message: str
+
+
+# =============================================================================
+# Magic Link Authentication
+# =============================================================================
+
+@router.post("/auth/magic-link", response_model=SendMagicLinkResponse)
+async def send_magic_link(
+    request: SendMagicLinkRequest,
+    http_request: Request,
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Send a magic link email for passwordless authentication.
+
+    The user will receive an email with a link that logs them in.
+    Links expire after 15 minutes and can only be used once.
+    """
+    email = request.email.lower()
+
+    # Get client info for security logging
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
+    # Create magic link token
+    magic_link = user_service.create_magic_link(
+        email,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    # Send email
+    sent = email_service.send_magic_link(email, magic_link.token)
+
+    if not sent:
+        logger.error(f"Failed to send magic link email to {email}")
+        # Don't reveal failure to prevent email enumeration
+        # Still return success
+
+    return SendMagicLinkResponse(
+        status="success",
+        message="If this email is registered, you will receive a sign-in link shortly."
+    )
+
+
+@router.get("/auth/verify", response_model=VerifyMagicLinkResponse)
+async def verify_magic_link(
+    token: str,
+    http_request: Request,
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Verify a magic link token and create a session.
+
+    Returns a session token that should be stored and used for subsequent requests.
+    """
+    # Get client info
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
+    # Check if this is a first login BEFORE verification (which sets last_login_at)
+    # We need to get the user's state before verify_magic_link updates it
+    from backend.services.user_service import MAGIC_LINKS_COLLECTION
+    magic_link_doc = user_service.db.collection(MAGIC_LINKS_COLLECTION).document(token).get()
+    is_first_login = False
+    if magic_link_doc.exists:
+        magic_link_data = magic_link_doc.to_dict()
+        pre_verify_user = user_service.get_user(magic_link_data.get('email', ''))
+        if pre_verify_user:
+            is_first_login = pre_verify_user.total_jobs_created == 0 and not pre_verify_user.last_login_at
+
+    # Verify the magic link
+    success, user, message = user_service.verify_magic_link(token)
+
+    if not success or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    # Create session
+    session = user_service.create_session(
+        user.email,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    # Send welcome email to first-time users
+    if is_first_login:
+        email_service.send_welcome_email(user.email, user.credits)
+
+    # Return user info
+    user_public = UserPublic(
+        email=user.email,
+        role=user.role,
+        credits=user.credits,
+        display_name=user.display_name,
+        total_jobs_created=user.total_jobs_created,
+        total_jobs_completed=user.total_jobs_completed,
+    )
+
+    return VerifyMagicLinkResponse(
+        status="success",
+        session_token=session.token,
+        user=user_public,
+        message="Successfully signed in"
+    )
+
+
+@router.post("/auth/logout", response_model=LogoutResponse)
+async def logout(
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Logout and invalidate the current session.
+    """
+    if not authorization:
+        return LogoutResponse(status="success", message="Already logged out")
+
+    # Extract token from "Bearer <token>"
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+
+    user_service.revoke_session(token)
+
+    return LogoutResponse(status="success", message="Successfully logged out")
+
+
+# =============================================================================
+# User Profile
+# =============================================================================
+
+@router.get("/me", response_model=UserProfileResponse)
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Get the current user's profile.
+
+    Requires a valid session token.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Extract token
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+
+    # Validate session
+    valid, user, message = user_service.validate_session(token)
+
+    if not valid or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    user_public = UserPublic(
+        email=user.email,
+        role=user.role,
+        credits=user.credits,
+        display_name=user.display_name,
+        total_jobs_created=user.total_jobs_created,
+        total_jobs_completed=user.total_jobs_completed,
+    )
+
+    return UserProfileResponse(user=user_public, has_session=True)
+
+
+# =============================================================================
+# Credit Packages & Checkout
+# =============================================================================
+
+@router.get("/credits/packages", response_model=CreditPackagesResponse)
+async def list_credit_packages():
+    """
+    List available credit packages for purchase.
+
+    No authentication required - this is public information.
+    """
+    packages = [
+        CreditPackage(
+            id=pkg_id,
+            credits=pkg["credits"],
+            price_cents=pkg["price_cents"],
+            name=pkg["name"],
+            description=pkg["description"],
+        )
+        for pkg_id, pkg in CREDIT_PACKAGES.items()
+    ]
+
+    return CreditPackagesResponse(packages=packages)
+
+
+@router.post("/credits/checkout", response_model=CreateCheckoutResponse)
+async def create_checkout(
+    request: CreateCheckoutRequest,
+    stripe_service: StripeService = Depends(get_stripe_service),
+):
+    """
+    Create a Stripe checkout session for purchasing credits.
+
+    Returns a URL to redirect the user to Stripe's hosted checkout page.
+    No authentication required - email is provided in the request.
+    """
+    if not stripe_service.is_configured():
+        raise HTTPException(status_code=503, detail="Payment processing is not available")
+
+    success, checkout_url, message = stripe_service.create_checkout_session(
+        package_id=request.package_id,
+        user_email=request.email,
+    )
+
+    if not success or not checkout_url:
+        raise HTTPException(status_code=400, detail=message)
+
+    return CreateCheckoutResponse(
+        status="success",
+        checkout_url=checkout_url,
+        message=message,
+    )
+
+
+# =============================================================================
+# Stripe Webhooks
+# =============================================================================
+
+@router.post("/webhooks/stripe")
+async def stripe_webhook(
+    request: Request,
+    stripe_signature: str = Header(None, alias="stripe-signature"),
+    stripe_service: StripeService = Depends(get_stripe_service),
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Handle Stripe webhook events.
+
+    This endpoint receives events from Stripe about payment status.
+    It verifies the webhook signature and processes the event.
+    """
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe signature")
+
+    # Get raw body for signature verification
+    payload = await request.body()
+
+    # Verify signature
+    valid, event, message = stripe_service.verify_webhook_signature(payload, stripe_signature)
+
+    if not valid:
+        logger.warning(f"Invalid Stripe webhook signature: {message}")
+        raise HTTPException(status_code=400, detail=message)
+
+    # Handle the event
+    event_type = event.get("type")
+    logger.info(f"Received Stripe webhook: {event_type}")
+
+    if event_type == "checkout.session.completed":
+        session = event["data"]["object"]
+        session_id = session.get("id")
+
+        # Idempotency check: Skip if this session was already processed
+        if session_id and user_service.is_stripe_session_processed(session_id):
+            logger.info(f"Skipping already processed session: {session_id}")
+            return {"status": "received", "type": event_type, "note": "already_processed"}
+
+        # Process the completed checkout
+        success, user_email, credits, _ = stripe_service.handle_checkout_completed(session)
+
+        if success and user_email and credits > 0:
+            # Add credits to user account
+            ok, new_balance, credit_msg = user_service.add_credits(
+                email=user_email,
+                amount=credits,
+                reason="stripe_purchase",
+                stripe_session_id=session_id,
+            )
+
+            if ok:
+                # Send confirmation email
+                email_service.send_credits_added(user_email, credits, new_balance)
+                logger.info(f"Added {credits} credits to {user_email}, new balance: {new_balance}")
+            else:
+                logger.error(f"Failed to add credits: {credit_msg}")
+
+    elif event_type == "checkout.session.expired":
+        logger.info(f"Checkout session expired: {event['data']['object'].get('id')}")
+
+    elif event_type == "payment_intent.payment_failed":
+        logger.warning(f"Payment failed: {event['data']['object'].get('id')}")
+
+    # Return 200 to acknowledge receipt (Stripe will retry on non-2xx)
+    return {"status": "received", "type": event_type}
+
+
+# =============================================================================
+# Beta Tester Program
+# =============================================================================
+
+BETA_TESTER_FREE_CREDITS = 1  # Number of free credits for beta testers
+
+
+@router.post("/beta/enroll", response_model=BetaTesterEnrollResponse)
+async def enroll_beta_tester(
+    request: BetaTesterEnrollRequest,
+    http_request: Request,
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Enroll as a beta tester to receive free karaoke credits.
+
+    Requirements:
+    - Accept that there may be work to review/correct lyrics
+    - Promise to provide feedback after using the tool
+
+    Returns free credits and optionally a session token for new users.
+    """
+    email = request.email.lower()
+
+    # Validate acceptance
+    if not request.accept_corrections_work:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept that you may need to review/correct lyrics"
+        )
+
+    if len(request.promise_text.strip()) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Please write a sentence confirming your promise to provide feedback"
+        )
+
+    # Get or create user
+    user = user_service.get_or_create_user(email)
+
+    # Check if already enrolled as beta tester
+    if user.is_beta_tester:
+        raise HTTPException(
+            status_code=400,
+            detail="You are already enrolled in the beta program"
+        )
+
+    # Get client info
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
+    # Enroll as beta tester
+    from datetime import datetime
+    user_service.update_user(
+        email,
+        is_beta_tester=True,
+        beta_tester_status=BetaTesterStatus.ACTIVE.value,
+        beta_enrolled_at=datetime.utcnow(),
+        beta_promise_text=request.promise_text.strip(),
+    )
+
+    # Add free credits
+    _, new_balance, _ = user_service.add_credits(
+        email=email,
+        amount=BETA_TESTER_FREE_CREDITS,
+        reason="beta_tester_enrollment",
+    )
+
+    # Create session for the user (so they can start using the service immediately)
+    session = user_service.create_session(email, ip_address=ip_address, user_agent=user_agent)
+
+    # Send welcome email
+    email_service.send_beta_welcome_email(email, BETA_TESTER_FREE_CREDITS)
+
+    logger.info(f"Beta tester enrolled: {email}, granted {BETA_TESTER_FREE_CREDITS} credits")
+
+    return BetaTesterEnrollResponse(
+        status="success",
+        message=f"Welcome to the beta program! You have {new_balance} free credits.",
+        credits_granted=BETA_TESTER_FREE_CREDITS,
+        session_token=session.token,
+    )
+
+
+@router.post("/beta/feedback", response_model=BetaFeedbackResponse)
+async def submit_beta_feedback(
+    request: BetaFeedbackRequest,
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Submit feedback as a beta tester.
+
+    Requires authentication. Updates beta tester status to completed.
+    May grant bonus credits for detailed feedback.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Extract token
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+
+    # Validate session
+    valid, user, message = user_service.validate_session(token)
+    if not valid or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    # Check if user is a beta tester
+    if not user.is_beta_tester:
+        raise HTTPException(
+            status_code=400,
+            detail="Only beta testers can submit feedback through this endpoint"
+        )
+
+    # Check if already completed feedback
+    if user.beta_tester_status == BetaTesterStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="You have already submitted feedback. Thank you!"
+        )
+
+    # Save feedback to Firestore
+    import uuid
+
+    feedback = BetaTesterFeedback(
+        id=str(uuid.uuid4()),
+        user_email=user.email,
+        job_id=request.job_id,
+        overall_rating=request.overall_rating,
+        ease_of_use_rating=request.ease_of_use_rating,
+        lyrics_accuracy_rating=request.lyrics_accuracy_rating,
+        correction_experience_rating=request.correction_experience_rating,
+        what_went_well=request.what_went_well,
+        what_could_improve=request.what_could_improve,
+        additional_comments=request.additional_comments,
+        would_recommend=request.would_recommend,
+        would_use_again=request.would_use_again,
+        submitted_via="web",
+    )
+
+    # Save to Firestore
+    user_service.db.collection("beta_feedback").document(feedback.id).set(
+        feedback.model_dump(mode='json')
+    )
+
+    # Update user status
+    user_service.update_user(
+        user.email,
+        beta_tester_status=BetaTesterStatus.COMPLETED.value,
+    )
+
+    # Calculate bonus credits for detailed feedback
+    bonus_credits = 0
+    has_detailed_feedback = (
+        (request.what_went_well and len(request.what_went_well) > 50) or
+        (request.what_could_improve and len(request.what_could_improve) > 50) or
+        (request.additional_comments and len(request.additional_comments) > 50)
+    )
+
+    if has_detailed_feedback:
+        # Grant bonus credit for detailed feedback
+        bonus_credits = 1
+        user_service.add_credits(
+            email=user.email,
+            amount=bonus_credits,
+            reason="beta_feedback_bonus",
+        )
+
+    logger.info(f"Beta feedback received from {user.email}, bonus: {bonus_credits}")
+
+    return BetaFeedbackResponse(
+        status="success",
+        message="Thank you for your feedback!" + (
+            f" You earned {bonus_credits} bonus credit for your detailed response!"
+            if bonus_credits > 0 else ""
+        ),
+        bonus_credits=bonus_credits,
+    )
+
+
+@router.get("/beta/feedback-form")
+async def get_feedback_form_data(
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Get data needed to show the feedback form.
+
+    Returns whether the user needs to submit feedback and any job context.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+    valid, user, message = user_service.validate_session(token)
+
+    if not valid or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    return {
+        "is_beta_tester": user.is_beta_tester,
+        "beta_status": user.beta_tester_status,
+        "needs_feedback": (
+            user.is_beta_tester and
+            user.beta_tester_status == BetaTesterStatus.PENDING_FEEDBACK.value
+        ),
+        "can_submit_feedback": (
+            user.is_beta_tester and
+            user.beta_tester_status != BetaTesterStatus.COMPLETED.value
+        ),
+    }
+
+
+# =============================================================================
+# Admin Endpoints
+# =============================================================================
+
+@router.get("/admin/users", response_model=UserListResponse)
+async def list_users(
+    limit: int = 100,
+    include_inactive: bool = False,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    List all users (admin only).
+    """
+    users = user_service.list_users(limit=limit, include_inactive=include_inactive)
+
+    users_public = [
+        UserPublic(
+            email=u.email,
+            role=u.role,
+            credits=u.credits,
+            display_name=u.display_name,
+            total_jobs_created=u.total_jobs_created,
+            total_jobs_completed=u.total_jobs_completed,
+        )
+        for u in users
+    ]
+
+    return UserListResponse(users=users_public, total=len(users_public))
+
+
+@router.post("/admin/credits", response_model=AddCreditsResponse)
+async def add_credits_to_user(
+    request: AddCreditsRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Add credits to a user's account (admin only).
+
+    Use this to grant free credits to users, e.g., for beta testers or promotions.
+    """
+    admin_token, _, _ = auth_data
+
+    # TODO: Enhance auth system to track admin email identity for better audit trails.
+    # Current token-based admin auth doesn't include email identity.
+    # For now, we log the token prefix for traceability.
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success, new_balance, message = user_service.add_credits(
+        email=request.email,
+        amount=request.amount,
+        reason=request.reason,
+        admin_email=admin_id,
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Send notification email
+    if request.amount > 0:
+        email_service.send_credits_added(request.email, request.amount, new_balance)
+
+    return AddCreditsResponse(
+        status="success",
+        email=request.email,
+        credits_added=request.amount,
+        new_balance=new_balance,
+        message=message,
+    )
+
+
+@router.post("/admin/users/{email}/disable")
+async def disable_user(
+    email: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Disable a user account (admin only).
+    """
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.disable_user(email, admin_email=admin_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"status": "success", "message": f"User {email} has been disabled"}
+
+
+@router.post("/admin/users/{email}/enable")
+async def enable_user(
+    email: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Enable a user account (admin only).
+    """
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.enable_user(email, admin_email=admin_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"status": "success", "message": f"User {email} has been enabled"}
+
+
+@router.post("/admin/users/{email}/role")
+async def set_user_role(
+    email: str,
+    role: UserRole,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Set a user's role (admin only).
+    """
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.set_user_role(email, role, admin_email=admin_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"status": "success", "message": f"User {email} role set to {role.value}"}
+
+
+@router.get("/admin/beta/feedback")
+async def list_beta_feedback(
+    limit: int = 50,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    List all beta tester feedback (admin only).
+    """
+    from google.cloud import firestore
+
+    query = user_service.db.collection("beta_feedback")
+    query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+    query = query.limit(limit)
+
+    docs = query.stream()
+    feedback_list = [doc.to_dict() for doc in docs]
+
+    return {
+        "feedback": feedback_list,
+        "total": len(feedback_list),
+    }
+
+
+@router.get("/admin/beta/stats")
+async def get_beta_stats(
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Get beta tester program statistics (admin only).
+    """
+    from google.cloud.firestore_v1 import FieldFilter
+    from google.cloud.firestore_v1 import aggregation
+
+    # Count beta testers by status using efficient aggregation queries
+    users_collection = user_service.db.collection("users")
+
+    # Helper function to get count using aggregation
+    def get_count(query) -> int:
+        agg_query = aggregation.AggregationQuery(query)
+        agg_query.count(alias="count")
+        results = agg_query.get()
+        return results[0][0].value if results else 0
+
+    total_beta_testers = get_count(
+        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
+    )
+
+    active_testers = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active"))
+    )
+
+    pending_feedback = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback"))
+    )
+
+    completed_feedback = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed"))
+    )
+
+    # Get average ratings from feedback
+    feedback_docs = list(user_service.db.collection("beta_feedback").stream())
+
+    avg_overall = 0
+    avg_ease = 0
+    avg_accuracy = 0
+    avg_correction = 0
+
+    if feedback_docs:
+        total = len(feedback_docs)
+        for doc in feedback_docs:
+            data = doc.to_dict()
+            avg_overall += data.get("overall_rating", 0)
+            avg_ease += data.get("ease_of_use_rating", 0)
+            avg_accuracy += data.get("lyrics_accuracy_rating", 0)
+            avg_correction += data.get("correction_experience_rating", 0)
+
+        avg_overall = round(avg_overall / total, 2)
+        avg_ease = round(avg_ease / total, 2)
+        avg_accuracy = round(avg_accuracy / total, 2)
+        avg_correction = round(avg_correction / total, 2)
+
+    return {
+        "total_beta_testers": total_beta_testers,
+        "active_testers": active_testers,
+        "pending_feedback": pending_feedback,
+        "completed_feedback": completed_feedback,
+        "total_feedback_submissions": len(feedback_docs),
+        "average_ratings": {
+            "overall": avg_overall,
+            "ease_of_use": avg_ease,
+            "lyrics_accuracy": avg_accuracy,
+            "correction_experience": avg_correction,
+        },
+    }
