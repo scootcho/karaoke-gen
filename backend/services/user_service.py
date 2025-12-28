@@ -399,42 +399,65 @@ class UserService:
         """
         Deduct one credit from a user account.
 
+        Uses Firestore transaction to prevent race conditions.
+
         Returns:
             (success, remaining_credits, message)
         """
         try:
             email = email.lower()
-            user = self.get_user(email)
+            doc_ref = self.db.collection(USERS_COLLECTION).document(email)
 
-            if not user:
-                return False, 0, "User not found"
+            @firestore.transactional
+            def deduct_in_transaction(transaction):
+                """Atomically check and deduct credit."""
+                doc = doc_ref.get(transaction=transaction)
 
-            if user.credits <= 0:
-                return False, 0, "Insufficient credits"
+                if not doc.exists:
+                    return False, 0, "User not found"
 
-            # Create transaction record
-            transaction = CreditTransaction(
-                id=str(uuid.uuid4()),
-                amount=-1,
-                reason=reason,
-                job_id=job_id,
-            )
+                user_data = doc.to_dict()
+                current_credits = user_data.get('credits', 0)
 
-            # Add to transaction history
-            transactions = user.credit_transactions[-MAX_CREDIT_TRANSACTIONS + 1:]
-            transactions.append(transaction)
+                if current_credits <= 0:
+                    return False, 0, "Insufficient credits"
 
-            # Update user
-            new_balance = user.credits - 1
-            self.update_user(
-                email,
-                credits=new_balance,
-                credit_transactions=[t.model_dump(mode='json') for t in transactions],
-                total_jobs_created=user.total_jobs_created + 1
-            )
+                # Create transaction record
+                credit_txn = CreditTransaction(
+                    id=str(uuid.uuid4()),
+                    amount=-1,
+                    reason=reason,
+                    job_id=job_id,
+                )
 
-            logger.info(f"Deducted 1 credit from {email} for job {job_id}. Remaining: {new_balance}")
-            return True, new_balance, f"Credit deducted. {new_balance} remaining"
+                # Get existing transactions and add new one
+                existing_transactions = user_data.get('credit_transactions', [])
+                # Keep last N-1 transactions to make room for new one
+                transactions = existing_transactions[-(MAX_CREDIT_TRANSACTIONS - 1):]
+                transactions.append(credit_txn.model_dump(mode='json'))
+
+                # Calculate new values
+                new_balance = current_credits - 1
+                total_jobs = user_data.get('total_jobs_created', 0) + 1
+
+                # Update atomically within transaction
+                transaction.update(doc_ref, {
+                    'credits': new_balance,
+                    'credit_transactions': transactions,
+                    'total_jobs_created': total_jobs,
+                    'updated_at': datetime.utcnow()
+                })
+
+                return True, new_balance, f"Credit deducted. {new_balance} remaining"
+
+            # Execute the transaction
+            fs_transaction = self.db.transaction()
+            success, new_balance, message = deduct_in_transaction(fs_transaction)
+
+            if success:
+                logger.info(f"Deducted 1 credit from {email} for job {job_id}. Remaining: {new_balance}")
+
+            return success, new_balance, message
 
         except Exception as e:
             logger.error(f"Error deducting credit from {email}: {e}")
