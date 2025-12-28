@@ -136,7 +136,7 @@ class TestSessionTokenValidation:
         mock_user_service.validate_session.return_value = (True, mock_user, "Valid session")
 
         with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
-             patch('backend.services.auth_service.get_user_service', return_value=mock_user_service), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
              patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
             # Clear the cached instance to get fresh state
             import backend.services.auth_service
@@ -160,7 +160,7 @@ class TestSessionTokenValidation:
         mock_user_service.validate_session.return_value = (False, None, "Invalid session")
 
         with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
-             patch('backend.services.auth_service.get_user_service', return_value=mock_user_service), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
              patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
             import backend.services.auth_service
             backend.services.auth_service._auth_service = None
@@ -186,7 +186,7 @@ class TestSessionTokenValidation:
         mock_user_service.validate_session.return_value = (True, mock_user, "Valid session")
 
         with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
-             patch('backend.services.auth_service.get_user_service', return_value=mock_user_service), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
              patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
             import backend.services.auth_service
             backend.services.auth_service._auth_service = None
