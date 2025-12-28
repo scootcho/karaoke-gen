@@ -225,6 +225,22 @@ Default 5-minute timeout may not be enough for video encoding. Consider:
 
 Cloud Run service account needs `Secret Manager Secret Accessor` role. This is managed via Pulumi in `infrastructure/`.
 
+### Cloud Run Secret Mounting
+
+**Problem**: Secrets created in Secret Manager aren't automatically available as environment variables in Cloud Run. The IAM role grants *access*, but secrets must be explicitly *mounted*.
+
+**Wrong assumption**: "I added the secret to Secret Manager and gave the service account access, so the secret is available."
+
+**Reality**: Cloud Run needs `--set-secrets` in the deploy command:
+```bash
+gcloud run deploy service-name \
+  --set-secrets "ENV_VAR_NAME=secret-name:latest"
+```
+
+**Symptoms of missing mount**: Service silently falls back to defaults (e.g., email service uses console logging instead of SendGrid).
+
+**Solution**: Add all required secrets to the CI deploy command (`.github/workflows/ci.yml`). Manual `gcloud run services update` fixes are overwritten on next deploy.
+
 ### Vertex AI Authentication
 
 For Gemini via Vertex AI, use Application Default Credentials (ADC) rather than API keys:

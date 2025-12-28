@@ -174,7 +174,7 @@ Common status codes:
 - `404` - Job not found
 - `500` - Server error
 
-## User Authentication (PR #90)
+## User Authentication
 
 ### Send Magic Link
 

@@ -20,9 +20,9 @@
 | Instrumental selection | Working |
 | Multi-format encoding | Working |
 | Token-based auth | Working |
-| Magic link auth | In Progress (PR #90) |
-| Payment flow (Stripe) | In Progress (PR #90) |
-| Beta tester program | In Progress (PR #90) |
+| Magic link auth | Working |
+| Payment flow (Stripe) | Working |
+| Beta tester program | Working |
 | CI/CD self-hosted runner | Working (GCP) |
 
 ## Known Issues

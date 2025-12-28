@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional
 
 from backend.version import VERSION
 from backend.services.flacfetch_client import get_flacfetch_client
+from backend.services.email_service import get_email_service
+from backend.services.stripe_service import get_stripe_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -103,23 +105,42 @@ async def check_flacfetch_service_status() -> Dict[str, Any]:
 async def detailed_health_check() -> Dict[str, Any]:
     """
     Detailed health check including dependencies.
-    
+
     Use this to debug issues with Transmission, flacfetch service, etc.
     """
     transmission_status = check_transmission_status()
     flacfetch_status = await check_flacfetch_service_status()
-    
+
+    # Check email service
+    email_service = get_email_service()
+    email_status = {
+        "configured": email_service.is_configured(),
+        "provider": type(email_service.provider).__name__,
+    }
+
+    # Check Stripe service
+    stripe_service = get_stripe_service()
+    stripe_status = {
+        "configured": stripe_service.is_configured(),
+    }
+
     # Log for debugging
     if not transmission_status.get("available"):
         logger.warning(f"Local Transmission not available: {transmission_status.get('error')}")
     else:
         logger.info(f"Local Transmission available at {transmission_status.get('host')}:{transmission_status.get('port')}")
-    
+
     if flacfetch_status.get("configured") and not flacfetch_status.get("available"):
         logger.warning(f"Remote flacfetch service not available: {flacfetch_status.get('error')}")
     elif flacfetch_status.get("available"):
         logger.info(f"Remote flacfetch service healthy: {flacfetch_status.get('status')}")
-    
+
+    if not email_status["configured"]:
+        logger.warning("Email service not configured - magic links will not work")
+
+    if not stripe_status["configured"]:
+        logger.warning("Stripe service not configured - payments will not work")
+
     return {
         "status": "healthy",
         "service": "karaoke-gen-backend",
@@ -127,6 +148,10 @@ async def detailed_health_check() -> Dict[str, Any]:
         "dependencies": {
             "transmission_local": transmission_status,
             "flacfetch_remote": flacfetch_status,
+        },
+        "services": {
+            "email": email_status,
+            "stripe": stripe_status,
         }
     }
 
