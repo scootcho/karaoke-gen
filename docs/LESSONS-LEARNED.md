@@ -126,6 +126,19 @@ Migrated from Cloud Build to GitHub Actions for:
 - Better visibility
 - Faster feedback
 
+### Self-Hosted Runner on GCP
+
+GitHub-hosted runners have ~14GB disk, which caused failures during Docker builds. Solution: self-hosted runner on GCP with 200GB SSD.
+
+**Key learnings:**
+
+1. **GPG in startup scripts**: Always use `gpg --batch` for non-interactive execution
+2. **setup-python on self-hosted**: Needs Python in tool cache at `$RUNNER/_work/_tool/Python/<version>/x64/` with `x64.complete` marker
+3. **Debian vs Ubuntu**: PPAs don't work on Debian; use upstream repos (Temurin, NodeSource)
+4. **pyenv for Python**: More reliable than source builds or distro packages for specific versions
+
+See `docs/archive/2025-12-28-self-hosted-github-runner.md` for full details.
+
 ## Performance Observations
 
 | Operation | Duration |
