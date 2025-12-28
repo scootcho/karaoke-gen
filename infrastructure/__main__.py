@@ -612,6 +612,34 @@ ops_api_url_secret = secretmanager.Secret(
     ),
 )
 
+# ==================== Payment & Email Secrets ====================
+# Stripe API Secret Key (for checkout sessions and webhooks)
+stripe_secret_key = secretmanager.Secret(
+    "stripe-secret-key",
+    secret_id="stripe-secret-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Stripe Webhook Secret (for verifying webhook signatures)
+stripe_webhook_secret = secretmanager.Secret(
+    "stripe-webhook-secret",
+    secret_id="stripe-webhook-secret",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# SendGrid API Key (for transactional emails: magic links, confirmations)
+sendgrid_api_key = secretmanager.Secret(
+    "sendgrid-api-key",
+    secret_id="sendgrid-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
 # Create Cloud Run Domain Mapping
 # Maps api.nomadkaraoke.com to the karaoke-backend service
 domain_mapping = cloudrun.DomainMapping(

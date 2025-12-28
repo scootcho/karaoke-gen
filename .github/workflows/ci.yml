@@ -31,6 +31,7 @@ jobs:
       package: ${{ steps.filter.outputs.package }}
       infra: ${{ steps.filter.outputs.infra }}
       deps: ${{ steps.filter.outputs.deps }}
+      buy_site: ${{ steps.filter.outputs.buy_site }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +51,8 @@ jobs:
               - 'infrastructure/**'
             deps:
               - 'poetry.lock'
+            buy_site:
+              - 'buy-site/**'
 
       - name: Summary
         run: |
@@ -61,6 +64,7 @@ jobs:
           echo "| Package | ${{ steps.filter.outputs.package }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Infrastructure | ${{ steps.filter.outputs.infra }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Dependencies | ${{ steps.filter.outputs.deps }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Buy Site | ${{ steps.filter.outputs.buy_site }} |" >> $GITHUB_STEP_SUMMARY
 
   # ============================================
   # FRONTEND TESTS (PRs only - main skips tests)
@@ -623,6 +627,38 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy-buy-site:
+    name: "Deploy - Buy Site (Cloudflare Pages)"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: buy-site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: buy-site
+        run: npm ci
+
+      - name: Build buy-site (Next.js static export)
+        working-directory: buy-site
+        env:
+          NEXT_PUBLIC_API_URL: https://api.nomadkaraoke.com
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy buy-site/out --project-name=nomadkaraoke-buy --branch=main
 
   deploy-backend:
     name: "Deploy - Backend (Cloud Run)"
