@@ -17,7 +17,7 @@ interface JobSubmissionProps {
 }
 
 export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
-  const [activeTab, setActiveTab] = useState("upload")
+  const [activeTab, setActiveTab] = useState("search")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -147,28 +147,31 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <TabsList className="grid w-full grid-cols-3 bg-slate-800 h-auto">
-        <TabsTrigger value="upload" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+      <TabsList className="grid w-full grid-cols-3 h-auto" style={{ backgroundColor: 'var(--secondary)' }}>
+        <TabsTrigger value="search" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
+          <Music className="w-4 h-4 shrink-0" />
+          <span className="truncate">Search</span>
+        </TabsTrigger>
+        <TabsTrigger value="upload" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
           <Upload className="w-4 h-4 shrink-0" />
           <span className="truncate">Upload</span>
         </TabsTrigger>
-        <TabsTrigger value="url" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+        <TabsTrigger value="url" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm" style={{ color: 'var(--text)' }}>
           <Youtube className="w-4 h-4 shrink-0" />
           <span className="truncate">URL</span>
-        </TabsTrigger>
-        <TabsTrigger value="search" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
-          <Music className="w-4 h-4 shrink-0" />
-          <span className="truncate">Search</span>
         </TabsTrigger>
       </TabsList>
 
       <TabsContent value="upload" className="mt-4">
         <form onSubmit={handleUploadSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="audio-file" className="text-slate-200">Audio File</Label>
+            <Label htmlFor="audio-file" style={{ color: 'var(--text)' }}>Audio File</Label>
             <div
-              className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer
-                ${uploadFile ? "border-amber-500/50 bg-amber-500/5" : "border-slate-700 hover:border-slate-600 bg-slate-800/50"}`}
+              className="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer"
+              style={{
+                borderColor: uploadFile ? 'rgb(245 158 11 / 0.5)' : 'var(--card-border)',
+                backgroundColor: uploadFile ? 'rgb(245 158 11 / 0.05)' : 'var(--secondary)',
+              }}
             >
               <Input
                 id="audio-file"
@@ -178,16 +181,16 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 disabled={isSubmitting}
               />
-              <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
+              <Upload className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
               {uploadFile ? (
                 <div>
-                  <p className="font-medium text-white">{uploadFile.name}</p>
-                  <p className="text-sm text-slate-400">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                  <p className="font-medium" style={{ color: 'var(--text)' }}>{uploadFile.name}</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
               ) : (
                 <div>
-                  <p className="font-medium text-slate-300 mb-1">Click to upload</p>
-                  <p className="text-sm text-slate-500">MP3, WAV, FLAC, M4A, or OGG</p>
+                  <p className="font-medium mb-1" style={{ color: 'var(--text)' }}>Click to upload</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>MP3, WAV, FLAC, M4A, or OGG</p>
                 </div>
               )}
             </div>
@@ -195,31 +198,31 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
-              <Label htmlFor="upload-artist" className="text-slate-200">Artist</Label>
+              <Label htmlFor="upload-artist" style={{ color: 'var(--text)' }}>Artist</Label>
               <Input
                 id="upload-artist"
                 placeholder="Artist name"
                 value={uploadArtist}
                 onChange={(e) => setUploadArtist(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="upload-title" className="text-slate-200">Title</Label>
+              <Label htmlFor="upload-title" style={{ color: 'var(--text)' }}>Title</Label>
               <Input
                 id="upload-title"
                 placeholder="Song title"
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
           </div>
 
           {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t border-slate-700">
+          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <ThemeSelector
               value={selectedTheme}
               onChange={setSelectedTheme}
@@ -256,16 +259,17 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       <TabsContent value="url" className="mt-4">
         <form onSubmit={handleUrlSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="youtube-url" className="text-slate-200">YouTube URL</Label>
+            <Label htmlFor="youtube-url" style={{ color: 'var(--text)' }}>YouTube URL</Label>
             <div className="relative">
-              <Youtube className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Youtube className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
               <Input
                 id="youtube-url"
                 type="url"
                 placeholder="https://youtube.com/watch?v=..."
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
-                className="pl-10 bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="pl-10"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
                 disabled={isSubmitting}
               />
             </div>
@@ -273,31 +277,31 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
-              <Label htmlFor="youtube-artist" className="text-slate-200">Artist (optional)</Label>
+              <Label htmlFor="youtube-artist" style={{ color: 'var(--text)' }}>Artist (optional)</Label>
               <Input
                 id="youtube-artist"
                 placeholder="Auto-detected"
                 value={youtubeArtist}
                 onChange={(e) => setYoutubeArtist(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="youtube-title" className="text-slate-200">Title (optional)</Label>
+              <Label htmlFor="youtube-title" style={{ color: 'var(--text)' }}>Title (optional)</Label>
               <Input
                 id="youtube-title"
                 placeholder="Auto-detected"
                 value={youtubeTitle}
                 onChange={(e) => setYoutubeTitle(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
           </div>
 
           {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t border-slate-700">
+          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <ThemeSelector
               value={selectedTheme}
               onChange={setSelectedTheme}
@@ -335,31 +339,31 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         <form onSubmit={handleSearchSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
-              <Label htmlFor="search-artist" className="text-slate-200">Artist</Label>
+              <Label htmlFor="search-artist" style={{ color: 'var(--text)' }}>Artist</Label>
               <Input
                 id="search-artist"
                 placeholder="Artist name"
                 value={searchArtist}
                 onChange={(e) => setSearchArtist(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="search-title" className="text-slate-200">Title</Label>
+              <Label htmlFor="search-title" style={{ color: 'var(--text)' }}>Title</Label>
               <Input
                 id="search-title"
                 placeholder="Song title"
                 value={searchTitle}
                 onChange={(e) => setSearchTitle(e.target.value)}
                 disabled={isSubmitting}
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
               />
             </div>
           </div>
 
           {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t border-slate-700">
+          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <ThemeSelector
               value={selectedTheme}
               onChange={setSelectedTheme}
