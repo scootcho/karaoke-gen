@@ -74,12 +74,21 @@ describe('AuthStatus', () => {
     })
     render(<AuthStatus />)
 
-    // Open the dropdown menu
-    fireEvent.click(screen.getByRole('button'))
+    // Wait for component to mount, then open the dropdown menu
+    const menuButton = await screen.findByRole('button')
+    fireEvent.click(menuButton)
 
-    // Click Sign Out
-    const signOutButton = await screen.findByText('Sign Out')
-    fireEvent.click(signOutButton)
+    // Wait for dropdown to open and find Sign Out in the document (portaled content)
+    await waitFor(() => {
+      const signOutButton = document.querySelector('[data-slot="dropdown-menu-item"]')
+      expect(signOutButton).toBeTruthy()
+    })
+
+    // Find and click Sign Out
+    const menuItems = document.querySelectorAll('[data-slot="dropdown-menu-item"]')
+    const signOutItem = Array.from(menuItems).find(item => item.textContent?.includes('Sign Out'))
+    expect(signOutItem).toBeTruthy()
+    fireEvent.click(signOutItem!)
 
     await waitFor(() => {
       expect(mockLogout).toHaveBeenCalled()
@@ -95,12 +104,21 @@ describe('AuthStatus', () => {
     })
     render(<AuthStatus onAuthChange={mockOnAuthChange} />)
 
-    // Open the dropdown menu
-    fireEvent.click(screen.getByRole('button'))
+    // Wait for component to mount, then open the dropdown menu
+    const menuButton = await screen.findByRole('button')
+    fireEvent.click(menuButton)
 
-    // Click Sign Out
-    const signOutButton = await screen.findByText('Sign Out')
-    fireEvent.click(signOutButton)
+    // Wait for dropdown to open and find Sign Out in the document (portaled content)
+    await waitFor(() => {
+      const signOutButton = document.querySelector('[data-slot="dropdown-menu-item"]')
+      expect(signOutButton).toBeTruthy()
+    })
+
+    // Find and click Sign Out
+    const menuItems = document.querySelectorAll('[data-slot="dropdown-menu-item"]')
+    const signOutItem = Array.from(menuItems).find(item => item.textContent?.includes('Sign Out'))
+    expect(signOutItem).toBeTruthy()
+    fireEvent.click(signOutItem!)
 
     await waitFor(() => {
       expect(mockOnAuthChange).toHaveBeenCalled()
