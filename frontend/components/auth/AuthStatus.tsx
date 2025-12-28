@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { User, LogOut, CreditCard, Coins } from "lucide-react"
+import { User, LogOut, CreditCard, Coins, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -61,7 +61,7 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="text-slate-300 hover:text-white flex items-center gap-2"
+            className="text-slate-300 hover:text-white flex items-center gap-2 min-h-[40px] px-2 sm:px-3"
           >
             <User className="w-4 h-4" />
             <span className="hidden sm:inline max-w-[150px] truncate">
@@ -116,10 +116,10 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
         variant="ghost"
         size="sm"
         onClick={() => setShowAuthDialog(true)}
-        className="text-blue-400 hover:text-blue-300"
+        className="text-amber-400 hover:text-amber-300 min-h-[40px] px-2 sm:px-3"
       >
-        <User className="w-4 h-4 mr-2" />
-        Sign In
+        <KeyRound className="w-4 h-4 sm:mr-2" />
+        <span className="hidden sm:inline">Login</span>
       </Button>
       <AuthDialog
         open={showAuthDialog}
