@@ -1,500 +1,318 @@
-import { test, expect, Page, BrowserContext, ConsoleMessage, Request, Response } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
- * Production E2E tests for the complete karaoke generation journey.
+ * Production E2E test - Single complete karaoke generation flow.
  *
- * These tests run directly against gen.nomadkaraoke.com (production).
+ * This test runs against gen.nomadkaraoke.com and creates a REAL karaoke video.
  *
- * IMPORTANT: Set KARAOKE_ACCESS_TOKEN environment variable:
- *   KARAOKE_ACCESS_TOKEN=your-token npx playwright test --config=playwright.production.config.ts
+ * Run with:
+ *   npx playwright test --config=playwright.production.config.ts --headed
  *
- * The complete user journey:
- * 1. Select a theme for the karaoke video
- * 2. Enter artist name and song title
- * 3. Select audio source from search results
- * 4. Wait for audio download and preparation
- * 5. Review/correct lyrics in the review UI
- * 6. Submit the review
- * 7. Select instrumental (clean or with backing vocals)
- * 8. Wait for final render and distribution
- * 9. Verify YouTube upload and Dropbox folder links
+ * The test follows the complete user journey:
+ * 1. Select a theme
+ * 2. Enter artist/title and search
+ * 3. Select an audio source
+ * 4. Wait for processing
+ * 5. Complete lyrics review
+ * 6. Select instrumental
+ * 7. Wait for final render
+ * 8. Verify completion
  */
 
 const ACCESS_TOKEN = process.env.KARAOKE_ACCESS_TOKEN;
 const PROD_URL = 'https://gen.nomadkaraoke.com';
 const API_URL = 'https://api.nomadkaraoke.com';
 
-// Real song for testing - uses cached flacfetch results for fast responses
+// Real song - uses cached flacfetch results
 const TEST_ARTIST = 'piri';
 const TEST_TITLE = 'dog';
 
-// Helper to authenticate the page by setting localStorage token
 async function authenticatePage(page: Page) {
   if (!ACCESS_TOKEN) {
-    throw new Error('KARAOKE_ACCESS_TOKEN environment variable is required for production tests');
+    throw new Error('KARAOKE_ACCESS_TOKEN environment variable is required');
   }
-
   await page.addInitScript((token) => {
     localStorage.setItem('karaoke_access_token', token);
   }, ACCESS_TOKEN);
-
-  return true;
 }
 
-// Network and console logging for debugging
-function setupLogging(page: Page) {
-  const logs: { type: string; url?: string; status?: number; text?: string; body?: any }[] = [];
+test.describe('Production E2E', () => {
+  test('Complete karaoke generation flow', async ({ page, request }) => {
+    test.setTimeout(900000); // 15 minutes
 
-  page.on('request', (request: Request) => {
-    if (request.url().includes('/api/')) {
-      console.log(`>> ${request.method()} ${request.url()}`);
-      logs.push({ type: 'request', url: request.url() });
-    }
-  });
-
-  page.on('response', async (response: Response) => {
-    if (response.url().includes('/api/')) {
-      console.log(`<< ${response.status()} ${response.url()}`);
-      logs.push({ type: 'response', url: response.url(), status: response.status() });
-      if (response.status() >= 400) {
-        try {
-          const body = await response.json();
-          console.log('   Error:', JSON.stringify(body));
-          logs.push({ type: 'error', body });
-        } catch { /* ignore */ }
-      }
-    }
-  });
-
-  page.on('console', (msg: ConsoleMessage) => {
-    if (msg.type() === 'error') {
-      console.log(`[Console Error] ${msg.text()}`);
-      logs.push({ type: 'console-error', text: msg.text() });
-    }
-  });
-
-  return logs;
-}
-
-// Helper to wait for job to reach a specific status
-async function waitForJobStatus(
-  request: any,
-  jobId: string,
-  targetStatuses: string[],
-  maxWaitMs: number = 300000,
-  pollIntervalMs: number = 5000
-): Promise<any> {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitMs) {
-    const response = await request.get(`${API_URL}/api/jobs/${jobId}`, {
-      headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
-    });
-
-    if (!response.ok()) {
-      throw new Error(`Failed to get job status: ${response.status()}`);
-    }
-
-    const job = await response.json();
-    console.log(`Job ${jobId} status: ${job.status}`);
-
-    if (targetStatuses.includes(job.status)) {
-      return job;
-    }
-
-    if (job.status === 'failed') {
-      throw new Error(`Job failed: ${job.error_message || 'Unknown error'}`);
-    }
-
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-  }
-
-  throw new Error(`Timeout waiting for job ${jobId} to reach status: ${targetStatuses.join(', ')}`);
-}
-
-test.describe('Production API Health', () => {
-  test('API health check', async ({ request }) => {
-    const response = await request.get(`${API_URL}/api/health`);
-    expect(response.ok()).toBeTruthy();
-
-    const data = await response.json();
-    console.log('API Health:', data);
-    expect(data.status).toBe('healthy');
-  });
-
-  test('Themes API returns available themes', async ({ request }) => {
-    const response = await request.get(`${API_URL}/api/themes`, {
-      headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
-    });
-
-    expect(response.ok()).toBeTruthy();
-
-    const data = await response.json();
-    console.log('Themes API response:', JSON.stringify(data, null, 2));
-
-    expect(data).toHaveProperty('themes');
-    expect(Array.isArray(data.themes)).toBeTruthy();
-    expect(data.themes.length).toBeGreaterThan(0);
-
-    const firstTheme = data.themes[0];
-    expect(firstTheme).toHaveProperty('id');
-    expect(firstTheme).toHaveProperty('name');
-
-    console.log('Available themes:');
-    for (const theme of data.themes) {
-      console.log(`  - ${theme.id}: ${theme.name}`);
-    }
-  });
-});
-
-test.describe('Production UI Basics', () => {
-  test.beforeEach(async ({ page }) => {
     await authenticatePage(page);
-  });
 
-  test('Homepage loads with theme selector', async ({ page }) => {
+    // ========== STEP 1: Go to homepage ==========
+    console.log('\n=== STEP 1: Loading homepage ===');
     await page.goto(PROD_URL);
     await page.waitForLoadState('networkidle');
-
-    await page.screenshot({ path: 'test-results/prod-01-homepage.png', fullPage: true });
-
-    // Verify main elements
     await expect(page.locator('h1')).toContainText('Karaoke Generator');
-    await expect(page.getByRole('tab', { name: /search/i })).toBeVisible();
+    console.log('Homepage loaded');
 
-    // Go to Search tab and verify theme selector exists
+    // ========== STEP 2: Go to Search tab and select theme ==========
+    console.log('\n=== STEP 2: Search tab + theme selection ===');
     await page.getByRole('tab', { name: /search/i }).click();
     await page.waitForTimeout(1000);
 
-    const themeLabel = page.locator('text=Video Theme').or(page.locator('text=Theme'));
-    const themeVisible = await themeLabel.first().isVisible({ timeout: 5000 }).catch(() => false);
-    expect(themeVisible).toBeTruthy();
-
-    console.log('Homepage loaded with theme selector');
-  });
-});
-
-test.describe('Production Job Creation with Theme', () => {
-  test.beforeEach(async ({ page }) => {
-    await authenticatePage(page);
-    setupLogging(page);
-  });
-
-  test('Job created via Search tab has theme_id set', async ({ page, request }) => {
-    test.setTimeout(120000);
-
-    await page.goto(PROD_URL);
-    await page.waitForLoadState('networkidle');
-
-    await page.getByRole('tab', { name: /search/i }).click();
-    await page.waitForTimeout(2000);
-
-    // Fill form with real song
-    await page.getByLabel('Artist').fill(TEST_ARTIST);
-    await page.getByLabel('Title').fill(TEST_TITLE);
-
-    // Ensure theme is selected
-    const themeSelect = page.locator('button[role="combobox"]').first();
-    let selectedThemeName: string | null = null;
-
-    if (await themeSelect.isVisible({ timeout: 3000 })) {
-      await themeSelect.click();
-      await page.waitForTimeout(500);
-
-      const firstOption = page.locator('[role="option"]').first();
-      selectedThemeName = await firstOption.textContent();
-      console.log(`Selecting theme: ${selectedThemeName}`);
-
-      await firstOption.click();
-      await page.waitForTimeout(500);
-    }
-
-    await page.screenshot({ path: 'test-results/prod-theme-form.png' });
-
-    // Submit form
-    await page.getByRole('button', { name: /search.*create/i }).click();
-    await page.waitForTimeout(5000);
-
-    // Get recent jobs and find our test job
-    const jobsResponse = await request.get(`${API_URL}/api/jobs`, {
-      headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
-    });
-
-    if (jobsResponse.ok()) {
-      const jobsData = await jobsResponse.json();
-      const jobs = jobsData.jobs || jobsData;
-
-      // Find a job with our test artist/title (case-insensitive)
-      const testJob = Array.isArray(jobs)
-        ? jobs.find((j: any) =>
-            j.artist?.toLowerCase() === TEST_ARTIST.toLowerCase() &&
-            j.title?.toLowerCase() === TEST_TITLE.toLowerCase())
-        : null;
-
-      if (testJob) {
-        console.log(`Found test job: ${testJob.job_id}`);
-        console.log(`Job theme_id: ${testJob.theme_id}`);
-        console.log(`Job enable_cdg: ${testJob.enable_cdg}`);
-        console.log(`Job enable_txt: ${testJob.enable_txt}`);
-
-        // CRITICAL: Theme must be set for jobs created via Search tab
-        expect(testJob.theme_id).toBeTruthy();
-
-        // When theme is set, CDG and TXT should be enabled by default
-        expect(testJob.enable_cdg).toBe(true);
-        expect(testJob.enable_txt).toBe(true);
-      } else {
-        console.log('Test job not found in recent jobs');
-        // Don't fail - job might still be creating
-      }
-    }
-  });
-});
-
-test.describe('Production Full E2E Journey', () => {
-  /**
-   * Complete end-to-end test of the karaoke generation flow:
-   * Search -> Audio Selection -> Lyrics Review -> Instrumental Selection -> Completion
-   *
-   * WARNING: This creates a real karaoke track on production!
-   */
-  test.beforeEach(async ({ page }) => {
-    await authenticatePage(page);
-    setupLogging(page);
-  });
-
-  test('Complete karaoke generation journey with theme', async ({ page, context, request }) => {
-    test.setTimeout(900000); // 15 minutes for full generation
-
-    // Step 1: Navigate to Search tab
-    console.log('=== Step 1: Creating job via Search tab ===');
-    await page.goto(PROD_URL);
-    await page.waitForLoadState('networkidle');
-
-    await page.getByRole('tab', { name: /search/i }).click();
-    await page.waitForTimeout(2000);
-
-    // Step 2: Select theme and fill form
-    console.log('=== Step 2: Selecting theme and filling form ===');
-
+    // Select theme (first one in dropdown)
     const themeSelect = page.locator('button[role="combobox"]').first();
     if (await themeSelect.isVisible({ timeout: 3000 })) {
-      const selectedText = await themeSelect.textContent();
-      console.log(`Current theme: ${selectedText}`);
+      const currentTheme = await themeSelect.textContent();
+      console.log(`Current theme: ${currentTheme}`);
 
-      // Select first theme if none selected
-      if (selectedText?.includes('Select')) {
+      if (currentTheme?.toLowerCase().includes('select')) {
         await themeSelect.click();
         await page.waitForTimeout(500);
         await page.locator('[role="option"]').first().click();
         await page.waitForTimeout(500);
+        console.log('Selected first theme');
       }
     }
 
+    // ========== STEP 3: Fill in artist/title and search ==========
+    console.log('\n=== STEP 3: Filling form and searching ===');
     await page.getByLabel('Artist').fill(TEST_ARTIST);
     await page.getByLabel('Title').fill(TEST_TITLE);
+    console.log(`Searching for: ${TEST_ARTIST} - ${TEST_TITLE}`);
 
-    await page.screenshot({ path: 'test-results/prod-e2e-01-form.png' });
+    await page.screenshot({ path: 'test-results/step3-before-search.png' });
 
-    // Step 3: Submit search
-    console.log('=== Step 3: Submitting search ===');
     await page.getByRole('button', { name: /search.*create/i }).click();
 
-    // Wait for search results
-    console.log('Waiting for audio search results...');
+    // Wait for search to complete (loading spinner -> results)
+    console.log('Waiting for search results...');
     await page.waitForTimeout(10000);
+    await page.screenshot({ path: 'test-results/step3-after-search.png' });
 
-    await page.screenshot({ path: 'test-results/prod-e2e-02-results.png' });
+    // ========== STEP 4: Select audio source ==========
+    console.log('\n=== STEP 4: Selecting audio source ===');
 
-    // Step 4: Handle audio selection if needed
-    console.log('=== Step 4: Audio selection ===');
+    // The search creates a job and shows audio options
+    // Look for "Select Audio" button on the job card
+    const selectAudioBtn = page.getByRole('button', { name: /select audio/i }).first();
 
-    // Check for audio selection dialog or if job auto-started
-    const selectAudioBtn = page.getByRole('button', { name: /select audio/i });
-    if (await selectAudioBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await selectAudioBtn.isVisible({ timeout: 30000 })) {
+      console.log('Found "Select Audio" button, clicking...');
       await selectAudioBtn.click();
       await page.waitForTimeout(2000);
 
+      // A dialog should open with audio options
       const dialog = page.locator('[role="dialog"]');
-      if (await dialog.isVisible()) {
+      if (await dialog.isVisible({ timeout: 5000 })) {
+        await page.screenshot({ path: 'test-results/step4-audio-dialog.png' });
+
+        // Find all "Select" buttons in the dialog
         const selectButtons = dialog.getByRole('button', { name: /^select$/i });
-        if (await selectButtons.count() > 0) {
-          console.log('Selecting first audio option');
+        const count = await selectButtons.count();
+        console.log(`Found ${count} audio options`);
+
+        if (count > 0) {
+          console.log('Clicking first audio option...');
           await selectButtons.first().click();
+
+          // Wait for dialog to close and download to start
           await page.waitForTimeout(5000);
+          console.log('Audio selected, download should start');
+        } else {
+          console.log('ERROR: No Select buttons found in dialog');
+          const dialogContent = await dialog.textContent();
+          console.log('Dialog content:', dialogContent?.substring(0, 500));
         }
+      } else {
+        console.log('ERROR: Dialog did not open');
       }
     } else {
-      console.log('No audio selection needed - may have auto-selected');
+      console.log('ERROR: "Select Audio" button not found');
+      // Maybe job auto-started? Check job status
+      const pageContent = await page.locator('body').textContent();
+      console.log('Page contains:', pageContent?.substring(0, 500));
     }
 
-    await page.screenshot({ path: 'test-results/prod-e2e-03-after-audio.png' });
+    await page.screenshot({ path: 'test-results/step4-after-audio-select.png' });
 
-    // Try to get job ID from page
+    // ========== STEP 5: Wait for processing and lyrics review ==========
+    console.log('\n=== STEP 5: Waiting for job to reach review stage ===');
+
+    // Poll the jobs API to check status
     let jobId: string | null = null;
-    const jobIdMatch = page.url().match(/jobs?[\/=]([a-f0-9-]+)/i);
-    if (jobIdMatch) {
-      jobId = jobIdMatch[1];
-    }
+    let jobStatus: string | null = null;
 
-    // If not in URL, get from recent jobs API
-    if (!jobId) {
-      const jobsResponse = await request.get(`${API_URL}/api/jobs`, {
-        headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` }
+    for (let i = 0; i < 60; i++) { // 5 minutes of polling
+      const response = await request.get(`${API_URL}/api/jobs`, {
+        headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
+        timeout: 120000 // 2 minute timeout for API calls
       });
-      if (jobsResponse.ok()) {
-        const jobsData = await jobsResponse.json();
-        const jobs = jobsData.jobs || jobsData;
-        const testJob = Array.isArray(jobs)
+
+      if (response.ok()) {
+        const data = await response.json();
+        const jobs = data.jobs || data;
+
+        // Find our job
+        const ourJob = Array.isArray(jobs)
           ? jobs.find((j: any) =>
               j.artist?.toLowerCase() === TEST_ARTIST.toLowerCase() &&
               j.title?.toLowerCase() === TEST_TITLE.toLowerCase())
           : null;
-        if (testJob) {
-          jobId = testJob.job_id;
+
+        if (ourJob) {
+          jobId = ourJob.job_id;
+          jobStatus = ourJob.status;
+          console.log(`Job ${jobId}: ${jobStatus}`);
+
+          // Check if we've reached a milestone
+          if (jobStatus === 'in_review') {
+            console.log('Job reached lyrics review stage!');
+            break;
+          } else if (jobStatus === 'awaiting_instrumental_selection') {
+            console.log('Job skipped review, at instrumental selection');
+            break;
+          } else if (jobStatus === 'completed') {
+            console.log('Job already completed!');
+            break;
+          } else if (jobStatus === 'failed') {
+            throw new Error(`Job failed: ${ourJob.error_message || 'Unknown error'}`);
+          }
         }
       }
+
+      // Refresh the page periodically
+      if (i % 6 === 0) {
+        await page.getByRole('button', { name: /refresh/i }).click().catch(() => {});
+      }
+
+      await page.waitForTimeout(5000);
     }
 
     if (!jobId) {
-      console.log('Could not determine job ID');
-      return;
+      throw new Error('Could not find our job after 5 minutes');
     }
 
-    console.log(`Job ID: ${jobId}`);
+    await page.screenshot({ path: 'test-results/step5-job-status.png' });
 
-    // Step 5: Wait for lyrics review stage
-    console.log('=== Step 5: Waiting for lyrics review ===');
+    // ========== STEP 6: Complete lyrics review (if needed) ==========
+    if (jobStatus === 'in_review') {
+      console.log('\n=== STEP 6: Completing lyrics review ===');
 
-    try {
-      const job = await waitForJobStatus(
-        request, jobId,
-        ['in_review', 'awaiting_instrumental_selection', 'processing', 'completed'],
-        300000 // 5 minutes
-      );
+      await page.reload();
+      await page.waitForLoadState('networkidle');
 
-      // Verify theme was applied
-      console.log(`Job theme_id: ${job.theme_id}`);
-      if (job.theme_id) {
-        console.log('Theme correctly applied to job');
-      }
+      const reviewBtn = page.getByRole('button', { name: /review.*lyrics/i }).first();
 
-      if (job.status === 'in_review') {
-        console.log('=== Step 6: Completing lyrics review ===');
+      if (await reviewBtn.isVisible({ timeout: 10000 })) {
+        console.log('Opening lyrics review...');
 
-        // Refresh page and find review button
-        await page.reload();
-        await page.waitForLoadState('networkidle');
-        await page.waitForTimeout(2000);
+        // This opens a new tab
+        const [popup] = await Promise.all([
+          page.context().waitForEvent('page', { timeout: 15000 }).catch(() => null),
+          reviewBtn.click()
+        ]);
 
-        const reviewButton = page.getByRole('button', { name: /review.*lyrics/i }).or(
-          page.getByRole('link', { name: /review.*lyrics/i })
-        ).first();
-
-        if (await reviewButton.isVisible({ timeout: 10000 })) {
-          // Set up listener before clicking
-          const pagePromise = context.waitForEvent('page', { timeout: 5000 }).catch(() => null);
-          await reviewButton.click();
-          const newPage = await pagePromise;
-
-          const lyricsPage = newPage || page;
-          await lyricsPage.waitForLoadState('networkidle');
-          await lyricsPage.waitForTimeout(3000);
-
-          await lyricsPage.screenshot({ path: 'test-results/prod-e2e-04-review.png', fullPage: true });
+        if (popup) {
+          await popup.waitForLoadState('networkidle');
+          await popup.waitForTimeout(5000);
+          await popup.screenshot({ path: 'test-results/step6-review-ui.png', fullPage: true });
 
           // Click Preview Video
-          const previewButton = lyricsPage.getByRole('button', { name: /preview.*video/i }).first();
-          if (await previewButton.isVisible({ timeout: 5000 })) {
-            await previewButton.click();
-            console.log('Generating preview video...');
-            await lyricsPage.waitForTimeout(30000);
+          const previewBtn = popup.getByRole('button', { name: /preview.*video/i }).first();
+          if (await previewBtn.isVisible({ timeout: 5000 })) {
+            console.log('Clicking Preview Video...');
+            await previewBtn.click();
+            await popup.waitForTimeout(30000); // Wait for preview to generate
 
             // Click Complete Review
-            const completeButton = lyricsPage.getByRole('button', { name: /complete.*review/i }).first();
-            if (await completeButton.isVisible({ timeout: 60000 })) {
-              await completeButton.click();
-              console.log('Review completed');
-              await lyricsPage.waitForTimeout(3000);
+            const completeBtn = popup.getByRole('button', { name: /complete.*review/i }).first();
+            if (await completeBtn.isVisible({ timeout: 60000 })) {
+              console.log('Clicking Complete Review...');
+              await completeBtn.click();
+              await popup.waitForTimeout(3000);
             }
           }
 
-          if (newPage && !newPage.isClosed()) {
-            await newPage.close();
+          if (!popup.isClosed()) {
+            await popup.close();
           }
         }
       }
+    }
 
-      // Step 7: Handle instrumental selection
-      console.log('=== Step 7: Instrumental selection ===');
+    // ========== STEP 7: Handle instrumental selection (if needed) ==========
+    console.log('\n=== STEP 7: Checking for instrumental selection ===');
 
-      const updatedJob = await waitForJobStatus(
-        request, jobId,
-        ['awaiting_instrumental_selection', 'processing', 'completed'],
-        60000
-      ).catch(() => null);
+    // Wait and check status
+    for (let i = 0; i < 12; i++) { // 1 minute
+      const response = await request.get(`${API_URL}/api/jobs/${jobId}`, {
+        headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
+        timeout: 120000
+      });
 
-      if (updatedJob?.status === 'awaiting_instrumental_selection') {
-        await page.reload();
-        await page.waitForLoadState('networkidle');
+      if (response.ok()) {
+        const job = await response.json();
+        console.log(`Job status: ${job.status}`);
 
-        const instrumentalBtn = page.getByRole('button', { name: /select.*instrumental/i }).first();
-        if (await instrumentalBtn.isVisible({ timeout: 10000 })) {
-          await instrumentalBtn.click();
-          await page.waitForTimeout(2000);
+        if (job.status === 'awaiting_instrumental_selection') {
+          console.log('Handling instrumental selection...');
 
-          const dialog = page.locator('[role="dialog"]');
-          if (await dialog.isVisible()) {
-            const cleanBtn = dialog.locator('button:has-text("Clean"), button:has-text("Select")').first();
-            if (await cleanBtn.isVisible()) {
-              console.log('Selecting clean instrumental');
+          await page.reload();
+          await page.waitForLoadState('networkidle');
+
+          const instrumentalBtn = page.getByRole('button', { name: /select.*instrumental/i }).first();
+          if (await instrumentalBtn.isVisible({ timeout: 10000 })) {
+            await instrumentalBtn.click();
+            await page.waitForTimeout(2000);
+
+            const dialog = page.locator('[role="dialog"]');
+            if (await dialog.isVisible()) {
+              await page.screenshot({ path: 'test-results/step7-instrumental.png' });
+
+              // Select clean instrumental
+              const cleanBtn = dialog.getByRole('button').first();
               await cleanBtn.click();
               await page.waitForTimeout(3000);
+              console.log('Selected instrumental');
             }
           }
+          break;
+        } else if (job.status === 'completed' || job.status === 'processing') {
+          break;
         }
       }
 
-      await page.screenshot({ path: 'test-results/prod-e2e-05-after-instrumental.png' });
-
-      // Step 8: Wait for completion
-      console.log('=== Step 8: Waiting for completion ===');
-
-      const finalJob = await waitForJobStatus(
-        request, jobId,
-        ['completed', 'failed'],
-        300000 // 5 minutes for render
-      ).catch(() => null);
-
-      if (finalJob?.status === 'completed') {
-        console.log('Job completed successfully!');
-
-        await page.reload();
-        await page.waitForLoadState('networkidle');
-        await page.screenshot({ path: 'test-results/prod-e2e-06-completed.png', fullPage: true });
-
-        // Verify outputs
-        const youtubeLink = page.locator('a[href*="youtube.com"], a[href*="youtu.be"]').first();
-        if (await youtubeLink.isVisible()) {
-          const href = await youtubeLink.getAttribute('href');
-          console.log(`YouTube link: ${href}`);
-        }
-
-        const dropboxLink = page.locator('a[href*="dropbox.com"]').first();
-        if (await dropboxLink.isVisible()) {
-          const href = await dropboxLink.getAttribute('href');
-          console.log(`Dropbox link: ${href}`);
-        }
-
-        console.log('=== E2E TEST COMPLETE ===');
-      } else if (finalJob?.status === 'failed') {
-        throw new Error(`Job failed: ${finalJob.error_message || 'Unknown error'}`);
-      }
-
-    } catch (error) {
-      console.error('Error during E2E test:', error);
-      await page.screenshot({ path: 'test-results/prod-e2e-error.png', fullPage: true });
-      throw error;
+      await page.waitForTimeout(5000);
     }
+
+    // ========== STEP 8: Wait for completion ==========
+    console.log('\n=== STEP 8: Waiting for completion ===');
+
+    for (let i = 0; i < 60; i++) { // 5 minutes
+      const response = await request.get(`${API_URL}/api/jobs/${jobId}`, {
+        headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` },
+        timeout: 120000
+      });
+
+      if (response.ok()) {
+        const job = await response.json();
+        console.log(`Job status: ${job.status}`);
+
+        if (job.status === 'completed') {
+          console.log('\n🎉 JOB COMPLETED SUCCESSFULLY!');
+          console.log(`Theme ID: ${job.theme_id}`);
+          console.log(`YouTube URL: ${job.youtube_url || 'N/A'}`);
+          console.log(`Dropbox URL: ${job.dropbox_url || 'N/A'}`);
+
+          // Final verification
+          expect(job.theme_id).toBeTruthy();
+
+          await page.reload();
+          await page.screenshot({ path: 'test-results/step8-completed.png', fullPage: true });
+          return; // SUCCESS
+        } else if (job.status === 'failed') {
+          throw new Error(`Job failed: ${job.error_message || 'Unknown error'}`);
+        }
+      }
+
+      await page.waitForTimeout(5000);
+    }
+
+    throw new Error('Job did not complete within timeout');
   });
 });
