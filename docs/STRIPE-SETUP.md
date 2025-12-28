@@ -20,15 +20,17 @@ This guide walks you through setting up Stripe for the Nomad Karaoke payment sys
 
 ## 2. Store Keys in Google Cloud Secret Manager
 
-Store your Stripe keys securely in Secret Manager:
+The secret containers are already created via Pulumi (in `infrastructure/__main__.py`). You just need to add the secret values:
 
 ```bash
-# Store the secret key
-echo -n "sk_live_your_key_here" | gcloud secrets create stripe-secret-key --data-file=-
+# Store the Stripe secret key
+echo -n "sk_live_your_key_here" | gcloud secrets versions add stripe-secret-key --data-file=-
 
 # Store the webhook secret (after step 3)
-echo -n "whsec_your_webhook_secret" | gcloud secrets create stripe-webhook-secret --data-file=-
+echo -n "whsec_your_webhook_secret" | gcloud secrets versions add stripe-webhook-secret --data-file=-
 ```
+
+> **Note**: If running for the first time after Pulumi creates the secrets, use `gcloud secrets versions add` (not `gcloud secrets create`).
 
 ## 3. Set Up Webhook Endpoint
 
@@ -75,19 +77,15 @@ For sending magic link and purchase confirmation emails:
 
 1. Sign up for SendGrid: https://sendgrid.com
 2. Create an API key with "Mail Send" permissions
-3. Store it in Secret Manager:
+3. Store it in Secret Manager (secret container created by Pulumi):
 
 ```bash
-echo -n "SG.your_sendgrid_api_key" | gcloud secrets create sendgrid-api-key --data-file=-
+echo -n "SG.your_sendgrid_api_key" | gcloud secrets versions add sendgrid-api-key --data-file=-
 ```
 
-4. Set environment variables:
-
-```bash
-SENDGRID_API_KEY=SG.your_sendgrid_api_key
-EMAIL_FROM=noreply@nomadkaraoke.com
-EMAIL_FROM_NAME=Nomad Karaoke
-```
+4. The environment variables are configured in the Cloud Run deployment. Defaults:
+   - `EMAIL_FROM=noreply@nomadkaraoke.com`
+   - `EMAIL_FROM_NAME=Nomad Karaoke`
 
 ## 6. Test the Integration
 
