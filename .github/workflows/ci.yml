@@ -95,6 +95,31 @@ jobs:
           path: frontend/coverage/
           retention-days: 7
 
+  frontend-build:
+    name: "Frontend - Build"
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with caching
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://api.nomadkaraoke.com
+        run: npm run build
+
   # ============================================
   # PACKAGE TESTS (karaoke-gen Python CLI)
   # ============================================
@@ -432,13 +457,14 @@ jobs:
   ci-gate:
     name: "CI Gate"
     runs-on: ubuntu-latest
-    needs: [frontend-unit-tests, package-unit-tests, package-integration-tests, backend-unit-tests, backend-emulator-tests, backend-lint]
+    needs: [frontend-unit-tests, frontend-build, package-unit-tests, package-integration-tests, backend-unit-tests, backend-emulator-tests, backend-lint]
     if: always()
     steps:
       - name: Check results
         run: |
           results=(
             "${{ needs.frontend-unit-tests.result }}"
+            "${{ needs.frontend-build.result }}"
             "${{ needs.package-unit-tests.result }}"
             "${{ needs.package-integration-tests.result }}"
             "${{ needs.backend-unit-tests.result }}"
@@ -547,8 +573,8 @@ jobs:
   deploy-frontend:
     name: "Deploy - Frontend (GitHub Pages)"
     runs-on: ubuntu-latest
-    needs: [frontend-unit-tests]
-    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.frontend-unit-tests.result == 'success' || needs.frontend-unit-tests.result == 'skipped') }}
+    needs: [frontend-unit-tests, frontend-build]
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.frontend-unit-tests.result == 'success' || needs.frontend-unit-tests.result == 'skipped') && (needs.frontend-build.result == 'success' || needs.frontend-build.result == 'skipped') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -625,6 +651,12 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      REGISTRY: us-central1-docker.pkg.dev
+      PROJECT_ID: nomadkaraoke
+      REPOSITORY: karaoke-repo
+      BASE_IMAGE_NAME: karaoke-backend-base
+      APP_IMAGE_NAME: karaoke-backend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -670,21 +702,37 @@ jobs:
         with:
           version: "latest"
 
-      - name: Check if base image needs rebuild
+      - name: Configure Docker for Artifact Registry
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      # ============================================
+      # Docker Build with BuildKit + Registry Cache
+      # This replaces expensive Cloud Build with free GitHub Actions
+      # Registry cache persists between builds for fast rebuilds
+      # ============================================
+
+      - name: Set up Docker Buildx
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Calculate base image hash
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        id: base-hash
+        run: |
+          # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
+          CURRENT_HASH=$(cat poetry.lock backend/Dockerfile.base | sha256sum | cut -d' ' -f1)
+          echo "hash=$CURRENT_HASH" >> $GITHUB_OUTPUT
+          echo "📋 Base content hash: $CURRENT_HASH"
+
+      - name: Check if base image exists and is current
         if: steps.version_check.outputs.needs_deploy == 'true'
         id: check-base
         run: |
-          echo "🔍 Checking if base image needs rebuild..."
+          BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
 
-          # Hash both poetry.lock AND Dockerfile.base - rebuild if either changes
-          CURRENT_HASH=$(cat poetry.lock backend/Dockerfile.base | sha256sum | cut -d' ' -f1)
-          echo "Current combined hash (poetry.lock + Dockerfile.base): $CURRENT_HASH"
-
-          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-          BASE_IMAGE="us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest"
+          # Try to get the existing base image's hash label
           EXISTING_HASH=""
-
           if docker pull $BASE_IMAGE 2>/dev/null; then
             EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
             # Fallback to old label name for backwards compatibility
@@ -693,10 +741,10 @@ jobs:
             fi
             echo "Existing base image hash: $EXISTING_HASH"
           else
-            echo "⚠️ No existing base image found"
+            echo "⚠️ No existing base image found - will build"
           fi
 
-          if [ "$CURRENT_HASH" != "$EXISTING_HASH" ]; then
+          if [ "${{ steps.base-hash.outputs.hash }}" != "$EXISTING_HASH" ]; then
             echo "🔄 Base image needs rebuild (poetry.lock or Dockerfile.base changed)"
             echo "needs_rebuild=true" >> $GITHUB_OUTPUT
           else
@@ -704,88 +752,83 @@ jobs:
             echo "needs_rebuild=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Rebuild base image (if needed)
+      - name: Free disk space (for base image build)
         if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
-        run: |
-          echo "🏗️ Rebuilding base image with updated dependencies..."
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          haskell: true
+          dotnet: true
+          large-packages: true
+          docker-images: false
+          swap-storage: false
 
-          BASE_BUILD_ID=$(gcloud builds submit \
-            --config=cloudbuild-base.yaml \
-            --project=nomadkaraoke \
-            --format='value(id)' \
-            --async \
-            .)
+      - name: Build and push base image (if needed)
+        if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile.base
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
+          # Registry cache for ALL layers (mode=max) - persists between builds
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.run_id }}
+            BUILD_ID=${{ github.sha }}
+            BASE_CONTENT_HASH=${{ steps.base-hash.outputs.hash }}
+          # Provenance disabled for smaller image and faster push
+          provenance: false
 
-          echo "Base Build ID: $BASE_BUILD_ID"
-          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BASE_BUILD_ID?project=nomadkaraoke"
+      - name: Build and push app image
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:v${{ steps.version_check.outputs.version }}
+          # Registry cache for app layers
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,mode=max
+          provenance: false
 
-          echo "Waiting for base image build to complete..."
-          while true; do
-            BUILD_STATUS=$(gcloud builds describe $BASE_BUILD_ID --project=nomadkaraoke --format='value(status)')
-            echo "Base build status: $BUILD_STATUS"
+      # ============================================
+      # Deploy to Cloud Run
+      # ============================================
 
-            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
-              echo "✅ Base image build completed successfully"
-              break
-            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
-              echo "❌ Base image build failed with status: $BUILD_STATUS"
-              echo ""
-              echo "==================== BUILD LOGS ===================="
-              gcloud logging read "resource.type=build AND resource.labels.build_id=$BASE_BUILD_ID" \
-                --project=nomadkaraoke \
-                --format="value(textPayload)" \
-                --limit=200 \
-                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
-              echo "===================================================="
-              gcloud builds log $BASE_BUILD_ID --project=nomadkaraoke 2>&1 || true
-              exit 1
-            fi
-
-            sleep 30
-          done
-
-      - name: Trigger Cloud Build
+      - name: Deploy to Cloud Run
         if: steps.version_check.outputs.needs_deploy == 'true'
         run: |
-          echo "🚀 Triggering Cloud Build for deployment..."
-          echo "Commit: ${{ github.sha }}"
-          echo "Version: ${{ steps.version_check.outputs.version }}"
+          VERSION="${{ steps.version_check.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}"
 
-          BUILD_ID=$(gcloud builds submit \
-            --config=cloudbuild.yaml \
-            --project=nomadkaraoke \
-            --format='value(id)' \
-            --async \
-            .)
+          echo "🚀 Deploying to Cloud Run..."
+          echo "Image: $IMAGE"
+          echo "Version: $VERSION"
 
-          echo "Build ID: $BUILD_ID"
-          echo "Build URL: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=nomadkaraoke"
-
-          echo "Waiting for build to complete..."
-          while true; do
-            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --project=nomadkaraoke --format='value(status)')
-            echo "Build status: $BUILD_STATUS"
-
-            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
-              echo "✅ Build completed successfully"
-              break
-            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
-              echo "❌ Build failed with status: $BUILD_STATUS"
-              echo ""
-              echo "==================== BUILD LOGS ===================="
-              gcloud logging read "resource.type=build AND resource.labels.build_id=$BUILD_ID" \
-                --project=nomadkaraoke \
-                --format="value(textPayload)" \
-                --limit=200 \
-                --order=asc || echo "Failed to retrieve logs from Cloud Logging"
-              echo "===================================================="
-              echo ""
-              gcloud builds log $BUILD_ID --project=nomadkaraoke 2>&1 || true
-              exit 1
-            fi
-
-            sleep 30
-          done
+          gcloud run deploy karaoke-backend \
+            --image $IMAGE \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 16Gi \
+            --cpu 8 \
+            --cpu-boost \
+            --execution-environment gen2 \
+            --timeout 1800 \
+            --concurrency 1 \
+            --max-instances 50 \
+            --min-instances 0 \
+            --set-env-vars "GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }},GCS_BUCKET_NAME=karaoke-gen-storage-${{ env.PROJECT_ID }},FIRESTORE_COLLECTION=jobs,ENVIRONMENT=production,AUDIO_SEPARATOR_API_URL=https://nomadkaraoke--audio-separator-api.modal.run,KARAOKE_GEN_VERSION=$VERSION,DEFAULT_DROPBOX_PATH=/MediaUnsynced/Karaoke/Tracks-Organized,DEFAULT_GDRIVE_FOLDER_ID=1laRKAyxo0v817SstfM5XkpbWiNKNAMSX,ENABLE_CLOUD_TASKS=true,CLOUD_RUN_SERVICE_URL=https://api.nomadkaraoke.com,GCP_REGION=us-central1,DEFAULT_ENABLE_YOUTUBE_UPLOAD=true,DEFAULT_BRAND_PREFIX=NOMAD" \
+            --set-secrets "AUDIOSHAKE_API_TOKEN=audioshake-api-key:latest,GENIUS_API_TOKEN=genius-api-key:latest,SPOTIFY_COOKIE_SP_DC=spotify-cookie:latest,RAPIDAPI_KEY=rapidapi-key:latest,DEFAULT_DISCORD_WEBHOOK_URL=discord-releases-webhook:latest,ADMIN_TOKENS=admin-tokens:latest,RED_API_KEY=red-api-key:latest,RED_API_URL=red-api-url:latest,OPS_API_KEY=ops-api-key:latest,OPS_API_URL=ops-api-url:latest,FLACFETCH_API_URL=flacfetch-api-url:latest,FLACFETCH_API_KEY=flacfetch-api-key:latest"
 
       - name: Verify deployment and version
         if: steps.version_check.outputs.needs_deploy == 'true'
@@ -836,6 +879,10 @@ jobs:
           echo "Commit: ${{ github.sha }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
+          echo ""
+          echo "📊 Cost savings: This build used FREE GitHub Actions instead of Cloud Build"
+          echo "   Previously: ~\$0.064/min with N1_HIGHCPU_32"
+          echo "   Now: \$0 (public repo) with registry-cached builds"
 
       - name: Skipped deployment summary
         if: steps.version_check.outputs.needs_deploy == 'false'
