@@ -700,20 +700,9 @@ jobs:
       APP_IMAGE_NAME: karaoke-backend
     steps:
       # ============================================
-      # Free disk space FIRST - before anything else
-      # This prevents "No space left on device" errors
+      # Check if deployment is needed FIRST
+      # This avoids wasting 3+ mins on disk cleanup when skipping
       # ============================================
-      - name: Free disk space (aggressive)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          haskell: true
-          dotnet: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -743,6 +732,22 @@ jobs:
             echo "needs_deploy=true" >> $GITHUB_OUTPUT
             echo "✨ Tag v$VERSION does not exist - proceeding with deployment"
           fi
+
+      # ============================================
+      # Free disk space only if deploying
+      # This prevents "No space left on device" errors during Docker build
+      # ============================================
+      - name: Free disk space (aggressive)
+        if: steps.version_check.outputs.needs_deploy == 'true'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          haskell: true
+          dotnet: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Authenticate to Google Cloud (Workload Identity)
         if: steps.version_check.outputs.needs_deploy == 'true'
