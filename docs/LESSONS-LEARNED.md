@@ -156,6 +156,31 @@ escaped = filename.replace("'", "\\'")
 query = f"name='{escaped}' and '{parent_id}' in parents"
 ```
 
+### Duplicate Code Leads to Inconsistent Behavior
+
+**Problem**: Multiple endpoints computing the same defaults independently. `audio_search.py` had `effective_brand_prefix = body.brand_prefix or settings.default_brand_prefix` but `file_upload.py` was missing it for some endpoints.
+
+**Result**: Jobs created via audio search had correct brand codes; jobs created via file upload had null brand_prefix, causing Dropbox uploads to fail and Google Drive uploads to use placeholder "TRACK-0000".
+
+**Solution**: Added `_get_effective_distribution_settings()` helper function in `file_upload.py` to centralize default computation:
+```python
+@dataclass
+class EffectiveDistributionSettings:
+    dropbox_path: Optional[str]
+    gdrive_folder_id: Optional[str]
+    discord_webhook_url: Optional[str]
+    brand_prefix: Optional[str]
+
+def _get_effective_distribution_settings(...) -> EffectiveDistributionSettings:
+    settings = get_settings()
+    return EffectiveDistributionSettings(
+        dropbox_path=dropbox_path or settings.default_dropbox_path,
+        # ... etc
+    )
+```
+
+**Lesson**: When you see the same logic repeated in multiple places, refactor into a helper function immediately. Otherwise bugs will be fixed in one place but not others.
+
 ## Testing Insights
 
 ### Emulator Tests Catch Real Bugs
