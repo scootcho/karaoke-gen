@@ -2452,7 +2452,7 @@ class TestFlacFetchAudioFetcherDownloadFromUrl:
         mock_manager.download_by_id.return_value = downloaded_path
         mock_get_manager.return_value = mock_manager
 
-        result = fetcher.download_from_url(
+        fetcher.download_from_url(
             url="https://www.youtube.com/embed/dQw4w9WgXcQ",
             output_dir=str(tmp_path),
         )
@@ -2468,7 +2468,7 @@ class TestFlacFetchAudioFetcherDownloadFromUrl:
         mock_manager.download_by_id.return_value = downloaded_path
         mock_get_manager.return_value = mock_manager
 
-        result = fetcher.download_from_url(
+        fetcher.download_from_url(
             url="https://www.youtube.com/watch?v=test123test",
             output_dir=str(tmp_path),
             artist="Test Artist",
@@ -2486,7 +2486,7 @@ class TestFlacFetchAudioFetcherDownloadFromUrl:
         mock_manager.download_by_id.return_value = downloaded_path
         mock_get_manager.return_value = mock_manager
 
-        result = fetcher.download_from_url(
+        fetcher.download_from_url(
             url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             output_dir=str(tmp_path),
         )
@@ -2563,7 +2563,7 @@ class TestRemoteFlacFetchAudioFetcherDownloadFromUrl:
     @patch('flacfetch.providers.youtube.YoutubeProvider')
     @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
     def test_download_from_url_uses_local_flacfetch(
-        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+        self, mock_yt_downloader, _mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
     ):
         """Test that download_from_url uses local flacfetch (not remote API)."""
         mock_manager_instance = MagicMock()
@@ -2593,7 +2593,7 @@ class TestRemoteFlacFetchAudioFetcherDownloadFromUrl:
     @patch('flacfetch.providers.youtube.YoutubeProvider')
     @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
     def test_download_from_url_extracts_video_id(
-        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+        self, _mock_yt_downloader, _mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
     ):
         """Test that video ID is extracted from URL correctly."""
         mock_manager_instance = MagicMock()
@@ -2612,7 +2612,7 @@ class TestRemoteFlacFetchAudioFetcherDownloadFromUrl:
     @patch('flacfetch.providers.youtube.YoutubeProvider')
     @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
     def test_download_from_url_raises_on_failure(
-        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+        self, _mock_yt_downloader, _mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
     ):
         """Test that DownloadError is raised on failure."""
         mock_manager_instance = MagicMock()

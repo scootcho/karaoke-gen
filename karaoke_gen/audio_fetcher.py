@@ -1696,7 +1696,7 @@ class RemoteFlacFetchAudioFetcher(AudioFetcher):
         import re
 
         self.logger.info(f"[RemoteFlacFetcher] Downloading from URL: {url}")
-        self.logger.info(f"[RemoteFlacFetcher] Using local flacfetch for YouTube download (no remote API needed)")
+        self.logger.info("[RemoteFlacFetcher] Using local flacfetch for YouTube download (no remote API needed)")
 
         try:
             # Use local flacfetch for YouTube downloads - no need for remote API
@@ -1762,7 +1762,7 @@ class RemoteFlacFetchAudioFetcher(AudioFetcher):
         except ImportError as e:
             raise DownloadError(
                 f"flacfetch is required for URL downloads but import failed: {e}"
-            )
+            ) from e
         except Exception as e:
             raise DownloadError(f"Failed to download from URL {url}: {e}") from e
 

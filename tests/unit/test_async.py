@@ -568,7 +568,7 @@ class TestAsync:
         basic_karaoke_gen.title = None  # Missing title
 
         # Test that ValueError is raised
-        with pytest.raises(ValueError, match="Either a local file path.*or both artist and title must be provided"):
+        with pytest.raises(ValueError, match=r"Either a local file path.*or both artist and title must be provided"):
             await basic_karaoke_gen.process()
 
     @pytest.mark.asyncio
@@ -610,7 +610,10 @@ class TestAsync:
         with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
             mock_prep_single_track.return_value = {"track": "result"}
 
-            result = await basic_karaoke_gen.process()
+            await basic_karaoke_gen.process()
+
+            # Verify prep_single_track was called
+            mock_prep_single_track.assert_called_once()
 
             # Verify URL mode was enabled
             assert basic_karaoke_gen._use_audio_fetcher is True
@@ -631,7 +634,10 @@ class TestAsync:
         with patch.object(basic_karaoke_gen, 'prep_single_track', new_callable=AsyncMock) as mock_prep_single_track:
             mock_prep_single_track.return_value = {"track": "result"}
 
-            result = await basic_karaoke_gen.process()
+            await basic_karaoke_gen.process()
+
+            # Verify prep_single_track was called
+            mock_prep_single_track.assert_called_once()
 
             # Verify URL mode was enabled
             assert basic_karaoke_gen._use_audio_fetcher is True
@@ -645,7 +651,6 @@ class TestKaraokePrepIsUrlHelper:
     @pytest.fixture
     def karaoke_prep(self, tmp_path):
         """Create a KaraokePrep instance for testing."""
-        from karaoke_gen.karaoke_gen import KaraokePrep
         return KaraokePrep(
             artist="Test",
             title="Test",
