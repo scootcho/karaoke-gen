@@ -10,39 +10,64 @@ import { JobLogs } from "./JobLogs"
 import { OutputLinks } from "./OutputLinks"
 import { InstrumentalSelector } from "./InstrumentalSelector"
 import { AudioSearchDialog } from "../audio-search/AudioSearchDialog"
+import { getJobStep, formatStepIndicator, getJobProgressPercent } from "@/lib/job-status"
 
-// Status text styling (subtle colored text instead of badges)
-const statusConfig: Record<string, { textColor: string; label: string }> = {
-  pending: { textColor: "text-slate-400", label: "Pending" },
-  searching_audio: { textColor: "text-blue-400", label: "Searching..." },
-  awaiting_audio_selection: { textColor: "text-amber-400", label: "Needs audio" },
-  downloading: { textColor: "text-blue-400", label: "Downloading..." },
-  downloading_audio: { textColor: "text-blue-400", label: "Downloading..." },
-  separating_stage1: { textColor: "text-purple-400", label: "Separating 1/2..." },
-  separating_stage2: { textColor: "text-purple-400", label: "Separating 2/2..." },
-  audio_complete: { textColor: "text-purple-400", label: "Audio ready" },
-  transcribing: { textColor: "text-blue-400", label: "Transcribing..." },
-  correcting: { textColor: "text-blue-400", label: "Correcting..." },
-  lyrics_complete: { textColor: "text-teal-400", label: "Lyrics ready" },
-  generating_screens: { textColor: "text-cyan-400", label: "Generating screens..." },
-  awaiting_review: { textColor: "text-amber-400", label: "Needs review" },
-  in_review: { textColor: "text-blue-400", label: "In review..." },
-  review_complete: { textColor: "text-teal-400", label: "Review complete" },
-  rendering_video: { textColor: "text-indigo-400", label: "Rendering..." },
-  awaiting_instrumental_selection: { textColor: "text-amber-400", label: "Needs instrumental" },
-  instrumental_selected: { textColor: "text-pink-400", label: "Instrumental selected" },
-  generating_video: { textColor: "text-violet-400", label: "Generating video..." },
-  encoding: { textColor: "text-violet-400", label: "Encoding..." },
-  packaging: { textColor: "text-violet-400", label: "Packaging..." },
-  uploading: { textColor: "text-green-400", label: "Uploading..." },
-  complete: { textColor: "text-green-400", label: "Complete" },
-  failed: { textColor: "text-red-400", label: "Failed" },
-  cancelled: { textColor: "text-slate-500", label: "Cancelled" },
+/**
+ * StatusIndicator component - Shows step-based progress with visual indicator
+ *
+ * Displays: "[4/10] Processing..." with colored text and optional progress bar
+ */
+function StatusIndicator({ job }: { job: Job }) {
+  const { step, total, label, isBlocking, color } = getJobStep(job)
+  const formattedStatus = formatStepIndicator(step, total, label)
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={color}>{formattedStatus}</span>
+      {isBlocking && (
+        <span className="text-amber-400 text-[10px] font-medium uppercase tracking-wide">
+          Action needed
+        </span>
+      )}
+    </span>
+  )
 }
 
-function StatusText({ status }: { status: string }) {
-  const config = statusConfig[status] || { textColor: "text-slate-400", label: status }
-  return <span className={config.textColor}>{config.label}</span>
+/**
+ * Progress bar component - Visual indicator of job progress
+ */
+function ProgressBar({ job }: { job: Job }) {
+  const progressPercent = getJobProgressPercent(job)
+  const { step, color } = getJobStep(job)
+
+  // Don't show progress bar for terminal states
+  if (step === 0 || job.status === "complete" || job.status === "prep_complete") {
+    return null
+  }
+
+  // Map color class to background color for the bar
+  const barColorMap: Record<string, string> = {
+    "text-slate-400": "bg-slate-400",
+    "text-blue-400": "bg-blue-400",
+    "text-purple-400": "bg-purple-400",
+    "text-teal-400": "bg-teal-400",
+    "text-cyan-400": "bg-cyan-400",
+    "text-amber-400": "bg-amber-400",
+    "text-indigo-400": "bg-indigo-400",
+    "text-pink-400": "bg-pink-400",
+    "text-violet-400": "bg-violet-400",
+    "text-green-400": "bg-green-400",
+  }
+  const barColor = barColorMap[color] || "bg-blue-400"
+
+  return (
+    <div className="w-full h-1 bg-slate-700/50 rounded-full mt-2 overflow-hidden">
+      <div
+        className={`h-full ${barColor} rounded-full transition-all duration-500 ease-out`}
+        style={{ width: `${progressPercent}%` }}
+      />
+    </div>
+  )
 }
 
 interface JobCardProps {
@@ -164,8 +189,11 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
 
       {/* Meta row: ID, date, status */}
       <p className="text-xs text-slate-500 mt-1">
-        <span className="text-slate-600">ID:</span> {job.job_id} <span className="text-slate-600">•</span> {createdAt} <span className="text-slate-600">•</span> <StatusText status={job.status} />
+        <span className="text-slate-600">ID:</span> {job.job_id} <span className="text-slate-600">•</span> {createdAt} <span className="text-slate-600">•</span> <StatusIndicator job={job} />
       </p>
+
+      {/* Progress bar for active jobs */}
+      <ProgressBar job={job} />
 
       {/* Error message if any */}
       {job.error_message && (
