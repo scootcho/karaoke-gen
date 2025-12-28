@@ -14,7 +14,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" ...
 
 ### Health
 
-```
+```http
 GET /health
 ```
 
@@ -24,7 +24,7 @@ No auth required. Returns service status.
 
 #### Create Job with Upload
 
-```
+```http
 POST /api/jobs/upload
 Content-Type: multipart/form-data
 
@@ -37,7 +37,7 @@ Returns job ID. Triggers async processing.
 
 #### Get Job Status
 
-```
+```http
 GET /api/jobs/{job_id}
 ```
 
@@ -49,7 +49,7 @@ Response includes:
 
 #### List Jobs
 
-```
+```http
 GET /api/jobs
 GET /api/jobs?status=complete
 GET /api/jobs?limit=10&offset=0
@@ -57,7 +57,7 @@ GET /api/jobs?limit=10&offset=0
 
 #### Delete Job
 
-```
+```http
 DELETE /api/jobs/{job_id}
 ```
 
@@ -65,7 +65,7 @@ DELETE /api/jobs/{job_id}
 
 #### Get Correction Data
 
-```
+```http
 GET /api/review/{job_id}/correction-data
 ```
 
@@ -73,7 +73,7 @@ Returns lyrics correction data for the review UI.
 
 #### Complete Review
 
-```
+```http
 POST /api/review/{job_id}/complete
 Content-Type: application/json
 
@@ -87,7 +87,7 @@ Saves corrections and triggers video rendering.
 
 #### Generate Preview
 
-```
+```http
 POST /api/review/{job_id}/preview-video
 ```
 
@@ -95,7 +95,7 @@ Generates preview video during review.
 
 #### Stream Audio
 
-```
+```http
 GET /api/review/{job_id}/audio/{stem_type}
 ```
 
@@ -103,7 +103,7 @@ Streams audio for review playback.
 
 ### Instrumental Selection
 
-```
+```http
 POST /api/jobs/{job_id}/select-instrumental
 Content-Type: application/json
 
@@ -114,7 +114,7 @@ Content-Type: application/json
 
 ### Audio Search
 
-```
+```http
 GET /api/audio-search?q=song+name
 ```
 
@@ -122,7 +122,7 @@ Search for songs (flacfetch integration).
 
 ### Themes
 
-```
+```http
 GET /api/themes
 ```
 
@@ -132,7 +132,7 @@ No auth required. Returns available video themes.
 
 These endpoints are used by workers and require admin tokens.
 
-```
+```http
 POST /api/internal/jobs/{job_id}/trigger-audio
 POST /api/internal/jobs/{job_id}/trigger-lyrics
 POST /api/internal/jobs/{job_id}/trigger-screens

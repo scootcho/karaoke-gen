@@ -2,7 +2,7 @@
 
 ## System Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │  Frontend (Cloudflare Pages)                                    │
 │  Next.js + TypeScript                                           │
@@ -33,7 +33,7 @@
 
 ## Processing Pipeline
 
-```
+```text
 1. UPLOAD
    POST /api/jobs/upload
    • Save audio to GCS
@@ -95,7 +95,7 @@
 
 ## GCS File Structure
 
-```
+```text
 jobs/{job_id}/
 ├── input/
 │   └── original.flac              # Uploaded audio
@@ -124,7 +124,7 @@ jobs/{job_id}/
 
 **Key Design Decision**: We use LyricsTranscriber as a **library**, not a server.
 
-```
+```text
 CLI Mode (Original):              Cloud Mode (Our Approach):
 ────────────────────              ──────────────────────────
 LyricsTranscriber                 LyricsTranscriber

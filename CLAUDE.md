@@ -4,9 +4,9 @@
 
 **Karaoke video generation platform** - CLI tool and web service that creates professional karaoke videos with synchronized lyrics.
 
-- **Production**: https://gen.nomadkaraoke.com (frontend), https://api.nomadkaraoke.com (backend)
+- **Production**: <https://gen.nomadkaraoke.com> (frontend), <https://api.nomadkaraoke.com> (backend)
 - **CLI**: `karaoke-gen` (local), `karaoke-gen-remote` (cloud)
-- **Repo**: https://github.com/nomadkaraoke/karaoke-gen
+- **Repo**: <https://github.com/nomadkaraoke/karaoke-gen>
 
 ## Quick Reference
 
@@ -57,7 +57,7 @@ cd frontend && npm run test:all 2>&1 | tail -n 200
 ## Documentation Maintenance
 
 ### Structure
-```
+```text
 docs/
 ├── README.md          # Current status + navigation (UPDATE THIS)
 ├── ARCHITECTURE.md    # System design
