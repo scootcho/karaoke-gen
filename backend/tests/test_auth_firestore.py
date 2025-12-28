@@ -114,9 +114,97 @@ class TestWorkerServiceBasics:
         assert 'http' in url
 
 
+class TestSessionTokenValidation:
+    """Tests for session token validation in AuthService.
+
+    PR #120: Fixed authentication to recognize session tokens from magic link auth.
+    Previously, validate_token() only checked admin tokens and auth_tokens collection.
+    Session tokens (created via magic link) are stored in the sessions collection,
+    so they were incorrectly rejected as "Invalid token".
+    """
+
+    def test_validate_token_checks_session_on_fallback(self):
+        """Test that validate_token falls back to checking session tokens."""
+        mock_firestore = MagicMock()
+        mock_firestore.get_token.return_value = None  # Token not in auth_tokens
+
+        mock_user = MagicMock()
+        mock_user.email = "test@example.com"
+        mock_user.credits = 5
+
+        mock_user_service = MagicMock()
+        mock_user_service.validate_session.return_value = (True, mock_user, "Valid session")
+
+        with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
+             patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
+            # Clear the cached instance to get fresh state
+            import backend.services.auth_service
+            backend.services.auth_service._auth_service = None
+            from backend.services.auth_service import AuthService, UserType
+
+            service = AuthService()
+            is_valid, user_type, remaining, msg = service.validate_token("session-token-xyz")
+
+            assert is_valid is True
+            assert user_type == UserType.STRIPE
+            assert remaining == 5  # User's credits
+            mock_user_service.validate_session.assert_called_once_with("session-token-xyz")
+
+    def test_validate_token_returns_invalid_when_session_invalid(self):
+        """Test that validate_token returns invalid when session validation fails."""
+        mock_firestore = MagicMock()
+        mock_firestore.get_token.return_value = None  # Token not in auth_tokens
+
+        mock_user_service = MagicMock()
+        mock_user_service.validate_session.return_value = (False, None, "Invalid session")
+
+        with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
+             patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
+            import backend.services.auth_service
+            backend.services.auth_service._auth_service = None
+            from backend.services.auth_service import AuthService, UserType
+
+            service = AuthService()
+            is_valid, user_type, remaining, msg = service.validate_token("invalid-session")
+
+            assert is_valid is False
+            assert remaining == 0
+            assert "Invalid token" in msg
+
+    def test_validate_token_returns_zero_credits_when_user_has_none(self):
+        """Test that validate_token handles users with 0 credits correctly."""
+        mock_firestore = MagicMock()
+        mock_firestore.get_token.return_value = None
+
+        mock_user = MagicMock()
+        mock_user.email = "test@example.com"
+        mock_user.credits = 0
+
+        mock_user_service = MagicMock()
+        mock_user_service.validate_session.return_value = (True, mock_user, "Valid session")
+
+        with patch('backend.services.auth_service.FirestoreService', return_value=mock_firestore), \
+             patch('backend.services.user_service.get_user_service', return_value=mock_user_service), \
+             patch.dict('os.environ', {'ADMIN_TOKENS': 'admin-token-123'}):
+            import backend.services.auth_service
+            backend.services.auth_service._auth_service = None
+            from backend.services.auth_service import AuthService, UserType
+
+            service = AuthService()
+            is_valid, user_type, remaining, msg = service.validate_token("session-token")
+
+            # User is authenticated but has no credits
+            assert is_valid is True
+            assert user_type == UserType.STRIPE
+            assert remaining == 0
+            assert "no credits" in msg.lower()
+
+
 class TestJobManagerBasics:
     """Basic tests for JobManager."""
-    
+
     def test_job_manager_can_import(self):
         """Test JobManager can be imported."""
         from backend.services.job_manager import JobManager

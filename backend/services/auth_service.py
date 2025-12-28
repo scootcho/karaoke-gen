@@ -3,12 +3,10 @@ Authentication service for karaoke backend.
 
 Provides token-based authentication with support for:
 - Admin tokens (hardcoded in environment)
-- User tokens (stored in Firestore)
+- User tokens (stored in Firestore auth_tokens collection)
+- Session tokens (stored in Firestore sessions collection, from magic link auth)
 - Usage tracking and limits
 - Token management API
-
-This is designed to be extensible for future Stripe integration
-and admin dashboard functionality.
 """
 import logging
 import hashlib
@@ -78,10 +76,30 @@ class AuthService:
                 f"expected len={len(self.admin_tokens[0])}, got len={len(token)}"
             )
         
-        # Check stored tokens in Firestore
+        # Check stored tokens in Firestore (auth_tokens collection)
         token_data = self.firestore.get_token(token)
-        
+
         if not token_data:
+            # Fall back to checking session tokens (from magic link auth)
+            # Import here to avoid circular dependency
+            from backend.services.user_service import get_user_service
+
+            user_service = get_user_service()
+            is_valid, user, message = user_service.validate_session(token)
+
+            if is_valid and user:
+                # Session is valid - user is authenticated via magic link
+                # Return their credits as remaining uses
+                credits = user.credits
+                logger.info(f"Session token validated for user {user.email} (credits: {credits})")
+
+                if credits <= 0:
+                    # User has no credits but is authenticated
+                    return True, UserType.STRIPE, 0, f"Authenticated but no credits remaining"
+
+                return True, UserType.STRIPE, credits, f"Session valid: {credits} credits"
+
+            # Neither auth_token nor session found
             return False, UserType.LIMITED, 0, "Invalid token"
         
         # Check if token is active
@@ -133,31 +151,61 @@ class AuthService:
     def increment_token_usage(self, token: str, job_id: str) -> bool:
         """
         Increment usage count for a token and track the job.
-        
+
+        For session tokens (magic link auth), this deducts a credit from the user.
+        For auth_tokens, this increments the usage count.
+
         Args:
             token: The access token
             job_id: The job ID being created
-            
+
         Returns:
             True if usage was tracked, False otherwise
         """
         # Validate token first
         is_valid, user_type, remaining_uses, message = self.validate_token(token)
-        
+
         if not is_valid:
             logger.warning(f"Cannot increment usage for invalid token: {message}")
             return False
-        
+
         # Don't track usage for admin or unlimited tokens
         if user_type in [UserType.ADMIN, UserType.UNLIMITED]:
             logger.debug(f"Skipping usage tracking for {user_type} token")
             return True
-        
+
         # For admin tokens (not in Firestore), no tracking needed
         if token in self.admin_tokens:
             return True
-        
-        # Increment usage in Firestore
+
+        # Check if this is a session token (STRIPE type from validate_token means it's a session)
+        # Session tokens are not in auth_tokens collection
+        token_data = self.firestore.get_token(token)
+
+        if not token_data:
+            # This is a session token - deduct credit from user
+            from backend.services.user_service import get_user_service
+            user_service = get_user_service()
+
+            # Get the user email from the session
+            is_valid, user, _ = user_service.validate_session(token)
+            if not is_valid or not user:
+                logger.error(f"Session token validation failed during usage increment")
+                return False
+
+            # Deduct one credit
+            success, new_balance, deduct_message = user_service.deduct_credit(
+                user.email, job_id, reason="job_creation"
+            )
+
+            if success:
+                logger.info(f"Deducted credit for user {user.email} (remaining: {new_balance})")
+                return True
+            else:
+                logger.error(f"Failed to deduct credit for user {user.email}: {deduct_message}")
+                return False
+
+        # Regular auth_token - increment usage in Firestore
         try:
             self.firestore.increment_token_usage(token, job_id)
             logger.info(f"Incremented usage for token (remaining: {remaining_uses - 1})")
