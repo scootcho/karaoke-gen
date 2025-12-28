@@ -203,7 +203,7 @@ class TestLyrics:
         with patch('karaoke_gen.lyrics_processor.LyricsTranscriber', mock_transcriber), \
              patch('os.path.exists', return_value=False), \
              patch('shutil.copy2') as mock_copy2, \
-             patch('os.getenv', side_effect=lambda key: mock_env.get(key)), \
+             patch('os.getenv', side_effect=lambda key, default=None: mock_env.get(key, default)), \
              patch('karaoke_gen.lyrics_processor.load_dotenv'):
             
             # Call the method on the lyrics_processor
