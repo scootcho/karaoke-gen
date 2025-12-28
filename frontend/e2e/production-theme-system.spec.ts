@@ -18,6 +18,10 @@ const ACCESS_TOKEN = process.env.KARAOKE_ACCESS_TOKEN;
 const PROD_URL = 'https://gen.nomadkaraoke.com';
 const API_URL = 'https://api.nomadkaraoke.com';
 
+// Real song for testing - uses cached flacfetch results for fast responses
+const TEST_ARTIST = 'piri';
+const TEST_TITLE = 'dog';
+
 // Helper to authenticate the page by setting localStorage token
 async function authenticatePage(page: Page) {
   if (!ACCESS_TOKEN) {
@@ -235,9 +239,9 @@ test.describe('Full Job Flow with Theme - UI Based', () => {
     await page.getByRole('tab', { name: /search/i }).click();
     await page.waitForTimeout(2000);
 
-    // Fill in a short, well-known song for faster processing
-    await page.getByLabel('Artist').fill('Rick Astley');
-    await page.getByLabel('Title').fill('Never Gonna Give You Up');
+    // Fill in a real song - uses cached search results for fast responses
+    await page.getByLabel('Artist').fill(TEST_ARTIST);
+    await page.getByLabel('Title').fill(TEST_TITLE);
 
     // Ensure a theme is selected (should be auto-selected)
     const themeSelect = page.locator('button[role="combobox"]').first();
@@ -487,9 +491,9 @@ test.describe('Theme Style Validation', () => {
     await page.getByRole('tab', { name: /search/i }).click();
     await page.waitForTimeout(2000);
 
-    // Fill form
-    await page.getByLabel('Artist').fill('Test Artist E2E');
-    await page.getByLabel('Title').fill('Test Song E2E');
+    // Fill form with real song - uses cached search results for fast responses
+    await page.getByLabel('Artist').fill(TEST_ARTIST);
+    await page.getByLabel('Title').fill(TEST_TITLE);
 
     // Ensure theme is selected
     const themeSelect = page.locator('button[role="combobox"]').first();
@@ -523,9 +527,11 @@ test.describe('Theme Style Validation', () => {
       const jobsData = await jobsResponse.json();
       const jobs = jobsData.jobs || jobsData;
 
-      // Find a job with our test artist/title
+      // Find a job with our test artist/title (case-insensitive match)
       const testJob = Array.isArray(jobs)
-        ? jobs.find((j: any) => j.artist === 'Test Artist E2E' && j.title === 'Test Song E2E')
+        ? jobs.find((j: any) =>
+            j.artist?.toLowerCase() === TEST_ARTIST.toLowerCase() &&
+            j.title?.toLowerCase() === TEST_TITLE.toLowerCase())
         : null;
 
       if (testJob) {
