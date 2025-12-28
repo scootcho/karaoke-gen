@@ -135,7 +135,7 @@ describe('JobCard', () => {
       const instrumentalJob = {
         ...mockJob,
         status: 'awaiting_instrumental_selection',
-        state_data: { instrumental_token: 'test-instrumental-token' }
+        instrumental_token: 'test-instrumental-token'
       }
       render(<JobCard job={instrumentalJob} onRefresh={mockOnRefresh} />)
 

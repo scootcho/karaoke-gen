@@ -117,8 +117,8 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
     const baseApiUrl = `${backendUrl}/api/jobs/${job.job_id}`
     const encodedApiUrl = encodeURIComponent(baseApiUrl)
     let url = `/instrumental/?baseApiUrl=${encodedApiUrl}`
-    if (job.state_data?.instrumental_token) {
-      url += `&instrumentalToken=${encodeURIComponent(job.state_data.instrumental_token)}`
+    if (job.instrumental_token) {
+      url += `&instrumentalToken=${encodeURIComponent(job.instrumental_token)}`
     }
     return url
   }
