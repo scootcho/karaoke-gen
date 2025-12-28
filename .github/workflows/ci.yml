@@ -419,6 +419,34 @@ jobs:
           echo "✅ Basic syntax validation passed"
 
   # ============================================
+  # CI GATE - Required status check for PRs
+  # ============================================
+
+  ci-gate:
+    name: "CI Gate"
+    runs-on: ubuntu-latest
+    needs: [frontend-unit-tests, package-unit-tests, package-integration-tests, backend-unit-tests, backend-emulator-tests, backend-lint]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          results=(
+            "${{ needs.frontend-unit-tests.result }}"
+            "${{ needs.package-unit-tests.result }}"
+            "${{ needs.package-integration-tests.result }}"
+            "${{ needs.backend-unit-tests.result }}"
+            "${{ needs.backend-emulator-tests.result }}"
+            "${{ needs.backend-lint.result }}"
+          )
+          for result in "${results[@]}"; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "❌ CI failed"
+              exit 1
+            fi
+          done
+          echo "✅ CI passed"
+
+  # ============================================
   # DEPLOYMENTS (main branch only)
   # ============================================
 

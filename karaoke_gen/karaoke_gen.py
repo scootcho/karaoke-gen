@@ -503,7 +503,7 @@ class KaraokePrep:
                             )
 
                             # Update extractor to reflect the source
-                            self.extractor = f"youtube"
+                            self.extractor = "youtube"
                         else:
                             # Use flacfetch to search and download audio
                             self.logger.info(f"Using flacfetch to search and download: {self.artist} - {self.title}")
