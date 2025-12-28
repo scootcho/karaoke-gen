@@ -51,7 +51,7 @@ export DISABLE_LLM_CACHE=1                 # Disable response caching
 
 ### Using with Ollama (Local, Free)
 
-1. Install Ollama: https://ollama.ai
+1. Install Ollama: [https://ollama.ai](https://ollama.ai)
 2. Pull a model: `ollama pull llama3.2:latest`
 3. Set environment:
    ```bash
@@ -160,7 +160,7 @@ When Langfuse is configured, you get:
 - **Cost estimates** for paid APIs
 - **Model performance metrics**
 
-Set up at https://langfuse.com
+Set up at [https://langfuse.com](https://langfuse.com)
 
 ## Human Feedback Collection
 

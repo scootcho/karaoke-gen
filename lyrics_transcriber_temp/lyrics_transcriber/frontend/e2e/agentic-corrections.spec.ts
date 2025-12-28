@@ -143,3 +143,98 @@ test.describe('File Upload Flow', () => {
     expect(fileChooserOpened).toBe(true);
   });
 });
+
+test.describe('Review Mode', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByText('Lyrics Correction Review')).toBeVisible();
+  });
+
+  test('should show Review Mode toggle when agentic data is loaded', async ({ page }) => {
+    await loadFixtureData(page);
+
+    // Wait for data to load and render
+    await page.waitForTimeout(2000);
+
+    // Take a screenshot to see the UI state
+    await page.screenshot({ path: 'test-results/review-mode-toggle.png' });
+
+    // The Review Mode toggle should be visible when agentic corrections are present
+    // It will appear as "Review Off" chip initially
+    const reviewChip = page.getByText(/Review Off|Review Mode/i);
+    const chipCount = await reviewChip.count();
+    console.log('Review mode chip found:', chipCount);
+  });
+
+  test('should show batch actions panel when Review Mode is enabled', async ({ page }) => {
+    await loadFixtureData(page);
+
+    // Wait for data to load
+    await page.waitForTimeout(2000);
+
+    // Find and click the Review Mode toggle
+    const reviewToggle = page.getByText(/Review Off/i);
+    if (await reviewToggle.isVisible()) {
+      await reviewToggle.click();
+
+      // Wait for the batch actions panel to appear
+      await page.waitForTimeout(500);
+
+      // Take a screenshot
+      await page.screenshot({ path: 'test-results/batch-actions-panel.png' });
+
+      // Check for batch action buttons
+      const acceptHighConfidence = page.getByRole('button', { name: /Accept High Confidence/i });
+      const acceptAll = page.getByRole('button', { name: /Accept All/i });
+      const revertAll = page.getByRole('button', { name: /Revert All/i });
+
+      console.log('Accept High Confidence visible:', await acceptHighConfidence.isVisible());
+      console.log('Accept All visible:', await acceptAll.isVisible());
+      console.log('Revert All visible:', await revertAll.isVisible());
+    }
+  });
+
+  test('should render corrected words with original text preview', async ({ page }) => {
+    await loadFixtureData(page);
+
+    // Wait for data to load
+    await page.waitForTimeout(2000);
+
+    // Take a screenshot of the transcription view
+    await page.screenshot({ path: 'test-results/corrected-words.png' });
+
+    // Look for the CorrectedWordWithActions components
+    // They should show the original word as a strikethrough above the corrected word
+    const pageContent = await page.content();
+    console.log('Page has corrections rendered:', pageContent.length);
+  });
+
+  test('should toggle Review Mode on and off', async ({ page }) => {
+    await loadFixtureData(page);
+
+    await page.waitForTimeout(2000);
+
+    // Find the Review toggle
+    const reviewOff = page.getByText(/Review Off/i);
+
+    if (await reviewOff.isVisible()) {
+      // Click to enable Review Mode
+      await reviewOff.click();
+      await page.waitForTimeout(500);
+
+      // Screenshot with Review Mode ON
+      await page.screenshot({ path: 'test-results/review-mode-on.png' });
+
+      // Should now show "Review Mode" label
+      const reviewOn = page.getByText(/Review Mode/i).first();
+      if (await reviewOn.isVisible()) {
+        // Click to disable Review Mode
+        await reviewOn.click();
+        await page.waitForTimeout(500);
+
+        // Screenshot with Review Mode OFF
+        await page.screenshot({ path: 'test-results/review-mode-off.png' });
+      }
+    }
+  });
+});

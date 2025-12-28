@@ -8,6 +8,9 @@ import RedoIcon from '@mui/icons-material/Redo'
 import TimerIcon from '@mui/icons-material/Timer'
 import RestoreIcon from '@mui/icons-material/Restore'
 import RateReviewIcon from '@mui/icons-material/RateReview'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import HighlightOffIcon from '@mui/icons-material/HighlightOff'
 import { CorrectionData, InteractionMode } from '../types'
 import CorrectionMetrics from './CorrectionMetrics'
 import AgenticCorrectionMetrics from './AgenticCorrectionMetrics'
@@ -44,6 +47,13 @@ interface HeaderProps {
     canRedo: boolean
     annotationsEnabled?: boolean
     onAnnotationsToggle?: (enabled: boolean) => void
+    // Review mode props
+    reviewMode?: boolean
+    onReviewModeToggle?: (enabled: boolean) => void
+    // Batch action props
+    onAcceptAllCorrections?: () => void
+    onAcceptHighConfidenceCorrections?: () => void
+    onRevertAllCorrections?: () => void
 }
 
 export default function Header({
@@ -70,6 +80,11 @@ export default function Header({
     canRedo,
     annotationsEnabled = true,
     onAnnotationsToggle,
+    reviewMode = false,
+    onReviewModeToggle,
+    onAcceptAllCorrections,
+    onAcceptHighConfidenceCorrections,
+    onRevertAllCorrections,
 }: HeaderProps) {
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -141,9 +156,28 @@ export default function Header({
                     Nomad Karaoke: Lyrics Transcription Review
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {!isReadOnly && isAgenticMode && onReviewModeToggle && (
+                        <Tooltip title={reviewMode
+                            ? "Hide inline correction actions"
+                            : "Show inline actions on all corrections for quick review"
+                        }>
+                            <Chip
+                                icon={<VisibilityIcon />}
+                                label={reviewMode ? "Review Mode" : "Review Off"}
+                                onClick={() => onReviewModeToggle(!reviewMode)}
+                                color={reviewMode ? "secondary" : "default"}
+                                variant={reviewMode ? "filled" : "outlined"}
+                                size="small"
+                                sx={{
+                                    cursor: 'pointer',
+                                    '& .MuiChip-icon': { fontSize: '1rem' }
+                                }}
+                            />
+                        </Tooltip>
+                    )}
                     {!isReadOnly && onAnnotationsToggle && (
-                        <Tooltip title={annotationsEnabled 
-                            ? "Click to disable annotation prompts when editing" 
+                        <Tooltip title={annotationsEnabled
+                            ? "Click to disable annotation prompts when editing"
                             : "Click to enable annotation prompts when editing"
                         }>
                             <Chip
@@ -153,7 +187,7 @@ export default function Header({
                                 color={annotationsEnabled ? "primary" : "default"}
                                 variant={annotationsEnabled ? "filled" : "outlined"}
                                 size="small"
-                                sx={{ 
+                                sx={{
                                     cursor: 'pointer',
                                     '& .MuiChip-icon': { fontSize: '1rem' }
                                 }}
@@ -280,6 +314,65 @@ export default function Header({
                     />
                 </Box>
             </Box>
+
+            {/* Batch Actions Panel - shown when review mode is enabled */}
+            {!isReadOnly && reviewMode && isAgenticMode && data.corrections?.length > 0 && (
+                <Paper sx={{ p: 0.8, mb: 1, backgroundColor: 'action.hover' }}>
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: isMobile ? 'column' : 'row',
+                        gap: 1,
+                        alignItems: isMobile ? 'stretch' : 'center',
+                        justifyContent: 'space-between'
+                    }}>
+                        <Typography variant="subtitle2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                            Batch Actions ({data.corrections.length} corrections)
+                        </Typography>
+                        <Box sx={{
+                            display: 'flex',
+                            gap: 1,
+                            flexWrap: 'wrap'
+                        }}>
+                            {onAcceptHighConfidenceCorrections && (
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    color="success"
+                                    startIcon={<CheckCircleIcon />}
+                                    onClick={onAcceptHighConfidenceCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Accept High Confidence ({data.corrections.filter(c => c.confidence >= 0.8).length})
+                                </Button>
+                            )}
+                            {onAcceptAllCorrections && (
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="success"
+                                    startIcon={<CheckCircleIcon />}
+                                    onClick={onAcceptAllCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Accept All
+                                </Button>
+                            )}
+                            {onRevertAllCorrections && (
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="error"
+                                    startIcon={<HighlightOffIcon />}
+                                    onClick={onRevertAllCorrections}
+                                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                                >
+                                    Revert All
+                                </Button>
+                            )}
+                        </Box>
+                    </Box>
+                </Paper>
+            )}
 
             <Paper sx={{ p: 0.8, mb: 1 }}>
                 <Box sx={{

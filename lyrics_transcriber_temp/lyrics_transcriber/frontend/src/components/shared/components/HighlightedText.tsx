@@ -1,4 +1,4 @@
-import { Typography, Box } from '@mui/material'
+import { Typography, Box, useMediaQuery, useTheme } from '@mui/material'
 import { WordComponent } from './Word'
 import { useWordClick } from '../hooks/useWordClick'
 import {
@@ -16,6 +16,7 @@ import React from 'react'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import IconButton from '@mui/material/IconButton'
 import { getWordsFromIds } from '../utils/wordUtils'
+import CorrectedWordWithActions from '../../CorrectedWordWithActions'
 
 export interface HighlightedTextProps {
     text?: string
@@ -36,6 +37,12 @@ export interface HighlightedTextProps {
     gaps?: GapSequence[]
     flashingHandler?: string | null
     corrections?: WordCorrection[]
+    // Review mode props for agentic corrections
+    reviewMode?: boolean
+    onRevertCorrection?: (wordId: string) => void
+    onEditCorrection?: (wordId: string) => void
+    onAcceptCorrection?: (wordId: string) => void
+    onShowCorrectionDetail?: (wordId: string) => void
 }
 
 export function HighlightedText({
@@ -57,7 +64,15 @@ export function HighlightedText({
     gaps = [],
     flashingHandler,
     corrections = [],
+    reviewMode = false,
+    onRevertCorrection,
+    onEditCorrection,
+    onAcceptCorrection,
+    onShowCorrectionDetail,
 }: HighlightedTextProps) {
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
     const { handleWordClick } = useWordClick({
         mode,
         onElementClick,
@@ -157,43 +172,83 @@ export function HighlightedText({
 
     const renderContent = () => {
         if (wordPositions && !segments) {
-            return wordPositions.map((wordPos, index) => (
-                <React.Fragment key={wordPos.word.id}>
-                    <WordComponent
-                        key={`${wordPos.word.id}-${index}`}
-                        word={wordPos.word.text}
-                        shouldFlash={shouldWordFlash(wordPos)}
-                        isAnchor={wordPos.type === 'anchor'}
-                        isCorrectedGap={wordPos.isCorrected}
-                        isUncorrectedGap={wordPos.type === 'gap' && !wordPos.isCorrected}
-                        isCurrentlyPlaying={shouldHighlightWord(wordPos)}
-                        onClick={() => handleWordClick(
-                            wordPos.word.text,
-                            wordPos.word.id,
-                            wordPos.type === 'anchor' ? wordPos.sequence as AnchorSequence : undefined,
-                            wordPos.type === 'gap' ? wordPos.sequence as GapSequence : undefined
-                        )}
-                        correction={(() => {
-                            const correction = corrections?.find(c => 
-                                c.corrected_word_id === wordPos.word.id || 
-                                c.word_id === wordPos.word.id
-                            );
-                            return correction ? {
+            return wordPositions.map((wordPos, index) => {
+                // Find correction for this word
+                const correction = corrections?.find(c =>
+                    c.corrected_word_id === wordPos.word.id ||
+                    c.word_id === wordPos.word.id
+                );
+
+                // Use CorrectedWordWithActions for agentic corrections
+                if (correction && correction.handler === 'AgenticCorrector') {
+                    return (
+                        <React.Fragment key={wordPos.word.id}>
+                            <CorrectedWordWithActions
+                                word={wordPos.word.text}
+                                originalWord={correction.original_word}
+                                correction={{
+                                    originalWord: correction.original_word,
+                                    handler: correction.handler,
+                                    confidence: correction.confidence,
+                                    source: correction.source,
+                                    reason: correction.reason
+                                }}
+                                shouldFlash={shouldWordFlash(wordPos)}
+                                showActions={reviewMode && !isMobile}
+                                onRevert={() => onRevertCorrection?.(wordPos.word.id)}
+                                onEdit={() => onEditCorrection?.(wordPos.word.id)}
+                                onAccept={() => onAcceptCorrection?.(wordPos.word.id)}
+                                onClick={() => {
+                                    if (isMobile) {
+                                        onShowCorrectionDetail?.(wordPos.word.id)
+                                    } else {
+                                        handleWordClick(
+                                            wordPos.word.text,
+                                            wordPos.word.id,
+                                            wordPos.type === 'anchor' ? wordPos.sequence as AnchorSequence : undefined,
+                                            wordPos.type === 'gap' ? wordPos.sequence as GapSequence : undefined
+                                        )
+                                    }
+                                }}
+                            />
+                            {index < wordPositions.length - 1 && ' '}
+                        </React.Fragment>
+                    );
+                }
+
+                // Default rendering with WordComponent
+                return (
+                    <React.Fragment key={wordPos.word.id}>
+                        <WordComponent
+                            key={`${wordPos.word.id}-${index}`}
+                            word={wordPos.word.text}
+                            shouldFlash={shouldWordFlash(wordPos)}
+                            isAnchor={wordPos.type === 'anchor'}
+                            isCorrectedGap={wordPos.isCorrected}
+                            isUncorrectedGap={wordPos.type === 'gap' && !wordPos.isCorrected}
+                            isCurrentlyPlaying={shouldHighlightWord(wordPos)}
+                            onClick={() => handleWordClick(
+                                wordPos.word.text,
+                                wordPos.word.id,
+                                wordPos.type === 'anchor' ? wordPos.sequence as AnchorSequence : undefined,
+                                wordPos.type === 'gap' ? wordPos.sequence as GapSequence : undefined
+                            )}
+                            correction={correction ? {
                                 originalWord: correction.original_word,
                                 handler: correction.handler,
                                 confidence: correction.confidence,
                                 source: correction.source,
                                 reason: correction.reason
-                            } : null;
-                        })()}
-                    />
-                    {index < wordPositions.length - 1 && ' '}
-                </React.Fragment>
-            ))
+                            } : null}
+                        />
+                        {index < wordPositions.length - 1 && ' '}
+                    </React.Fragment>
+                );
+            })
         } else if (segments) {
             return segments.map((segment) => (
-                <Box key={segment.id} sx={{ 
-                    display: 'flex', 
+                <Box key={segment.id} sx={{
+                    display: 'flex',
                     alignItems: 'flex-start',
                     mb: 0
                 }}>
@@ -212,12 +267,44 @@ export function HighlightedText({
 
                             const sequence = wordPos?.type === 'gap' ? wordPos.sequence as GapSequence : undefined;
 
-                            // Find correction information for the tooltip
-                            const correction = corrections?.find(c => 
-                                c.corrected_word_id === word.id || 
+                            // Find correction information
+                            const correction = corrections?.find(c =>
+                                c.corrected_word_id === word.id ||
                                 c.word_id === word.id
                             );
-                            
+
+                            // Use CorrectedWordWithActions for agentic corrections
+                            if (correction && correction.handler === 'AgenticCorrector') {
+                                return (
+                                    <React.Fragment key={word.id}>
+                                        <CorrectedWordWithActions
+                                            word={word.text}
+                                            originalWord={correction.original_word}
+                                            correction={{
+                                                originalWord: correction.original_word,
+                                                handler: correction.handler,
+                                                confidence: correction.confidence,
+                                                source: correction.source,
+                                                reason: correction.reason
+                                            }}
+                                            shouldFlash={shouldWordFlash(wordPos || { word: word.text, id: word.id })}
+                                            showActions={reviewMode && !isMobile}
+                                            onRevert={() => onRevertCorrection?.(word.id)}
+                                            onEdit={() => onEditCorrection?.(word.id)}
+                                            onAccept={() => onAcceptCorrection?.(word.id)}
+                                            onClick={() => {
+                                                if (isMobile) {
+                                                    onShowCorrectionDetail?.(word.id)
+                                                } else {
+                                                    handleWordClick(word.text, word.id, anchor, sequence)
+                                                }
+                                            }}
+                                        />
+                                        {wordIndex < segment.words.length - 1 && ' '}
+                                    </React.Fragment>
+                                );
+                            }
+
                             const correctionInfo = correction ? {
                                 originalWord: correction.original_word,
                                 handler: correction.handler,

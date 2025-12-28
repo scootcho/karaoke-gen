@@ -88,6 +88,12 @@ interface MemoizedTranscriptionViewProps {
     anchors: AnchorSequence[]
     disableHighlighting: boolean
     onDataChange?: (updatedData: CorrectionData) => void
+    // Review mode props
+    reviewMode: boolean
+    onRevertCorrection: (wordId: string) => void
+    onEditCorrection: (wordId: string) => void
+    onAcceptCorrection: (wordId: string) => void
+    onShowCorrectionDetail: (wordId: string) => void
 }
 
 // Create a memoized TranscriptionView component
@@ -103,7 +109,12 @@ const MemoizedTranscriptionView = memo(function MemoizedTranscriptionView({
     currentTime,
     anchors,
     disableHighlighting,
-    onDataChange
+    onDataChange,
+    reviewMode,
+    onRevertCorrection,
+    onEditCorrection,
+    onAcceptCorrection,
+    onShowCorrectionDetail
 }: MemoizedTranscriptionViewProps) {
     return (
         <TranscriptionView
@@ -118,6 +129,11 @@ const MemoizedTranscriptionView = memo(function MemoizedTranscriptionView({
             currentTime={disableHighlighting ? undefined : currentTime}
             anchors={anchors}
             onDataChange={onDataChange}
+            reviewMode={reviewMode}
+            onRevertCorrection={onRevertCorrection}
+            onEditCorrection={onEditCorrection}
+            onAcceptCorrection={onAcceptCorrection}
+            onShowCorrectionDetail={onShowCorrectionDetail}
         />
     );
 });
@@ -202,6 +218,13 @@ interface MemoizedHeaderProps {
     onUnCorrectAll: () => void
     annotationsEnabled: boolean
     onAnnotationsToggle: (enabled: boolean) => void
+    // Review mode props
+    reviewMode: boolean
+    onReviewModeToggle: (enabled: boolean) => void
+    // Batch action props
+    onAcceptAllCorrections: () => void
+    onAcceptHighConfidenceCorrections: () => void
+    onRevertAllCorrections: () => void
 }
 
 // Create a memoized Header component
@@ -228,7 +251,12 @@ const MemoizedHeader = memo(function MemoizedHeader({
     canRedo,
     onUnCorrectAll,
     annotationsEnabled,
-    onAnnotationsToggle
+    onAnnotationsToggle,
+    reviewMode,
+    onReviewModeToggle,
+    onAcceptAllCorrections,
+    onAcceptHighConfidenceCorrections,
+    onRevertAllCorrections
 }: MemoizedHeaderProps) {
     return (
         <Header
@@ -255,6 +283,11 @@ const MemoizedHeader = memo(function MemoizedHeader({
             onUnCorrectAll={onUnCorrectAll}
             annotationsEnabled={annotationsEnabled}
             onAnnotationsToggle={onAnnotationsToggle}
+            reviewMode={reviewMode}
+            onReviewModeToggle={onReviewModeToggle}
+            onAcceptAllCorrections={onAcceptAllCorrections}
+            onAcceptHighConfidenceCorrections={onAcceptHighConfidenceCorrections}
+            onRevertAllCorrections={onRevertAllCorrections}
         />
     );
 });
@@ -291,6 +324,9 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
     const [isFindReplaceModalOpen, setIsFindReplaceModalOpen] = useState(false)
     const [isTimingOffsetModalOpen, setIsTimingOffsetModalOpen] = useState(false)
     const [timingOffsetMs, setTimingOffsetMs] = useState(0)
+
+    // Review mode state for agentic corrections
+    const [reviewMode, setReviewMode] = useState(false)
     
     // Annotation collection state
     const [annotations, setAnnotations] = useState<Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]>([])
@@ -793,10 +829,81 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
         // For now, just log acceptance
         // In the future, this could be tracked in the annotation system
         console.log('Accepted correction for word:', wordId)
-        
+
         // TODO: Track acceptance in annotation system
         // This could be used to build confidence in the AI's corrections over time
     }, [])
+
+    // Batch action handlers for review mode
+    const handleAcceptAllCorrections = useCallback(() => {
+        // Accept all corrections - for now just log, could track in annotation system
+        data.corrections?.forEach(c => {
+            console.log('Batch accepted correction:', c.corrected_word_id || c.word_id)
+        })
+        console.log(`Accepted all ${data.corrections?.length || 0} corrections`)
+    }, [data.corrections])
+
+    const handleAcceptHighConfidenceCorrections = useCallback(() => {
+        // Accept corrections with confidence >= 80%
+        const highConfidence = data.corrections?.filter(c => c.confidence >= 0.8) || []
+        highConfidence.forEach(c => {
+            console.log('Batch accepted high-confidence correction:', c.corrected_word_id || c.word_id)
+        })
+        console.log(`Accepted ${highConfidence.length} high-confidence corrections`)
+    }, [data.corrections])
+
+    const handleRevertAllCorrections = useCallback(() => {
+        if (!window.confirm(`Are you sure you want to revert all ${data.corrections?.length || 0} corrections? This cannot be undone.`)) {
+            return
+        }
+
+        // Revert all corrections by reverting each one
+        // Process in reverse order to avoid ID conflicts
+        const corrections = [...(data.corrections || [])].reverse()
+
+        let newData = data
+        for (const correction of corrections) {
+            const wordId = correction.corrected_word_id || correction.word_id
+
+            // Find the segment containing the corrected word
+            const segmentIndex = newData.corrected_segments.findIndex(segment =>
+                segment.words.some(w => w.id === wordId)
+            )
+
+            if (segmentIndex === -1) continue
+
+            const segment = newData.corrected_segments[segmentIndex]
+
+            // Replace the corrected word with the original
+            const newWords = segment.words.map(word => {
+                if (word.id === wordId) {
+                    return {
+                        ...word,
+                        text: correction.original_word,
+                        id: correction.word_id
+                    }
+                }
+                return word
+            })
+
+            const newText = newWords.map(w => w.text).join(' ')
+            const newSegment = { ...segment, words: newWords, text: newText }
+            const newSegments = newData.corrected_segments.map((seg, idx) =>
+                idx === segmentIndex ? newSegment : seg
+            )
+
+            newData = {
+                ...newData,
+                corrected_segments: newSegments,
+                corrections: newData.corrections?.filter(c =>
+                    c.corrected_word_id !== wordId && c.word_id !== wordId
+                ) || []
+            }
+        }
+
+        updateDataWithHistory(newData, 'revert all corrections')
+        console.log(`Reverted all ${corrections.length} corrections`)
+    }, [data, updateDataWithHistory])
 
     const handleShowCorrectionDetail = useCallback((wordId: string) => {
         // Find the correction for this word
@@ -1177,6 +1284,11 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 onUnCorrectAll={handleUnCorrectAll}
                 annotationsEnabled={annotationsEnabled}
                 onAnnotationsToggle={handleAnnotationsToggle}
+                reviewMode={reviewMode}
+                onReviewModeToggle={setReviewMode}
+                onAcceptAllCorrections={handleAcceptAllCorrections}
+                onAcceptHighConfidenceCorrections={handleAcceptHighConfidenceCorrections}
+                onRevertAllCorrections={handleRevertAllCorrections}
             />
 
             <Grid container direction={isMobile ? 'column' : 'row'}>
@@ -1198,6 +1310,11 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                             // needs to update history
                             updateDataWithHistory(updatedData, 'direct data change');
                         }}
+                        reviewMode={reviewMode}
+                        onRevertCorrection={handleRevertCorrection}
+                        onEditCorrection={handleEditCorrection}
+                        onAcceptCorrection={handleAcceptCorrection}
+                        onShowCorrectionDetail={handleShowCorrectionDetail}
                     />
                     {!isReadOnly && apiClient && (
                         <Box sx={{
