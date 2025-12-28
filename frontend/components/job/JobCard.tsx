@@ -8,7 +8,6 @@ import { Loader2, ExternalLink, Zap } from "lucide-react"
 import { JobActions } from "./JobActions"
 import { JobLogs } from "./JobLogs"
 import { OutputLinks } from "./OutputLinks"
-import { InstrumentalSelector } from "./InstrumentalSelector"
 import { AudioSearchDialog } from "../audio-search/AudioSearchDialog"
 import { getJobStep, formatStepIndicator, getJobProgressPercent } from "@/lib/job-status"
 
@@ -78,7 +77,6 @@ interface JobCardProps {
 export function JobCard({ job, onRefresh }: JobCardProps) {
   const [showLogs, setShowLogs] = useState(false)
   const [showAudioSearch, setShowAudioSearch] = useState(false)
-  const [showInstrumentalSelector, setShowInstrumentalSelector] = useState(false)
   const { enabled: autoModeEnabled, isProcessing: isAutoProcessing } = useAutoMode()
 
   const createdAt = new Date(job.created_at).toLocaleString()
@@ -109,6 +107,18 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
     }
     if (job.review_token) {
       url += `&reviewToken=${encodeURIComponent(job.review_token)}`
+    }
+    return url
+  }
+
+  // Build instrumental review URL for awaiting_instrumental_selection status
+  const getInstrumentalUrl = () => {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com'
+    const baseApiUrl = `${backendUrl}/api/jobs/${job.job_id}`
+    const encodedApiUrl = encodeURIComponent(baseApiUrl)
+    let url = `/instrumental/?baseApiUrl=${encodedApiUrl}`
+    if (job.state_data?.instrumental_token) {
+      url += `&instrumentalToken=${encodeURIComponent(job.state_data.instrumental_token)}`
     }
     return url
   }
@@ -163,13 +173,15 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
 
     if (job.status === "awaiting_instrumental_selection") {
       return (
-        <Button
-          size="sm"
-          onClick={() => setShowInstrumentalSelector(true)}
-          className="text-xs h-7 px-3 bg-blue-600 hover:bg-blue-500"
+        <a
+          href={getInstrumentalUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
         >
+          <ExternalLink className="w-3 h-3" />
           Select Instrumental
-        </Button>
+        </a>
       )
     }
 
@@ -233,13 +245,6 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
         jobId={job.job_id}
         open={showAudioSearch}
         onClose={() => setShowAudioSearch(false)}
-        onSelect={onRefresh}
-      />
-
-      <InstrumentalSelector
-        jobId={job.job_id}
-        open={showInstrumentalSelector}
-        onClose={() => setShowInstrumentalSelector(false)}
         onSelect={onRefresh}
       />
     </div>
