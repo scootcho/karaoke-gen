@@ -74,14 +74,6 @@ export function pricePerCredit(pkg: CreditPackage): number {
   return pkg.price_cents / pkg.credits;
 }
 
-/**
- * Calculate discount percentage compared to single credit price.
- */
-export function discountPercent(pkg: CreditPackage, basePricePerCredit: number): number {
-  const actualPricePerCredit = pricePerCredit(pkg);
-  return Math.round((1 - actualPricePerCredit / basePricePerCredit) * 100);
-}
-
 // ============================================================================
 // Beta Tester Program
 // ============================================================================
