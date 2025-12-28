@@ -29,10 +29,6 @@ jest.mock('../job/OutputLinks', () => ({
   OutputLinks: () => <div data-testid="output-links">Output Links</div>
 }))
 
-jest.mock('../job/InstrumentalSelector', () => ({
-  InstrumentalSelector: () => <div data-testid="instrumental-selector">Instrumental Selector</div>
-}))
-
 jest.mock('../audio-search/AudioSearchDialog', () => ({
   AudioSearchDialog: () => <div data-testid="audio-search-dialog">Audio Search Dialog</div>
 }))
@@ -135,11 +131,20 @@ describe('JobCard', () => {
       expect(screen.getByRole('button', { name: 'Select Audio' })).toBeInTheDocument()
     })
 
-    it('shows instrumental selection button for awaiting_instrumental_selection status', () => {
-      const instrumentalJob = { ...mockJob, status: 'awaiting_instrumental_selection' }
+    it('shows instrumental selection link for awaiting_instrumental_selection status', () => {
+      const instrumentalJob = {
+        ...mockJob,
+        status: 'awaiting_instrumental_selection',
+        state_data: { instrumental_token: 'test-instrumental-token' }
+      }
       render(<JobCard job={instrumentalJob} onRefresh={mockOnRefresh} />)
 
-      expect(screen.getByRole('button', { name: 'Select Instrumental' })).toBeInTheDocument()
+      const instrumentalLink = screen.getByText('Select Instrumental')
+      expect(instrumentalLink).toBeInTheDocument()
+      const href = instrumentalLink.closest('a')?.getAttribute('href') || ''
+      expect(href).toContain('/instrumental/')
+      expect(href).toContain('baseApiUrl=')
+      expect(href).toContain('instrumentalToken=test-instrumental-token')
     })
   })
 
@@ -164,7 +169,7 @@ describe('JobCard', () => {
       render(<JobCard job={instrumentalJob} onRefresh={mockOnRefresh} />)
 
       expect(screen.getByText(/Will auto-select clean/)).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Select Instrumental' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Select Instrumental')).not.toBeInTheDocument()
     })
 
     it('shows auto-select message for awaiting_audio_selection status', () => {
