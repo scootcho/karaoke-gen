@@ -343,15 +343,10 @@ test.describe('Full Job Flow with Theme - UI Based', () => {
       );
 
       if (await reviewButton.isVisible({ timeout: 10000 })) {
-        // Listen for new page/tab
-        const [newPage] = await Promise.all([
-          context.waitForEvent('page'),
-          reviewButton.click()
-        ]).catch(async () => {
-          // If no new page, the link might navigate in same tab
-          await reviewButton.click();
-          return [page];
-        });
+        // Set up page listener before clicking to avoid race condition
+        const pagePromise = context.waitForEvent('page', { timeout: 5000 }).catch(() => null);
+        await reviewButton.click();
+        const newPage = await pagePromise;
 
         const lyricsPage = newPage || page;
 
