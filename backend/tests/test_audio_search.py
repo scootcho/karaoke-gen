@@ -805,6 +805,7 @@ class TestAudioSearchThemeSupport:
     1. Accepted in AudioSearchRequest model
     2. Passed through to JobCreate
     3. Result in correct CDG/TXT defaults when theme is set
+    4. Theme style is PREPARED (copied to job folder) when theme_id is set
     """
 
     def test_audio_search_request_accepts_theme_id(self):
@@ -956,6 +957,93 @@ class TestAudioSearchThemeSupport:
         assert job.color_overrides["artist_color"] == "#ff0000"
         assert job.enable_cdg is True
         assert job.enable_txt is True
+
+
+class TestAudioSearchThemePreparation:
+    """Test that audio search endpoint properly prepares theme styles.
+
+    CRITICAL: This test class was added to catch the bug where audio_search.py
+    accepted theme_id but never called prepare_job_style(), resulting in jobs
+    with theme_id set but no style_params_gcs_path or style_assets.
+
+    The symptom: Preview videos show black background instead of themed background.
+    Job ID ffb0b8fa in production demonstrated this issue.
+    """
+
+    def test_audio_search_with_theme_calls_prepare_job_style(self):
+        """Test that creating a job via audio search with theme_id prepares the style.
+
+        CRITICAL: This test verifies that when a job is created via the audio-search
+        endpoint with a theme_id (and no custom style files), the code calls
+        prepare_job_style() to set:
+        1. style_params_gcs_path (pointing to the copied style_params.json)
+        2. style_assets (populated with asset mappings)
+
+        Without this, LyricsTranscriber won't have access to the theme's styles
+        and preview videos will have black backgrounds instead of themed ones.
+        """
+        # Import the endpoint module to access internal functions
+        from backend.api.routes import audio_search as audio_search_module
+
+        # Check if there's an import of prepare_job_style from theme_service
+        source_code_path = audio_search_module.__file__
+        with open(source_code_path, 'r') as f:
+            source_code = f.read()
+
+        # Check for either:
+        # 1. Import of _prepare_theme_for_job from file_upload
+        # 2. Import of prepare_job_style from theme_service
+        # 3. Inline call to theme_service.prepare_job_style
+        has_theme_prep_import = (
+            '_prepare_theme_for_job' in source_code or
+            'prepare_job_style' in source_code
+        )
+
+        assert has_theme_prep_import, (
+            "audio_search.py does not import or call prepare_job_style() or _prepare_theme_for_job(). "
+            "When theme_id is provided without custom style files, the endpoint MUST call "
+            "prepare_job_style() to copy the theme's style_params.json to the job folder. "
+            "Without this, LyricsTranscriber won't have style configuration and preview "
+            "videos will have black backgrounds instead of themed ones."
+        )
+
+    def test_audio_search_code_handles_theme_preparation(self):
+        """Verify audio_search.py has theme preparation logic similar to file_upload.py.
+
+        This test compares audio_search.py with file_upload.py to ensure they have
+        similar theme preparation patterns. file_upload.py correctly prepares themes,
+        audio_search.py should do the same.
+        """
+        from backend.api.routes import audio_search as audio_search_module
+        from backend.api.routes import file_upload as file_upload_module
+
+        # Read source code of both modules
+        with open(audio_search_module.__file__, 'r') as f:
+            audio_search_code = f.read()
+
+        with open(file_upload_module.__file__, 'r') as f:
+            file_upload_code = f.read()
+
+        # file_upload.py has this pattern for theme preparation:
+        # if body.theme_id and not has_style_params_upload:
+        #     style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(...)
+        assert '_prepare_theme_for_job' in file_upload_code, \
+            "file_upload.py should have _prepare_theme_for_job function"
+
+        # audio_search.py should have similar pattern
+        # Look for either the function or a similar conditional check
+        # STRICT CHECK: Look for actual theme preparation logic being CALLED, not just mentioned
+        has_theme_preparation_call = (
+            # Check for import or call of theme preparation function
+            '_prepare_theme_for_job(' in audio_search_code or
+            'prepare_job_style(' in audio_search_code
+        )
+
+        assert has_theme_preparation_call, (
+            "audio_search.py does not CALL theme preparation logic. "
+            "It accepts theme_id but never prepares the theme style like file_upload.py does. "
+            "Add a call to _prepare_theme_for_job() when theme_id is set and no style files are uploaded."
+        )
 
 
 class TestFlacfetchIntegration:

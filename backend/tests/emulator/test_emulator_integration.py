@@ -330,7 +330,7 @@ class TestReviewEndpoints:
 
 class TestRenderVideoWorker:
     """Test render video worker endpoint."""
-    
+
     def test_render_video_worker_endpoint_exists(self, client, auth_headers):
         """Test that render-video worker endpoint exists."""
         # Create a job
@@ -340,9 +340,9 @@ class TestRenderVideoWorker:
             json={"url": "https://youtube.com/watch?v=render-test"}
         )
         job_id = create_resp.json()["job_id"]
-        
+
         time.sleep(0.2)
-        
+
         # Test render-video worker endpoint exists
         response = client.post(
             "/api/internal/workers/render-video",
