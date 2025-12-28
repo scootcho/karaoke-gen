@@ -30,8 +30,8 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
       if (job.state_data?.youtube_url) {
         setYoutubeUrl(job.state_data.youtube_url)
       }
-      if (job.state_data?.dropbox_folder_url) {
-        setDropboxUrl(job.state_data.dropbox_folder_url)
+      if (job.state_data?.dropbox_link) {
+        setDropboxUrl(job.state_data.dropbox_link)
       }
     } catch (err) {
       console.error("Failed to load output links:", err)
@@ -49,13 +49,16 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
     )
   }
 
+  const hasOutputs = youtubeUrl || dropboxUrl || (downloadUrls && Object.keys(downloadUrls).length > 0)
+
   return (
     <div className="space-y-2">
-      {/* Distribution Links */}
-      {(youtubeUrl || dropboxUrl) && (
+      {/* Combined Output Links */}
+      {hasOutputs && (
         <div className="space-y-2">
-          <p className="text-xs text-slate-400 font-medium">Distribution:</p>
+          <p className="text-xs text-slate-400 font-medium">Outputs:</p>
           <div className="flex flex-wrap gap-2">
+            {/* Distribution Links */}
             {youtubeUrl && (
               <a
                 href={youtubeUrl}
@@ -77,19 +80,11 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <FolderOpen className="w-3 h-3" />
-                Open Dropbox Folder
+                Dropbox Folder
               </a>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Download Links */}
-      {downloadUrls && Object.keys(downloadUrls).length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs text-slate-400 font-medium">Downloads:</p>
-          <div className="flex flex-wrap gap-2">
-            {downloadUrls.finals?.lossy_720p && (
+            {/* Download Links */}
+            {downloadUrls?.finals?.lossy_720p && (
               <a
                 href={api.getDownloadUrl(jobId, "finals", "lossy_720p")}
                 className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white"
@@ -99,7 +94,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 720p Video
               </a>
             )}
-            {downloadUrls.finals?.lossy_4k_mp4 && (
+            {downloadUrls?.finals?.lossy_4k_mp4 && (
               <a
                 href={api.getDownloadUrl(jobId, "finals", "lossy_4k_mp4")}
                 className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white"
@@ -109,7 +104,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 4K Video
               </a>
             )}
-            {downloadUrls.packages?.cdg_zip && (
+            {downloadUrls?.packages?.cdg_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
                 className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white"
@@ -119,7 +114,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 CDG+MP3
               </a>
             )}
-            {downloadUrls.packages?.txt_zip && (
+            {downloadUrls?.packages?.txt_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
                 className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-slate-600 hover:bg-slate-500 text-white"
@@ -133,7 +128,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
         </div>
       )}
 
-      {!downloadUrls && !youtubeUrl && !dropboxUrl && (
+      {!hasOutputs && (
         <p className="text-xs text-slate-500">No outputs available yet</p>
       )}
     </div>

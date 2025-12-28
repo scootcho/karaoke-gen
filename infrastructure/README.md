@@ -254,15 +254,16 @@ The function uses environment variables:
 
 Known gaps are configured in `main.py` and should match your local `validate_and_sync.py`.
 
-## Self-Hosted GitHub Actions Runner
+## Self-Hosted GitHub Actions Runners
 
-A dedicated GCP VM runs self-hosted GitHub Actions runners to solve disk space issues
-on GitHub-hosted runners (14GB vs 200GB).
+Multiple GCP VMs run self-hosted GitHub Actions runners to:
+- Solve disk space issues on GitHub-hosted runners (14GB vs 200GB)
+- Enable parallel job execution across multiple runners
 
 ### Specs
 
-- **Instance**: e2-standard-4 (4 vCPU, 16GB RAM)
-- **Disk**: 200GB SSD
+- **Instances**: 10x e2-standard-4 (4 vCPU, 16GB RAM each)
+- **Disk**: 200GB SSD per runner
 - **Pre-installed**: Docker, Python 3.13, Node.js 20, Java 21, Poetry, FFmpeg, gcloud CLI
 - **Labels**: `self-hosted`, `linux`, `x64`, `gcp`, `large-disk`
 
@@ -280,15 +281,15 @@ on GitHub-hosted runners (14GB vs 200GB).
      gcloud secrets versions add github-runner-pat --data-file=-
    ```
 
-3. Run `pulumi up` to create the runner VM
+3. Run `pulumi up` to create the runner VMs
 
-4. Verify the runner registered:
+4. Verify the runners registered:
    - Go to https://github.com/nomadkaraoke/karaoke-gen/settings/actions/runners
-   - You should see `gcp-runner-github-runner` with status "Idle"
+   - You should see `gcp-runner-github-runner-1` through `gcp-runner-github-runner-10`
 
 ### Usage in Workflows
 
-Jobs that need more disk space use the self-hosted runner:
+Jobs that need more disk space use the self-hosted runners:
 
 ```yaml
 jobs:
@@ -299,25 +300,35 @@ jobs:
       # ... rest of job
 ```
 
+GitHub automatically distributes jobs across available runners.
+
 ### Troubleshooting
 
 **Runner not appearing in GitHub:**
 ```bash
-# Check startup logs
-gcloud compute ssh github-runner --zone=us-central1-a -- \
+# Check startup logs (replace N with runner number 1-10)
+gcloud compute ssh github-runner-N --zone=us-central1-a -- \
   "sudo cat /var/log/github-runner-startup.log"
 ```
 
 **Re-register runner:**
 ```bash
 # Restart the VM to re-run startup script
-gcloud compute instances reset github-runner --zone=us-central1-a
+gcloud compute instances reset github-runner-N --zone=us-central1-a
 ```
 
 **Check runner service status:**
 ```bash
-gcloud compute ssh github-runner --zone=us-central1-a -- \
+gcloud compute ssh github-runner-N --zone=us-central1-a -- \
   "sudo systemctl status actions.runner.*"
+```
+
+**List all runners:**
+```bash
+for i in {1..10}; do
+  echo "=== github-runner-$i ==="
+  gcloud compute instances describe github-runner-$i --zone=us-central1-a --format='get(status)'
+done
 ```
 
 ## Next Steps

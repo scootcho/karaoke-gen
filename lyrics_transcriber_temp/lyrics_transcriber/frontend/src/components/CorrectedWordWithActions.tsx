@@ -23,6 +23,7 @@ interface CorrectedWordWithActionsProps {
     onClick?: () => void
     backgroundColor?: string
     shouldFlash?: boolean
+    showActions?: boolean  // Controls whether inline action buttons are visible
 }
 
 const WordContainer = styled(Box, {
@@ -98,7 +99,8 @@ export default function CorrectedWordWithActions({
     onAccept,
     onClick,
     backgroundColor,
-    shouldFlash
+    shouldFlash,
+    showActions = true
 }: CorrectedWordWithActionsProps) {
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -115,7 +117,7 @@ export default function CorrectedWordWithActions({
             onClick={onClick}
         >
             <OriginalWordLabel>{originalWord}</OriginalWordLabel>
-            
+
             <Box
                 component="span"
                 sx={{
@@ -127,40 +129,42 @@ export default function CorrectedWordWithActions({
                 {word}
             </Box>
 
-            <ActionsContainer>
-                <Tooltip title="Revert to original" placement="top" arrow>
-                    <ActionButton
-                        size="small"
-                        onClick={(e) => handleAction(e, onRevert)}
-                        aria-label="revert correction"
-                    >
-                        <UndoIcon />
-                    </ActionButton>
-                </Tooltip>
-
-                <Tooltip title="Edit correction" placement="top" arrow>
-                    <ActionButton
-                        size="small"
-                        onClick={(e) => handleAction(e, onEdit)}
-                        aria-label="edit correction"
-                    >
-                        <EditIcon />
-                    </ActionButton>
-                </Tooltip>
-
-                {!isMobile && (
-                    <Tooltip title="Accept correction" placement="top" arrow>
+            {showActions && (
+                <ActionsContainer>
+                    <Tooltip title="Revert to original" placement="top" arrow>
                         <ActionButton
                             size="small"
-                            onClick={(e) => handleAction(e, onAccept)}
-                            aria-label="accept correction"
-                            sx={{ color: 'success.main' }}
+                            onClick={(e) => handleAction(e, onRevert)}
+                            aria-label="revert correction"
                         >
-                            <CheckCircleOutlineIcon />
+                            <UndoIcon />
                         </ActionButton>
                     </Tooltip>
-                )}
-            </ActionsContainer>
+
+                    <Tooltip title="Edit correction" placement="top" arrow>
+                        <ActionButton
+                            size="small"
+                            onClick={(e) => handleAction(e, onEdit)}
+                            aria-label="edit correction"
+                        >
+                            <EditIcon />
+                        </ActionButton>
+                    </Tooltip>
+
+                    {!isMobile && (
+                        <Tooltip title="Accept correction" placement="top" arrow>
+                            <ActionButton
+                                size="small"
+                                onClick={(e) => handleAction(e, onAccept)}
+                                aria-label="accept correction"
+                                sx={{ color: 'success.main' }}
+                            >
+                                <CheckCircleOutlineIcon />
+                            </ActionButton>
+                        </Tooltip>
+                    )}
+                </ActionsContainer>
+            )}
         </WordContainer>
     )
 }
