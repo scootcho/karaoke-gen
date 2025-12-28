@@ -180,6 +180,15 @@ Default 5-minute timeout may not be enough for video encoding. Consider:
 
 Cloud Run service account needs `Secret Manager Secret Accessor` role. This is managed via Pulumi in `infrastructure/`.
 
+### Vertex AI Authentication
+
+For Gemini via Vertex AI, use Application Default Credentials (ADC) rather than API keys:
+- **Cloud Run**: Service account automatically authenticated - just grant `roles/aiplatform.user`
+- **Local dev**: Run `gcloud auth application-default login`
+- **Config**: Set `GOOGLE_CLOUD_PROJECT` and optionally `GCP_LOCATION` (defaults to `us-central1`)
+
+This approach uses GCP's free credits and existing IAM rather than separate API key management.
+
 ### CI/CD: GitHub Actions
 
 Migrated from Cloud Build to GitHub Actions for:
