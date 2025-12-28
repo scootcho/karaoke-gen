@@ -100,6 +100,14 @@ async def send_magic_link(
     The user will receive an email with a link that logs them in.
     Links expire after 15 minutes and can only be used once.
     """
+    # Check if email service is configured
+    if not email_service.is_configured():
+        logger.error("Email service not configured - cannot send magic links")
+        raise HTTPException(
+            status_code=503,
+            detail="Email service is not available. Please contact support."
+        )
+
     email = request.email.lower()
 
     # Get client info for security logging
@@ -396,6 +404,14 @@ async def enroll_beta_tester(
 
     Returns free credits and optionally a session token for new users.
     """
+    # Check if email service is configured
+    if not email_service.is_configured():
+        logger.error("Email service not configured - cannot send beta welcome emails")
+        raise HTTPException(
+            status_code=503,
+            detail="Email service is not available. Please contact support."
+        )
+
     email = request.email.lower()
 
     # Validate acceptance
