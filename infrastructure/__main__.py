@@ -1419,7 +1419,7 @@ echo "Setup complete!"
 """
 
 # GitHub runner VM instances (multiple runners for parallel job execution)
-NUM_RUNNERS = 5
+NUM_RUNNERS = 10
 github_runner_vms = []
 
 for i in range(1, NUM_RUNNERS + 1):
@@ -1447,7 +1447,11 @@ for i in range(1, NUM_RUNNERS + 1):
         tags=["github-runner"],
         allow_stopping_for_update=True,
         # Ensure the secret exists before creating the VM
-        opts=pulumi.ResourceOptions(depends_on=[github_runner_pat_secret]),
+        # For existing runners (1-5), ignore startup script changes to avoid replacement
+        opts=pulumi.ResourceOptions(
+            depends_on=[github_runner_pat_secret],
+            ignore_changes=["metadataStartupScript"] if i <= 5 else None,
+        ),
     )
     github_runner_vms.append(vm)
 

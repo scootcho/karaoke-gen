@@ -262,7 +262,7 @@ Multiple GCP VMs run self-hosted GitHub Actions runners to:
 
 ### Specs
 
-- **Instances**: 5x e2-standard-4 (4 vCPU, 16GB RAM each)
+- **Instances**: 10x e2-standard-4 (4 vCPU, 16GB RAM each)
 - **Disk**: 200GB SSD per runner
 - **Pre-installed**: Docker, Python 3.13, Node.js 20, Java 21, Poetry, FFmpeg, gcloud CLI
 - **Labels**: `self-hosted`, `linux`, `x64`, `gcp`, `large-disk`
@@ -285,7 +285,7 @@ Multiple GCP VMs run self-hosted GitHub Actions runners to:
 
 4. Verify the runners registered:
    - Go to https://github.com/nomadkaraoke/karaoke-gen/settings/actions/runners
-   - You should see `gcp-runner-github-runner-1` through `gcp-runner-github-runner-5`
+   - You should see `gcp-runner-github-runner-1` through `gcp-runner-github-runner-10`
 
 ### Usage in Workflows
 
@@ -306,7 +306,7 @@ GitHub automatically distributes jobs across available runners.
 
 **Runner not appearing in GitHub:**
 ```bash
-# Check startup logs (replace N with runner number 1-3)
+# Check startup logs (replace N with runner number 1-10)
 gcloud compute ssh github-runner-N --zone=us-central1-a -- \
   "sudo cat /var/log/github-runner-startup.log"
 ```
@@ -325,7 +325,7 @@ gcloud compute ssh github-runner-N --zone=us-central1-a -- \
 
 **List all runners:**
 ```bash
-for i in 1 2 3 4 5; do
+for i in {1..10}; do
   echo "=== github-runner-$i ==="
   gcloud compute instances describe github-runner-$i --zone=us-central1-a --format='get(status)'
 done
