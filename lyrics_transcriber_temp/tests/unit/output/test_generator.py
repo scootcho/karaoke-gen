@@ -82,8 +82,8 @@ class TestOutputGenerator:
         assert generator.font_size == 40
         assert generator.line_height == 50
 
-    def test_initialization_missing_styles_file(self, tmp_path):
-        """Test OutputGenerator initialization with missing styles file."""
+    def test_initialization_missing_styles_file_uses_defaults(self, tmp_path):
+        """Test OutputGenerator uses default styles when styles file is missing."""
         config = OutputConfig(
             output_styles_json=str(tmp_path / "nonexistent.json"),
             output_dir=str(tmp_path / "output"),
@@ -91,9 +91,33 @@ class TestOutputGenerator:
             default_max_line_length=36,
             render_video=True
         )
-        
-        with pytest.raises(ValueError, match="Output styles file required for video/CDG generation but not found"):
-            OutputGenerator(config=config)
+
+        # Should initialize successfully with default styles
+        generator = OutputGenerator(config=config)
+
+        # Verify default styles are loaded
+        assert "karaoke" in generator.config.styles
+        assert "cdg" in generator.config.styles
+        assert generator.config.styles["karaoke"]["font"] == "Arial"
+        assert generator.config.styles["karaoke"]["primary_color"] == "112, 112, 247, 255"
+        assert generator.config.styles["karaoke"]["max_line_length"] == 40
+
+    def test_initialization_no_styles_path_uses_defaults(self, tmp_path):
+        """Test OutputGenerator uses default styles when styles path is None."""
+        config = OutputConfig(
+            output_styles_json=None,
+            output_dir=str(tmp_path / "output"),
+            cache_dir=str(tmp_path / "cache"),
+            default_max_line_length=36,
+            render_video=True
+        )
+
+        # Should initialize successfully with default styles
+        generator = OutputGenerator(config=config)
+
+        # Verify default styles are loaded
+        assert "karaoke" in generator.config.styles
+        assert generator.config.styles["karaoke"]["background_color"] == "#000000"
 
     def test_initialization_invalid_styles_file(self, tmp_path):
         """Test OutputGenerator initialization with invalid JSON in styles file."""

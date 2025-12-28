@@ -170,15 +170,15 @@ class LyricsProcessor:
     def _check_transcription_providers(self) -> dict:
         """
         Check which transcription providers are configured and return their status.
-        
+
         Returns:
             dict with 'configured' (list of provider names) and 'missing' (list of missing configs)
         """
         load_dotenv()
-        
+
         configured = []
         missing = []
-        
+
         # Check AudioShake
         audioshake_token = os.getenv("AUDIOSHAKE_API_TOKEN")
         if audioshake_token:
@@ -187,7 +187,7 @@ class LyricsProcessor:
         else:
             missing.append("AudioShake (AUDIOSHAKE_API_TOKEN)")
             self.logger.debug("AudioShake transcription provider: not configured (missing AUDIOSHAKE_API_TOKEN)")
-        
+
         # Check Whisper via RunPod
         runpod_key = os.getenv("RUNPOD_API_KEY")
         whisper_id = os.getenv("WHISPER_RUNPOD_ID")
@@ -203,7 +203,16 @@ class LyricsProcessor:
         else:
             missing.append("Whisper (RUNPOD_API_KEY + WHISPER_RUNPOD_ID)")
             self.logger.debug("Whisper transcription provider: not configured")
-        
+
+        # Check Local Whisper (whisper-timestamped)
+        try:
+            import whisper_timestamped
+            configured.append("Local Whisper")
+            self.logger.debug("Local Whisper transcription provider: configured (whisper-timestamped installed)")
+        except ImportError:
+            missing.append("Local Whisper (pip install karaoke-gen[local-whisper])")
+            self.logger.debug("Local Whisper transcription provider: not configured (whisper-timestamped not installed)")
+
         return {"configured": configured, "missing": missing}
 
     def _build_transcription_provider_error_message(self, missing_providers: list) -> str:
@@ -221,11 +230,17 @@ class LyricsProcessor:
             "   - Set environment variable: AUDIOSHAKE_API_TOKEN=your_token\n"
             "   - Get an API key at: https://www.audioshake.ai/\n"
             "\n"
-            "2. Whisper via RunPod (Open-source alternative)\n"
+            "2. Whisper via RunPod (Cloud-based open-source)\n"
             "   - Set environment variables:\n"
             "     RUNPOD_API_KEY=your_key\n"
             "     WHISPER_RUNPOD_ID=your_endpoint_id\n"
             "   - Set up a Whisper endpoint at: https://www.runpod.io/\n"
+            "\n"
+            "3. Local Whisper (No cloud required - runs on your machine)\n"
+            "   - Install with: pip install karaoke-gen[local-whisper]\n"
+            "   - For CPU-only: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu\n"
+            "                   pip install karaoke-gen[local-whisper]\n"
+            "   - Requires 2-10GB RAM depending on model size\n"
             "\n"
             "ALTERNATIVES:\n"
             "\n"
@@ -348,6 +363,10 @@ class LyricsProcessor:
         # Create config objects for LyricsTranscriber
         transcriber_config = TranscriberConfig(
             audioshake_api_token=env_config.get("audioshake_api_token"),
+            runpod_api_key=env_config.get("runpod_api_key"),
+            whisper_runpod_id=env_config.get("whisper_runpod_id"),
+            # Local Whisper is enabled by default as a fallback when no cloud providers are configured
+            enable_local_whisper=True,
         )
 
         lyrics_config = LyricsConfig(

@@ -1633,6 +1633,53 @@ six = ">=1.12.0"
 stone = ">=2,<3.3.3"
 
 [[package]]
+name = "dtw-python"
+version = "1.7.2"
+description = "A comprehensive implementation of dynamic time warping (DTW) algorithms."
+optional = true
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "extra == \"local-whisper\""
+files = [
+    {file = "dtw_python-1.7.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ae97d9d1a34bf1267b5742800eebc83655d6edac7ef11eaa1da614fe15ecbf15"},
+    {file = "dtw_python-1.7.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:48de94c12f57bf524f70f4debdf46e4895c43e24abc71fa14f15dec8ecdce7a0"},
+    {file = "dtw_python-1.7.2-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4ca9ed4abdcc3a74e46d5cc8a08f892e28d1151969914839ac60ac5ff030dbfc"},
+    {file = "dtw_python-1.7.2-cp310-cp310-win_amd64.whl", hash = "sha256:8071c345f1dde18830d520690bb4a95dcaa50ea0bd4d260fc4368d592f1b214f"},
+    {file = "dtw_python-1.7.2-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:e5bbf17129365ee88aea98890332bb7d20e80fa78eb9c64a11175f07e4c699b3"},
+    {file = "dtw_python-1.7.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:0f1f075f90bc1faacfa0661cd29f070516b09ce1fc90ea353313aae8c19f5c2e"},
+    {file = "dtw_python-1.7.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d81ddd8e03befc4041cdf66d569c0f8ba730fd7aebede0d38add7862a10f9779"},
+    {file = "dtw_python-1.7.2-cp311-cp311-win_amd64.whl", hash = "sha256:e5aecfee9abc5cb39f94ebb25bc74683575dda507836ab0563badfa0fbb11b2b"},
+    {file = "dtw_python-1.7.2-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:85ff43afd6adb64a25755f01e98ee21eb70a34c105231720e5f4104b5988741a"},
+    {file = "dtw_python-1.7.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c507179cae0f38bc22b22fd63c53d99274e11aa2e3a65e6148108345da9df033"},
+    {file = "dtw_python-1.7.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:239cb6207f512dbd1b0a5da03269ec3ddb2dc177719fe9b6eb5149feeec1bd63"},
+    {file = "dtw_python-1.7.2-cp312-cp312-win_amd64.whl", hash = "sha256:3126abd69b18a2a4809790d71f5f42fcc2cb483921e17da8f11bac5ddd7d548d"},
+    {file = "dtw_python-1.7.2-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:7d36341701b6a049b9dc3b234fe80047c4cd7df438bb86c6236179f2ce79dcf6"},
+    {file = "dtw_python-1.7.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:129d860f875ded4c4e119450315eff27bcf4d7e6dee8831fd91e68c0e757219c"},
+    {file = "dtw_python-1.7.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1b0cf947bc5e71f4d7ad139deaa51ad02bba5458e28e5df92b94a90374f5067e"},
+    {file = "dtw_python-1.7.2-cp313-cp313-win_amd64.whl", hash = "sha256:61e5e4abaa7fd58ef3d63b064fa394770c095a3bbad991339b1fb934928cbc1b"},
+    {file = "dtw_python-1.7.2-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:1bcc6ace984ed893d688cd8b8a0676bf76f0f01647265d2a017c9f7d3bfcc71a"},
+    {file = "dtw_python-1.7.2-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:c77633dc1d8d9d0276aed0a782b508b415aab04ddc79bfc2c1abe647a8ccc151"},
+    {file = "dtw_python-1.7.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:217811332fc3b4e53290942abe45f11ae65a9ca91c77c475d38daa6b73e4d47f"},
+    {file = "dtw_python-1.7.2-cp314-cp314-win_amd64.whl", hash = "sha256:d7e6675e4b6179b80f8a9c1cd8db60d92f59019e8ea1f344f6b1c8c61142ed45"},
+    {file = "dtw_python-1.7.2-cp314-cp314t-macosx_10_13_x86_64.whl", hash = "sha256:4d4395a97d20b84c665adef5873d3841f658885568c289d46a649484d994a6b6"},
+    {file = "dtw_python-1.7.2-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:e7ce66f2c72c28c657e03ba799d7a00a538ced00870b9801debeab2bf4168792"},
+    {file = "dtw_python-1.7.2-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f19ef9ad1ea09f373db003a191f5615c772039ff261b98e33aab186e62e13e1e"},
+    {file = "dtw_python-1.7.2-cp314-cp314t-win_amd64.whl", hash = "sha256:fcd8f8f484eb100362e2fe65ca27cb8b431964fceb33c64d97c4a841b5abaef8"},
+    {file = "dtw_python-1.7.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:d403cd4d72db13576fe318aacc792adaa895658465c28f5a92b66e845577c1e1"},
+    {file = "dtw_python-1.7.2-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:33ce34017855fecee57ef08ed03b858f6f520bee4eef744b171938ac0e5262b6"},
+    {file = "dtw_python-1.7.2-cp39-cp39-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3d4438d9ba63355492d7c8ffd7455d0335dfb95f7e2ab50a7dc0ffe013d89b45"},
+    {file = "dtw_python-1.7.2-cp39-cp39-win_amd64.whl", hash = "sha256:97d243009705603c45c073f84abbb1d02a3fda2c9b18afabb92d012cba058509"},
+    {file = "dtw_python-1.7.2.tar.gz", hash = "sha256:ad832a96067c9ddc104307abcc7ed3787fc627b71aa48dd2a6a7cf208dbec020"},
+]
+
+[package.dependencies]
+numpy = ">=2.0"
+scipy = "*"
+
+[package.extras]
+test = ["numpy"]
+
+[[package]]
 name = "dulwich"
 version = "0.24.10"
 description = "Python Git Library"
@@ -4185,11 +4232,12 @@ version = "10.8.0"
 description = "More routines for operating on iterables, beyond itertools"
 optional = false
 python-versions = ">=3.9"
-groups = ["dev"]
+groups = ["main", "dev"]
 files = [
     {file = "more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b"},
     {file = "more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd"},
 ]
+markers = {main = "extra == \"local-whisper\""}
 
 [[package]]
 name = "mpmath"
@@ -5100,6 +5148,30 @@ aiohttp = ["aiohttp", "httpx-aiohttp (>=0.1.9)"]
 datalib = ["numpy (>=1)", "pandas (>=1.2.3)", "pandas-stubs (>=1.1.0.11)"]
 realtime = ["websockets (>=13,<16)"]
 voice-helpers = ["numpy (>=2.0.2)", "sounddevice (>=0.5.1)"]
+
+[[package]]
+name = "openai-whisper"
+version = "20250625"
+description = "Robust Speech Recognition via Large-Scale Weak Supervision"
+optional = true
+python-versions = ">=3.8"
+groups = ["main"]
+markers = "extra == \"local-whisper\""
+files = [
+    {file = "openai_whisper-20250625.tar.gz", hash = "sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96"},
+]
+
+[package.dependencies]
+more-itertools = "*"
+numba = "*"
+numpy = "*"
+tiktoken = "*"
+torch = "*"
+tqdm = "*"
+triton = {version = ">=2", markers = "platform_machine == \"x86_64\" and sys_platform == \"linux\" or sys_platform == \"linux2\""}
+
+[package.extras]
+dev = ["black", "flake8", "isort", "pytest", "scipy"]
 
 [[package]]
 name = "opentelemetry-api"
@@ -8559,7 +8631,7 @@ description = "A language and compiler for custom Deep Learning operations"
 optional = false
 python-versions = "<3.15,>=3.10"
 groups = ["main"]
-markers = "platform_system == \"Linux\" and platform_machine == \"x86_64\""
+markers = "(platform_machine == \"x86_64\" or sys_platform == \"linux2\") and (platform_system == \"Linux\" or sys_platform == \"linux\" or sys_platform == \"linux2\") and (platform_system == \"Linux\" or extra == \"local-whisper\") and (platform_machine == \"x86_64\" or extra == \"local-whisper\")"
 files = [
     {file = "triton-3.5.1-cp310-cp310-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f63e34dcb32d7bd3a1d0195f60f30d2aee8b08a69a0424189b71017e23dfc3d2"},
     {file = "triton-3.5.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5fc53d849f879911ea13f4a877243afc513187bc7ee92d1f2c0f1ba3169e3c94"},
@@ -9088,6 +9160,30 @@ files = [
 ]
 
 [[package]]
+name = "whisper-timestamped"
+version = "1.15.9"
+description = "Multi-lingual Automatic Speech Recognition (ASR) based on Whisper models, with accurate word timestamps, access to language detection confidence, several options for Voice Activity Detection (VAD), and more."
+optional = true
+python-versions = ">=3.7"
+groups = ["main"]
+markers = "extra == \"local-whisper\""
+files = [
+    {file = "whisper_timestamped-1.15.9-py3-none-any.whl", hash = "sha256:7582e0cc45dfda78af3a35874485145c20cecb8cc4bfc4599ebb5eeb9fd2ffc2"},
+    {file = "whisper_timestamped-1.15.9.tar.gz", hash = "sha256:f3609d446ead6d8e0fc82021311b087efd8ef63b7fa255fa1b3a58a32b760a1e"},
+]
+
+[package.dependencies]
+Cython = "*"
+dtw-python = "*"
+openai-whisper = "*"
+
+[package.extras]
+dev = ["matplotlib (==3.7.4)", "transformers"]
+test = ["jsonschema"]
+vad-auditok = ["auditok"]
+vad-silero = ["onnxruntime", "torchaudio"]
+
+[[package]]
 name = "win-unicode-console"
 version = "0.5"
 description = "Enable Unicode input and display when running Python from Windows console."
@@ -9586,7 +9682,10 @@ files = [
 [package.extras]
 cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and python_version < \"3.14\"", "cffi (>=2.0.0b) ; platform_python_implementation != \"PyPy\" and python_version >= \"3.14\""]
 
+[extras]
+local-whisper = ["whisper-timestamped"]
+
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "8639a26faea41348894a9f6491a95fa1a4a222e206f9d0afafd299ffc41cf5e1"
+content-hash = "c14214372c6d52a86d32afc8638b2f1486aac7b4d06a444e8be7d14379bd4e25"
