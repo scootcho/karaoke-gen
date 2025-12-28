@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.76.24"
+version = "0.76.25"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -93,6 +93,10 @@ google-cloud-tasks = ">=2.16.0"  # Cloud Tasks for worker coordination (Phase 1 
 google-cloud-run = ">=0.10.0"  # Cloud Run Jobs for long-running video encoding (Phase 2 scalability)
 python-dotenv = ">=1.0.0"
 pydub = ">=0.25.1"
+# Payment and email services
+stripe = ">=7.0.0"
+sendgrid = ">=6.10.0"
+email-validator = ">=2.0.0"  # For Pydantic EmailStr validation
 # OpenTelemetry for distributed tracing
 opentelemetry-api = ">=1.20.0"
 opentelemetry-sdk = ">=1.20.0"

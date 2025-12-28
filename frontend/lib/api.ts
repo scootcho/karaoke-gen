@@ -3,6 +3,7 @@
  */
 
 import type { VideoThemeSummary, VideoThemeDetail, ThemesListResponse, ThemeDetailResponse, ColorOverrides } from './video-themes';
+import type { MagicLinkResponse, VerifyMagicLinkResponse, UserProfileResponse } from './types';
 
 // In development, use relative URLs to go through Next.js proxy (avoids CORS)
 // In production (static export), use the full backend URL
@@ -516,6 +517,55 @@ export const api = {
     });
     const data = await handleResponse<{ description: string | null }>(response);
     return data.description;
+  },
+
+  // ==========================================================================
+  // Auth API endpoints (Magic Link)
+  // ==========================================================================
+
+  /**
+   * Send a magic link email for passwordless login
+   */
+  async sendMagicLink(email: string): Promise<MagicLinkResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/users/auth/magic-link`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Verify a magic link token and get a session
+   */
+  async verifyMagicLink(token: string): Promise<VerifyMagicLinkResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/users/auth/verify?token=${encodeURIComponent(token)}`, {
+      method: 'GET',
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get the current user's profile
+   */
+  async getCurrentUser(): Promise<UserProfileResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+      headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Logout and invalidate the current session
+   */
+  async logout(): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/users/auth/logout`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    return handleResponse(response);
   },
 };
 

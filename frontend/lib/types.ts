@@ -4,7 +4,36 @@ export interface User {
   token: string
   role: UserRole
   credits: number
-  email?: string
+  email: string
+  display_name?: string
+  total_jobs_created?: number
+  total_jobs_completed?: number
+}
+
+export interface UserPublic {
+  email: string
+  role: UserRole
+  credits: number
+  display_name?: string
+  total_jobs_created?: number
+  total_jobs_completed?: number
+}
+
+export interface MagicLinkResponse {
+  status: string
+  message: string
+}
+
+export interface VerifyMagicLinkResponse {
+  status: string
+  session_token: string
+  user: UserPublic
+  message: string
+}
+
+export interface UserProfileResponse {
+  user: UserPublic
+  has_session: boolean
 }
 
 export type JobStatus = "queued" | "processing" | "awaiting_review" | "awaiting_instrumental" | "completed" | "failed"
