@@ -796,6 +796,7 @@ class KaraokePrep:
 
                     outputs = output_generator.generate_outputs(
                         transcription_corrected=correction_result,
+                        lyrics_results={},  # Lyrics already written during transcription phase
                         audio_filepath=audio_path,
                         output_prefix=output_prefix,
                     )
