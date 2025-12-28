@@ -2381,3 +2381,253 @@ class TestCreateAudioFetcherRemoteSelection:
             assert isinstance(fetcher, RemoteFlacFetchAudioFetcher)
             assert fetcher.api_url == "http://arg:9090"
             assert fetcher.api_key == "arg_key"
+
+
+class TestFlacFetchAudioFetcherDownloadFromUrl:
+    """Tests for FlacFetchAudioFetcher.download_from_url() method."""
+
+    @pytest.fixture
+    def mock_logger(self):
+        """Create a mock logger."""
+        return MagicMock(spec=logging.Logger)
+
+    @pytest.fixture
+    def fetcher(self, mock_logger):
+        """Create a FlacFetchAudioFetcher instance with mocked dependencies."""
+        return FlacFetchAudioFetcher(logger=mock_logger)
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_youtube_success(self, mock_get_manager, fetcher, tmp_path):
+        """Test successful download from YouTube URL."""
+        mock_manager = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager.download_by_id.return_value = downloaded_path
+        mock_get_manager.return_value = mock_manager
+
+        result = fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            output_dir=str(tmp_path),
+            output_filename="Rick Astley - Never Gonna Give You Up",
+            artist="Rick Astley",
+            title="Never Gonna Give You Up",
+        )
+
+        assert result.filepath == downloaded_path
+        assert result.artist == "Rick Astley"
+        assert result.title == "Never Gonna Give You Up"
+        assert result.provider == "YouTube"
+        mock_manager.download_by_id.assert_called_once_with(
+            source_name="YouTube",
+            source_id="dQw4w9WgXcQ",
+            output_path=str(tmp_path),
+            output_filename="Rick Astley - Never Gonna Give You Up",
+            download_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        )
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_youtu_be_short_url(self, mock_get_manager, fetcher, tmp_path):
+        """Test download from youtu.be short URL."""
+        mock_manager = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager.download_by_id.return_value = downloaded_path
+        mock_get_manager.return_value = mock_manager
+
+        result = fetcher.download_from_url(
+            url="https://youtu.be/dQw4w9WgXcQ",
+            output_dir=str(tmp_path),
+        )
+
+        assert result.filepath == downloaded_path
+        assert result.provider == "YouTube"
+        # Should extract video ID from short URL
+        mock_manager.download_by_id.assert_called_once()
+        call_args = mock_manager.download_by_id.call_args
+        assert call_args.kwargs["source_id"] == "dQw4w9WgXcQ"
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_embed_url(self, mock_get_manager, fetcher, tmp_path):
+        """Test download from YouTube embed URL."""
+        mock_manager = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager.download_by_id.return_value = downloaded_path
+        mock_get_manager.return_value = mock_manager
+
+        result = fetcher.download_from_url(
+            url="https://www.youtube.com/embed/dQw4w9WgXcQ",
+            output_dir=str(tmp_path),
+        )
+
+        call_args = mock_manager.download_by_id.call_args
+        assert call_args.kwargs["source_id"] == "dQw4w9WgXcQ"
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_generates_filename_from_artist_title(self, mock_get_manager, fetcher, tmp_path):
+        """Test that filename is generated from artist and title if not provided."""
+        mock_manager = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager.download_by_id.return_value = downloaded_path
+        mock_get_manager.return_value = mock_manager
+
+        result = fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=test123test",
+            output_dir=str(tmp_path),
+            artist="Test Artist",
+            title="Test Song",
+        )
+
+        call_args = mock_manager.download_by_id.call_args
+        assert call_args.kwargs["output_filename"] == "Test Artist - Test Song"
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_generates_filename_from_video_id(self, mock_get_manager, fetcher, tmp_path):
+        """Test that filename falls back to video ID if no artist/title."""
+        mock_manager = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager.download_by_id.return_value = downloaded_path
+        mock_get_manager.return_value = mock_manager
+
+        result = fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            output_dir=str(tmp_path),
+        )
+
+        call_args = mock_manager.download_by_id.call_args
+        assert call_args.kwargs["output_filename"] == "dQw4w9WgXcQ"
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_raises_download_error_on_failure(self, mock_get_manager, fetcher, tmp_path):
+        """Test that DownloadError is raised when download fails."""
+        mock_manager = MagicMock()
+        mock_manager.download_by_id.side_effect = Exception("Download failed")
+        mock_get_manager.return_value = mock_manager
+
+        with pytest.raises(DownloadError) as exc_info:
+            fetcher.download_from_url(
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                output_dir=str(tmp_path),
+            )
+
+        assert "Failed to download from URL" in str(exc_info.value)
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_raises_on_empty_filepath(self, mock_get_manager, fetcher, tmp_path):
+        """Test that DownloadError is raised when download returns no filepath."""
+        mock_manager = MagicMock()
+        mock_manager.download_by_id.return_value = None
+        mock_get_manager.return_value = mock_manager
+
+        with pytest.raises(DownloadError) as exc_info:
+            fetcher.download_from_url(
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                output_dir=str(tmp_path),
+            )
+
+        assert "Download returned no file path" in str(exc_info.value)
+
+    @patch('karaoke_gen.audio_fetcher.FlacFetchAudioFetcher._get_manager')
+    def test_download_from_url_creates_output_dir(self, mock_get_manager, fetcher, tmp_path):
+        """Test that output directory is created if it doesn't exist."""
+        mock_manager = MagicMock()
+        mock_manager.download_by_id.return_value = str(tmp_path / "song.webm")
+        mock_get_manager.return_value = mock_manager
+
+        new_dir = tmp_path / "new_subdir"
+        assert not new_dir.exists()
+
+        fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            output_dir=str(new_dir),
+        )
+
+        assert new_dir.exists()
+
+
+class TestRemoteFlacFetchAudioFetcherDownloadFromUrl:
+    """Tests for RemoteFlacFetchAudioFetcher.download_from_url() method."""
+
+    @pytest.fixture
+    def mock_logger(self):
+        """Create a mock logger."""
+        return MagicMock(spec=logging.Logger)
+
+    @pytest.fixture
+    def fetcher(self, mock_logger):
+        """Create a RemoteFlacFetchAudioFetcher instance."""
+        return RemoteFlacFetchAudioFetcher(
+            api_url="http://localhost:8080",
+            api_key="test_key",
+            logger=mock_logger,
+        )
+
+    @patch('flacfetch.core.manager.FetchManager')
+    @patch('flacfetch.providers.youtube.YoutubeProvider')
+    @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
+    def test_download_from_url_uses_local_flacfetch(
+        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+    ):
+        """Test that download_from_url uses local flacfetch (not remote API)."""
+        mock_manager_instance = MagicMock()
+        downloaded_path = str(tmp_path / "song.webm")
+        mock_manager_instance.download_by_id.return_value = downloaded_path
+        mock_fetch_manager.return_value = mock_manager_instance
+
+        result = fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            output_dir=str(tmp_path),
+            artist="Rick Astley",
+            title="Never Gonna Give You Up",
+        )
+
+        # Verify local flacfetch was used
+        mock_fetch_manager.assert_called_once()
+        mock_manager_instance.add_provider.assert_called_once()
+        mock_manager_instance.register_downloader.assert_called_once_with("YouTube", mock_yt_downloader.return_value)
+        mock_manager_instance.download_by_id.assert_called_once()
+
+        assert result.filepath == downloaded_path
+        assert result.artist == "Rick Astley"
+        assert result.title == "Never Gonna Give You Up"
+        assert result.provider == "YouTube"
+
+    @patch('flacfetch.core.manager.FetchManager')
+    @patch('flacfetch.providers.youtube.YoutubeProvider')
+    @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
+    def test_download_from_url_extracts_video_id(
+        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+    ):
+        """Test that video ID is extracted from URL correctly."""
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.download_by_id.return_value = str(tmp_path / "song.webm")
+        mock_fetch_manager.return_value = mock_manager_instance
+
+        fetcher.download_from_url(
+            url="https://www.youtube.com/watch?v=abc123xyz99",
+            output_dir=str(tmp_path),
+        )
+
+        call_args = mock_manager_instance.download_by_id.call_args
+        assert call_args.kwargs["source_id"] == "abc123xyz99"
+
+    @patch('flacfetch.core.manager.FetchManager')
+    @patch('flacfetch.providers.youtube.YoutubeProvider')
+    @patch('flacfetch.downloaders.youtube.YoutubeDownloader')
+    def test_download_from_url_raises_on_failure(
+        self, mock_yt_downloader, mock_yt_provider, mock_fetch_manager, fetcher, tmp_path
+    ):
+        """Test that DownloadError is raised on failure."""
+        mock_manager_instance = MagicMock()
+        mock_manager_instance.download_by_id.side_effect = Exception("Network error")
+        mock_fetch_manager.return_value = mock_manager_instance
+
+        with pytest.raises(DownloadError) as exc_info:
+            fetcher.download_from_url(
+                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                output_dir=str(tmp_path),
+            )
+
+        assert "Failed to download from URL" in str(exc_info.value)
+
+    def test_download_from_url_method_exists(self, fetcher):
+        """Test that download_from_url method exists on RemoteFlacFetchAudioFetcher."""
+        assert hasattr(fetcher, 'download_from_url')
+        assert callable(fetcher.download_from_url)
