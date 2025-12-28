@@ -515,6 +515,294 @@ Get started: {self.frontend_url}
 
         return self.provider.send_email(email, subject, html_content, text_content)
 
+    def send_beta_welcome_email(self, email: str, credits: int = 1) -> bool:
+        """
+        Send welcome email to new beta testers.
+
+        Args:
+            email: User's email address
+            credits: Initial free credits granted
+
+        Returns:
+            True if email was sent successfully
+        """
+        subject = "Welcome Beta Tester! Free Karaoke Credits Inside 🎤"
+
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            text-align: center;
+            padding: 20px 0;
+        }}
+        .logo {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #3b82f6;
+        }}
+        .beta-badge {{
+            display: inline-block;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 8px;
+        }}
+        .credits-box {{
+            background-color: #ecfdf5;
+            border: 2px solid #10b981;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .credits-number {{
+            font-size: 48px;
+            font-weight: bold;
+            color: #10b981;
+        }}
+        .reminder {{
+            background-color: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+        }}
+        .button {{
+            display: inline-block;
+            background-color: #3b82f6;
+            color: white;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 20px 0;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span class="logo">🎤 Nomad Karaoke</span>
+        <span class="beta-badge">BETA TESTER</span>
+    </div>
+
+    <p>Thank you for joining our beta program! 🎉</p>
+
+    <p>As promised, here's your free credit to create a karaoke video:</p>
+
+    <div class="credits-box">
+        <div>Your balance:</div>
+        <div class="credits-number">{credits}</div>
+        <div>free credit{'' if credits == 1 else 's'}</div>
+    </div>
+
+    <div class="reminder">
+        <strong>📝 Your Promise:</strong><br>
+        Remember, as a beta tester you agreed to:
+        <ul style="margin: 10px 0; padding-left: 20px;">
+            <li>Review and correct any lyrics timing issues</li>
+            <li>Share your honest feedback after trying the tool</li>
+        </ul>
+        We'll send you a quick feedback form after your job completes!
+    </div>
+
+    <p style="text-align: center;">
+        <a href="{self.frontend_url}" class="button">Create Your Karaoke Video</a>
+    </p>
+
+    <p>Thanks for helping us make Nomad Karaoke better!</p>
+
+    <div class="footer">
+        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
+    </div>
+</body>
+</html>
+"""
+
+        text_content = f"""
+Welcome Beta Tester!
+
+Thank you for joining our beta program!
+
+You've been granted {credits} free credit{'' if credits == 1 else 's'} to create karaoke videos.
+
+YOUR PROMISE:
+As a beta tester, you agreed to:
+- Review and correct any lyrics timing issues
+- Share your honest feedback after trying the tool
+
+We'll send you a quick feedback form after your job completes!
+
+Create your karaoke video: {self.frontend_url}
+
+Thanks for helping us make Nomad Karaoke better!
+
+---
+© {self._get_year()} Nomad Karaoke
+"""
+
+        return self.provider.send_email(email, subject, html_content, text_content)
+
+    def send_feedback_request_email(self, email: str, feedback_url: str, job_title: Optional[str] = None) -> bool:
+        """
+        Send feedback request email to beta testers.
+
+        Args:
+            email: User's email address
+            feedback_url: URL to the feedback form
+            job_title: Optional title of the completed job
+
+        Returns:
+            True if email was sent successfully
+        """
+        subject = "Quick feedback on your karaoke experience? 🎤"
+
+        job_context = f" for <strong>{job_title}</strong>" if job_title else ""
+
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            text-align: center;
+            padding: 20px 0;
+        }}
+        .logo {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #3b82f6;
+        }}
+        .feedback-box {{
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            margin: 20px 0;
+        }}
+        .stars {{
+            font-size: 36px;
+            margin: 10px 0;
+        }}
+        .button {{
+            display: inline-block;
+            background-color: #3b82f6;
+            color: white;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 20px 0;
+        }}
+        .time-note {{
+            background-color: #fef3c7;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 20px 0;
+            font-size: 14px;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🎤 Nomad Karaoke</div>
+    </div>
+
+    <p>Hi there!</p>
+
+    <p>Hope you enjoyed creating your karaoke video{job_context}! As a beta tester, your feedback is super valuable to us.</p>
+
+    <div class="feedback-box">
+        <div class="stars">⭐⭐⭐⭐⭐</div>
+        <p><strong>How was your experience?</strong></p>
+        <p>Quick 2-minute survey - we'd love to hear your thoughts!</p>
+    </div>
+
+    <p style="text-align: center;">
+        <a href="{feedback_url}" class="button">Share Your Feedback</a>
+    </p>
+
+    <div class="time-note">
+        ⏱️ This takes less than 2 minutes and helps us improve the tool for everyone!
+    </div>
+
+    <p>Specifically, we'd love to know:</p>
+    <ul>
+        <li>How easy was it to use?</li>
+        <li>Were the lyrics accurate?</li>
+        <li>How was the correction experience?</li>
+        <li>What could we improve?</li>
+    </ul>
+
+    <p>Thanks for being part of making Nomad Karaoke better! 🙏</p>
+
+    <div class="footer">
+        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
+    </div>
+</body>
+</html>
+"""
+
+        text_content = f"""
+Quick feedback on your karaoke experience?
+
+Hi there!
+
+Hope you enjoyed creating your karaoke video{' for ' + job_title if job_title else ''}!
+
+As a beta tester, your feedback is super valuable to us.
+
+Share your feedback (2-minute survey): {feedback_url}
+
+We'd love to know:
+- How easy was it to use?
+- Were the lyrics accurate?
+- How was the correction experience?
+- What could we improve?
+
+Thanks for being part of making Nomad Karaoke better!
+
+---
+© {self._get_year()} Nomad Karaoke
+"""
+
+        return self.provider.send_email(email, subject, html_content, text_content)
+
     def _get_year(self) -> int:
         """Get current year for copyright notices."""
         from datetime import datetime

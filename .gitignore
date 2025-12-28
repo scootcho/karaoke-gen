@@ -82,8 +82,9 @@ eggs/
 # Python lib directories (not frontend)
 lib/
 lib64/
-# But allow frontend lib
+# But allow frontend lib directories
 !frontend/lib/
+!buy-site/lib/
 parts/
 sdist/
 var/

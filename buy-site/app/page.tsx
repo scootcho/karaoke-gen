@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Mic2, Music, Sparkles, Video, Youtube, Check, ChevronDown, Mail, Loader2 } from 'lucide-react';
+import { Mic2, Music, Sparkles, Video, Youtube, Check, ChevronDown, Mail, Loader2, Gift, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { enrollBetaTester } from '../lib/api';
 
 // Credit packages (matching backend)
 const CREDIT_PACKAGES = [
@@ -55,6 +56,56 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  // Beta tester form state
+  const [showBetaForm, setShowBetaForm] = useState(false);
+  const [betaEmail, setBetaEmail] = useState('');
+  const [betaPromise, setBetaPromise] = useState('');
+  const [betaAcceptCorrections, setBetaAcceptCorrections] = useState(false);
+  const [betaLoading, setBetaLoading] = useState(false);
+  const [betaError, setBetaError] = useState('');
+  const [betaSuccess, setBetaSuccess] = useState(false);
+
+  const handleBetaEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBetaError('');
+
+    if (!betaEmail) {
+      setBetaError('Please enter your email');
+      return;
+    }
+
+    if (!betaAcceptCorrections) {
+      setBetaError('Please accept that you may need to review/correct lyrics');
+      return;
+    }
+
+    if (betaPromise.trim().length < 10) {
+      setBetaError('Please write a sentence confirming your promise to provide feedback');
+      return;
+    }
+
+    setBetaLoading(true);
+
+    try {
+      const response = await enrollBetaTester(betaEmail.toLowerCase(), betaPromise, betaAcceptCorrections);
+
+      // Store the session token
+      if (response.session_token) {
+        localStorage.setItem('nomad_karaoke_token', response.session_token);
+      }
+
+      setBetaSuccess(true);
+
+      // Redirect to the main app after a short delay
+      setTimeout(() => {
+        window.location.href = 'https://gen.nomadkaraoke.com';
+      }, 2000);
+    } catch (err) {
+      setBetaError(err instanceof Error ? err.message : 'Something went wrong');
+      setBetaLoading(false);
+    }
+  };
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,6 +284,140 @@ export default function Home() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Beta Tester Promo */}
+      <section className="py-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          {!showBetaForm && !betaSuccess ? (
+            <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-2xl p-8 text-center">
+              <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full text-sm font-medium mb-4">
+                <Gift className="w-4 h-4" />
+                Beta Tester Program
+              </div>
+              <h3 className="text-2xl font-bold mb-3">Try It Free!</h3>
+              <p className="text-dark-300 mb-6">
+                Help us improve by testing the tool and sharing your feedback.
+                Get a <span className="text-green-400 font-semibold">free credit</span> to create your first karaoke video!
+              </p>
+              <button
+                onClick={() => setShowBetaForm(true)}
+                className="inline-flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold px-6 py-3 rounded-xl transition-all"
+              >
+                Join Beta Program
+                <MessageSquare className="w-5 h-5" />
+              </button>
+            </div>
+          ) : betaSuccess ? (
+            <div className="bg-green-900/30 border border-green-500/30 rounded-2xl p-8 text-center">
+              <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold mb-3 text-green-400">Welcome to the Beta!</h3>
+              <p className="text-dark-300 mb-4">
+                You&apos;ve got 1 free credit! Redirecting you to create your first karaoke video...
+              </p>
+              <Loader2 className="w-6 h-6 animate-spin mx-auto text-green-400" />
+            </div>
+          ) : (
+            <div className="bg-dark-800 border border-purple-500/30 rounded-2xl p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full text-sm font-medium">
+                  <Gift className="w-4 h-4" />
+                  Beta Tester Signup
+                </div>
+                <button
+                  onClick={() => setShowBetaForm(false)}
+                  className="text-dark-400 hover:text-white transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <h3 className="text-xl font-bold mb-2">Get 1 Free Credit</h3>
+              <p className="text-dark-400 text-sm mb-6">
+                In exchange for your honest feedback after trying the tool.
+              </p>
+
+              <form onSubmit={handleBetaEnroll} className="space-y-4">
+                <div>
+                  <label htmlFor="beta-email" className="block text-sm font-medium text-dark-300 mb-2">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-500" />
+                    <input
+                      type="email"
+                      id="beta-email"
+                      value={betaEmail}
+                      onChange={(e) => setBetaEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full pl-10 pr-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-dark-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-dark-900/50 border border-dark-700 rounded-lg p-4">
+                  <h4 className="font-medium mb-3 text-sm">Your Promise</h4>
+
+                  <label className="flex items-start gap-3 cursor-pointer mb-4">
+                    <input
+                      type="checkbox"
+                      checked={betaAcceptCorrections}
+                      onChange={(e) => setBetaAcceptCorrections(e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded border-dark-600 bg-dark-800 text-purple-500 focus:ring-purple-500 focus:ring-offset-dark-900"
+                    />
+                    <span className="text-sm text-dark-300">
+                      I understand I may need to review and correct lyrics timing to get the best results
+                    </span>
+                  </label>
+
+                  <div>
+                    <label htmlFor="promise" className="block text-sm text-dark-400 mb-2">
+                      Write a quick sentence promising to share feedback after you try it:
+                    </label>
+                    <textarea
+                      id="promise"
+                      value={betaPromise}
+                      onChange={(e) => setBetaPromise(e.target.value)}
+                      placeholder="I promise to share my honest feedback about my experience..."
+                      rows={2}
+                      className="w-full px-4 py-3 bg-dark-800 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-dark-500 text-sm resize-none"
+                    />
+                  </div>
+                </div>
+
+                {betaError && (
+                  <div className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg p-3">
+                    {betaError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={betaLoading}
+                  className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 text-white font-semibold py-4 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  {betaLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Enrolling...
+                    </>
+                  ) : (
+                    <>
+                      Get My Free Credit
+                      <Gift className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+
+                <p className="text-xs text-dark-500 text-center">
+                  We&apos;ll send you a feedback form after your video is created.
+                  Your feedback helps us improve the tool for everyone!
+                </p>
+              </form>
+            </div>
+          )}
         </div>
       </section>
 

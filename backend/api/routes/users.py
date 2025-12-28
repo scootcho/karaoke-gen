@@ -22,6 +22,12 @@ from backend.models.user import (
     AddCreditsRequest,
     AddCreditsResponse,
     UserListResponse,
+    BetaTesterStatus,
+    BetaTesterEnrollRequest,
+    BetaTesterEnrollResponse,
+    BetaFeedbackRequest,
+    BetaFeedbackResponse,
+    BetaTesterFeedback,
 )
 from backend.services.user_service import get_user_service, UserService
 from backend.services.email_service import get_email_service, EmailService
@@ -352,6 +358,221 @@ async def stripe_webhook(
 
 
 # =============================================================================
+# Beta Tester Program
+# =============================================================================
+
+BETA_TESTER_FREE_CREDITS = 1  # Number of free credits for beta testers
+
+
+@router.post("/beta/enroll", response_model=BetaTesterEnrollResponse)
+async def enroll_beta_tester(
+    request: BetaTesterEnrollRequest,
+    http_request: Request,
+    user_service: UserService = Depends(get_user_service),
+    email_service: EmailService = Depends(get_email_service),
+):
+    """
+    Enroll as a beta tester to receive free karaoke credits.
+
+    Requirements:
+    - Accept that there may be work to review/correct lyrics
+    - Promise to provide feedback after using the tool
+
+    Returns free credits and optionally a session token for new users.
+    """
+    email = request.email.lower()
+
+    # Validate acceptance
+    if not request.accept_corrections_work:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept that you may need to review/correct lyrics"
+        )
+
+    if len(request.promise_text.strip()) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Please write a sentence confirming your promise to provide feedback"
+        )
+
+    # Get or create user
+    user = user_service.get_or_create_user(email)
+
+    # Check if already enrolled as beta tester
+    if user.is_beta_tester:
+        raise HTTPException(
+            status_code=400,
+            detail="You are already enrolled in the beta program"
+        )
+
+    # Get client info
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
+    # Enroll as beta tester
+    from datetime import datetime
+    user_service.update_user(
+        email,
+        is_beta_tester=True,
+        beta_tester_status=BetaTesterStatus.ACTIVE.value,
+        beta_enrolled_at=datetime.utcnow(),
+        beta_promise_text=request.promise_text.strip(),
+    )
+
+    # Add free credits
+    success, new_balance, _ = user_service.add_credits(
+        email=email,
+        amount=BETA_TESTER_FREE_CREDITS,
+        reason="beta_tester_enrollment",
+    )
+
+    # Create session for the user (so they can start using the service immediately)
+    session = user_service.create_session(email, ip_address=ip_address, user_agent=user_agent)
+
+    # Send welcome email
+    email_service.send_beta_welcome_email(email, BETA_TESTER_FREE_CREDITS)
+
+    logger.info(f"Beta tester enrolled: {email}, granted {BETA_TESTER_FREE_CREDITS} credits")
+
+    return BetaTesterEnrollResponse(
+        status="success",
+        message=f"Welcome to the beta program! You have {new_balance} free credits.",
+        credits_granted=BETA_TESTER_FREE_CREDITS,
+        session_token=session.token,
+    )
+
+
+@router.post("/beta/feedback", response_model=BetaFeedbackResponse)
+async def submit_beta_feedback(
+    request: BetaFeedbackRequest,
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Submit feedback as a beta tester.
+
+    Requires authentication. Updates beta tester status to completed.
+    May grant bonus credits for detailed feedback.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    # Extract token
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+
+    # Validate session
+    valid, user, message = user_service.validate_session(token)
+    if not valid or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    # Check if user is a beta tester
+    if not user.is_beta_tester:
+        raise HTTPException(
+            status_code=400,
+            detail="Only beta testers can submit feedback through this endpoint"
+        )
+
+    # Check if already completed feedback
+    if user.beta_tester_status == BetaTesterStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="You have already submitted feedback. Thank you!"
+        )
+
+    # Save feedback to Firestore
+    import uuid
+    from datetime import datetime
+
+    feedback = BetaTesterFeedback(
+        id=str(uuid.uuid4()),
+        user_email=user.email,
+        job_id=request.job_id,
+        overall_rating=request.overall_rating,
+        ease_of_use_rating=request.ease_of_use_rating,
+        lyrics_accuracy_rating=request.lyrics_accuracy_rating,
+        correction_experience_rating=request.correction_experience_rating,
+        what_went_well=request.what_went_well,
+        what_could_improve=request.what_could_improve,
+        additional_comments=request.additional_comments,
+        would_recommend=request.would_recommend,
+        would_use_again=request.would_use_again,
+        submitted_via="web",
+    )
+
+    # Save to Firestore
+    user_service.db.collection("beta_feedback").document(feedback.id).set(
+        feedback.model_dump(mode='json')
+    )
+
+    # Update user status
+    user_service.update_user(
+        user.email,
+        beta_tester_status=BetaTesterStatus.COMPLETED.value,
+    )
+
+    # Calculate bonus credits for detailed feedback
+    bonus_credits = 0
+    has_detailed_feedback = (
+        (request.what_went_well and len(request.what_went_well) > 50) or
+        (request.what_could_improve and len(request.what_could_improve) > 50) or
+        (request.additional_comments and len(request.additional_comments) > 50)
+    )
+
+    if has_detailed_feedback:
+        # Grant bonus credit for detailed feedback
+        bonus_credits = 1
+        user_service.add_credits(
+            email=user.email,
+            amount=bonus_credits,
+            reason="beta_feedback_bonus",
+        )
+
+    logger.info(f"Beta feedback received from {user.email}, bonus: {bonus_credits}")
+
+    return BetaFeedbackResponse(
+        status="success",
+        message="Thank you for your feedback!" + (
+            f" You earned {bonus_credits} bonus credit for your detailed response!"
+            if bonus_credits > 0 else ""
+        ),
+        bonus_credits=bonus_credits,
+    )
+
+
+@router.get("/beta/feedback-form")
+async def get_feedback_form_data(
+    authorization: Optional[str] = Header(None),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Get data needed to show the feedback form.
+
+    Returns whether the user needs to submit feedback and any job context.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
+    valid, user, message = user_service.validate_session(token)
+
+    if not valid or not user:
+        raise HTTPException(status_code=401, detail=message)
+
+    return {
+        "is_beta_tester": user.is_beta_tester,
+        "beta_status": user.beta_tester_status,
+        "needs_feedback": (
+            user.is_beta_tester and
+            user.beta_tester_status == BetaTesterStatus.PENDING_FEEDBACK.value
+        ),
+        "can_submit_feedback": (
+            user.is_beta_tester and
+            user.beta_tester_status != BetaTesterStatus.COMPLETED.value
+        ),
+    }
+
+
+# =============================================================================
 # Admin Endpoints
 # =============================================================================
 
@@ -472,3 +693,93 @@ async def set_user_role(
         raise HTTPException(status_code=404, detail="User not found")
 
     return {"status": "success", "message": f"User {email} role set to {role.value}"}
+
+
+@router.get("/admin/beta/feedback")
+async def list_beta_feedback(
+    limit: int = 50,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    List all beta tester feedback (admin only).
+    """
+    from google.cloud import firestore
+
+    query = user_service.db.collection("beta_feedback")
+    query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+    query = query.limit(limit)
+
+    docs = query.stream()
+    feedback_list = [doc.to_dict() for doc in docs]
+
+    return {
+        "feedback": feedback_list,
+        "total": len(feedback_list),
+    }
+
+
+@router.get("/admin/beta/stats")
+async def get_beta_stats(
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Get beta tester program statistics (admin only).
+    """
+    from google.cloud.firestore_v1 import FieldFilter
+
+    # Count beta testers by status
+    users_collection = user_service.db.collection("users")
+
+    total_beta_testers = len(list(
+        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True)).stream()
+    ))
+
+    active_testers = len(list(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active")).stream()
+    ))
+
+    pending_feedback = len(list(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback")).stream()
+    ))
+
+    completed_feedback = len(list(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed")).stream()
+    ))
+
+    # Get average ratings from feedback
+    feedback_docs = list(user_service.db.collection("beta_feedback").stream())
+
+    avg_overall = 0
+    avg_ease = 0
+    avg_accuracy = 0
+    avg_correction = 0
+
+    if feedback_docs:
+        total = len(feedback_docs)
+        for doc in feedback_docs:
+            data = doc.to_dict()
+            avg_overall += data.get("overall_rating", 0)
+            avg_ease += data.get("ease_of_use_rating", 0)
+            avg_accuracy += data.get("lyrics_accuracy_rating", 0)
+            avg_correction += data.get("correction_experience_rating", 0)
+
+        avg_overall = round(avg_overall / total, 2)
+        avg_ease = round(avg_ease / total, 2)
+        avg_accuracy = round(avg_accuracy / total, 2)
+        avg_correction = round(avg_correction / total, 2)
+
+    return {
+        "total_beta_testers": total_beta_testers,
+        "active_testers": active_testers,
+        "pending_feedback": pending_feedback,
+        "completed_feedback": completed_feedback,
+        "total_feedback_submissions": len(feedback_docs),
+        "average_ratings": {
+            "overall": avg_overall,
+            "ease_of_use": avg_ease,
+            "lyrics_accuracy": avg_accuracy,
+            "correction_experience": avg_correction,
+        },
+    }
