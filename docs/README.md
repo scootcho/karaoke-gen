@@ -20,6 +20,7 @@
 | Multi-format encoding | Working |
 | Token-based auth | Working |
 | Payment flow | Not started |
+| CI/CD self-hosted runner | Working (GCP) |
 
 ## Known Issues
 
