@@ -291,11 +291,16 @@ async def generate_video(job_id: str) -> bool:
             )
             
             # Store result metadata in job
+            # NOTE: Must include dropbox_link and gdrive_files from result, since
+            # _handle_native_distribution already saved them but job.state_data
+            # is stale (fetched before distribution ran)
             job_manager.update_job(job_id, {
                 'state_data': {
                     **job.state_data,
                     'brand_code': result.get('brand_code'),
                     'youtube_url': result.get('youtube_url'),
+                    'dropbox_link': result.get('dropbox_link'),
+                    'gdrive_files': result.get('gdrive_files'),
                 }
             })
             
