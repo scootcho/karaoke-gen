@@ -75,14 +75,14 @@ export default function HomePage() {
 
       {/* Header */}
       <header className="border-b backdrop-blur-sm sticky top-0 z-10" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--card)' }}>
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-10" />
-            <div>
-              <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Karaoke Generator</h1>
+        <div className="px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8 sm:h-10 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-bold truncate" style={{ color: 'var(--text)' }}>Karaoke Generator</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -90,15 +90,15 @@ export default function HomePage() {
                     variant="ghost"
                     size="sm"
                     onClick={toggleAutoMode}
-                    className={autoModeEnabled ? "text-amber-400 hover:text-amber-300 bg-amber-500/10" : ""}
+                    className={`min-h-[40px] px-2 sm:px-3 ${autoModeEnabled ? "text-amber-400 hover:text-amber-300 bg-amber-500/10" : ""}`}
                     style={!autoModeEnabled ? { color: 'var(--text-muted)' } : undefined}
                   >
                     {autoModeEnabled ? (
-                      <Zap className="w-4 h-4 mr-2" />
+                      <Zap className="w-4 h-4 sm:mr-2" />
                     ) : (
-                      <ZapOff className="w-4 h-4 mr-2" />
+                      <ZapOff className="w-4 h-4 sm:mr-2" />
                     )}
-                    Auto
+                    <span className="hidden sm:inline">Auto</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
@@ -118,10 +118,11 @@ export default function HomePage() {
               size="sm"
               onClick={loadJobs}
               disabled={isLoadingJobs || !isAuthenticated}
+              className="min-h-[40px] px-2 sm:px-3"
               style={{ color: 'var(--text-muted)' }}
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
-              Refresh
+              <RefreshCw className={`w-4 h-4 sm:mr-2 ${isLoadingJobs ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
             <AuthStatus />
             {mounted && (
@@ -132,6 +133,7 @@ export default function HomePage() {
                       variant="ghost"
                       size="sm"
                       onClick={toggleTheme}
+                      className="min-h-[40px] px-2 sm:px-3"
                       style={{ color: 'var(--text-muted)' }}
                     >
                       {isDarkMode ? (
