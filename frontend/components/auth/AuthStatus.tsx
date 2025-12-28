@@ -38,10 +38,10 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
         variant="ghost"
         size="sm"
         onClick={handleLogout}
-        className="text-slate-400 hover:text-white"
+        className="text-slate-400 hover:text-white min-h-[40px] px-2 sm:px-3"
       >
-        <LogOut className="w-4 h-4 mr-2" />
-        Logout
+        <LogOut className="w-4 h-4 sm:mr-2" />
+        <span className="hidden sm:inline">Logout</span>
       </Button>
     )
   }
@@ -52,10 +52,10 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
         variant="ghost"
         size="sm"
         onClick={() => setShowAuthDialog(true)}
-        className="text-amber-400 hover:text-amber-300"
+        className="text-amber-400 hover:text-amber-300 min-h-[40px] px-2 sm:px-3"
       >
-        <KeyRound className="w-4 h-4 mr-2" />
-        Login
+        <KeyRound className="w-4 h-4 sm:mr-2" />
+        <span className="hidden sm:inline">Login</span>
       </Button>
       <AuthDialog
         open={showAuthDialog}

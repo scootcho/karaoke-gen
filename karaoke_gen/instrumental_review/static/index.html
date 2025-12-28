@@ -576,6 +576,143 @@
             font-size: 1.5rem;
             color: var(--success);
         }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .app {
+                padding: 12px;
+                gap: 8px;
+                height: auto;
+                min-height: 100vh;
+                overflow-y: auto;
+            }
+
+            body {
+                overflow: auto;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .header-left {
+                width: 100%;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .logo {
+                font-size: 1rem;
+            }
+
+            .logo-img {
+                height: 32px;
+            }
+
+            .waveform-player {
+                flex: none;
+                min-height: 200px;
+            }
+
+            .waveform-toolbar {
+                flex-wrap: wrap;
+                padding: 8px 12px;
+                gap: 8px;
+            }
+
+            .toolbar-left,
+            .toolbar-center,
+            .toolbar-right {
+                flex-wrap: wrap;
+            }
+
+            .audio-toggle-group {
+                order: 10;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .bottom-section {
+                flex-direction: column;
+            }
+
+            .mute-panel {
+                max-height: none;
+            }
+
+            .selection-panel {
+                width: 100%;
+            }
+
+            .selection-option {
+                padding: 12px;
+            }
+
+            .btn {
+                min-height: 44px;
+                padding: 8px 12px;
+            }
+
+            .btn-icon {
+                width: 44px;
+                height: 44px;
+            }
+
+            .audio-toggle {
+                padding: 8px 12px;
+                min-height: 40px;
+            }
+
+            .zoom-btn {
+                width: 40px;
+                height: 40px;
+            }
+
+            .time-display {
+                font-size: 0.9rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app {
+                padding: 8px;
+            }
+
+            .header-left {
+                flex-wrap: wrap;
+            }
+
+            .track-info {
+                width: 100%;
+                margin-top: 4px;
+            }
+
+            .waveform-toolbar {
+                padding: 6px 8px;
+            }
+
+            .toolbar-center {
+                width: 100%;
+                justify-content: center;
+                order: -1;
+            }
+
+            .toolbar-left {
+                order: 1;
+            }
+
+            .toolbar-right {
+                order: 2;
+                width: 100%;
+                justify-content: space-between;
+            }
+        }
     </style>
 </head>
 <body>

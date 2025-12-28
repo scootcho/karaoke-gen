@@ -147,18 +147,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <TabsList className="grid w-full grid-cols-3 bg-slate-800">
-        <TabsTrigger value="upload" className="gap-2 data-[state=active]:bg-slate-700">
-          <Upload className="w-4 h-4" />
-          Upload
+      <TabsList className="grid w-full grid-cols-3 bg-slate-800 h-auto">
+        <TabsTrigger value="upload" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Upload className="w-4 h-4 shrink-0" />
+          <span className="truncate">Upload</span>
         </TabsTrigger>
-        <TabsTrigger value="url" className="gap-2 data-[state=active]:bg-slate-700">
-          <Youtube className="w-4 h-4" />
-          URL
+        <TabsTrigger value="url" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Youtube className="w-4 h-4 shrink-0" />
+          <span className="truncate">URL</span>
         </TabsTrigger>
-        <TabsTrigger value="search" className="gap-2 data-[state=active]:bg-slate-700">
-          <Music className="w-4 h-4" />
-          Search
+        <TabsTrigger value="search" className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm data-[state=active]:bg-slate-700">
+          <Music className="w-4 h-4 shrink-0" />
+          <span className="truncate">Search</span>
         </TabsTrigger>
       </TabsList>
 
@@ -193,7 +193,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="upload-artist" className="text-slate-200">Artist</Label>
               <Input
@@ -271,7 +271,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="youtube-artist" className="text-slate-200">Artist (optional)</Label>
               <Input
@@ -333,7 +333,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
       <TabsContent value="search" className="mt-4">
         <form onSubmit={handleSearchSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
               <Label htmlFor="search-artist" className="text-slate-200">Artist</Label>
               <Input

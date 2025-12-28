@@ -148,12 +148,14 @@ export default function Header({
                 gap: 1,
                 mb: 1,
                 flexDirection: isMobile ? 'column' : 'row',
-                height: '140px'
+                height: isMobile ? 'auto' : '140px',
+                minHeight: isMobile ? 'auto' : '140px'
             }}>
                 <Box sx={{
-                    width: '280px',
+                    width: isMobile ? '100%' : '280px',
+                    minWidth: isMobile ? '100%' : '280px',
                     position: 'relative',
-                    height: '100%'
+                    height: isMobile ? 'auto' : '100%'
                 }}>
                     {isAgenticMode ? (
                         <AgenticCorrectionMetrics
@@ -261,10 +263,11 @@ export default function Header({
                 }}>
                     <Box sx={{
                         display: 'flex',
-                        gap: 1,
-                        flexDirection: isMobile ? 'column' : 'row',
-                        alignItems: isMobile ? 'flex-start' : 'center',
-                        height: '32px'
+                        gap: 0.5,
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        minHeight: '32px'
                     }}>
                         <ModeSelector
                             effectiveMode={effectiveMode}
