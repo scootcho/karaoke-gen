@@ -688,7 +688,7 @@
             app.innerHTML = `
                 <div class="header">
                     <div class="header-left">
-                        <span class="logo"><img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" class="logo-img"> Instrumental Review</span>
+                        <span class="logo"><img src="https://gen.nomadkaraoke.com/nomad-karaoke-logo.svg" alt="Nomad Karaoke" class="logo-img" onerror="this.style.display='none'"> Instrumental Review</span>
                         <span class="track-info">${escapeHtml(analysisData.artist) || ''} ${analysisData.artist && analysisData.title ? '–' : ''} ${escapeHtml(analysisData.title) || ''}</span>
                     </div>
                     <div class="header-right">
@@ -1112,6 +1112,7 @@
         }
         
         function seekTo(time, autoPlay = true) {
+            const audio = document.getElementById('audio-player');
             // Guard against non-finite time values (NaN, Infinity)
             if (!audio || !Number.isFinite(time)) return;
 
