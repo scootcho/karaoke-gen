@@ -18,17 +18,14 @@ Create descriptive branch names like `feature/add-discord-notifications`, `fix/a
 
 ### Using Git Worktrees
 
-**For non-trivial changes** (new features, multi-file edits, refactors):
-- Create a git worktree in the parent folder before making any file changes:
-  ```bash
-  git worktree add ../karaoke-gen-feat-xyz feature/xyz
-  ```
+**All changes require a git worktree.** Since all changes must go through a PR, always create a worktree in the parent folder before making any file changes:
+
+```bash
+git worktree add -b feature/xyz ../karaoke-gen-feat-xyz main
+```
+
 - This keeps the main directory clean on `main` and enables parallel work on multiple features
 - Name the worktree folder descriptively, e.g., `../karaoke-gen-fix-audio-sync`
-
-**For trivial changes** (typos, single-line fixes):
-- Creating a branch in the current directory is acceptable
-- Use `git checkout -b fix/typo-xyz` before making changes
 
 **Cleanup:** When done with a worktree, remove it with:
 ```bash
