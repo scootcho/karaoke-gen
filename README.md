@@ -71,8 +71,40 @@ export AUDIOSHAKE_API_TOKEN="your_audioshake_token"
 
 Get an API key at [https://www.audioshake.ai/](https://www.audioshake.ai/) - business only, at time of writing this.
 
-#### Option 2: Whisper via RunPod
-Open-source alternative using OpenAI's Whisper model on RunPod infrastructure.
+#### Option 2: Local Whisper (No Cloud Required)
+Run Whisper directly on your local machine using whisper-timestamped. Works on CPU, NVIDIA GPU (CUDA), or Apple Silicon.
+
+```bash
+# Install with local Whisper support
+pip install karaoke-gen[local-whisper]
+
+# Optional: Configure model size (tiny, base, small, medium, large)
+export WHISPER_MODEL_SIZE="medium"
+
+# Optional: Force specific device (cpu, cuda, mps)
+export WHISPER_DEVICE="cpu"
+```
+
+**Model Size Guide:**
+| Model | VRAM | Speed | Quality |
+|-------|------|-------|---------|
+| tiny | ~1GB | Fast | Lower |
+| base | ~1GB | Fast | Basic |
+| small | ~2GB | Medium | Good |
+| medium | ~5GB | Slower | Better |
+| large | ~10GB | Slowest | Best |
+
+**CPU-Only Installation** (no GPU required):
+```bash
+# Pre-install CPU-only PyTorch first
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install karaoke-gen[local-whisper]
+```
+
+Local Whisper runs automatically as a fallback when no cloud transcription services are configured.
+
+#### Option 3: Whisper via RunPod
+Cloud-based alternative using OpenAI's Whisper model on RunPod infrastructure.
 
 ```bash
 export RUNPOD_API_KEY="your_runpod_key"
@@ -573,6 +605,44 @@ If the output video has quality problems:
 - Ensure FFmpeg is properly installed: `ffmpeg -version`
 - Check available codecs: `ffmpeg -codecs`
 - For 4K output, ensure sufficient disk space (10GB+ per track)
+
+### Local Whisper Issues
+
+#### GPU Out of Memory
+If you get CUDA out of memory errors:
+```bash
+# Use a smaller model
+export WHISPER_MODEL_SIZE="small"  # or "tiny"
+
+# Or force CPU mode
+export WHISPER_DEVICE="cpu"
+```
+
+#### Slow Transcription on CPU
+CPU transcription is significantly slower than GPU. For faster processing:
+- Use a smaller model (`tiny` or `base`)
+- Consider using cloud transcription (AudioShake or RunPod)
+- On Apple Silicon, the `small` model offers good speed/quality balance
+
+#### Model Download Issues
+Whisper models are downloaded on first use (~1-3GB depending on size). If downloads fail:
+- Check your internet connection
+- Set a custom cache directory: `export WHISPER_CACHE_DIR="/path/with/space"`
+- Models are cached in `~/.cache/whisper/` by default
+
+#### whisper-timestamped Not Found
+If you get "whisper-timestamped is not installed":
+```bash
+pip install karaoke-gen[local-whisper]
+# Or install directly:
+pip install whisper-timestamped
+```
+
+#### Disabling Local Whisper
+If you want to disable local Whisper (e.g., to force cloud transcription):
+```bash
+export ENABLE_LOCAL_WHISPER="false"
+```
 
 ---
 

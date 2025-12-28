@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "karaoke-gen"
-version = "0.76.18"
+version = "0.76.19"
 description = "Generate karaoke videos with synchronized lyrics. Handles the entire process from downloading audio and lyrics to creating the final video with title screens."
 authors = ["Andrew Beveridge <andrew@beveridge.uk>"]
 license = "MIT"
@@ -110,6 +110,19 @@ pytest-cov = ">=4.0"
 pytest-mock = ">=3.10"
 pytest-asyncio = "*"
 
+[tool.poetry.extras]
+# Local Whisper transcription support - optional, heavy dependencies
+# Install with: pip install karaoke-gen[local-whisper]
+# For CPU-only installation (recommended for systems without GPU):
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#   pip install karaoke-gen[local-whisper]
+local-whisper = ["whisper-timestamped"]
+
+[tool.poetry.group.local-whisper]
+optional = true
+
+[tool.poetry.group.local-whisper.dependencies]
+whisper-timestamped = ">=1.15.0"
 
 [tool.poetry.scripts]
 karaoke-gen = 'karaoke_gen.utils.gen_cli:main'
