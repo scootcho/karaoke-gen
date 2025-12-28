@@ -65,11 +65,7 @@ BUY_URL=https://buy.nomadkaraoke.com
 
 ### For Cloud Run deployment:
 
-```bash
-gcloud run services update karaoke-backend \
-  --set-secrets=STRIPE_SECRET_KEY=stripe-secret-key:latest \
-  --set-secrets=STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest
-```
+The CI workflow (`.github/workflows/ci.yml`) automatically injects these secrets during deployment. No manual `gcloud` commands needed - just add the secret values to Secret Manager (step 2) and the next backend deployment will pick them up.
 
 ## 5. Configure Email Service (SendGrid)
 
