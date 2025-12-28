@@ -1606,5 +1606,133 @@ class TestIsUrlFunction:
         assert is_url("") is False
 
 
+class TestUploadEndpointThemeSupport:
+    """Test that /jobs/upload endpoint supports theme configuration.
+
+    CRITICAL: These tests verify that the /api/jobs/upload endpoint correctly handles
+    theme_id and color_overrides parameters, ensuring preview videos have themed
+    backgrounds instead of black backgrounds.
+
+    This addresses a bug where:
+    - The frontend sends theme_id and color_overrides when uploading files
+    - But the backend /api/jobs/upload endpoint was ignoring these parameters
+    - Result: Jobs created via file upload had black backgrounds instead of themed ones
+    """
+
+    def test_upload_endpoint_accepts_theme_id_parameter(self):
+        """Verify the upload endpoint has theme_id as a form parameter.
+
+        CRITICAL: The frontend sends theme_id when uploading files with a theme.
+        If this parameter is missing from the endpoint, the theme is silently ignored
+        and preview videos will have black backgrounds instead of themed ones.
+        """
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        has_theme_id_param = 'theme_id: Optional[str] = Form(' in source_code
+
+        assert has_theme_id_param, (
+            "file_upload.py /jobs/upload endpoint does not have theme_id as a Form parameter. "
+            "The frontend sends theme_id when uploading files with a theme, but the backend "
+            "ignores it. Add: theme_id: Optional[str] = Form(None, description='Theme ID...')"
+        )
+
+    def test_upload_endpoint_accepts_color_overrides_parameter(self):
+        """Verify the upload endpoint has color_overrides as a form parameter."""
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        has_color_overrides_param = 'color_overrides: Optional[str] = Form(' in source_code
+
+        assert has_color_overrides_param, (
+            "file_upload.py /jobs/upload endpoint does not have color_overrides as a Form parameter. "
+            "The frontend sends color_overrides when customizing theme colors."
+        )
+
+    def test_upload_endpoint_calls_prepare_theme_for_job(self):
+        """Verify the upload endpoint calls _prepare_theme_for_job when theme_id is set.
+
+        CRITICAL: When a job is created via the upload endpoint with a theme_id
+        (and no custom style files), the code must call _prepare_theme_for_job() to set:
+        1. style_params_gcs_path (pointing to the copied style_params.json)
+        2. style_assets (populated with asset mappings)
+
+        Without this, LyricsTranscriber won't have access to the theme's styles
+        and preview videos will have black backgrounds instead of themed ones.
+        """
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        # The function should be called in upload_and_create_job
+        has_theme_prep_call = '_prepare_theme_for_job(' in source_code
+
+        assert has_theme_prep_call, (
+            "file_upload.py does not call _prepare_theme_for_job(). "
+            "When theme_id is provided to /jobs/upload without custom style files, "
+            "the endpoint MUST call _prepare_theme_for_job() to copy the theme's "
+            "style_params.json to the job folder."
+        )
+
+    def test_upload_endpoint_uses_resolve_cdg_txt_defaults(self):
+        """Verify the upload endpoint uses _resolve_cdg_txt_defaults for theme-based defaults."""
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        has_resolve_call = '_resolve_cdg_txt_defaults(' in source_code
+
+        assert has_resolve_call, (
+            "file_upload.py does not call _resolve_cdg_txt_defaults(). "
+            "When theme_id is set, enable_cdg and enable_txt should default to True."
+        )
+
+    def test_upload_endpoint_has_optional_cdg_txt_params(self):
+        """Verify enable_cdg and enable_txt are Optional[bool] to support theme defaults.
+
+        CRITICAL: If enable_cdg/enable_txt are bool instead of Optional[bool],
+        they will default to False and override the theme-based defaults.
+        """
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        has_optional_cdg = 'enable_cdg: Optional[bool] = Form(' in source_code
+        has_optional_txt = 'enable_txt: Optional[bool] = Form(' in source_code
+
+        assert has_optional_cdg, (
+            "file_upload.py has enable_cdg as bool instead of Optional[bool]. "
+            "This prevents theme-based defaults from working."
+        )
+        assert has_optional_txt, (
+            "file_upload.py has enable_txt as bool instead of Optional[bool]. "
+            "This prevents theme-based defaults from working."
+        )
+
+    def test_job_create_includes_theme_id_and_color_overrides(self):
+        """Verify JobCreate is called with theme_id and color_overrides."""
+        from backend.api.routes import file_upload as file_upload_module
+
+        with open(file_upload_module.__file__, 'r') as f:
+            source_code = f.read()
+
+        has_theme_id_in_job_create = 'theme_id=theme_id,' in source_code
+        has_color_overrides_in_job_create = 'color_overrides=parsed_color_overrides' in source_code
+
+        assert has_theme_id_in_job_create, (
+            "file_upload.py does not pass theme_id to JobCreate."
+        )
+        assert has_color_overrides_in_job_create, (
+            "file_upload.py does not pass color_overrides to JobCreate."
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
