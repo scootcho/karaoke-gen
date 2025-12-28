@@ -106,6 +106,25 @@ Unit tests with mocks didn't catch the `input_media_gcs_path` bug. Emulator inte
 
 Emulator tests need their own `conftest.py` that does NOT mock `google.cloud.*`. Mocks from unit tests can leak into integration tests.
 
+### Playwright: Use Assertions, Not Timeouts
+
+**Problem**: `waitForTimeout()` is flaky and slow:
+
+```typescript
+// BAD - arbitrary wait, still flaky
+await page.waitForTimeout(2000);
+const hasContent = await page.locator('.content').count();
+```
+
+**Solution**: Use Playwright's auto-retry assertions:
+
+```typescript
+// GOOD - waits only until condition met, retries automatically
+await expect(page.getByText('Hello,')).toBeVisible({ timeout: 5000 });
+```
+
+**Why it matters**: Playwright assertions have built-in retry logic and fail fast when conditions aren't met. Arbitrary timeouts either waste time (waiting when condition is already met) or cause flaky tests (not waiting long enough on slow CI).
+
 ## Deployment Notes
 
 ### Cloud Run Timeouts
