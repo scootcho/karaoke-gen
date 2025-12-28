@@ -1873,14 +1873,14 @@ platformdirs = ">=4.3.6"
 
 [[package]]
 name = "flacfetch"
-version = "0.15.0"
+version = "0.15.1"
 description = "Search and download high-quality audio from multiple sources"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "flacfetch-0.15.0-py3-none-any.whl", hash = "sha256:fa2eb155dd92113d37952fe0df5587ce472c85d5c924574342955c0968e802a1"},
-    {file = "flacfetch-0.15.0.tar.gz", hash = "sha256:ff7ce633d89fae69c7c221a8244afdf56598bfbe2b1ae71e6584df424b9ca995"},
+    {file = "flacfetch-0.15.1-py3-none-any.whl", hash = "sha256:d50beda83866a8d5567e50e6a2f714379a3c48fae23ccbe5f8153403a5979f09"},
+    {file = "flacfetch-0.15.1.tar.gz", hash = "sha256:d0953931e63d858d71f5e9ece61a82886b8104c2b30be0bdf7b53c97290e6610"},
 ]
 
 [package.dependencies]
