@@ -128,7 +128,7 @@ jobs:
 
   package-unit-tests:
     name: "Package - Unit Tests (70% coverage)"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
@@ -186,7 +186,7 @@ jobs:
 
   package-integration-tests:
     name: "Package - Integration Tests"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
@@ -356,7 +356,7 @@ jobs:
 
   backend-lint:
     name: "Backend - Code Quality"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true')
     steps:
@@ -429,7 +429,7 @@ jobs:
 
   package-build:
     name: "Package - Build"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
