@@ -18,11 +18,13 @@ concurrency:
 jobs:
   # ============================================
   # PATH FILTERING - Determine what changed
+  # Only needed for PRs (main branch skips tests)
   # ============================================
 
   changes:
     name: "Detect Changes"
     runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
@@ -61,14 +63,14 @@ jobs:
           echo "| Dependencies | ${{ steps.filter.outputs.deps }} |" >> $GITHUB_STEP_SUMMARY
 
   # ============================================
-  # FRONTEND TESTS
+  # FRONTEND TESTS (PRs only - main skips tests)
   # ============================================
 
   frontend-unit-tests:
     name: "Frontend - Unit Tests"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && needs.changes.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +101,7 @@ jobs:
     name: "Frontend - Build"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && needs.changes.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -121,14 +123,14 @@ jobs:
         run: npm run build
 
   # ============================================
-  # PACKAGE TESTS (karaoke-gen Python CLI)
+  # PACKAGE TESTS (PRs only - main skips tests)
   # ============================================
 
   package-unit-tests:
     name: "Package - Unit Tests (70% coverage)"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,7 +188,7 @@ jobs:
     name: "Package - Integration Tests"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -231,11 +233,15 @@ jobs:
       - name: Run integration tests
         run: poetry run pytest tests/integration/ -v
 
-  package-build:
-    name: "Package - Build & Install"
+  package-build-test:
+    name: "Package - Build & Install (Test)"
     runs-on: ubuntu-latest
     needs: [changes, package-unit-tests, package-integration-tests]
-    if: ${{ always() && (needs.package-unit-tests.result == 'success' || needs.package-unit-tests.result == 'skipped') && (needs.package-integration-tests.result == 'success' || needs.package-integration-tests.result == 'skipped') && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main') }}
+    if: >-
+      github.ref != 'refs/heads/main' && always() &&
+      (needs.package-unit-tests.result == 'success' || needs.package-unit-tests.result == 'skipped') &&
+      (needs.package-integration-tests.result == 'success' || needs.package-integration-tests.result == 'skipped') &&
+      (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -279,22 +285,15 @@ jobs:
           pip install dist/*.whl
           python -m karaoke_gen.utils.gen_cli --help
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-dist
-          path: dist/
-          retention-days: 1
-
   # ============================================
-  # BACKEND TESTS (Cloud Run API service)
+  # BACKEND TESTS (PRs only - main skips tests)
   # ============================================
 
   backend-unit-tests:
     name: "Backend - Unit Tests"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -339,14 +338,18 @@ jobs:
     name: "Backend - Emulator Integration Tests"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
       - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          df -h
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          haskell: true
+          dotnet: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -409,7 +412,7 @@ jobs:
     name: "Backend - Code Quality"
     runs-on: ubuntu-latest
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || github.ref == 'refs/heads/main' }}
+    if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -445,13 +448,14 @@ jobs:
 
   # ============================================
   # CI GATE - Required status check for PRs
+  # Only runs on PRs, not on main
   # ============================================
 
   ci-gate:
     name: "CI Gate"
     runs-on: ubuntu-latest
     needs: [frontend-unit-tests, frontend-build, package-unit-tests, package-integration-tests, backend-unit-tests, backend-emulator-tests, backend-lint]
-    if: always()
+    if: github.ref != 'refs/heads/main' && always()
     steps:
       - name: Check results
         run: |
@@ -474,7 +478,46 @@ jobs:
 
   # ============================================
   # DEPLOYMENTS (main branch only)
+  # Tests already passed on PR, so we skip them here
   # ============================================
+
+  package-build:
+    name: "Package - Build"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-package-${{ runner.os }}-py3.13-
+
+      - name: Build package
+        run: poetry build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-dist
+          path: dist/
+          retention-days: 1
 
   package-publish:
     name: "Deploy - Publish to PyPI"
@@ -566,8 +609,7 @@ jobs:
   deploy-frontend:
     name: "Deploy - Frontend (GitHub Pages)"
     runs-on: ubuntu-latest
-    needs: [frontend-unit-tests, frontend-build]
-    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.frontend-unit-tests.result == 'success' || needs.frontend-unit-tests.result == 'skipped') && (needs.frontend-build.result == 'success' || needs.frontend-build.result == 'skipped') }}
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -639,8 +681,7 @@ jobs:
   deploy-backend:
     name: "Deploy - Backend (Cloud Run)"
     runs-on: ubuntu-latest
-    needs: [backend-unit-tests, backend-emulator-tests, backend-lint]
-    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.backend-unit-tests.result == 'success' || needs.backend-unit-tests.result == 'skipped') && (needs.backend-emulator-tests.result == 'success' || needs.backend-emulator-tests.result == 'skipped') && (needs.backend-lint.result == 'success' || needs.backend-lint.result == 'skipped') }}
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
       id-token: write
@@ -651,6 +692,21 @@ jobs:
       BASE_IMAGE_NAME: karaoke-backend-base
       APP_IMAGE_NAME: karaoke-backend
     steps:
+      # ============================================
+      # Free disk space FIRST - before anything else
+      # This prevents "No space left on device" errors
+      # ============================================
+      - name: Free disk space (aggressive)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          haskell: true
+          dotnet: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -745,18 +801,6 @@ jobs:
             echo "needs_rebuild=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Free disk space (for base image build)
-        if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          haskell: true
-          dotnet: true
-          large-packages: true
-          docker-images: false
-          swap-storage: false
-
       - name: Build and push base image (if needed)
         if: steps.version_check.outputs.needs_deploy == 'true' && steps.check-base.outputs.needs_rebuild == 'true'
         uses: docker/build-push-action@v6
@@ -768,8 +812,9 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest
             ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:${{ github.sha }}
           # Registry cache for ALL layers (mode=max) - persists between builds
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,mode=max
+          # ignore-error=true allows build to continue if cache doesn't exist yet
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:cache,mode=max,ignore-error=true
           build-args: |
             BUILD_DATE=${{ github.run_id }}
             BUILD_ID=${{ github.sha }}
@@ -789,8 +834,9 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:v${{ steps.version_check.outputs.version }}
           # Registry cache for app layers
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,mode=max
+          # ignore-error=true allows build to continue if cache doesn't exist yet
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.APP_IMAGE_NAME }}:cache,mode=max,ignore-error=true
           provenance: false
 
       # ============================================
