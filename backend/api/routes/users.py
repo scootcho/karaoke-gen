@@ -143,6 +143,17 @@ async def verify_magic_link(
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
 
+    # Check if this is a first login BEFORE verification (which sets last_login_at)
+    # We need to get the user's state before verify_magic_link updates it
+    from backend.services.user_service import MAGIC_LINKS_COLLECTION
+    magic_link_doc = user_service.db.collection(MAGIC_LINKS_COLLECTION).document(token).get()
+    is_first_login = False
+    if magic_link_doc.exists:
+        magic_link_data = magic_link_doc.to_dict()
+        pre_verify_user = user_service.get_user(magic_link_data.get('email', ''))
+        if pre_verify_user:
+            is_first_login = pre_verify_user.total_jobs_created == 0 and not pre_verify_user.last_login_at
+
     # Verify the magic link
     success, user, message = user_service.verify_magic_link(token)
 
@@ -156,9 +167,8 @@ async def verify_magic_link(
         user_agent=user_agent
     )
 
-    # Check if this is a new user (no previous login)
-    if user.total_jobs_created == 0 and not user.last_login_at:
-        # Send welcome email
+    # Send welcome email to first-time users
+    if is_first_login:
         email_service.send_welcome_email(user.email, user.credits)
 
     # Return user info
@@ -327,9 +337,15 @@ async def stripe_webhook(
 
     if event_type == "checkout.session.completed":
         session = event["data"]["object"]
+        session_id = session.get("id")
+
+        # Idempotency check: Skip if this session was already processed
+        if session_id and user_service.is_stripe_session_processed(session_id):
+            logger.info(f"Skipping already processed session: {session_id}")
+            return {"status": "received", "type": event_type, "note": "already_processed"}
 
         # Process the completed checkout
-        success, user_email, credits, msg = stripe_service.handle_checkout_completed(session)
+        success, user_email, credits, _ = stripe_service.handle_checkout_completed(session)
 
         if success and user_email and credits > 0:
             # Add credits to user account
@@ -337,7 +353,7 @@ async def stripe_webhook(
                 email=user_email,
                 amount=credits,
                 reason="stripe_purchase",
-                stripe_session_id=session.get("id"),
+                stripe_session_id=session_id,
             )
 
             if ok:
@@ -420,7 +436,7 @@ async def enroll_beta_tester(
     )
 
     # Add free credits
-    success, new_balance, _ = user_service.add_credits(
+    _, new_balance, _ = user_service.add_credits(
         email=email,
         amount=BETA_TESTER_FREE_CREDITS,
         reason="beta_tester_enrollment",
@@ -615,16 +631,18 @@ async def add_credits_to_user(
 
     Use this to grant free credits to users, e.g., for beta testers or promotions.
     """
-    admin_token, user_type, _ = auth_data
+    admin_token, _, _ = auth_data
 
-    # Get admin email from somewhere (could enhance auth to track this)
-    admin_email = "admin"  # Placeholder - could be enhanced
+    # TODO: Enhance auth system to track admin email identity for better audit trails.
+    # Current token-based admin auth doesn't include email identity.
+    # For now, we log the token prefix for traceability.
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
 
     success, new_balance, message = user_service.add_credits(
         email=request.email,
         amount=request.amount,
         reason=request.reason,
-        admin_email=admin_email,
+        admin_email=admin_id,
     )
 
     if not success:
@@ -652,7 +670,10 @@ async def disable_user(
     """
     Disable a user account (admin only).
     """
-    success = user_service.disable_user(email, admin_email="admin")
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.disable_user(email, admin_email=admin_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
@@ -669,7 +690,10 @@ async def enable_user(
     """
     Enable a user account (admin only).
     """
-    success = user_service.enable_user(email, admin_email="admin")
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.enable_user(email, admin_email=admin_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
@@ -687,7 +711,10 @@ async def set_user_role(
     """
     Set a user's role (admin only).
     """
-    success = user_service.set_user_role(email, role, admin_email="admin")
+    admin_token, _, _ = auth_data
+    admin_id = f"admin:{admin_token[:8]}..." if admin_token else "admin:unknown"
+
+    success = user_service.set_user_role(email, role, admin_email=admin_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
@@ -728,25 +755,33 @@ async def get_beta_stats(
     Get beta tester program statistics (admin only).
     """
     from google.cloud.firestore_v1 import FieldFilter
+    from google.cloud.firestore_v1 import aggregation
 
-    # Count beta testers by status
+    # Count beta testers by status using efficient aggregation queries
     users_collection = user_service.db.collection("users")
 
-    total_beta_testers = len(list(
-        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True)).stream()
-    ))
+    # Helper function to get count using aggregation
+    def get_count(query) -> int:
+        agg_query = aggregation.AggregationQuery(query)
+        agg_query.count(alias="count")
+        results = agg_query.get()
+        return results[0][0].value if results else 0
 
-    active_testers = len(list(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active")).stream()
-    ))
+    total_beta_testers = get_count(
+        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
+    )
 
-    pending_feedback = len(list(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback")).stream()
-    ))
+    active_testers = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active"))
+    )
 
-    completed_feedback = len(list(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed")).stream()
-    ))
+    pending_feedback = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback"))
+    )
+
+    completed_feedback = get_count(
+        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed"))
+    )
 
     # Get average ratings from feedback
     feedback_docs = list(user_service.db.collection("beta_feedback").stream())

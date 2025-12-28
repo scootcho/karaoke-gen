@@ -486,6 +486,38 @@ class UserService:
         """Check if user has at least one credit."""
         return self.check_credits(email) > 0
 
+    def is_stripe_session_processed(self, stripe_session_id: str) -> bool:
+        """
+        Check if a Stripe session ID has already been processed.
+
+        Used to ensure idempotency of webhook processing - prevents
+        duplicate credit additions if Stripe sends the same webhook twice.
+
+        Args:
+            stripe_session_id: The Stripe checkout session ID
+
+        Returns:
+            True if this session was already processed
+        """
+        try:
+            # Search all users for a credit transaction with this stripe_session_id
+            # This is a collection group query approach - search through all users
+            users_query = self.db.collection(USERS_COLLECTION).stream()
+
+            for user_doc in users_query:
+                user_data = user_doc.to_dict()
+                credit_transactions = user_data.get('credit_transactions', [])
+                for txn in credit_transactions:
+                    if txn.get('stripe_session_id') == stripe_session_id:
+                        logger.info(f"Stripe session {stripe_session_id} already processed for {user_data.get('email')}")
+                        return True
+
+            return False
+        except Exception:
+            logger.exception(f"Error checking if stripe session {stripe_session_id} was processed")
+            # On error, return False to allow processing (better to risk duplicate than block)
+            return False
+
     # =========================================================================
     # Admin Operations
     # =========================================================================

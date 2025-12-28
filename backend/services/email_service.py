@@ -10,6 +10,7 @@ Future providers can be added:
 - AWS SES
 - Postmark
 """
+import html
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -676,7 +677,9 @@ Thanks for helping us make Nomad Karaoke better!
         """
         subject = "Quick feedback on your karaoke experience? 🎤"
 
-        job_context = f" for <strong>{job_title}</strong>" if job_title else ""
+        # Escape job_title to prevent XSS in email clients that render HTML
+        safe_job_title = html.escape(job_title) if job_title else ""
+        job_context = f" for <strong>{safe_job_title}</strong>" if job_title else ""
 
         html_content = f"""
 <!DOCTYPE html>
@@ -783,7 +786,7 @@ Quick feedback on your karaoke experience?
 
 Hi there!
 
-Hope you enjoyed creating your karaoke video{' for ' + job_title if job_title else ''}!
+Hope you enjoyed creating your karaoke video{' for ' + safe_job_title if safe_job_title else ''}!
 
 As a beta tester, your feedback is super valuable to us.
 
