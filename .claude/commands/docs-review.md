@@ -29,6 +29,7 @@ You are reviewing this chat session to identify documentation updates needed bef
 
 ## Guidelines
 
+- **IMPORTANT**: Make all documentation changes on the current feature branch (git worktree), NOT on main. Check `git branch` or the worktree path to ensure you're editing files in the correct location.
 - Keep updates concise and factual
 - Focus on information useful for future AI agents
 - Don't duplicate information that's in the code

@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { api, Job, getAccessToken } from "@/lib/api"
 import { useAutoMode, getAutoModeFromUrl } from "@/lib/auto-mode"
+import { useJobNotifications, useVisibilityRefresh } from "@/hooks/use-notifications"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Music2, RefreshCw, Loader2, Zap, ZapOff, KeyRound, Moon, Sun } from "lucide-react"
@@ -25,6 +26,31 @@ export default function HomePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const { enabled: autoModeEnabled, setEnabled: setAutoMode, toggle: toggleAutoMode } = useAutoMode()
   const { isDarkMode, toggleTheme, mounted } = useTheme()
+
+  // Memoize loadJobs for use with visibility refresh
+  const loadJobs = useCallback(async () => {
+    if (!getAccessToken()) {
+      setIsLoadingJobs(false)
+      return
+    }
+    try {
+      const data = await api.listJobs({ limit: 20 })
+      setJobs(data)
+    } catch (err: any) {
+      // Don't log auth errors - user just needs to authenticate
+      if (err?.status !== 401) {
+        console.error("Failed to load jobs:", err)
+      }
+    } finally {
+      setIsLoadingJobs(false)
+    }
+  }, [])
+
+  // Enable notifications for job status changes (sound + title animation)
+  useJobNotifications(jobs)
+
+  // Refresh jobs immediately when tab becomes visible (after returning from review UIs)
+  useVisibilityRefresh(loadJobs, isAuthenticated)
 
   // Check auth status on mount
   useEffect(() => {
@@ -49,25 +75,7 @@ export default function HomePage() {
     // Poll for updates every 10 seconds
     const interval = setInterval(loadJobs, 10000)
     return () => clearInterval(interval)
-  }, [isAuthenticated])
-
-  async function loadJobs() {
-    if (!getAccessToken()) {
-      setIsLoadingJobs(false)
-      return
-    }
-    try {
-      const data = await api.listJobs({ limit: 20 })
-      setJobs(data)
-    } catch (err: any) {
-      // Don't log auth errors - user just needs to authenticate
-      if (err?.status !== 401) {
-        console.error("Failed to load jobs:", err)
-      }
-    } finally {
-      setIsLoadingJobs(false)
-    }
-  }
+  }, [isAuthenticated, loadJobs])
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
