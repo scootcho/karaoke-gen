@@ -267,14 +267,14 @@ export default function Header({
                         flexDirection: 'row',
                         flexWrap: 'wrap',
                         alignItems: 'center',
-                        minHeight: '32px'
+                        minHeight: '44px'
                     }}>
                         <ModeSelector
                             effectiveMode={effectiveMode}
                             onChange={onModeChange}
                         />
                         {!isReadOnly && (
-                            <Box sx={{ display: 'flex', height: '32px' }}>
+                            <Box sx={{ display: 'flex', height: '44px', alignItems: 'center' }}>
                                 <Tooltip title="Undo">
                                     <span>
                                         <IconButton
@@ -285,8 +285,8 @@ export default function Header({
                                                 border: `1px solid ${theme.palette.divider}`,
                                                 borderRadius: '4px',
                                                 mx: 0.25,
-                                                height: '32px',
-                                                width: '32px'
+                                                height: '44px',
+                                                width: '44px'
                                             }}
                                         >
                                             <UndoIcon fontSize="small" />
@@ -303,8 +303,8 @@ export default function Header({
                                                 border: `1px solid ${theme.palette.divider}`,
                                                 borderRadius: '4px',
                                                 mx: 0.25,
-                                                height: '32px',
-                                                width: '32px'
+                                                height: '44px',
+                                                width: '44px'
                                             }}
                                         >
                                             <RedoIcon fontSize="small" />

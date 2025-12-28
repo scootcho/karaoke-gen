@@ -222,7 +222,7 @@ for (const button of await buttons.all()) {
 
 Use responsive prefixes consistently:
 
-```
+```plaintext
 sm: 640px    - Small tablets and up
 md: 768px    - Tablets and up
 lg: 1024px   - Laptops and up
