@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Processing
     max_concurrent_jobs: int = int(os.getenv("MAX_CONCURRENT_JOBS", "5"))
     job_timeout_seconds: int = int(os.getenv("JOB_TIMEOUT_SECONDS", "3600"))
+
+    # Agentic AI Correction (for lyrics correction via LLM)
+    # When enabled, uses Gemini via Vertex AI for intelligent lyrics correction
+    use_agentic_ai: bool = os.getenv("USE_AGENTIC_AI", "true").lower() in ("true", "1", "yes")
+    agentic_ai_model: str = os.getenv("AGENTIC_AI_MODEL", "vertexai/gemini-3-flash-preview")
     
     # Cloud Tasks (for scalable worker coordination)
     # When enabled, workers are triggered via Cloud Tasks for guaranteed delivery

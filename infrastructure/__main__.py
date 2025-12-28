@@ -107,6 +107,14 @@ cloud_trace_iam = gcp.projects.IAMMember(
     member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant Vertex AI User permissions (for Gemini agentic AI correction)
+vertex_ai_iam = gcp.projects.IAMMember(
+    "karaoke-backend-vertexai-user",
+    project=project_id,
+    role="roles/aiplatform.user",
+    member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Grant Cloud Build service accounts access to Artifact Registry
 # Cloud Build uses multiple service accounts depending on the context
 cloudbuild_service_accounts = [

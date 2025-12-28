@@ -14,6 +14,7 @@
 |-----------|--------|
 | Audio upload & separation | Working |
 | Lyrics transcription | Working |
+| Agentic AI correction | Working (Gemini 3 Flash via Vertex AI) |
 | Human lyrics review | Working |
 | Preview video generation | Working |
 | Instrumental selection | Working |

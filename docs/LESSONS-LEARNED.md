@@ -34,6 +34,26 @@ Audio separation and lyrics transcription run in parallel:
 
 ## Common Gotchas
 
+### Frontend Polling vs Tab Visibility
+
+**Problem**: After completing review in a new tab (lyrics or instrumental selection), returning to the main frontend showed stale status for up to 10 seconds due to polling interval.
+
+**Solution**: Use `visibilitychange` event to trigger immediate refresh when tab becomes visible:
+
+```typescript
+useEffect(() => {
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      loadJobs()  // Immediate refresh
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+}, [loadJobs])
+```
+
+**Key insight**: Backend status updates are fast (~1 second). If UI appears slow to update after user action in another tab, the issue is likely frontend polling, not backend.
+
 ### Pydantic Model Fields
 
 **Problem**: Setting a field that doesn't exist in the Pydantic model silently does nothing.
@@ -179,6 +199,15 @@ Default 5-minute timeout may not be enough for video encoding. Consider:
 ### Secret Manager Access
 
 Cloud Run service account needs `Secret Manager Secret Accessor` role. This is managed via Pulumi in `infrastructure/`.
+
+### Vertex AI Authentication
+
+For Gemini via Vertex AI, use Application Default Credentials (ADC) rather than API keys:
+- **Cloud Run**: Service account automatically authenticated - just grant `roles/aiplatform.user`
+- **Local dev**: Run `gcloud auth application-default login`
+- **Config**: Set `GOOGLE_CLOUD_PROJECT` and optionally `GCP_LOCATION` (defaults to `us-central1`)
+
+This approach uses GCP's free credits and existing IAM rather than separate API key management.
 
 ### CI/CD: GitHub Actions
 
