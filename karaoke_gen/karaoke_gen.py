@@ -802,16 +802,16 @@ class KaraokePrep:
                     )
 
                     # Copy video to expected location in parent directory
-                    if outputs and outputs.get("video_filepath"):
-                        source_video = outputs["video_filepath"]
+                    if outputs and outputs.video:
+                        source_video = outputs.video
                         dest_video = os.path.join(track_output_dir, f"{artist_title} (With Vocals).mkv")
                         shutil.copy2(source_video, dest_video)
                         self.logger.info(f"Video rendered successfully: {dest_video}")
                         processed_track["with_vocals_video"] = dest_video
 
                         # Update ASS filepath for video background processing
-                        if outputs.get("ass_filepath"):
-                            processed_track["ass_filepath"] = outputs["ass_filepath"]
+                        if outputs.ass:
+                            processed_track["ass_filepath"] = outputs.ass
                     else:
                         self.logger.warning("Video rendering did not produce expected output")
                 else:
