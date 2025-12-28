@@ -1182,3 +1182,241 @@ pulumi.export("gdrive_validator_function_name", gdrive_validator_function.name)
 pulumi.export("gdrive_validator_scheduler_name", gdrive_validator_scheduler.name)
 pulumi.export("gdrive_validator_service_account", gdrive_validator_sa.email)
 
+# ==================== Self-Hosted GitHub Actions Runner ====================
+# A dedicated VM running GitHub Actions runner for CI/CD jobs that need more
+# disk space than GitHub-hosted runners provide (14GB vs 200GB here).
+# This solves "No space left on device" errors during Docker builds.
+
+# Service account for GitHub runner VM
+github_runner_sa = serviceaccount.Account(
+    "github-runner-sa",
+    account_id="github-runner",
+    display_name="GitHub Actions Runner",
+    description="Service account for self-hosted GitHub Actions runner VM",
+)
+
+# Grant runner service account Artifact Registry reader (for pulling base images)
+github_runner_artifact_reader = gcp.projects.IAMMember(
+    "github-runner-artifact-reader",
+    project=project_id,
+    role="roles/artifactregistry.reader",
+    member=github_runner_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant runner service account Secret Manager access (for PAT)
+github_runner_secrets_iam = gcp.projects.IAMMember(
+    "github-runner-secrets-access",
+    project=project_id,
+    role="roles/secretmanager.secretAccessor",
+    member=github_runner_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant runner service account logging permissions
+github_runner_logging_iam = gcp.projects.IAMMember(
+    "github-runner-logging-access",
+    project=project_id,
+    role="roles/logging.logWriter",
+    member=github_runner_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# GitHub PAT secret for runner registration
+# The PAT needs 'repo' scope to register a runner
+github_runner_pat_secret = secretmanager.Secret(
+    "github-runner-pat",
+    secret_id="github-runner-pat",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Startup script for the GitHub runner VM
+GITHUB_RUNNER_STARTUP_SCRIPT = """#!/bin/bash
+set -e
+
+# Log to a file for debugging
+exec > >(tee /var/log/github-runner-startup.log) 2>&1
+echo "Starting GitHub Actions runner setup at $(date)"
+
+# System updates and core dependencies
+apt-get update
+apt-get install -y \\
+    curl \\
+    git \\
+    jq \\
+    unzip \\
+    build-essential \\
+    libssl-dev \\
+    libffi-dev \\
+    software-properties-common \\
+    apt-transport-https \\
+    ca-certificates \\
+    gnupg \\
+    lsb-release
+
+# ==================== Docker ====================
+echo "Installing Docker..."
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Configure Docker for the runner user
+systemctl enable docker
+systemctl start docker
+
+# ==================== Python 3.13 ====================
+echo "Installing Python 3.13..."
+add-apt-repository -y ppa:deadsnakes/ppa || true
+apt-get update
+apt-get install -y python3.13 python3.13-venv python3.13-dev python3-pip || {
+    # Fallback: build from source if PPA not available
+    echo "PPA not available, installing Python 3.13 from source..."
+    apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libreadline-dev libffi-dev libsqlite3-dev wget libbz2-dev
+    cd /tmp
+    wget https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tgz
+    tar -xf Python-3.13.0.tgz
+    cd Python-3.13.0
+    ./configure --enable-optimizations
+    make -j $(nproc)
+    make altinstall
+    ln -sf /usr/local/bin/python3.13 /usr/bin/python3.13
+}
+
+# ==================== Node.js 20 ====================
+echo "Installing Node.js 20..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+
+# ==================== Java 21 (for Firestore emulator) ====================
+echo "Installing Java 21..."
+apt-get install -y openjdk-21-jdk || {
+    # Fallback: use Temurin
+    curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg
+    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/adoptium.list
+    apt-get update
+    apt-get install -y temurin-21-jdk
+}
+
+# ==================== FFmpeg ====================
+echo "Installing FFmpeg..."
+apt-get install -y ffmpeg
+
+# ==================== Poetry ====================
+echo "Installing Poetry..."
+curl -sSL https://install.python-poetry.org | python3 -
+ln -sf /root/.local/bin/poetry /usr/local/bin/poetry
+
+# ==================== Google Cloud SDK ====================
+echo "Installing Google Cloud SDK..."
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
+apt-get update
+apt-get install -y google-cloud-cli google-cloud-cli-firestore-emulator
+
+# ==================== Create runner user ====================
+echo "Creating runner user..."
+useradd -m -s /bin/bash runner || true
+usermod -aG docker runner
+
+# ==================== GitHub Actions Runner ====================
+echo "Setting up GitHub Actions Runner..."
+RUNNER_VERSION="2.321.0"
+RUNNER_DIR="/home/runner/actions-runner"
+
+mkdir -p $RUNNER_DIR
+cd $RUNNER_DIR
+
+# Download runner
+curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L \\
+    https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+rm actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+chown -R runner:runner $RUNNER_DIR
+
+# Get GitHub PAT from Secret Manager
+echo "Fetching GitHub PAT from Secret Manager..."
+GITHUB_PAT=$(gcloud secrets versions access latest --secret=github-runner-pat)
+
+if [ -z "$GITHUB_PAT" ]; then
+    echo "ERROR: GitHub PAT not found in Secret Manager"
+    exit 1
+fi
+
+# Get runner registration token using PAT
+echo "Getting runner registration token..."
+REGISTRATION_TOKEN=$(curl -s -X POST \\
+    -H "Authorization: token $GITHUB_PAT" \\
+    -H "Accept: application/vnd.github.v3+json" \\
+    https://api.github.com/repos/nomadkaraoke/karaoke-gen/actions/runners/registration-token | jq -r .token)
+
+if [ -z "$REGISTRATION_TOKEN" ] || [ "$REGISTRATION_TOKEN" = "null" ]; then
+    echo "ERROR: Failed to get registration token"
+    exit 1
+fi
+
+# Configure runner (non-interactive)
+echo "Configuring runner..."
+cd $RUNNER_DIR
+sudo -u runner ./config.sh \\
+    --url https://github.com/nomadkaraoke/karaoke-gen \\
+    --token "$REGISTRATION_TOKEN" \\
+    --name "gcp-runner-$(hostname)" \\
+    --labels "self-hosted,linux,x64,gcp,large-disk" \\
+    --work "_work" \\
+    --unattended \\
+    --replace
+
+# Install and start runner as a service
+echo "Installing runner service..."
+./svc.sh install runner
+./svc.sh start
+
+echo "GitHub Actions runner setup complete at $(date)"
+echo "Runner registered with labels: self-hosted,linux,x64,gcp,large-disk"
+
+# ==================== Docker cleanup cron ====================
+# Prevent disk from filling up with old Docker images
+echo "Setting up Docker cleanup cron..."
+cat > /etc/cron.daily/docker-cleanup << 'CRON'
+#!/bin/bash
+# Clean up Docker resources older than 7 days
+docker system prune -af --filter "until=168h"
+CRON
+chmod +x /etc/cron.daily/docker-cleanup
+
+echo "Setup complete!"
+"""
+
+# GitHub runner VM instance
+github_runner_vm = gcp.compute.Instance(
+    "github-runner",
+    name="github-runner",
+    machine_type="e2-standard-4",  # 4 vCPU, 16GB RAM - good for Docker builds
+    zone="us-central1-a",
+    boot_disk=gcp.compute.InstanceBootDiskArgs(
+        initialize_params=gcp.compute.InstanceBootDiskInitializeParamsArgs(
+            image="debian-cloud/debian-12",
+            size=200,  # GB - plenty for Docker builds and caches
+            type="pd-ssd",  # SSD for faster I/O
+        ),
+    ),
+    network_interfaces=[gcp.compute.InstanceNetworkInterfaceArgs(
+        network="default",
+        access_configs=[gcp.compute.InstanceNetworkInterfaceAccessConfigArgs()],  # Ephemeral IP is fine
+    )],
+    service_account=gcp.compute.InstanceServiceAccountArgs(
+        email=github_runner_sa.email,
+        scopes=["cloud-platform"],
+    ),
+    metadata_startup_script=GITHUB_RUNNER_STARTUP_SCRIPT,
+    tags=["github-runner"],
+    allow_stopping_for_update=True,
+    # Ensure the secret exists before creating the VM
+    opts=pulumi.ResourceOptions(depends_on=[github_runner_pat_secret]),
+)
+
+# Export GitHub runner resources
+pulumi.export("github_runner_vm_name", github_runner_vm.name)
+pulumi.export("github_runner_service_account", github_runner_sa.email)
+

@@ -235,7 +235,7 @@ jobs:
 
   package-build-test:
     name: "Package - Build & Install (Test)"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: [changes, package-unit-tests, package-integration-tests]
     if: >-
       github.ref != 'refs/heads/main' && always() &&
@@ -258,27 +258,8 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-package-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-package-${{ runner.os }}-py3.13-
-
       - name: Build package
         run: poetry build
-
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          haskell: true
-          dotnet: false
-          large-packages: false
-          docker-images: false
-          swap-storage: false
 
       - name: Test package installation
         run: |
@@ -291,17 +272,10 @@ jobs:
 
   backend-unit-tests:
     name: "Backend - Unit Tests"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          df -h
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -317,14 +291,6 @@ jobs:
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
-
-      - name: Cache Poetry dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-backend-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-backend-${{ runner.os }}-py3.13-
 
       - name: Install dependencies
         run: poetry install
@@ -343,21 +309,10 @@ jobs:
 
   backend-emulator-tests:
     name: "Backend - Emulator Integration Tests"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          haskell: true
-          dotnet: true
-          large-packages: false
-          docker-images: false
-          swap-storage: false
-
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -374,27 +329,11 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
-      - name: Cache Poetry dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-backend-${{ runner.os }}-py3.13-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-backend-${{ runner.os }}-py3.13-
-
       - name: Set up Java 21 (required by Firestore emulator)
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "21"
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          version: "latest"
-
-      - name: Install Firestore emulator
-        run: gcloud components install beta cloud-firestore-emulator --quiet
 
       - name: Install dependencies
         run: poetry install
@@ -687,7 +626,7 @@ jobs:
 
   deploy-backend:
     name: "Deploy - Backend (Cloud Run)"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, gcp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read
@@ -701,7 +640,6 @@ jobs:
     steps:
       # ============================================
       # Check if deployment is needed FIRST
-      # This avoids wasting 3+ mins on disk cleanup when skipping
       # ============================================
       - name: Checkout code
         uses: actions/checkout@v4
@@ -709,7 +647,7 @@ jobs:
           submodules: false
           fetch-depth: 0  # Need full history for tag check
 
-      - name: Set up Python (for version extraction)
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -733,21 +671,7 @@ jobs:
             echo "✨ Tag v$VERSION does not exist - proceeding with deployment"
           fi
 
-      # ============================================
-      # Free disk space only if deploying
-      # This prevents "No space left on device" errors during Docker build
-      # ============================================
-      - name: Free disk space (aggressive)
-        if: steps.version_check.outputs.needs_deploy == 'true'
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          haskell: true
-          dotnet: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      # No disk cleanup needed - self-hosted runner has 200GB SSD
 
       - name: Authenticate to Google Cloud (Workload Identity)
         if: steps.version_check.outputs.needs_deploy == 'true'
@@ -931,9 +855,8 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Run: ${{ github.run_number }}"
           echo ""
-          echo "📊 Cost savings: This build used FREE GitHub Actions instead of Cloud Build"
-          echo "   Previously: ~\$0.064/min with N1_HIGHCPU_32"
-          echo "   Now: \$0 (public repo) with registry-cached builds"
+          echo "📊 Built on self-hosted GCP runner (200GB SSD, no disk space issues)"
+          echo "   Runner: gcp-runner with 4 vCPU, 16GB RAM"
 
       - name: Skipped deployment summary
         if: steps.version_check.outputs.needs_deploy == 'false'
