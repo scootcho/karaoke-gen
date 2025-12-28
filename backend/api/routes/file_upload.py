@@ -341,9 +341,12 @@ async def upload_and_create_job(
     style_cdg_instrumental_background: Optional[UploadFile] = File(None, description="CDG instrumental background"),
     style_cdg_title_background: Optional[UploadFile] = File(None, description="CDG title screen background"),
     style_cdg_outro_background: Optional[UploadFile] = File(None, description="CDG outro screen background"),
-    # Processing options (CDG/TXT require style config, disabled by default)
-    enable_cdg: bool = Form(False, description="Generate CDG+MP3 package (requires style config)"),
-    enable_txt: bool = Form(False, description="Generate TXT+MP3 package (requires style config)"),
+    # Theme configuration (use pre-made theme from GCS)
+    theme_id: Optional[str] = Form(None, description="Theme ID to use (e.g., 'nomad', 'default'). If set, CDG/TXT are enabled by default."),
+    color_overrides: Optional[str] = Form(None, description="JSON-encoded color overrides: artist_color, title_color, sung_lyrics_color, unsung_lyrics_color (hex #RRGGBB)"),
+    # Processing options (CDG/TXT require style config or theme, disabled by default unless theme is set)
+    enable_cdg: Optional[bool] = Form(None, description="Generate CDG+MP3 package. Default: True if theme_id set, False otherwise"),
+    enable_txt: Optional[bool] = Form(None, description="Generate TXT+MP3 package. Default: True if theme_id set, False otherwise"),
     # Finalisation options
     brand_prefix: Optional[str] = Form(None, description="Brand code prefix (e.g., NOMAD)"),
     enable_youtube_upload: bool = Form(False, description="Upload to YouTube"),
@@ -477,7 +480,35 @@ async def upload_and_create_job(
         
         # Extract request metadata for tracking and filtering
         request_metadata = extract_request_metadata(request, created_from="upload")
-        
+
+        # Parse color_overrides from JSON if provided
+        parsed_color_overrides: Dict[str, str] = {}
+        if color_overrides:
+            try:
+                parsed_color_overrides = json.loads(color_overrides)
+            except json.JSONDecodeError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid color_overrides JSON: {e}"
+                )
+
+        # Resolve CDG/TXT defaults based on theme
+        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+            theme_id, enable_cdg, enable_txt
+        )
+
+        # Check if any custom style files are being uploaded (overrides theme)
+        has_custom_style_files = any([
+            style_params,
+            style_intro_background,
+            style_karaoke_background,
+            style_end_background,
+            style_font,
+            style_cdg_instrumental_background,
+            style_cdg_title_background,
+            style_cdg_outro_background,
+        ])
+
         # Parse comma-separated model lists into arrays
         parsed_backing_vocals_models = None
         if backing_vocals_models:
@@ -492,8 +523,10 @@ async def upload_and_create_job(
             artist=artist,
             title=title,
             filename=file.filename,
-            enable_cdg=enable_cdg,
-            enable_txt=enable_txt,
+            theme_id=theme_id,
+            color_overrides=parsed_color_overrides,
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
             brand_prefix=brand_prefix,
             enable_youtube_upload=enable_youtube_upload,
             youtube_description=youtube_description,
@@ -521,9 +554,27 @@ async def upload_and_create_job(
         
         # Record job creation metric
         metrics.record_job_created(job_id, source="upload")
-        
+
         logger.info(f"Created job {job_id} for {artist} - {title}")
-        
+
+        # If theme is set and no custom style files are being uploaded, prepare theme style now
+        # This copies the theme's style_params.json to the job folder so LyricsTranscriber
+        # can access the style configuration for preview videos
+        theme_style_params_path = None
+        theme_style_assets = {}
+        theme_youtube_desc = None
+        if theme_id and not has_custom_style_files:
+            try:
+                theme_style_params_path, theme_style_assets, theme_youtube_desc = _prepare_theme_for_job(
+                    job_id, theme_id, parsed_color_overrides or None
+                )
+                logger.info(f"Applied theme '{theme_id}' to job {job_id}")
+            except HTTPException:
+                raise  # Re-raise validation errors (e.g., theme not found)
+            except Exception as e:
+                logger.warning(f"Failed to prepare theme '{theme_id}' for job {job_id}: {e}")
+                # Continue without theme - job can still be processed with defaults
+
         # Upload main audio file to GCS
         audio_gcs_path = f"uploads/{job_id}/audio/{file.filename}"
         logger.info(f"Uploading audio to GCS: {audio_gcs_path}")
@@ -592,21 +643,30 @@ async def upload_and_create_job(
         update_data = {
             'input_media_gcs_path': audio_gcs_path,
             'filename': file.filename,
-            'enable_cdg': enable_cdg,
-            'enable_txt': enable_txt,
+            'enable_cdg': resolved_cdg,
+            'enable_txt': resolved_txt,
         }
-        
+
+        # Handle style assets - either from custom uploads or from theme
         if style_assets:
+            # Custom style files uploaded
             update_data['style_assets'] = style_assets
             if 'style_params' in style_assets:
                 update_data['style_params_gcs_path'] = style_assets['style_params']
-        
+        elif theme_style_assets:
+            # Theme style assets (no custom uploads)
+            update_data['style_assets'] = theme_style_assets
+            if theme_style_params_path:
+                update_data['style_params_gcs_path'] = theme_style_params_path
+
         if brand_prefix:
             update_data['brand_prefix'] = brand_prefix
         if effective_discord_webhook_url:
             update_data['discord_webhook_url'] = effective_discord_webhook_url
-        if youtube_description:
-            update_data['youtube_description_template'] = youtube_description
+        # Use theme YouTube description if no custom one provided
+        effective_youtube_description = youtube_description or theme_youtube_desc
+        if effective_youtube_description:
+            update_data['youtube_description_template'] = effective_youtube_description
         
         # Native API distribution (use effective values which include defaults)
         if effective_dropbox_path:
