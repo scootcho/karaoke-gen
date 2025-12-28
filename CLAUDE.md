@@ -139,10 +139,10 @@ The `flacfetch` package is a dependency of karaoke-gen that we also own. When wo
 **Workflow for flacfetch changes:**
 
 1. Navigate to `/Users/andrew/Projects/flacfetch`
-2. Create a worktree and make changes (same branching rules apply)
+2. Make changes directly on `main` (no PR required for this repo)
 3. Run tests and ensure they pass
 4. Bump the version in flacfetch's `pyproject.toml`
-5. Commit, push, and create a PR
+5. Commit and push to `main`
 6. Wait for CI workflow to complete and auto-release the new version
 7. Return to karaoke-gen and update the poetry dependency:
    ```bash
