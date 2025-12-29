@@ -4,10 +4,10 @@ import { test, expect, Page } from '@playwright/test';
  * Production User Journey E2E Test
  *
  * Tests the complete user flow from landing page to karaoke generation:
- * 1. Visit welcome/landing page at /welcome
+ * 1. Visit landing page at / (root)
  * 2. Beta enrollment OR payment checkout
  * 3. Magic link verification
- * 4. Main app authentication
+ * 4. Main app authentication at /app
  * 5. Job submission
  *
  * Run with:
@@ -19,20 +19,20 @@ import { test, expect, Page } from '@playwright/test';
  *   - KARAOKE_ACCESS_TOKEN: Skip auth flow and use existing token
  */
 
-// After consolidation, both landing page and app are on the same domain
+// After consolidation, landing page is at root and app is at /app
 const BASE_URL = 'https://gen.nomadkaraoke.com';
-const WELCOME_URL = `${BASE_URL}/welcome`;
-const GEN_SITE_URL = BASE_URL;
+const LANDING_URL = BASE_URL; // Landing page at root
+const APP_URL = `${BASE_URL}/app`; // Main app
 const API_URL = 'https://api.nomadkaraoke.com';
 
 // Test data
 const TEST_ARTIST = 'piri';
 const TEST_TITLE = 'dog';
 
-test.describe('User Journey - Welcome Page', () => {
+test.describe('User Journey - Landing Page', () => {
 
   test('Landing page loads and displays correctly', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     // Check hero section
@@ -55,7 +55,7 @@ test.describe('User Journey - Welcome Page', () => {
   });
 
   test('Pricing packages display correctly', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     // Scroll to pricing
@@ -75,7 +75,7 @@ test.describe('User Journey - Welcome Page', () => {
   });
 
   test('Package selection updates checkout form', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -96,7 +96,7 @@ test.describe('User Journey - Welcome Page', () => {
   });
 
   test('Checkout form validates email', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -117,7 +117,7 @@ test.describe('User Journey - Welcome Page', () => {
   test('Checkout redirects to Stripe', async ({ page }) => {
     test.skip(!process.env.TEST_CHECKOUT, 'Skipping actual checkout - set TEST_CHECKOUT=true to enable');
 
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -135,12 +135,32 @@ test.describe('User Journey - Welcome Page', () => {
     await expect(page.url()).toContain('stripe.com');
     await page.screenshot({ path: 'test-results/journey-05-stripe-redirect.png' });
   });
+
+  test('Logged in users are redirected to /app', async ({ page }) => {
+    // Set a token in storage
+    await page.goto(LANDING_URL);
+    await page.evaluate(() => {
+      localStorage.setItem('karaoke_access_token', 'test-redirect-token');
+    });
+
+    // Reload the page - should redirect to /app
+    await page.goto(LANDING_URL);
+    await page.waitForURL(/\/app/, { timeout: 5000 });
+
+    expect(page.url()).toContain('/app');
+    await page.screenshot({ path: 'test-results/journey-05b-logged-in-redirect.png' });
+
+    // Cleanup
+    await page.evaluate(() => {
+      localStorage.removeItem('karaoke_access_token');
+    });
+  });
 });
 
 test.describe('User Journey - Beta Enrollment', () => {
 
   test('Beta form opens and validates input', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     // Click "Join Beta Program"
@@ -160,7 +180,7 @@ test.describe('User Journey - Beta Enrollment', () => {
   });
 
   test('Beta form requires checkbox and promise', async ({ page }) => {
-    await page.goto(WELCOME_URL);
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /join beta program/i }).click();
@@ -189,21 +209,35 @@ test.describe('User Journey - Beta Enrollment', () => {
   });
 });
 
-test.describe('User Journey - Main App Auth', () => {
+test.describe('User Journey - Main App', () => {
 
-  test('Main app shows authentication required message', async ({ page }) => {
-    await page.goto(GEN_SITE_URL);
-    await page.waitForLoadState('networkidle');
+  test('Unauthenticated users are redirected to landing page', async ({ page }) => {
+    // Clear any existing token
+    await page.goto(LANDING_URL);
+    await page.evaluate(() => {
+      localStorage.removeItem('karaoke_access_token');
+    });
 
-    // Should show auth required message
-    await expect(page.getByText(/authentication required/i)).toBeVisible();
-    await expect(page.getByText(/click the login button/i)).toBeVisible();
+    // Try to go to /app
+    await page.goto(APP_URL);
 
-    await page.screenshot({ path: 'test-results/journey-08-auth-required.png' });
+    // Should redirect to landing page
+    await page.waitForURL(LANDING_URL, { timeout: 5000 });
+
+    // Should see the landing page hero
+    await expect(page.locator('h1')).toContainText('Karaoke Video');
+
+    await page.screenshot({ path: 'test-results/journey-08-unauth-redirect.png' });
   });
 
   test('Auth dialog opens and shows magic link option', async ({ page }) => {
-    await page.goto(GEN_SITE_URL);
+    // First set a token to access the app
+    await page.goto(LANDING_URL);
+    await page.evaluate(() => {
+      localStorage.setItem('karaoke_access_token', 'test-token');
+    });
+
+    await page.goto(APP_URL);
     await page.waitForLoadState('networkidle');
 
     // Click login button (AuthStatus component)
@@ -215,49 +249,30 @@ test.describe('User Journey - Main App Auth', () => {
     await expect(page.getByText(/enter your email/i)).toBeVisible();
 
     await page.screenshot({ path: 'test-results/journey-09-auth-dialog.png' });
+
+    // Cleanup
+    await page.evaluate(() => {
+      localStorage.removeItem('karaoke_access_token');
+    });
   });
 
-  test('Auth dialog can switch to token mode', async ({ page }) => {
-    await page.goto(GEN_SITE_URL);
-    await page.waitForLoadState('networkidle');
-
-    await page.getByRole('button', { name: /login|sign in/i }).click();
-    await page.waitForTimeout(500);
-
-    // Click "Use Access Token Instead"
-    await page.getByRole('button', { name: /use access token/i }).click();
-    await page.waitForTimeout(300);
-
-    // Should show token input
-    await expect(page.getByText(/access token/i)).toBeVisible();
-    await expect(page.getByPlaceholder(/enter access token/i)).toBeVisible();
-
-    await page.screenshot({ path: 'test-results/journey-10-token-mode.png' });
-  });
-
-  test('Token authentication works with valid token', async ({ page }) => {
+  test('Authenticated user can see the main app', async ({ page }) => {
     const accessToken = process.env.KARAOKE_ACCESS_TOKEN;
     test.skip(!accessToken, 'Skipping - set KARAOKE_ACCESS_TOKEN env var');
 
-    await page.goto(GEN_SITE_URL);
-    await page.waitForLoadState('networkidle');
-
-    // Inject token directly (simulating successful auth)
+    // Set token and go to app
+    await page.goto(LANDING_URL);
     await page.evaluate((token) => {
       localStorage.setItem('karaoke_access_token', token);
     }, accessToken);
 
-    // Reload to apply auth
-    await page.reload();
+    await page.goto(APP_URL);
     await page.waitForLoadState('networkidle');
-
-    // Auth required message should be gone
-    await expect(page.getByText(/authentication required/i)).not.toBeVisible();
 
     // Should see the job creation form
     await expect(page.getByText(/create karaoke video/i)).toBeVisible();
 
-    await page.screenshot({ path: 'test-results/journey-11-authenticated.png' });
+    await page.screenshot({ path: 'test-results/journey-10-authenticated.png' });
   });
 });
 
@@ -267,12 +282,12 @@ test.describe('User Journey - Same Domain Token Persistence', () => {
     /**
      * REGRESSION TEST: Verify single-domain solution works
      *
-     * After consolidation, /welcome and main app are on the same domain,
+     * After consolidation, landing page and main app are on the same domain,
      * so localStorage tokens should persist across navigation.
      */
 
-    // Navigate to welcome page
-    await page.goto(WELCOME_URL);
+    // Navigate to landing page
+    await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
     // Simulate storing a token (as beta enrollment would do)
@@ -281,7 +296,7 @@ test.describe('User Journey - Same Domain Token Persistence', () => {
     });
 
     // Navigate to main app (same domain)
-    await page.goto(GEN_SITE_URL);
+    await page.goto(APP_URL);
     await page.waitForLoadState('networkidle');
 
     // Token should be accessible (same domain)
@@ -293,7 +308,7 @@ test.describe('User Journey - Same Domain Token Persistence', () => {
     expect(token).toBe('test-session-token');
     console.log('Token persisted correctly across same-domain navigation');
 
-    await page.screenshot({ path: 'test-results/journey-12-same-domain-token.png' });
+    await page.screenshot({ path: 'test-results/journey-11-same-domain-token.png' });
 
     // Cleanup
     await page.evaluate(() => {
@@ -324,9 +339,9 @@ test.describe('User Journey - Complete Flow with Email', () => {
     console.log(`Test email: ${inbox.emailAddress}`);
 
     try {
-      // Step 2: Go to welcome page and enroll in beta
+      // Step 2: Go to landing page and enroll in beta
       console.log('\n=== STEP 2: Beta enrollment ===');
-      await page.goto(WELCOME_URL);
+      await page.goto(LANDING_URL);
       await page.waitForLoadState('networkidle');
 
       // Click "Join Beta Program"
@@ -380,7 +395,7 @@ test.describe('User Journey - Complete Flow with Email', () => {
         expect(token).toBeTruthy();
       } else {
         // May have been redirected - navigate to main app
-        await page.goto(GEN_SITE_URL);
+        await page.goto(APP_URL);
         await page.waitForLoadState('networkidle');
 
         const tokenAfterNav = await page.evaluate(() => localStorage.getItem('karaoke_access_token'));
@@ -416,8 +431,8 @@ test.describe('User Journey - Complete Flow with Email', () => {
     const inbox = await emailHelper.createInbox();
 
     try {
-      // Go to welcome page
-      await page.goto(WELCOME_URL);
+      // Go to landing page
+      await page.goto(LANDING_URL);
       await page.waitForLoadState('networkidle');
 
       // Scroll to pricing

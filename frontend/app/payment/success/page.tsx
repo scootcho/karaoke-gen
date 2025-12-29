@@ -53,7 +53,7 @@ function PaymentSuccessContent() {
 
       <div className="space-y-3">
         <Button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/app")}
           className="w-full bg-blue-600 hover:bg-blue-500"
         >
           Start Creating Karaoke

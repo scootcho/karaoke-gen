@@ -37,7 +37,7 @@ function VerifyMagicLinkContent() {
         setState("success")
         // Redirect to main app after short delay
         setTimeout(() => {
-          router.push("/")
+          router.push("/app")
         }, 2000)
       } else {
         setState("error")
@@ -90,7 +90,7 @@ function VerifyMagicLinkContent() {
           </p>
           <div className="space-y-2">
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/app")}
               className="w-full bg-blue-600 hover:bg-blue-500"
             >
               Go to App
