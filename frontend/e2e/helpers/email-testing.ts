@@ -72,21 +72,27 @@ export async function createEmailHelper(): Promise<EmailHelper> {
     extractMagicLink(email: Email): string | null {
       const body = email.body || '';
 
+      // Debug: Log email structure
+      console.log('Email subject:', email.subject);
+      console.log('Email body length:', body.length);
+      console.log('Email body preview (first 500 chars):', body.substring(0, 500));
+
       // Look for common magic link patterns
       const patterns = [
         // gen.nomadkaraoke.com verify link
         /https:\/\/gen\.nomadkaraoke\.com\/auth\/verify\?token=[a-zA-Z0-9_-]+/,
         // api.nomadkaraoke.com verify link
         /https:\/\/api\.nomadkaraoke\.com\/api\/users\/auth\/verify\?token=[a-zA-Z0-9_-]+/,
-        // Generic magic link patterns
-        /https?:\/\/[^\s<>"]+verify[^\s<>"]*/,
-        /https?:\/\/[^\s<>"]+token=[a-zA-Z0-9_-]+/,
+        // Generic magic link patterns - allow URL-encoded characters
+        /https?:\/\/[^\s<>"]+\/auth\/verify[^\s<>"]*/,
+        /https?:\/\/[^\s<>"]+verify\?token=[a-zA-Z0-9_%-]+/,
+        /https?:\/\/[^\s<>"]+token=[a-zA-Z0-9_%-]+/,
       ];
 
       for (const pattern of patterns) {
         const match = body.match(pattern);
         if (match) {
-          console.log(`Found magic link: ${match[0]}`);
+          console.log(`Found magic link with pattern ${pattern}: ${match[0]}`);
           return match[0];
         }
       }
@@ -96,10 +102,14 @@ export async function createEmailHelper(): Promise<EmailHelper> {
         const htmlLinkPattern = /href=["']([^"']*(?:verify|token)[^"']*)["']/i;
         const htmlMatch = email.body.match(htmlLinkPattern);
         if (htmlMatch) {
-          console.log(`Found magic link in HTML: ${htmlMatch[1]}`);
+          console.log(`Found magic link in HTML href: ${htmlMatch[1]}`);
           return htmlMatch[1];
         }
       }
+
+      // Debug: Log all URLs found in the email
+      const allUrls = body.match(/https?:\/\/[^\s<>"]+/g) || [];
+      console.log('All URLs found in email:', allUrls);
 
       console.warn('No magic link found in email');
       return null;

@@ -624,10 +624,9 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # NOTE: buy-site has been consolidated into the main frontend
-  # The /welcome route now serves the landing page and payment flow
-  # Delete the Cloudflare Pages project 'nomadkaraoke-buy' and
-  # redirect buy.nomadkaraoke.com to gen.nomadkaraoke.com
+  # NOTE: buy-site was consolidated into the main frontend (PR #122, Dec 2024)
+  # Landing page and payment flow are now at gen.nomadkaraoke.com (root)
+  # buy.nomadkaraoke.com subdomain has been deleted
 
   deploy-backend:
     name: "Deploy - Backend (Cloud Run)"

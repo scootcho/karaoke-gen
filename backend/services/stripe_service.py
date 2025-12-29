@@ -56,7 +56,8 @@ class StripeService:
         self.secret_key = os.getenv("STRIPE_SECRET_KEY")
         self.webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
         self.frontend_url = os.getenv("FRONTEND_URL", "https://gen.nomadkaraoke.com")
-        self.buy_url = os.getenv("BUY_URL", "https://buy.nomadkaraoke.com")
+        # After consolidation, buy URL is the same as frontend URL
+        self.buy_url = os.getenv("BUY_URL", self.frontend_url)
 
         if self.secret_key:
             stripe.api_key = self.secret_key
