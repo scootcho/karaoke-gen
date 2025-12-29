@@ -31,7 +31,10 @@
 
 - CDG format generation requires additional style configuration
 - Long audio files (>10 min) may timeout on some workers
-- E2E test suite needs consolidation (see [archive/2025-12-29-e2e-test-consolidation-plan.md](archive/2025-12-29-e2e-test-consolidation-plan.md))
+
+## Recent Changes
+
+- **E2E Test Suite Consolidated** (2025-12-29): Tests reorganized into `production/` (real API) and `regression/` (mocked API, CI-safe). See [archive/2025-12-29-e2e-test-consolidation-plan.md](archive/2025-12-29-e2e-test-consolidation-plan.md)
 
 ## Quick Links
 
