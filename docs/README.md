@@ -34,10 +34,13 @@
 
 | Doc | Purpose |
 |-----|---------|
+| [PRODUCT-VISION.md](PRODUCT-VISION.md) | Product goals, audience, business model |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data flow, integrations |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, testing, deployment |
 | [API.md](API.md) | Backend endpoint reference |
 | [LESSONS-LEARNED.md](LESSONS-LEARNED.md) | Key insights for future agents |
+| [STRIPE-SETUP.md](STRIPE-SETUP.md) | Payment integration setup |
+| [MOBILE-UX-BEST-PRACTICES.md](MOBILE-UX-BEST-PRACTICES.md) | Mobile/responsive design guidelines |
 | [archive/](archive/) | Historical documentation |
 
 ## Workflow Summary

@@ -12,6 +12,7 @@
 
 | What | Where |
 |------|-------|
+| Product vision & goals | `docs/PRODUCT-VISION.md` |
 | Current status | `docs/README.md` |
 | Architecture | `docs/ARCHITECTURE.md` |
 | Dev setup & testing | `docs/DEVELOPMENT.md` |
