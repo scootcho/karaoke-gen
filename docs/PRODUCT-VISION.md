@@ -157,11 +157,10 @@ Commercial producers pay for API access or custom integration to generate tracks
 
 ### Active Products
 
-1. **gen.nomadkaraoke.com** - Web application for generating karaoke videos
-2. **buy.nomadkaraoke.com** - Payment portal and landing page
-3. **karaoke-gen CLI** - Local command-line tool for power users
-4. **karaoke-gen-remote CLI** - CLI that uses the cloud backend
-5. **Nomad Karaoke YouTube Channel** - Hosts generated videos for users
+1. **gen.nomadkaraoke.com** - Web application for generating karaoke videos (includes landing page, pricing, and payment)
+2. **karaoke-gen CLI** - Local command-line tool for power users
+3. **karaoke-gen-remote CLI** - CLI that uses the cloud backend
+4. **Nomad Karaoke YouTube Channel** - Hosts generated videos for users
 
 ### Future Products
 
@@ -224,7 +223,6 @@ Commercial producers pay for API access or custom integration to generate tracks
 ## Links
 
 - **Web App**: https://gen.nomadkaraoke.com
-- **Payment Portal**: https://buy.nomadkaraoke.com
 - **API**: https://api.nomadkaraoke.com
 - **GitHub**: https://github.com/nomadkaraoke/karaoke-gen
 - **YouTube Channel**: https://www.youtube.com/@nomadkaraoke

@@ -47,6 +47,9 @@ MAX_CREDIT_TRANSACTIONS = 100  # Keep last N transactions
 class UserService:
     """Service for user management and authentication."""
 
+    # Number of free credits granted to new users
+    NEW_USER_FREE_CREDITS = 1
+
     def __init__(self):
         """Initialize user service with Firestore client."""
         self.settings = get_settings()
@@ -71,17 +74,32 @@ class UserService:
             return None
 
     def get_or_create_user(self, email: str) -> User:
-        """Get existing user or create a new one."""
+        """
+        Get existing user or create a new one.
+
+        New users receive a welcome credit to try the service.
+        """
         email = email.lower()
         user = self.get_user(email)
 
         if user:
             return user
 
-        # Create new user
-        user = User(email=email)
+        # Create new user with welcome credit
+        welcome_credit = self.NEW_USER_FREE_CREDITS
+        welcome_transaction = CreditTransaction(
+            id=str(uuid.uuid4()),
+            amount=welcome_credit,
+            reason="welcome_credit",
+        )
+
+        user = User(
+            email=email,
+            credits=welcome_credit,
+            credit_transactions=[welcome_transaction],
+        )
         self._save_user(user)
-        logger.info(f"Created new user: {email}")
+        logger.info(f"Created new user: {email} with {welcome_credit} welcome credit(s)")
         return user
 
     def _save_user(self, user: User) -> None:

@@ -121,12 +121,13 @@ class EmailService:
         self.settings = get_settings()
         self.provider = self._get_provider()
         self.frontend_url = os.getenv("FRONTEND_URL", "https://gen.nomadkaraoke.com")
-        self.buy_url = os.getenv("BUY_URL", "https://buy.nomadkaraoke.com")
+        # After consolidation, buy URL is the same as frontend URL
+        self.buy_url = os.getenv("BUY_URL", self.frontend_url)
 
     def _get_provider(self) -> EmailProvider:
         """Get the configured email provider."""
         sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
-        from_email = os.getenv("EMAIL_FROM", "noreply@nomadkaraoke.com")
+        from_email = os.getenv("EMAIL_FROM", "gen@nomadkaraoke.com")
         from_name = os.getenv("EMAIL_FROM_NAME", "Nomad Karaoke")
 
         if sendgrid_api_key:

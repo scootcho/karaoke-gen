@@ -60,7 +60,7 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 
 # Optional (defaults shown)
 FRONTEND_URL=https://gen.nomadkaraoke.com
-BUY_URL=https://buy.nomadkaraoke.com
+# BUY_URL defaults to FRONTEND_URL after site consolidation
 ```
 
 ### For Cloud Run deployment:
@@ -80,7 +80,7 @@ echo -n "SG.your_sendgrid_api_key" | gcloud secrets versions add sendgrid-api-ke
 ```
 
 4. The environment variables are configured in the Cloud Run deployment. Defaults:
-   - `EMAIL_FROM=noreply@nomadkaraoke.com`
+   - `EMAIL_FROM=gen@nomadkaraoke.com`
    - `EMAIL_FROM_NAME=Nomad Karaoke`
 
 ## 6. Test the Integration
