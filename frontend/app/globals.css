@@ -96,3 +96,57 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Landing page utilities */
+@layer utilities {
+  /* Glow effect for primary buttons */
+  .btn-glow {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  }
+  .btn-glow:hover {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.7);
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Card hover effect */
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Animated background gradient */
+  @keyframes gradient-shift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  .animated-gradient {
+    background: linear-gradient(-45deg, #0f172a, #1e293b, #1e3a8a, #312e81);
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+
+  /* Dark theme color utilities for landing page */
+  .text-dark-300 { color: #d1d5db; }
+  .text-dark-400 { color: #9ca3af; }
+  .text-dark-500 { color: #6b7280; }
+  .bg-dark-700 { background-color: #374151; }
+  .bg-dark-800 { background-color: #1f2937; }
+  .bg-dark-900 { background-color: #111827; }
+  .border-dark-600 { border-color: #4b5563; }
+  .border-dark-700 { border-color: #374151; }
+  .text-primary-400 { color: #60a5fa; }
+  .text-primary-500 { color: #3b82f6; }
+  .bg-primary-500 { background-color: #3b82f6; }
+  .hover\:bg-primary-600:hover { background-color: #2563eb; }
+}

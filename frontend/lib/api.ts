@@ -586,7 +586,80 @@ export const api = {
     });
     return handleResponse(response);
   },
+
+  // ==========================================================================
+  // Credits/Payment API endpoints
+  // ==========================================================================
+
+  /**
+   * Get available credit packages
+   */
+  async getCreditPackages(): Promise<CreditPackage[]> {
+    const response = await fetch(`${API_BASE_URL}/api/users/credits/packages`);
+    const data = await handleResponse<{ packages: CreditPackage[] }>(response);
+    return data.packages;
+  },
+
+  /**
+   * Create a Stripe checkout session
+   */
+  async createCheckout(packageId: string, email: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/api/users/credits/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        package_id: packageId,
+        email: email.toLowerCase(),
+      }),
+    });
+    const data = await handleResponse<{ checkout_url: string }>(response);
+    return data.checkout_url;
+  },
+
+  // ==========================================================================
+  // Beta Tester API endpoints
+  // ==========================================================================
+
+  /**
+   * Enroll as a beta tester to receive free credits
+   */
+  async enrollBetaTester(
+    email: string,
+    promiseText: string,
+    acceptCorrectionsWork: boolean
+  ): Promise<BetaEnrollResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/users/beta/enroll`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.toLowerCase(),
+        promise_text: promiseText,
+        accept_corrections_work: acceptCorrectionsWork,
+      }),
+    });
+    return handleResponse(response);
+  },
 };
+
+// Types for credits/payment
+export interface CreditPackage {
+  id: string;
+  credits: number;
+  price_cents: number;
+  name: string;
+  description: string;
+}
+
+export interface BetaEnrollResponse {
+  status: string;
+  message: string;
+  credits_granted: number;
+  session_token: string | null;
+}
 
 export { ApiError };
 
