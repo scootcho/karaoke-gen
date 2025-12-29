@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
   MicVocal,
   Music,
@@ -17,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
+import { AuthDialog } from '@/components/auth/AuthDialog';
 
 // FAQ data
 const faqs = [
@@ -71,6 +71,9 @@ export default function LandingPage() {
   // FAQ expansion state
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
+  // Auth dialog state
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+
   // Ref for redirect timeout cleanup
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -92,6 +95,12 @@ export default function LandingPage() {
     }
     setIsCheckingAuth(false);
   }, [router]);
+
+  // Handle successful auth from dialog
+  const handleAuthSuccess = () => {
+    setShowAuthDialog(false);
+    router.push('/app');
+  };
 
   // Load credit packages on mount
   useEffect(() => {
@@ -206,12 +215,12 @@ export default function LandingPage() {
             <MicVocal className="w-8 h-8 text-primary-500" />
             <span className="text-xl font-bold">Nomad Karaoke</span>
           </div>
-          <Link
-            href="/app"
+          <button
+            onClick={() => setShowAuthDialog(true)}
             className="text-sm text-dark-300 hover:text-white transition-colors"
           >
             Already have credits? Sign in
-          </Link>
+          </button>
         </div>
       </nav>
 
@@ -537,6 +546,13 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Auth Dialog for sign-in */}
+      <AuthDialog
+        open={showAuthDialog}
+        onClose={() => setShowAuthDialog(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }
