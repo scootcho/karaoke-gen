@@ -4,7 +4,9 @@
 
 ## What Works
 
-- **Web App**: https://gen.nomadkaraoke.com - Upload audio, review lyrics, download videos
+- **Web App**: https://gen.nomadkaraoke.com
+  - `/` - Landing page with pricing and beta enrollment
+  - `/app` - Main app (upload audio, review lyrics, download videos)
 - **Backend API**: https://api.nomadkaraoke.com - FastAPI on Cloud Run
 - **CLI Tools**: `karaoke-gen` (local), `karaoke-gen-remote` (cloud)
 

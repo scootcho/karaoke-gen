@@ -34,6 +34,28 @@ Audio separation and lyrics transcription run in parallel:
 
 ## Common Gotchas
 
+### Cross-Domain localStorage Isolation
+
+**Problem**: Auth tokens stored in localStorage on one subdomain are invisible to other subdomains.
+
+We had `buy.nomadkaraoke.com` for purchases and `gen.nomadkaraoke.com` for the app. Users who purchased credits on `buy.` appeared logged out when redirected to `gen.` because localStorage is domain-isolated.
+
+**Symptoms**:
+- User completes purchase, redirected to app, sees "auth required"
+- Token exists in browser dev tools for one domain but not the other
+- Works fine in local dev (same localhost origin)
+
+**Solution**: Keep auth on a single domain. We consolidated `buy-site/` into the main `frontend/`:
+- Landing/pricing at `/` (root)
+- Main app at `/app`
+- Single localStorage for all auth tokens
+
+**Alternative** (if subdomains required): Use cookies with `domain=.nomadkaraoke.com` instead of localStorage, or implement a token exchange flow.
+
+**Lesson**: Before splitting functionality across subdomains, verify your auth storage strategy works cross-domain. E2E tests that exercise the full user journey catch this; unit tests don't.
+
+See `docs/archive/2025-12-29-buy-site-consolidation.md` for full details.
+
 ### Frontend Polling vs Tab Visibility
 
 **Problem**: After completing review in a new tab (lyrics or instrumental selection), returning to the main frontend showed stale status for up to 10 seconds due to polling interval.
