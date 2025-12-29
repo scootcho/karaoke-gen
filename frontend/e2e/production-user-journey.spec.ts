@@ -153,6 +153,21 @@ test.describe('User Journey - Landing Page', () => {
       localStorage.removeItem('karaoke_access_token');
     });
   });
+
+  test('Sign in button opens auth dialog on landing page', async ({ page }) => {
+    await page.goto(LANDING_URL);
+    await page.waitForLoadState('networkidle');
+
+    // Click "Sign in" button in nav
+    await page.getByRole('button', { name: /sign in/i }).click();
+
+    // Auth dialog should open
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await expect(page.getByText(/enter your email/i)).toBeVisible();
+    await expect(page.getByPlaceholder(/you@example.com/i)).toBeVisible();
+
+    await page.screenshot({ path: 'test-results/journey-05c-landing-signin-dialog.png' });
+  });
 });
 
 test.describe('User Journey - Beta Enrollment', () => {
