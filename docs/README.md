@@ -31,6 +31,7 @@
 
 - CDG format generation requires additional style configuration
 - Long audio files (>10 min) may timeout on some workers
+- E2E test suite needs consolidation (see [archive/2025-12-29-e2e-test-consolidation-plan.md](archive/2025-12-29-e2e-test-consolidation-plan.md))
 
 ## Quick Links
 
