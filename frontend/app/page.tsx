@@ -66,6 +66,7 @@ export default function LandingPage() {
   const [betaLoading, setBetaLoading] = useState(false);
   const [betaError, setBetaError] = useState<string | null>(null);
   const [betaSuccess, setBetaSuccess] = useState(false);
+  const [betaWillRedirect, setBetaWillRedirect] = useState(false);
 
   // FAQ expansion state
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -166,6 +167,7 @@ export default function LandingPage() {
       if (response.session_token) {
         setAccessToken(response.session_token);
         setBetaSuccess(true);
+        setBetaWillRedirect(true);
         // Redirect to main app after showing success message
         redirectTimeoutRef.current = setTimeout(() => {
           router.push('/app');
@@ -173,6 +175,7 @@ export default function LandingPage() {
       } else {
         // No token means email verification needed
         setBetaSuccess(true);
+        setBetaWillRedirect(false);
       }
     } catch (err) {
       setBetaError(err instanceof Error ? err.message : 'Failed to enroll in beta program');
@@ -365,7 +368,10 @@ export default function LandingPage() {
             {betaSuccess && (
               <div className="mt-6 p-4 bg-green-500/20 border border-green-500/30 rounded-xl">
                 <p className="text-green-400 font-semibold">
-                  Welcome to the beta program! Redirecting to the app...
+                  Welcome to the beta program!{' '}
+                  {betaWillRedirect
+                    ? 'Redirecting to the app...'
+                    : 'Check your email for a sign-in link.'}
                 </p>
               </div>
             )}
