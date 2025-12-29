@@ -91,6 +91,10 @@ export default function WelcomePage() {
 
     try {
       const checkoutUrl = await api.createCheckout(selectedPackage.id, email);
+      // Validate that the URL is a Stripe checkout URL
+      if (!checkoutUrl.startsWith('https://checkout.stripe.com/')) {
+        throw new Error('Invalid checkout URL received');
+      }
       window.location.href = checkoutUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create checkout session');

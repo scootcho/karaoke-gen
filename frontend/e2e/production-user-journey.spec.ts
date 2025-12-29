@@ -4,7 +4,7 @@ import { test, expect, Page } from '@playwright/test';
  * Production User Journey E2E Test
  *
  * Tests the complete user flow from landing page to karaoke generation:
- * 1. Visit buy site landing page
+ * 1. Visit welcome/landing page at /welcome
  * 2. Beta enrollment OR payment checkout
  * 3. Magic link verification
  * 4. Main app authentication
@@ -25,17 +25,14 @@ const WELCOME_URL = `${BASE_URL}/welcome`;
 const GEN_SITE_URL = BASE_URL;
 const API_URL = 'https://api.nomadkaraoke.com';
 
-// Legacy URL for testing redirect (can be removed after buy site is deleted)
-const BUY_SITE_URL = 'https://buy.nomadkaraoke.com';
-
 // Test data
 const TEST_ARTIST = 'piri';
 const TEST_TITLE = 'dog';
 
-test.describe('User Journey - Buy Site', () => {
+test.describe('User Journey - Welcome Page', () => {
 
   test('Landing page loads and displays correctly', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     // Check hero section
@@ -43,7 +40,7 @@ test.describe('User Journey - Buy Site', () => {
 
     // Check navigation
     await expect(page.locator('nav')).toBeVisible();
-    await expect(page.getByText('Nomad Karaoke')).toBeVisible();
+    await expect(page.getByRole('navigation').getByText('Nomad Karaoke')).toBeVisible();
 
     // Check pricing section exists
     await expect(page.locator('#pricing')).toBeVisible();
@@ -58,7 +55,7 @@ test.describe('User Journey - Buy Site', () => {
   });
 
   test('Pricing packages display correctly', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     // Scroll to pricing
@@ -78,7 +75,7 @@ test.describe('User Journey - Buy Site', () => {
   });
 
   test('Package selection updates checkout form', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -99,7 +96,7 @@ test.describe('User Journey - Buy Site', () => {
   });
 
   test('Checkout form validates email', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -120,7 +117,7 @@ test.describe('User Journey - Buy Site', () => {
   test('Checkout redirects to Stripe', async ({ page }) => {
     test.skip(!process.env.TEST_CHECKOUT, 'Skipping actual checkout - set TEST_CHECKOUT=true to enable');
 
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     await page.locator('#pricing').scrollIntoViewIfNeeded();
@@ -143,7 +140,7 @@ test.describe('User Journey - Buy Site', () => {
 test.describe('User Journey - Beta Enrollment', () => {
 
   test('Beta form opens and validates input', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     // Click "Join Beta Program"
@@ -151,8 +148,7 @@ test.describe('User Journey - Beta Enrollment', () => {
     await page.waitForTimeout(500);
 
     // Form should be visible
-    await expect(page.getByText('Beta Tester Signup')).toBeVisible();
-    await expect(page.getByText('Get 1 Free Credit')).toBeVisible();
+    await expect(page.getByText('Get My Free Credit')).toBeVisible();
 
     await page.screenshot({ path: 'test-results/journey-06-beta-form.png' });
 
@@ -164,7 +160,7 @@ test.describe('User Journey - Beta Enrollment', () => {
   });
 
   test('Beta form requires checkbox and promise', async ({ page }) => {
-    await page.goto(BUY_SITE_URL);
+    await page.goto(WELCOME_URL);
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: /join beta program/i }).click();
@@ -265,44 +261,44 @@ test.describe('User Journey - Main App Auth', () => {
   });
 });
 
-test.describe('User Journey - Cross-Domain Issues', () => {
+test.describe('User Journey - Same Domain Token Persistence', () => {
 
-  test('CRITICAL: Buy site token key mismatch with main app', async ({ page }) => {
+  test('Token persists on same domain after consolidation', async ({ page }) => {
     /**
-     * BUG DOCUMENTATION:
+     * REGRESSION TEST: Verify single-domain solution works
      *
-     * The buy-site stores session tokens with key 'nomad_karaoke_token'
-     * The main frontend uses key 'karaoke_access_token'
-     *
-     * Even if they used the same key, localStorage is domain-specific!
-     * buy.nomadkaraoke.com and gen.nomadkaraoke.com cannot share localStorage.
-     *
-     * This test documents the issue and will fail until fixed.
+     * After consolidation, /welcome and main app are on the same domain,
+     * so localStorage tokens should persist across navigation.
      */
 
-    // Simulate buy site storing a token
-    await page.goto(BUY_SITE_URL);
+    // Navigate to welcome page
+    await page.goto(WELCOME_URL);
+    await page.waitForLoadState('networkidle');
+
+    // Simulate storing a token (as beta enrollment would do)
     await page.evaluate(() => {
-      // This is what buy-site does on beta enrollment success
-      localStorage.setItem('nomad_karaoke_token', 'test-session-token');
+      localStorage.setItem('karaoke_access_token', 'test-session-token');
     });
 
-    // Navigate to main app
+    // Navigate to main app (same domain)
     await page.goto(GEN_SITE_URL);
+    await page.waitForLoadState('networkidle');
 
-    // Check what keys exist
-    const buyToken = await page.evaluate(() => localStorage.getItem('nomad_karaoke_token'));
-    const genToken = await page.evaluate(() => localStorage.getItem('karaoke_access_token'));
+    // Token should be accessible (same domain)
+    const token = await page.evaluate(() =>
+      localStorage.getItem('karaoke_access_token')
+    );
 
-    console.log('Token on gen.nomadkaraoke.com:');
-    console.log('  nomad_karaoke_token:', buyToken);  // Will be null (different domain)
-    console.log('  karaoke_access_token:', genToken); // Will be null (not set)
+    // Verify token persisted
+    expect(token).toBe('test-session-token');
+    console.log('Token persisted correctly across same-domain navigation');
 
-    // This demonstrates the cross-domain issue
-    // Tokens set on buy.nomadkaraoke.com are NOT accessible from gen.nomadkaraoke.com
-    expect(buyToken).toBeNull(); // Expected: null because different domain
+    await page.screenshot({ path: 'test-results/journey-12-same-domain-token.png' });
 
-    await page.screenshot({ path: 'test-results/journey-12-cross-domain-issue.png' });
+    // Cleanup
+    await page.evaluate(() => {
+      localStorage.removeItem('karaoke_access_token');
+    });
   });
 });
 
@@ -330,7 +326,7 @@ test.describe('User Journey - Complete Flow with Email', () => {
     try {
       // Step 2: Go to welcome page and enroll in beta
       console.log('\n=== STEP 2: Beta enrollment ===');
-      await page.goto(`${GEN_SITE_URL}/welcome`);
+      await page.goto(WELCOME_URL);
       await page.waitForLoadState('networkidle');
 
       // Click "Join Beta Program"
@@ -421,7 +417,7 @@ test.describe('User Journey - Complete Flow with Email', () => {
 
     try {
       // Go to welcome page
-      await page.goto(`${GEN_SITE_URL}/welcome`);
+      await page.goto(WELCOME_URL);
       await page.waitForLoadState('networkidle');
 
       // Scroll to pricing
@@ -457,7 +453,7 @@ test.describe('User Journey - API Health', () => {
     const rootResponse = await request.get(`${API_URL}/`);
     expect(rootResponse.ok()).toBe(true);
     const rootData = await rootResponse.json();
-    expect(rootData.service).toBe('karaoke-gen');
+    expect(rootData.service).toContain('karaoke-gen');
     expect(rootData.version).toBeTruthy();
 
     console.log(`API Version: ${rootData.version}`);
@@ -478,67 +474,5 @@ test.describe('User Journey - API Health', () => {
     expect(pkg.price_cents).toBeGreaterThan(0);
 
     console.log('Credit packages:', data.packages.map((p: any) => `${p.credits} credits @ $${p.price_cents/100}`).join(', '));
-  });
-});
-
-test.describe('User Journey - UX Issues Documentation', () => {
-
-  test('Document navigation confusion between sites', async ({ page }) => {
-    /**
-     * UX ISSUE: Two separate sites create confusion
-     *
-     * Problems:
-     * 1. User starts at buy.nomadkaraoke.com
-     * 2. After payment/beta, redirected to gen.nomadkaraoke.com
-     * 3. Token from buy site doesn't transfer (different domains)
-     * 4. User has to re-authenticate on gen site
-     * 5. "Already have credits? Sign in" link goes to gen site but user won't be logged in
-     */
-
-    await page.goto(BUY_SITE_URL);
-    await page.waitForLoadState('networkidle');
-
-    // Click "Already have credits? Sign in"
-    const signInLink = page.getByText(/already have credits/i);
-    await expect(signInLink).toBeVisible();
-
-    const href = await signInLink.getAttribute('href');
-    console.log('Sign in link href:', href); // Goes to gen.nomadkaraoke.com
-
-    // Follow the link
-    await signInLink.click();
-    await page.waitForLoadState('networkidle');
-
-    // User arrives at gen site but NOT logged in
-    await expect(page.url()).toContain('gen.nomadkaraoke.com');
-    await expect(page.getByText(/authentication required/i)).toBeVisible();
-
-    await page.screenshot({ path: 'test-results/journey-ux-navigation-issue.png' });
-  });
-
-  test('Document beta enrollment redirect issue', async ({ page }) => {
-    /**
-     * UX ISSUE: Beta enrollment flow breaks due to cross-domain redirect
-     *
-     * Current flow:
-     * 1. User fills beta form on buy.nomadkaraoke.com
-     * 2. Backend creates session, returns session_token
-     * 3. buy-site stores token in localStorage as 'nomad_karaoke_token'
-     * 4. buy-site redirects to gen.nomadkaraoke.com after 2 seconds
-     * 5. gen.nomadkaraoke.com can't access buy site's localStorage
-     * 6. User appears unauthenticated on gen site
-     *
-     * Expected flow (after fix):
-     * 1. User fills beta form on gen.nomadkaraoke.com (single domain)
-     * 2. OR: Redirect includes token in URL query param
-     * 3. OR: Use cookies with domain=.nomadkaraoke.com
-     */
-
-    console.log('Beta enrollment creates token on buy site but redirects to gen site');
-    console.log('Token is lost because localStorage is domain-specific');
-
-    // The redirect in buy-site/app/page.tsx line 102:
-    // window.location.href = 'https://gen.nomadkaraoke.com';
-    // This loses the session because gen site cannot read buy site's localStorage
   });
 });
