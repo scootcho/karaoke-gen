@@ -58,9 +58,8 @@ test.describe('User Journey - Landing Page', () => {
     await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
-    // Scroll to pricing
+    // Scroll to pricing and wait for content to be visible
     await page.locator('#pricing').scrollIntoViewIfNeeded();
-    await page.waitForTimeout(500);
 
     // Check all 4 credit packages are displayed
     await expect(page.getByText('1 Credit', { exact: false })).toBeVisible();
@@ -86,9 +85,8 @@ test.describe('User Journey - Landing Page', () => {
     // Click on 10 credits
     const tenCreditsBtn = page.locator('button').filter({ hasText: /^10/ });
     await tenCreditsBtn.click();
-    await page.waitForTimeout(300);
 
-    // Verify checkout form updated
+    // Verify checkout form updated (auto-waits for visibility)
     await expect(page.getByText('10 Credits')).toBeVisible();
     await expect(page.getByText('$30')).toBeVisible();
 
@@ -163,11 +161,8 @@ test.describe('User Journey - Beta Enrollment', () => {
     await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
-    // Click "Join Beta Program"
+    // Click "Join Beta Program" and wait for form to appear
     await page.getByRole('button', { name: /join beta program/i }).click();
-    await page.waitForTimeout(500);
-
-    // Form should be visible
     await expect(page.getByText('Get My Free Credit')).toBeVisible();
 
     await page.screenshot({ path: 'test-results/journey-06-beta-form.png' });
@@ -183,8 +178,9 @@ test.describe('User Journey - Beta Enrollment', () => {
     await page.goto(LANDING_URL);
     await page.waitForLoadState('networkidle');
 
+    // Open beta form and wait for email field to be visible
     await page.getByRole('button', { name: /join beta program/i }).click();
-    await page.waitForTimeout(500);
+    await expect(page.locator('#beta-email')).toBeVisible();
 
     // Fill email
     await page.locator('#beta-email').fill('test@example.com');
@@ -240,11 +236,8 @@ test.describe('User Journey - Main App', () => {
     await page.goto(APP_URL);
     await page.waitForLoadState('networkidle');
 
-    // Click login button (AuthStatus component)
+    // Click login button and wait for auth dialog to open
     await page.getByRole('button', { name: /login|sign in/i }).click();
-    await page.waitForTimeout(500);
-
-    // Auth dialog should open
     await expect(page.locator('[role="dialog"]')).toBeVisible();
     await expect(page.getByText(/enter your email/i)).toBeVisible();
 
@@ -329,13 +322,16 @@ test.describe('User Journey - Complete Flow with Email', () => {
     const emailHelper = await createEmailHelper();
 
     if (!emailHelper.isAvailable) {
-      test.skip(true, 'Email testing not available');
+      test.skip();
       return;
     }
 
     // Step 1: Create a test inbox
     console.log('\n=== STEP 1: Creating test inbox ===');
     const inbox = await emailHelper.createInbox();
+    if (!inbox.id || !inbox.emailAddress) {
+      throw new Error('MailSlurp inbox creation failed - missing id or email');
+    }
     console.log(`Test email: ${inbox.emailAddress}`);
 
     try {
@@ -344,27 +340,28 @@ test.describe('User Journey - Complete Flow with Email', () => {
       await page.goto(LANDING_URL);
       await page.waitForLoadState('networkidle');
 
-      // Click "Join Beta Program"
+      // Click "Join Beta Program" and wait for form
       await page.getByRole('button', { name: /join beta program/i }).click();
-      await page.waitForTimeout(500);
+      await expect(page.locator('#beta-email')).toBeVisible();
 
       // Fill the beta form
-      await page.locator('#beta-email').fill(inbox.emailAddress!);
+      await page.locator('#beta-email').fill(inbox.emailAddress);
       await page.locator('textarea').fill('I want to create karaoke for my favorite indie songs that nobody has made yet!');
       await page.locator('input[type="checkbox"]').check();
 
       await page.screenshot({ path: 'test-results/email-flow-01-beta-form.png' });
 
-      // Submit the form
+      // Submit the form and wait for success or loading state change
       await page.getByRole('button', { name: /get my free credit/i }).click();
-
-      // Wait for response
-      await page.waitForTimeout(3000);
+      // Wait for either success message or enrolling state
+      await expect(
+        page.getByText(/welcome to the beta|enrolling|check your email/i)
+      ).toBeVisible({ timeout: 10000 });
       await page.screenshot({ path: 'test-results/email-flow-02-after-submit.png' });
 
       // Step 3: Wait for email
       console.log('\n=== STEP 3: Waiting for verification email ===');
-      const email = await emailHelper.waitForEmail(inbox.id!, 120000); // 2 minute timeout
+      const email = await emailHelper.waitForEmail(inbox.id, 120000); // 2 minute timeout
       console.log(`Received email: "${email.subject}"`);
 
       // Step 4: Extract and follow magic link
@@ -384,8 +381,8 @@ test.describe('User Journey - Complete Flow with Email', () => {
       // Step 5: Verify authentication
       console.log('\n=== STEP 5: Verifying authentication ===');
 
-      // Should be redirected to main app or see authenticated state
-      await page.waitForTimeout(2000);
+      // Wait for redirect to complete (either to /app or stay on verify page)
+      await page.waitForLoadState('networkidle');
 
       // Check if we have a token stored
       const token = await page.evaluate(() => localStorage.getItem('karaoke_access_token'));
@@ -423,12 +420,15 @@ test.describe('User Journey - Complete Flow with Email', () => {
     const emailHelper = await createEmailHelper();
 
     if (!emailHelper.isAvailable) {
-      test.skip(true, 'Email testing not available');
+      test.skip();
       return;
     }
 
     // Create a test inbox
     const inbox = await emailHelper.createInbox();
+    if (!inbox.id || !inbox.emailAddress) {
+      throw new Error('MailSlurp inbox creation failed - missing id or email');
+    }
 
     try {
       // Go to landing page
@@ -439,7 +439,7 @@ test.describe('User Journey - Complete Flow with Email', () => {
       await page.locator('#pricing').scrollIntoViewIfNeeded();
 
       // Fill email and submit
-      await page.locator('#email').fill(inbox.emailAddress!);
+      await page.locator('#email').fill(inbox.emailAddress);
       await page.getByRole('button', { name: /continue to payment/i }).click();
 
       // Should redirect to Stripe
@@ -475,6 +475,12 @@ test.describe('User Journey - API Health', () => {
   });
 
   test('Credit packages endpoint works', async ({ request }) => {
+    interface CreditPackageResponse {
+      id: string;
+      credits: number;
+      price_cents: number;
+    }
+
     const response = await request.get(`${API_URL}/api/users/credits/packages`);
     expect(response.ok()).toBe(true);
 
@@ -483,11 +489,11 @@ test.describe('User Journey - API Health', () => {
     expect(data.packages.length).toBeGreaterThan(0);
 
     // Verify package structure
-    const pkg = data.packages[0];
+    const pkg = data.packages[0] as CreditPackageResponse;
     expect(pkg.id).toBeTruthy();
     expect(pkg.credits).toBeGreaterThan(0);
     expect(pkg.price_cents).toBeGreaterThan(0);
 
-    console.log('Credit packages:', data.packages.map((p: any) => `${p.credits} credits @ $${p.price_cents/100}`).join(', '));
+    console.log('Credit packages:', data.packages.map((p: CreditPackageResponse) => `${p.credits} credits @ $${p.price_cents/100}`).join(', '));
   });
 });

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   MicVocal,
   Music,
@@ -50,6 +51,8 @@ export default function LandingPage() {
   const router = useRouter();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [packages, setPackages] = useState<CreditPackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<CreditPackage | null>(null);
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +69,18 @@ export default function LandingPage() {
 
   // FAQ expansion state
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  // Ref for redirect timeout cleanup
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Check if already logged in and redirect to app
   useEffect(() => {
@@ -90,6 +105,9 @@ export default function LandingPage() {
         setSelectedPackage(bestValue || pkgs[0]);
       } catch (err) {
         console.error('Failed to load packages:', err);
+        setPackagesError('Failed to load pricing. Please refresh the page.');
+      } finally {
+        setPackagesLoading(false);
       }
     }
     loadPackages();
@@ -149,7 +167,7 @@ export default function LandingPage() {
         setAccessToken(response.session_token);
         setBetaSuccess(true);
         // Redirect to main app after showing success message
-        setTimeout(() => {
+        redirectTimeoutRef.current = setTimeout(() => {
           router.push('/app');
         }, 2000);
       } else {
@@ -185,12 +203,12 @@ export default function LandingPage() {
             <MicVocal className="w-8 h-8 text-primary-500" />
             <span className="text-xl font-bold">Nomad Karaoke</span>
           </div>
-          <a
+          <Link
             href="/app"
             className="text-sm text-dark-300 hover:text-white transition-colors"
           >
             Already have credits? Sign in
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -364,6 +382,16 @@ export default function LandingPage() {
           </p>
 
           {/* Package Selection */}
+          {packagesLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
+            </div>
+          )}
+          {packagesError && (
+            <div className="text-center py-8 text-red-400">
+              {packagesError}
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {packages.map((pkg) => {
               const isSelected = selectedPackage?.id === pkg.id;
@@ -464,6 +492,7 @@ export default function LandingPage() {
               <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
+                  aria-expanded={expandedFaq === i}
                   className="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-dark-700/50 transition-colors"
                 >
                   <span className="font-medium">{faq.question}</span>
