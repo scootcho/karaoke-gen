@@ -41,13 +41,12 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
   }
 
   const handleBuyCredits = () => {
-    // Navigate to buy site with email prefilled if available
-    const buyBaseUrl = process.env.NEXT_PUBLIC_BUY_URL || "https://buy.nomadkaraoke.com"
-    const buyUrl = new URL(buyBaseUrl)
+    // Navigate to landing page pricing section with email prefilled if available
+    const buyUrl = new URL('/#pricing', window.location.origin)
     if (user?.email) {
       buyUrl.searchParams.set("email", user.email)
     }
-    window.open(buyUrl.toString(), "_blank")
+    window.location.href = buyUrl.toString()
   }
 
   // Don't render until mounted (avoids hydration issues)
