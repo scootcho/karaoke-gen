@@ -162,6 +162,9 @@ KARAOKE_ACCESS_TOKEN=...  # For E2E tests
 | `./scripts/run-backend-local.sh` | Start backend with emulators |
 | `./scripts/start-emulators.sh` | Start emulators only |
 | `./scripts/stop-emulators.sh` | Stop emulators |
+| `./scripts/debug-job.sh <job_id>` | Debug a cloud job (status, logs, files) |
+| `./scripts/get_job.py <job_id>` | Fetch job data from Firestore |
+| `./scripts/analyze_log_timing.py <log>` | Profile karaoke-gen performance from logs |
 
 ## Project Structure
 
