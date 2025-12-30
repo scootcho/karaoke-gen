@@ -203,6 +203,30 @@ def _get_effective_distribution_settings(...) -> EffectiveDistributionSettings:
 
 **Lesson**: When you see the same logic repeated in multiple places, refactor into a helper function immediately. Otherwise bugs will be fixed in one place but not others.
 
+### Field Name Mismatches Between Endpoints
+
+**Problem**: Different endpoints setting different field names for the same logical value, where consumers check only one field name.
+
+Example: `youtube_description` vs `youtube_description_template`
+- `audio_search.py` endpoint set `youtube_description_template`
+- `file_upload.py` endpoint set only `youtube_description`
+- `video_worker.py` checked `youtube_description_template`
+- Result: YouTube uploads silently failed for remote CLI jobs
+
+**Symptoms**:
+- Feature works via one code path but silently fails via another
+- No errors in logs (the field is just empty/None)
+- Difficult to debug because both paths appear correct in isolation
+
+**Solution**: When adding fields that control behavior:
+1. Grep for all places that read the field
+2. Grep for all places that write the field
+3. Ensure all writers set what all readers expect
+
+**Lesson**: Silent failures from field name mismatches are hard to catch. When a feature works in one flow but not another, check if different endpoints are setting different field names.
+
+See `docs/archive/2025-12-30-cloud-output-structure-fix.md` for full details.
+
 ## Testing Insights
 
 ### E2E Mock Responses Must Match API Types Exactly

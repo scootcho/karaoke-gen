@@ -36,6 +36,12 @@ from karaoke_gen.audio_processor import AudioProcessor
 logger = logging.getLogger(__name__)
 
 
+# Default model names - used by create_audio_processor and stored in state_data
+DEFAULT_CLEAN_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+DEFAULT_BACKING_MODELS = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
+DEFAULT_OTHER_MODELS = ["htdemucs_6s.yaml"]
+
+
 # Loggers to capture for audio worker
 AUDIO_WORKER_LOGGERS = [
     "karaoke_gen.audio_processor",
@@ -181,10 +187,10 @@ def create_audio_processor(
     audio_logger = logging.getLogger("karaoke_gen.audio_processor")
     audio_logger.setLevel(logging.INFO)
     
-    # Model configurations - use provided values or CLI defaults
-    effective_clean_model = clean_instrumental_model or "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
-    effective_backing_models = backing_vocals_models or ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
-    effective_other_models = other_stems_models or ["htdemucs_6s.yaml"]  # For 6-stem separation (bass, drums, etc.)
+    # Model configurations - use provided values or defaults from module constants
+    effective_clean_model = clean_instrumental_model or DEFAULT_CLEAN_MODEL
+    effective_backing_models = backing_vocals_models or DEFAULT_BACKING_MODELS
+    effective_other_models = other_stems_models or DEFAULT_OTHER_MODELS  # For 6-stem separation (bass, drums, etc.)
     
     # FFmpeg command for combining audio files (must be a string, not a list)
     ffmpeg_base_command = "ffmpeg -hide_banner -loglevel error -nostats -y"
@@ -303,7 +309,17 @@ async def process_audio_separation(job_id: str) -> bool:
                     backing_vocals_models=job.backing_vocals_models,
                     other_stems_models=job.other_stems_models
                 )
-                
+
+                # Store effective model names in state_data for video_worker to use in file naming
+                # This ensures output filenames match local CLI behavior (e.g., "Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+                effective_model_names = {
+                    'clean_instrumental_model': job.clean_instrumental_model or DEFAULT_CLEAN_MODEL,
+                    'backing_vocals_models': job.backing_vocals_models or DEFAULT_BACKING_MODELS,
+                    'other_stems_models': job.other_stems_models or DEFAULT_OTHER_MODELS,
+                }
+                job_manager.update_state_data(job_id, 'model_names', effective_model_names)
+                job_log.info(f"Stored effective model names: clean={effective_model_names['clean_instrumental_model']}")
+
                 # Format artist-title for file naming (matches CLI behavior)
                 artist_title = f"{job.artist} - {job.title}"
                 

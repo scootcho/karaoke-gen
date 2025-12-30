@@ -1081,6 +1081,7 @@ async def create_job_with_upload_urls(
             brand_prefix=dist.brand_prefix,
             enable_youtube_upload=body.enable_youtube_upload,
             youtube_description=body.youtube_description,
+            youtube_description_template=body.youtube_description,  # video_worker reads this field
             discord_webhook_url=dist.discord_webhook_url,
             webhook_url=body.webhook_url,
             user_email=body.user_email,

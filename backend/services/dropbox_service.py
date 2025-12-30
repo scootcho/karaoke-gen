@@ -199,7 +199,7 @@ class DropboxService:
 
     def upload_folder(self, local_dir: str, remote_path: str) -> None:
         """
-        Upload all files in a directory to Dropbox folder.
+        Recursively upload all files and subdirectories to Dropbox folder.
 
         Args:
             local_dir: Local directory to upload
@@ -212,10 +212,17 @@ class DropboxService:
         logger.info(f"Uploading folder {local_dir} to {remote_path}")
 
         uploaded_count = 0
-        for filename in os.listdir(local_dir):
-            local_file = os.path.join(local_dir, filename)
-            if os.path.isfile(local_file):
-                remote_file = f"{remote_path}/{filename}"
+        for root, _dirs, files in os.walk(local_dir):
+            # Calculate the relative path from local_dir to current root
+            rel_root = os.path.relpath(root, local_dir)
+            if rel_root == ".":
+                current_remote = remote_path
+            else:
+                current_remote = f"{remote_path}/{rel_root}"
+
+            for filename in files:
+                local_file = os.path.join(root, filename)
+                remote_file = f"{current_remote}/{filename}"
                 self.upload_file(local_file, remote_file)
                 uploaded_count += 1
 

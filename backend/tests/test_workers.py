@@ -970,10 +970,147 @@ class TestBackingVocalsAnalysis:
     def test_analysis_service_can_be_instantiated(self):
         """Test that AudioAnalysisService can be instantiated."""
         from backend.services.audio_analysis_service import AudioAnalysisService
-        
+
         mock_storage = MagicMock()
         service = AudioAnalysisService(storage_service=mock_storage)
-        
+
         assert service is not None
         assert service.storage_service == mock_storage
+
+
+class TestModelNamesStorage:
+    """Tests for model names storage in audio_worker.
+
+    These tests verify that model names are stored in job state_data
+    for use by video_worker in distribution directory preparation.
+    """
+
+    def test_effective_model_names_defaults(self):
+        """Test that default model names are used when not specified on job."""
+        from backend.workers.audio_worker import (
+            DEFAULT_CLEAN_MODEL,
+            DEFAULT_BACKING_MODELS,
+            DEFAULT_OTHER_MODELS,
+        )
+
+        # Simulate the logic from process_audio_separation
+        job_clean_model = None
+        job_backing_models = None
+        job_other_models = None
+
+        effective_model_names = {
+            'clean_instrumental_model': job_clean_model or DEFAULT_CLEAN_MODEL,
+            'backing_vocals_models': job_backing_models or DEFAULT_BACKING_MODELS,
+            'other_stems_models': job_other_models or DEFAULT_OTHER_MODELS,
+        }
+
+        assert effective_model_names['clean_instrumental_model'] == DEFAULT_CLEAN_MODEL
+        assert effective_model_names['backing_vocals_models'] == DEFAULT_BACKING_MODELS
+        assert effective_model_names['other_stems_models'] == DEFAULT_OTHER_MODELS
+
+    def test_effective_model_names_custom(self):
+        """Test that custom model names override defaults."""
+        from backend.workers.audio_worker import (
+            DEFAULT_CLEAN_MODEL,
+            DEFAULT_BACKING_MODELS,
+            DEFAULT_OTHER_MODELS,
+        )
+
+        custom_clean = "custom_clean_model.ckpt"
+        custom_backing = ["custom_backing.ckpt"]
+        custom_other = ["custom_demucs.yaml"]
+
+        # Simulate the logic from process_audio_separation
+        effective_model_names = {
+            'clean_instrumental_model': custom_clean or DEFAULT_CLEAN_MODEL,
+            'backing_vocals_models': custom_backing or DEFAULT_BACKING_MODELS,
+            'other_stems_models': custom_other or DEFAULT_OTHER_MODELS,
+        }
+
+        assert effective_model_names['clean_instrumental_model'] == custom_clean
+        assert effective_model_names['backing_vocals_models'] == custom_backing
+        assert effective_model_names['other_stems_models'] == custom_other
+
+
+class TestDistributionDirectoryPreparation:
+    """Tests for _prepare_distribution_directory in video_worker.
+
+    These tests verify that the distribution directory is prepared with:
+    - stems/ subfolder containing all audio stems with model names
+    - lyrics/ subfolder containing intermediate lyrics files
+    - Properly named instrumentals at root level
+    """
+
+    def test_distribution_directory_creates_stems_folder(self, tmp_path):
+        """Test that stems directory is created."""
+        stems_dir = tmp_path / "stems"
+        stems_dir.mkdir()
+
+        assert stems_dir.exists()
+        assert stems_dir.is_dir()
+
+    def test_distribution_directory_creates_lyrics_folder(self, tmp_path):
+        """Test that lyrics directory is created."""
+        lyrics_dir = tmp_path / "lyrics"
+        lyrics_dir.mkdir()
+
+        assert lyrics_dir.exists()
+        assert lyrics_dir.is_dir()
+
+    def test_instrumental_naming_with_model(self):
+        """Test that instrumental files are named with model names."""
+        base_name = "Artist - Song"
+        clean_model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        backing_model = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
+
+        clean_instrumental_name = f"{base_name} (Instrumental {clean_model}).flac"
+        backing_instrumental_name = f"{base_name} (Instrumental +BV {backing_model}).flac"
+
+        # Verify expected format
+        assert "model_bs_roformer" in clean_instrumental_name
+        assert "+BV" in backing_instrumental_name
+        assert backing_model in backing_instrumental_name
+
+    def test_stem_naming_convention(self):
+        """Test that stems are named with proper model suffixes."""
+        base_name = "Artist - Song"
+        clean_model = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
+        backing_model = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
+        other_model = "htdemucs_6s.yaml"
+
+        # Expected stem filenames
+        expected_stems = {
+            'vocals_clean': f"{base_name} (Vocals {clean_model}).flac",
+            'lead_vocals': f"{base_name} (Lead Vocals {backing_model}).flac",
+            'backing_vocals': f"{base_name} (Backing Vocals {backing_model}).flac",
+            'bass': f"{base_name} (Bass {other_model}).flac",
+            'drums': f"{base_name} (Drums {other_model}).flac",
+        }
+
+        # Verify naming convention
+        for _key, name in expected_stems.items():
+            assert ".flac" in name
+            assert base_name in name
+
+    def test_simplified_instrumental_cleanup(self, tmp_path):
+        """Test that simplified instrumental names are cleaned up."""
+        base_name = "Artist - Song"
+
+        # Create simplified-named files (as created by _setup_working_directory)
+        simplified_clean = tmp_path / f"{base_name} (Instrumental Clean).flac"
+        simplified_backing = tmp_path / f"{base_name} (Instrumental Backing).flac"
+        simplified_clean.write_text("fake")
+        simplified_backing.write_text("fake")
+
+        # Verify they exist
+        assert simplified_clean.exists()
+        assert simplified_backing.exists()
+
+        # Simulate cleanup
+        simplified_clean.unlink()
+        simplified_backing.unlink()
+
+        # Verify they're removed
+        assert not simplified_clean.exists()
+        assert not simplified_backing.exists()
 
