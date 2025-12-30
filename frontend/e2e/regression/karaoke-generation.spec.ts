@@ -64,6 +64,11 @@ const APP_PAGE_MOCKS = [
     path: '/api/themes',
     response: { body: { themes: [] } },
   },
+  {
+    method: 'GET',
+    path: '/api/users/credits/packages',
+    response: { body: { packages: [] } },
+  },
 ];
 
 test.describe('Karaoke Generation - Search Tab', () => {
@@ -170,6 +175,11 @@ test.describe('Karaoke Generation - Audio Selection', () => {
         },
         {
           method: 'GET',
+          path: '/api/users/credits/packages',
+          response: { body: { packages: [] } },
+        },
+        {
+          method: 'GET',
           path: '/api/audio-search/job-1/results',
           response: { body: { results: MOCK_AUDIO_RESULTS } },
         },
@@ -216,6 +226,11 @@ test.describe('Karaoke Generation - Instrumental Selection', () => {
           method: 'GET',
           path: '/api/themes',
           response: { body: { themes: [] } },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/credits/packages',
+          response: { body: { packages: [] } },
         },
       ],
     });
@@ -267,6 +282,11 @@ test.describe('Karaoke Generation - Lyrics Review', () => {
           method: 'GET',
           path: '/api/themes',
           response: { body: { themes: [] } },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/credits/packages',
+          response: { body: { packages: [] } },
         },
       ],
     });

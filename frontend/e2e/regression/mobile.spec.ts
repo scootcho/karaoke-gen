@@ -32,6 +32,11 @@ const APP_PAGE_MOCKS = [
     path: '/api/themes',
     response: { body: { themes: [] } },
   },
+  {
+    method: 'GET',
+    path: '/api/users/credits/packages',
+    response: { body: { packages: [] } },
+  },
 ];
 
 // Helper to check no horizontal overflow
@@ -273,6 +278,11 @@ test.describe('Mobile - Interactions', () => {
           method: 'GET',
           path: '/api/themes',
           response: { body: { themes: [] } },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/credits/packages',
+          response: { body: { packages: [] } },
         },
       ],
     });
