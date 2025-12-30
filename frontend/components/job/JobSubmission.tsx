@@ -150,7 +150,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       <TabsList className="grid w-full grid-cols-3 h-auto rounded-lg p-1" style={{ backgroundColor: 'var(--secondary)' }}>
         <TabsTrigger
           value="search"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-500/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
           style={{ color: activeTab === 'search' ? 'white' : 'var(--text-muted)' }}
         >
           <Music className="w-4 h-4 shrink-0" />
@@ -158,7 +158,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         </TabsTrigger>
         <TabsTrigger
           value="upload"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-500/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
           style={{ color: activeTab === 'upload' ? 'white' : 'var(--text-muted)' }}
         >
           <Upload className="w-4 h-4 shrink-0" />
@@ -166,7 +166,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         </TabsTrigger>
         <TabsTrigger
           value="url"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-500/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
           style={{ color: activeTab === 'url' ? 'white' : 'var(--text-muted)' }}
         >
           <Youtube className="w-4 h-4 shrink-0" />
@@ -232,6 +232,9 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
             </div>
           </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
+          </p>
 
           {/* Theme Selection */}
           <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
@@ -311,6 +314,9 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
             </div>
           </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-amber-500 font-medium">Note:</span> Override auto-detected values if needed. These appear on the title card and video filename.
+          </p>
 
           {/* Theme Selection */}
           <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
@@ -373,6 +379,9 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
             </div>
           </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
+          </p>
 
           {/* Theme Selection */}
           <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
