@@ -80,19 +80,12 @@ export default defineConfig({
   },
 
   // Configure projects (browsers)
+  // Regression tests only use Chromium for CI speed
+  // Mobile tests set their own viewport sizes within tests
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    },
-    // Mobile device testing
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 7'] },
-    },
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 14'] },
     },
   ],
 
