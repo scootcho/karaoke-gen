@@ -684,7 +684,7 @@ async def _prepare_distribution_directory(
     if stems.get('instrumental_clean'):
         dest_path = os.path.join(stems_dir, f"{base_name} (Instrumental {clean_model}).flac")
         storage.download_file(stems['instrumental_clean'], dest_path)
-        log_progress(f"Downloaded clean instrumental to stems/")
+        log_progress("Downloaded clean instrumental to stems/")
 
         # Also copy to root level for distribution
         root_path = os.path.join(temp_dir, f"{base_name} (Instrumental {clean_model}).flac")
@@ -694,13 +694,13 @@ async def _prepare_distribution_directory(
     if stems.get('vocals_clean'):
         dest_path = os.path.join(stems_dir, f"{base_name} (Vocals {clean_model}).flac")
         storage.download_file(stems['vocals_clean'], dest_path)
-        log_progress(f"Downloaded clean vocals to stems/")
+        log_progress("Downloaded clean vocals to stems/")
 
     # Instrumental with backing vocals (from backing_vocals_model)
     if stems.get('instrumental_with_backing'):
         dest_path = os.path.join(stems_dir, f"{base_name} (Instrumental +BV {backing_model}).flac")
         storage.download_file(stems['instrumental_with_backing'], dest_path)
-        log_progress(f"Downloaded instrumental+BV to stems/")
+        log_progress("Downloaded instrumental+BV to stems/")
 
         # Also copy to root level for distribution
         root_path = os.path.join(temp_dir, f"{base_name} (Instrumental +BV {backing_model}).flac")
@@ -710,13 +710,13 @@ async def _prepare_distribution_directory(
     if stems.get('lead_vocals'):
         dest_path = os.path.join(stems_dir, f"{base_name} (Lead Vocals {backing_model}).flac")
         storage.download_file(stems['lead_vocals'], dest_path)
-        log_progress(f"Downloaded lead vocals to stems/")
+        log_progress("Downloaded lead vocals to stems/")
 
     # Backing vocals (from backing_vocals_model)
     if stems.get('backing_vocals'):
         dest_path = os.path.join(stems_dir, f"{base_name} (Backing Vocals {backing_model}).flac")
         storage.download_file(stems['backing_vocals'], dest_path)
-        log_progress(f"Downloaded backing vocals to stems/")
+        log_progress("Downloaded backing vocals to stems/")
 
     # Other stems (from other_stems_model - typically htdemucs_6s)
     other_stem_keys = ['bass', 'drums', 'guitar', 'piano', 'other']
@@ -751,7 +751,7 @@ async def _prepare_distribution_directory(
             except Exception as e:
                 log_progress(f"Could not download {lyrics_key}: {e}")
 
-    log_progress(f"Distribution directory prepared with stems/ and lyrics/ subfolders")
+    log_progress("Distribution directory prepared with stems/ and lyrics/ subfolders")
 
 
 async def _upload_results(

@@ -212,7 +212,7 @@ class DropboxService:
         logger.info(f"Uploading folder {local_dir} to {remote_path}")
 
         uploaded_count = 0
-        for root, dirs, files in os.walk(local_dir):
+        for root, _dirs, files in os.walk(local_dir):
             # Calculate the relative path from local_dir to current root
             rel_root = os.path.relpath(root, local_dir)
             if rel_root == ".":

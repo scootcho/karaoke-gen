@@ -987,10 +987,11 @@ class TestModelNamesStorage:
 
     def test_effective_model_names_defaults(self):
         """Test that default model names are used when not specified on job."""
-        # Test the model name defaults match what's in create_audio_processor
-        default_clean = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
-        default_backing = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
-        default_other = ["htdemucs_6s.yaml"]
+        from backend.workers.audio_worker import (
+            DEFAULT_CLEAN_MODEL,
+            DEFAULT_BACKING_MODELS,
+            DEFAULT_OTHER_MODELS,
+        )
 
         # Simulate the logic from process_audio_separation
         job_clean_model = None
@@ -998,26 +999,32 @@ class TestModelNamesStorage:
         job_other_models = None
 
         effective_model_names = {
-            'clean_instrumental_model': job_clean_model or default_clean,
-            'backing_vocals_models': job_backing_models or default_backing,
-            'other_stems_models': job_other_models or default_other,
+            'clean_instrumental_model': job_clean_model or DEFAULT_CLEAN_MODEL,
+            'backing_vocals_models': job_backing_models or DEFAULT_BACKING_MODELS,
+            'other_stems_models': job_other_models or DEFAULT_OTHER_MODELS,
         }
 
-        assert effective_model_names['clean_instrumental_model'] == default_clean
-        assert effective_model_names['backing_vocals_models'] == default_backing
-        assert effective_model_names['other_stems_models'] == default_other
+        assert effective_model_names['clean_instrumental_model'] == DEFAULT_CLEAN_MODEL
+        assert effective_model_names['backing_vocals_models'] == DEFAULT_BACKING_MODELS
+        assert effective_model_names['other_stems_models'] == DEFAULT_OTHER_MODELS
 
     def test_effective_model_names_custom(self):
         """Test that custom model names override defaults."""
+        from backend.workers.audio_worker import (
+            DEFAULT_CLEAN_MODEL,
+            DEFAULT_BACKING_MODELS,
+            DEFAULT_OTHER_MODELS,
+        )
+
         custom_clean = "custom_clean_model.ckpt"
         custom_backing = ["custom_backing.ckpt"]
         custom_other = ["custom_demucs.yaml"]
 
         # Simulate the logic from process_audio_separation
         effective_model_names = {
-            'clean_instrumental_model': custom_clean or "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
-            'backing_vocals_models': custom_backing or ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"],
-            'other_stems_models': custom_other or ["htdemucs_6s.yaml"],
+            'clean_instrumental_model': custom_clean or DEFAULT_CLEAN_MODEL,
+            'backing_vocals_models': custom_backing or DEFAULT_BACKING_MODELS,
+            'other_stems_models': custom_other or DEFAULT_OTHER_MODELS,
         }
 
         assert effective_model_names['clean_instrumental_model'] == custom_clean
@@ -1081,7 +1088,7 @@ class TestDistributionDirectoryPreparation:
         }
 
         # Verify naming convention
-        for key, name in expected_stems.items():
+        for _key, name in expected_stems.items():
             assert ".flac" in name
             assert base_name in name
 

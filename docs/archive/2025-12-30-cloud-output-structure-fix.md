@@ -56,7 +56,7 @@ Video worker hardcoded "Clean" and "Backing" suffixes instead of using actual mo
 
 After this fix, cloud jobs produce identical output to local CLI:
 
-```
+```text
 NOMAD-XXXX - Artist - Title/
 ├── Artist - Title (Final Karaoke Lossless 4k).mp4
 ├── Artist - Title (Final Karaoke Lossless 4k).mkv
