@@ -219,7 +219,7 @@ test.describe('Mobile - Touch Targets', () => {
     const box = await artistInput.boundingBox();
 
     if (box) {
-      // Input should be at least 40px tall for easy touch
+      // Input should be at least 36px tall for easy touch
       expect(box.height).toBeGreaterThanOrEqual(36);
     }
   });

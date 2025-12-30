@@ -131,21 +131,17 @@ test.describe('Job Management - Job List', () => {
     const hasNoJobsText = await noJobsIndicator.isVisible().catch(() => false);
     const hasEmptyList = (await jobsList.locator('> *').count()) === 0;
 
-    expect(hasNoJobsText || hasEmptyList || true).toBe(true); // Flexible assertion
+    expect(hasNoJobsText || hasEmptyList).toBe(true);
   });
 
   test('refresh button fetches updated jobs', async ({ page }) => {
-    let callCount = 0;
-
     await setupApiFixtures(page, {
       mocks: [
         ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
-          response: {
-            body: callCount === 0 ? MOCK_JOBS.slice(0, 2) : MOCK_JOBS,
-          },
+          response: { body: MOCK_JOBS },
         },
       ],
     });
@@ -225,7 +221,7 @@ test.describe('Job Management - Job Details', () => {
     const hasDownloads = await downloadSection.isVisible().catch(() => false);
 
     // Downloads might be in expanded view or separate section
-    expect(hasDownloads || true).toBe(true);
+    expect(hasDownloads).toBe(true);
   });
 
   test('job with failed status is displayed', async ({ page }) => {
