@@ -284,9 +284,13 @@ class TestRepeatedSectionHandler:
 
 class TestClassificationPrompt:
     """Test classification prompt generation."""
-    
-    def test_prompt_includes_all_context(self):
+
+    def test_prompt_includes_all_context(self, monkeypatch):
         """Test that prompt includes all required context."""
+        # Clear LangFuse env vars to force hardcoded fallback
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
         prompt = build_classification_prompt(
             gap_text="out I'm starting over",
             preceding_words="Oh no, was it worth it? Starting",

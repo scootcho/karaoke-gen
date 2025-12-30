@@ -1,23 +1,35 @@
-"""Gap classification prompt builder for agentic correction."""
+"""Gap classification prompt builder for agentic correction.
+
+This module provides two modes of operation:
+1. LangFuse mode: Prompts and examples fetched from LangFuse for dynamic iteration
+2. Hardcoded mode: Fallback for local development when LangFuse is not configured
+
+The main entry point is `build_classification_prompt()` which automatically
+selects the appropriate mode based on LangFuse configuration.
+"""
 
 from typing import Dict, List, Optional
 import yaml
 import os
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def load_few_shot_examples() -> Dict[str, List[Dict]]:
     """Load few-shot examples from examples.yaml if it exists."""
     examples_path = Path(__file__).parent / "examples.yaml"
-    
+
     if not examples_path.exists():
         return get_hardcoded_examples()
-    
+
     try:
         with open(examples_path, 'r') as f:
             data = yaml.safe_load(f)
             return data.get('examples_by_category', {})
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to load examples.yaml, using hardcoded examples: {e}")
         return get_hardcoded_examples()
 
 
@@ -122,7 +134,12 @@ def build_classification_prompt(
     gap_id: Optional[str] = None
 ) -> str:
     """Build a prompt for classifying a gap in the transcription.
-    
+
+    This function automatically selects between LangFuse and hardcoded prompts:
+    - If LangFuse is configured (LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY set),
+      fetches the prompt template and examples from LangFuse.
+    - Otherwise, uses hardcoded prompts for local development.
+
     Args:
         gap_text: The text of the gap that needs classification
         preceding_words: Text immediately before the gap
@@ -131,7 +148,50 @@ def build_classification_prompt(
         artist: Song artist name for context
         title: Song title for context
         gap_id: Identifier for the gap
-    
+
+    Returns:
+        Formatted prompt string for the LLM
+
+    Raises:
+        LangFusePromptError: If LangFuse is configured but prompt fetch fails
+    """
+    from .langfuse_prompts import get_prompt_service
+
+    service = get_prompt_service()
+    return service.get_classification_prompt(
+        gap_text=gap_text,
+        preceding_words=preceding_words,
+        following_words=following_words,
+        reference_contexts=reference_contexts,
+        artist=artist,
+        title=title,
+        gap_id=gap_id
+    )
+
+
+def build_classification_prompt_hardcoded(
+    gap_text: str,
+    preceding_words: str,
+    following_words: str,
+    reference_contexts: Dict[str, str],
+    artist: Optional[str] = None,
+    title: Optional[str] = None,
+    gap_id: Optional[str] = None
+) -> str:
+    """Build a prompt for classifying a gap using hardcoded templates.
+
+    This is the fallback implementation used when LangFuse is not configured.
+    It is also used as the source of truth for migrating prompts to LangFuse.
+
+    Args:
+        gap_text: The text of the gap that needs classification
+        preceding_words: Text immediately before the gap
+        following_words: Text immediately after the gap
+        reference_contexts: Dictionary of reference lyrics from each source
+        artist: Song artist name for context
+        title: Song title for context
+        gap_id: Identifier for the gap
+
     Returns:
         Formatted prompt string for the LLM
     """

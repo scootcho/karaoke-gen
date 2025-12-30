@@ -8,7 +8,7 @@ RESPONSE_LOG_LENGTH = 500  # Characters to log from responses
 MODEL_SPEC_FORMAT = "provider/model"  # Expected format for model identifiers
 
 # Default Langfuse host
-DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
+DEFAULT_LANGFUSE_HOST = "https://us.cloud.langfuse.com"
 
 # Raw response indicator
 RAW_RESPONSE_KEY = "raw"  # Key used to wrap unparsed responses
