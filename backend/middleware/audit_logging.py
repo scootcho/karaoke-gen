@@ -61,10 +61,10 @@ class AuditLoggingMiddleware(BaseHTTPMiddleware):
         # Process request
         try:
             response = await call_next(request)
-        except Exception as e:
-            # Log failed requests too
+        except Exception:
+            # Log failed requests too (exception() auto-includes stack trace)
             latency_ms = int((time.time() - start_time) * 1000)
-            logger.error(
+            logger.exception(
                 "request_audit_error",
                 extra={
                     "request_id": request_id,
@@ -75,7 +75,6 @@ class AuditLoggingMiddleware(BaseHTTPMiddleware):
                     "client_ip": client_ip,
                     "user_agent": user_agent[:200] if user_agent else None,
                     "audit_type": "http_request",
-                    "error": str(e),
                 }
             )
             raise

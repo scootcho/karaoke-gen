@@ -47,7 +47,9 @@ def investigate_user(
     Returns:
         Dictionary with all user data
     """
-    db = firestore.Client(project='nomadkaraoke')
+    import os
+    project_id = os.environ.get('GOOGLE_CLOUD_PROJECT', 'nomadkaraoke')
+    db = firestore.Client(project=project_id)
     email = email.lower()
 
     results = {
@@ -198,7 +200,7 @@ def _print_human_readable(results: Dict[str, Any]):
         print(f"  Active:          {user['is_active']}")
         print(f"  Email Verified:  {user['email_verified']}")
         if user.get('is_beta_tester'):
-            print(f"  Beta Tester:     Yes")
+            print("  Beta Tester:     Yes")
         if user.get('display_name'):
             print(f"  Display Name:    {user['display_name']}")
     else:

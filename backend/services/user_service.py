@@ -347,8 +347,8 @@ class UserService:
             logger.debug(f"Session valid for {token_prefix}... (user: {user.email}, credits: {user.credits})")
             return True, user, "Valid session"
 
-        except Exception as e:
-            logger.exception(f"Error validating session {token_prefix}...: {e}")
+        except Exception:
+            logger.exception(f"Error validating session {token_prefix}...")
             return False, None, "An error occurred during validation"
 
     def revoke_session(self, token: str) -> bool:

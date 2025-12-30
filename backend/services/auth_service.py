@@ -217,7 +217,7 @@ class AuthService:
             from backend.services.user_service import get_user_service
 
             user_service = get_user_service()
-            is_valid, user, message = user_service.validate_session(token)
+            is_valid, user, _message = user_service.validate_session(token)
 
             if is_valid and user:
                 # Session is valid - user is authenticated via magic link

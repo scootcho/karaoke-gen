@@ -228,14 +228,14 @@ def optional_auth(
 def require_review_auth_factory(job_id_param: str = "job_id"):
     """
     Factory to create a review authentication dependency.
-    
+
     Accepts either:
-    1. Full user authentication (admin/user token)
+    1. Full user authentication (admin/user token) - also validates job ownership
     2. Job-specific review token (only valid for the specific job)
-    
+
     Args:
         job_id_param: Name of the path parameter containing the job ID
-    
+
     Returns:
         Dependency function that validates review access
     """
@@ -249,37 +249,63 @@ def require_review_auth_factory(job_id_param: str = "job_id"):
     ) -> Tuple[str, str]:
         """
         Validate review access for a job.
-        
+
         Returns:
             (job_id, auth_type) where auth_type is "full" or "review_token"
-            
+
         Raises:
             HTTPException: 401 if authentication fails
+            HTTPException: 403 if user doesn't own the job (for full auth)
         """
         # Import here to avoid circular dependency
         from backend.services.job_manager import JobManager
-        
+
+        job_manager = JobManager()
+
         # Try full authentication first
         full_token = None
         if credentials:
             full_token = credentials.credentials
         elif token:
             full_token = token
-        
+
         if full_token:
-            is_valid, user_type, remaining_uses, message = auth_service.validate_token(full_token)
-            if is_valid:
-                logger.info(f"Review access granted via full auth ({user_type}) for job {job_id}")
+            auth_result = auth_service.validate_token_full(full_token)
+            if auth_result.is_valid:
+                # For full auth, also verify job ownership
+                job = job_manager.get_job(job_id)
+                if not job:
+                    raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+                # Check ownership: admin can access all, users only their own jobs
+                if not auth_result.is_admin:
+                    if auth_result.user_email and job.user_email:
+                        if auth_result.user_email.lower() != job.user_email.lower():
+                            logger.warning(
+                                f"Review access denied: user {auth_result.user_email} "
+                                f"tried to access job {job_id} owned by {job.user_email}"
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail="You don't have permission to access this job's review"
+                            )
+                    elif job.user_email:
+                        # Token auth without email trying to access a job with owner
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You don't have permission to access this job's review"
+                        )
+
+                logger.info(f"Review access granted via full auth ({auth_result.user_type}) for job {job_id}")
                 return job_id, "full"
-        
+
         # Try review token
         if review_token:
-            job_manager = JobManager()
             job = job_manager.get_job(job_id)
-            
+
             if not job:
                 raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-            
+
             # Validate review token matches
             if job.review_token and secrets.compare_digest(job.review_token, review_token):
                 # Check expiry if set
@@ -289,25 +315,25 @@ def require_review_auth_factory(job_id_param: str = "job_id"):
                     expiry = job.review_token_expires_at
                     if expiry.tzinfo is None:
                         expiry = expiry.replace(tzinfo=UTC)
-                    
+
                     if now > expiry:
                         logger.warning(f"Review token expired for job {job_id}")
                         raise HTTPException(
                             status_code=401,
                             detail="Review token has expired. Please request a new review link."
                         )
-                
+
                 logger.info(f"Review access granted via review_token for job {job_id}")
                 return job_id, "review_token"
             else:
                 logger.warning(f"Invalid review token for job {job_id}")
-        
+
         # No valid authentication
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide either a full access token or a valid review_token for this job."
         )
-    
+
     return require_review_auth
 
 
@@ -318,14 +344,14 @@ require_review_auth = require_review_auth_factory()
 def require_instrumental_auth_factory(job_id_param: str = "job_id"):
     """
     Factory to create an instrumental review authentication dependency.
-    
+
     Accepts either:
-    1. Full user authentication (admin/user token)
+    1. Full user authentication (admin/user token) - also validates job ownership
     2. Job-specific instrumental token (only valid for the specific job)
-    
+
     Args:
         job_id_param: Name of the path parameter containing the job ID
-    
+
     Returns:
         Dependency function that validates instrumental review access
     """
@@ -339,37 +365,63 @@ def require_instrumental_auth_factory(job_id_param: str = "job_id"):
     ) -> Tuple[str, str]:
         """
         Validate instrumental review access for a job.
-        
+
         Returns:
             (job_id, auth_type) where auth_type is "full" or "instrumental_token"
-            
+
         Raises:
             HTTPException: 401 if authentication fails
+            HTTPException: 403 if user doesn't own the job (for full auth)
         """
         # Import here to avoid circular dependency
         from backend.services.job_manager import JobManager
-        
+
+        job_manager = JobManager()
+
         # Try full authentication first
         full_token = None
         if credentials:
             full_token = credentials.credentials
         elif token:
             full_token = token
-        
+
         if full_token:
-            is_valid, user_type, remaining_uses, message = auth_service.validate_token(full_token)
-            if is_valid:
-                logger.info(f"Instrumental access granted via full auth ({user_type}) for job {job_id}")
+            auth_result = auth_service.validate_token_full(full_token)
+            if auth_result.is_valid:
+                # For full auth, also verify job ownership
+                job = job_manager.get_job(job_id)
+                if not job:
+                    raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+                # Check ownership: admin can access all, users only their own jobs
+                if not auth_result.is_admin:
+                    if auth_result.user_email and job.user_email:
+                        if auth_result.user_email.lower() != job.user_email.lower():
+                            logger.warning(
+                                f"Instrumental access denied: user {auth_result.user_email} "
+                                f"tried to access job {job_id} owned by {job.user_email}"
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail="You don't have permission to access this job's instrumental review"
+                            )
+                    elif job.user_email:
+                        # Token auth without email trying to access a job with owner
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You don't have permission to access this job's instrumental review"
+                        )
+
+                logger.info(f"Instrumental access granted via full auth ({auth_result.user_type}) for job {job_id}")
                 return job_id, "full"
-        
+
         # Try instrumental token
         if instrumental_token:
-            job_manager = JobManager()
             job = job_manager.get_job(job_id)
-            
+
             if not job:
                 raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-            
+
             # Validate instrumental token matches
             if job.instrumental_token and secrets.compare_digest(job.instrumental_token, instrumental_token):
                 # Check expiry if set
@@ -379,25 +431,25 @@ def require_instrumental_auth_factory(job_id_param: str = "job_id"):
                     expiry = job.instrumental_token_expires_at
                     if expiry.tzinfo is None:
                         expiry = expiry.replace(tzinfo=UTC)
-                    
+
                     if now > expiry:
                         logger.warning(f"Instrumental token expired for job {job_id}")
                         raise HTTPException(
                             status_code=401,
                             detail="Instrumental review token has expired. Please request a new review link."
                         )
-                
+
                 logger.info(f"Instrumental access granted via instrumental_token for job {job_id}")
                 return job_id, "instrumental_token"
             else:
                 logger.warning(f"Invalid instrumental token for job {job_id}")
-        
+
         # No valid authentication
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide either a full access token or a valid instrumental_token for this job."
         )
-    
+
     return require_instrumental_auth
 
 
