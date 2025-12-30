@@ -28,7 +28,8 @@ def load_few_shot_examples() -> Dict[str, List[Dict]]:
         with open(examples_path, 'r') as f:
             data = yaml.safe_load(f)
             return data.get('examples_by_category', {})
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to load examples.yaml, using hardcoded examples: {e}")
         return get_hardcoded_examples()
 
 

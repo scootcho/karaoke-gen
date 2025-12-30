@@ -100,19 +100,10 @@ class ModelFactory:
             return
         
         try:
-            from langfuse import Langfuse
             from langfuse.langchain import CallbackHandler
-            
-            # Initialize Langfuse client first (this is required!)
-            langfuse_client = Langfuse(
-                public_key=public_key,
-                secret_key=secret_key,
-                host=os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com"),
-            )
-            
-            # Then create callback handler with the same public_key
-            # The handler will use the initialized client
-            self._langfuse_handler = CallbackHandler(public_key=public_key)
+
+            # CallbackHandler auto-discovers credentials from environment variables
+            self._langfuse_handler = CallbackHandler()
             logger.info(f"🤖 Langfuse callback handler initialized for {model_spec}")
         except Exception as e:
             # If Langfuse keys are set, we MUST fail fast

@@ -59,31 +59,19 @@ class LangFusePromptService:
         return bool(public_key and secret_key)
 
     def _init_client(self) -> None:
-        """Initialize the Langfuse client. Fails fast if keys are set but init fails."""
-        public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-        secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-        host = os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
-
-        if not (public_key and secret_key):
-            logger.debug("LangFuse keys not configured, will use hardcoded prompts")
-            return
+        """Initialize the Langfuse client using the shared singleton."""
+        from ..observability.langfuse_integration import get_langfuse_client, LangFuseConfigError
 
         try:
-            from langfuse import Langfuse
-
-            self._client = Langfuse(
-                public_key=public_key,
-                secret_key=secret_key,
-                host=host,
-            )
-            self._initialized = True
-            logger.info(f"LangFuse prompt service initialized (host: {host})")
-        except Exception as e:
-            # Fail fast - if keys are set, we expect LangFuse to work
-            raise RuntimeError(
-                f"LangFuse keys are set but initialization failed: {e}\n"
-                f"Check your LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY."
-            ) from e
+            self._client = get_langfuse_client()
+            if self._client:
+                self._initialized = True
+                logger.info("LangFuse prompt service initialized")
+            else:
+                logger.debug("LangFuse keys not configured, will use hardcoded prompts")
+        except LangFuseConfigError as e:
+            # Re-raise as RuntimeError for consistent error handling
+            raise RuntimeError(str(e)) from e
 
     def get_classification_prompt(
         self,
@@ -157,11 +145,13 @@ class LangFusePromptService:
                 f"Failed to fetch/compile prompt from LangFuse: {e}"
             ) from e
 
-    def _fetch_prompt(self, name: str) -> Any:
+    def _fetch_prompt(self, name: str, label: str = "production") -> Any:
         """Fetch a prompt template from LangFuse.
 
         Args:
             name: The prompt name in LangFuse
+            label: Prompt label to fetch (default: "production"). Falls back to
+                   version 1 if labeled version not found.
 
         Returns:
             LangFuse prompt object
@@ -173,13 +163,26 @@ class LangFusePromptService:
             raise LangFusePromptError("LangFuse client not initialized")
 
         try:
-            prompt = self._client.get_prompt(name)
-            logger.debug(f"Fetched prompt '{name}' from LangFuse")
+            # Try to fetch with the specified label (default: production)
+            prompt = self._client.get_prompt(name, label=label)
+            logger.debug(f"Fetched prompt '{name}' (label={label}) from LangFuse")
             return prompt
-        except Exception as e:
-            raise LangFusePromptError(
-                f"Failed to fetch prompt '{name}' from LangFuse: {e}"
-            ) from e
+        except Exception as label_error:
+            # If labeled version not found, try fetching version 1 as fallback
+            # This handles newly created prompts that haven't been promoted yet
+            try:
+                prompt = self._client.get_prompt(name, version=1)
+                logger.warning(
+                    f"Prompt '{name}' label '{label}' not found, using version 1. "
+                    f"Consider promoting this prompt in LangFuse UI."
+                )
+                return prompt
+            except Exception as version_error:
+                raise LangFusePromptError(
+                    f"Failed to fetch prompt '{name}' from LangFuse: "
+                    f"Label '{label}' error: {label_error}, "
+                    f"Version 1 fallback error: {version_error}"
+                ) from version_error
 
     def _fetch_examples(self) -> List[Dict[str, Any]]:
         """Fetch few-shot examples from LangFuse dataset.

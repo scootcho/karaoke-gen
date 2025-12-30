@@ -131,8 +131,10 @@ class TestLangFusePromptService:
                     gap_id="gap_1",
                 )
 
-                # Verify LangFuse was called
-                mock_client.get_prompt.assert_called_once_with("gap-classifier")
+                # Verify prompt was returned from compile
+                assert prompt == "Compiled prompt with {{gap_text}}"
+                # Verify LangFuse was called with label parameter
+                mock_client.get_prompt.assert_called_once_with("gap-classifier", label="production")
                 mock_client.get_dataset.assert_called_once_with("gap-classifier-examples")
                 mock_prompt.compile.assert_called_once()
 

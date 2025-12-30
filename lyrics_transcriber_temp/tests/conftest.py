@@ -62,10 +62,8 @@ def test_logger():
     return logger
 
 
-@pytest.fixture(autouse=True)
-def reset_langfuse_singletons():
-    """Reset LangFuse singletons before each test to avoid state leakage."""
-    # Reset before test
+def _reset_langfuse_state():
+    """Helper to reset LangFuse singletons."""
     try:
         from lyrics_transcriber.correction.agentic.prompts.langfuse_prompts import reset_prompt_service
         from lyrics_transcriber.correction.agentic.observability.langfuse_integration import reset_langfuse_client
@@ -74,16 +72,13 @@ def reset_langfuse_singletons():
     except ImportError:
         pass  # Module may not be available in all test contexts
 
-    yield  # Run the test
 
-    # Reset after test
-    try:
-        from lyrics_transcriber.correction.agentic.prompts.langfuse_prompts import reset_prompt_service
-        from lyrics_transcriber.correction.agentic.observability.langfuse_integration import reset_langfuse_client
-        reset_prompt_service()
-        reset_langfuse_client()
-    except ImportError:
-        pass
+@pytest.fixture(autouse=True)
+def reset_langfuse_singletons():
+    """Reset LangFuse singletons before and after each test to avoid state leakage."""
+    _reset_langfuse_state()
+    yield  # Run the test
+    _reset_langfuse_state()
 
 
 @pytest.fixture(scope="session", autouse=True)
