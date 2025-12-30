@@ -47,21 +47,32 @@ const MOCK_INSTRUMENTALS = [
   },
 ];
 
+// Standard mocks for app page tests
+const APP_PAGE_MOCKS = [
+  {
+    method: 'GET',
+    path: '/api/jobs',
+    response: { body: [] },
+  },
+  {
+    method: 'GET',
+    path: '/api/users/me',
+    response: { body: { email: 'test@example.com', credits: 5 } },
+  },
+  {
+    method: 'GET',
+    path: '/api/themes',
+    response: { body: { themes: [] } },
+  },
+];
+
 test.describe('Karaoke Generation - Search Tab', () => {
   test.beforeEach(async ({ page }) => {
     await setAuthToken(page, 'test-token');
   });
 
   test('search tab shows artist and title inputs', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -76,15 +87,7 @@ test.describe('Karaoke Generation - Search Tab', () => {
   });
 
   test('search form validates required fields', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -102,11 +105,7 @@ test.describe('Karaoke Generation - Search Tab', () => {
   test('search creates a new job', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
+        ...APP_PAGE_MOCKS,
         {
           method: 'POST',
           path: '/api/audio-search/search',
@@ -161,13 +160,13 @@ test.describe('Karaoke Generation - Audio Selection', () => {
         },
         {
           method: 'GET',
-          path: '/api/themes',
-          response: { body: { themes: [] } },
+          path: '/api/users/me',
+          response: { body: { email: 'test@example.com', credits: 5 } },
         },
         {
           method: 'GET',
-          path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
+          path: '/api/themes',
+          response: { body: { themes: [] } },
         },
         {
           method: 'GET',
@@ -207,6 +206,16 @@ test.describe('Karaoke Generation - Instrumental Selection', () => {
               },
             ],
           },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/me',
+          response: { body: { email: 'test@example.com', credits: 5 } },
+        },
+        {
+          method: 'GET',
+          path: '/api/themes',
+          response: { body: { themes: [] } },
         },
       ],
     });
@@ -251,13 +260,13 @@ test.describe('Karaoke Generation - Lyrics Review', () => {
         },
         {
           method: 'GET',
-          path: '/api/themes',
-          response: { body: { themes: [] } },
+          path: '/api/users/me',
+          response: { body: { email: 'test@example.com', credits: 5 } },
         },
         {
           method: 'GET',
-          path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
+          path: '/api/themes',
+          response: { body: { themes: [] } },
         },
       ],
     });
@@ -278,15 +287,7 @@ test.describe('Karaoke Generation - Tabs', () => {
   });
 
   test('all input tabs are visible', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -298,15 +299,7 @@ test.describe('Karaoke Generation - Tabs', () => {
   });
 
   test('URL tab shows URL input', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -319,15 +312,7 @@ test.describe('Karaoke Generation - Tabs', () => {
   });
 
   test('Upload tab shows file input', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');

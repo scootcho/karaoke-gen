@@ -8,6 +8,20 @@ import { setupApiFixtures, setAuthToken } from '../fixtures/test-helper';
  * These tests run offline in CI without hitting production.
  */
 
+// Standard mocks for app page tests
+const APP_PAGE_BASE_MOCKS = [
+  {
+    method: 'GET',
+    path: '/api/users/me',
+    response: { body: { email: 'test@example.com', credits: 5 } },
+  },
+  {
+    method: 'GET',
+    path: '/api/themes',
+    response: { body: { themes: [] } },
+  },
+];
+
 // Mock job data for tests
 const MOCK_JOBS = [
   {
@@ -51,6 +65,7 @@ test.describe('Job Management - Job List', () => {
   test('displays job list correctly', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -73,6 +88,7 @@ test.describe('Job Management - Job List', () => {
   test('shows status badges on job cards', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -93,6 +109,7 @@ test.describe('Job Management - Job List', () => {
   test('shows empty state when no jobs', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -122,6 +139,7 @@ test.describe('Job Management - Job List', () => {
 
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -152,20 +170,11 @@ test.describe('Job Management - Job Details', () => {
   test('job card shows artist and title', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
           response: { body: MOCK_JOBS },
-        },
-        {
-          method: 'GET',
-          path: '/api/themes',
-          response: { body: { themes: [] } },
-        },
-        {
-          method: 'GET',
-          path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
         },
       ],
     });
@@ -181,6 +190,7 @@ test.describe('Job Management - Job Details', () => {
   test('completed job shows download links', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -230,20 +240,11 @@ test.describe('Job Management - Job Details', () => {
 
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
           response: { body: [failedJob] },
-        },
-        {
-          method: 'GET',
-          path: '/api/themes',
-          response: { body: { themes: [] } },
-        },
-        {
-          method: 'GET',
-          path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
         },
       ],
     });
@@ -264,6 +265,7 @@ test.describe('Job Management - Actions', () => {
   test('view logs button opens logs', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',
@@ -309,6 +311,7 @@ test.describe('Job Management - Actions', () => {
   test('cancel job button works', async ({ page }) => {
     await setupApiFixtures(page, {
       mocks: [
+        ...APP_PAGE_BASE_MOCKS,
         {
           method: 'GET',
           path: '/api/jobs',

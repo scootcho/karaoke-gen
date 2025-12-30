@@ -15,6 +15,25 @@ const MOBILE_VIEWPORTS = {
   'Pixel 7': { width: 412, height: 915 },
 } as const;
 
+// Standard mocks for app page tests
+const APP_PAGE_MOCKS = [
+  {
+    method: 'GET',
+    path: '/api/jobs',
+    response: { body: [] },
+  },
+  {
+    method: 'GET',
+    path: '/api/users/me',
+    response: { body: { email: 'test@example.com', credits: 5 } },
+  },
+  {
+    method: 'GET',
+    path: '/api/themes',
+    response: { body: { themes: [] } },
+  },
+];
+
 // Helper to check no horizontal overflow
 async function hasNoHorizontalOverflow(page: Page): Promise<boolean> {
   return await page.evaluate(() => {
@@ -107,15 +126,7 @@ test.describe('Mobile - App Page', () => {
     test(`${deviceName}: App page loads without horizontal scroll`, async ({ page }) => {
       await page.setViewportSize(viewport);
 
-      await setupApiFixtures(page, {
-        mocks: [
-          {
-            method: 'GET',
-            path: '/api/jobs',
-            response: { body: [] },
-          },
-        ],
-      });
+      await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
       await page.goto('/app');
       await page.waitForLoadState('networkidle');
@@ -127,15 +138,7 @@ test.describe('Mobile - App Page', () => {
     test(`${deviceName}: Tab buttons are visible and clickable`, async ({ page }) => {
       await page.setViewportSize(viewport);
 
-      await setupApiFixtures(page, {
-        mocks: [
-          {
-            method: 'GET',
-            path: '/api/jobs',
-            response: { body: [] },
-          },
-        ],
-      });
+      await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
       await page.goto('/app');
       await page.waitForLoadState('networkidle');
@@ -152,15 +155,7 @@ test.describe('Mobile - App Page', () => {
     test(`${deviceName}: Form inputs fit viewport`, async ({ page }) => {
       await page.setViewportSize(viewport);
 
-      await setupApiFixtures(page, {
-        mocks: [
-          {
-            method: 'GET',
-            path: '/api/jobs',
-            response: { body: [] },
-          },
-        ],
-      });
+      await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
       await page.goto('/app');
       await page.waitForLoadState('networkidle');
@@ -213,15 +208,7 @@ test.describe('Mobile - Touch Targets', () => {
     await setAuthToken(page, 'test-token');
     await page.setViewportSize(MOBILE_VIEWPORTS['iPhone SE']);
 
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -245,15 +232,7 @@ test.describe('Mobile - Interactions', () => {
   });
 
   test('can type in input fields', async ({ page }) => {
-    await setupApiFixtures(page, {
-      mocks: [
-        {
-          method: 'GET',
-          path: '/api/jobs',
-          response: { body: [] },
-        },
-      ],
-    });
+    await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
 
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -284,6 +263,16 @@ test.describe('Mobile - Interactions', () => {
               },
             ],
           },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/me',
+          response: { body: { email: 'test@example.com', credits: 5 } },
+        },
+        {
+          method: 'GET',
+          path: '/api/themes',
+          response: { body: { themes: [] } },
         },
       ],
     });
