@@ -10,7 +10,7 @@ Handles:
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 
 from google.cloud import firestore
@@ -320,19 +320,32 @@ class UserService:
                 logger.warning(f"Session revoked for {token_prefix}... (user: {session.user_email})")
                 return False, None, "Session has been revoked"
 
+            # Use timezone-aware datetime for all comparisons
+            # Firestore returns timezone-aware datetimes, so we must use aware datetimes
+            now = datetime.now(timezone.utc)
+
+            # Normalize session datetimes to be timezone-aware for comparison
+            # (handles legacy naive datetimes that may exist in Firestore)
+            expires_at = session.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            last_activity = session.last_activity_at
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+
             # Check expiry
-            now = datetime.utcnow()
-            if now > session.expires_at:
-                logger.warning(f"Session expired for {token_prefix}... (user: {session.user_email}, expired_at: {session.expires_at}, now: {now})")
+            if now > expires_at:
+                logger.warning(f"Session expired for {token_prefix}... (user: {session.user_email}, expired_at: {expires_at}, now: {now})")
                 return False, None, "Session has expired"
 
             # Check inactivity (7 days)
             inactivity_limit = now - timedelta(days=SESSION_EXPIRY_DAYS)
-            if session.last_activity_at < inactivity_limit:
-                logger.warning(f"Session inactive for {token_prefix}... (user: {session.user_email}, last_activity: {session.last_activity_at}, limit: {inactivity_limit})")
+            if last_activity < inactivity_limit:
+                logger.warning(f"Session inactive for {token_prefix}... (user: {session.user_email}, last_activity: {last_activity}, limit: {inactivity_limit})")
                 return False, None, "Session expired due to inactivity"
 
-            # Update last activity
+            # Update last activity (use timezone-aware datetime)
             doc_ref.update({'last_activity_at': now})
 
             # Get user
