@@ -21,14 +21,17 @@ if (fs.existsSync(envLocalPath)) {
 /**
  * Playwright configuration for karaoke-gen frontend E2E tests.
  *
- * Tests run against the local dev server (localhost:3000) which proxies
- * API requests to the real cloud backend (api.nomadkaraoke.com).
+ * DEFAULT: Runs regression tests with mocked API (CI-safe, offline).
+ * Tests run against the local dev server (localhost:3000) with mocked API responses.
+ *
+ * For production tests: use playwright.production.config.ts
+ * For fixture recording: use playwright.record.config.ts
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './e2e/regression',
 
-  // Run tests in parallel
-  fullyParallel: false, // Sequential for now since tests may share state
+  // Run tests in parallel for faster CI
+  fullyParallel: true,
 
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
@@ -77,19 +80,12 @@ export default defineConfig({
   },
 
   // Configure projects (browsers)
+  // Regression tests only use Chromium for CI speed
+  // Mobile tests set their own viewport sizes within tests
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    },
-    // Mobile device testing
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 7'] },
-    },
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 14'] },
     },
   ],
 

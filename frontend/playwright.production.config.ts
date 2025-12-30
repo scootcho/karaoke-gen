@@ -29,8 +29,8 @@ if (fs.existsSync(envLocalPath)) {
  *   npm run test:e2e:prod
  */
 export default defineConfig({
-  testDir: './e2e',
-  testMatch: '**/production-*.spec.ts',
+  testDir: './e2e/production',
+  testMatch: '**/*.spec.ts',
 
   // Run tests sequentially - we're testing real production
   fullyParallel: false,
