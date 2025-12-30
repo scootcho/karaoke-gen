@@ -464,6 +464,50 @@ export function getToken() {
 
 **Lesson**: For values that can change (auth tokens, user preferences), read fresh from storage on each access rather than caching in module scope.
 
+### GCP Organization Policies Block Service Account Keys
+
+**Problem**: GCP organization policies can block service account key creation even when you have Owner access to the project.
+
+```
+ERROR: Key creation is not allowed on this service account.
+violations: constraints/iam.disableServiceAccountKeyCreation
+```
+
+**Solution**: If you have Organization Policy Administrator role, temporarily disable the constraint:
+
+```bash
+# Disable at organization level (find org ID with: gcloud projects describe PROJECT --format="value(parent)")
+cat > /tmp/policy.yaml << 'EOF'
+name: organizations/ORG_ID/policies/iam.disableServiceAccountKeyCreation
+spec:
+  rules:
+  - enforce: false
+EOF
+gcloud org-policies set-policy /tmp/policy.yaml
+
+# Wait ~30 seconds for propagation
+sleep 30
+
+# Create key
+gcloud iam service-accounts keys create key.json --iam-account=SA_EMAIL
+
+# Re-enable immediately
+cat > /tmp/policy.yaml << 'EOF'
+name: organizations/ORG_ID/policies/iam.disableServiceAccountKeyCreation
+spec:
+  rules:
+  - enforce: true
+EOF
+gcloud org-policies set-policy /tmp/policy.yaml
+
+# Clean up
+rm /tmp/policy.yaml key.json  # After copying key contents
+```
+
+**Note**: Also check for the newer managed constraint `iam.managed.disableServiceAccountKeyCreation` and disable both if needed.
+
+**Lesson**: Service account keys are a security risk and should be avoided when possible. Use Workload Identity Federation instead. But for third-party services that require JSON keys (like LangFuse), this temporary policy override is the safest approach.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
