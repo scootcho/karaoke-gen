@@ -125,6 +125,14 @@ jobs:
         working-directory: frontend
         run: npx playwright test smoke.spec.ts --project=chromium --reporter=line
 
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
   frontend-e2e-full:
     name: "Frontend - E2E Full"
     runs-on: [self-hosted, linux, gcp]
@@ -154,7 +162,7 @@ jobs:
 
       - name: Run full E2E tests
         working-directory: frontend
-        run: npm run test:e2e:ci
+        run: npx playwright test --reporter=list -x
 
       - name: Upload Playwright report
         if: failure()
