@@ -10,6 +10,7 @@ from backend.config import settings
 from backend.api.routes import health, jobs, internal, file_upload, review, auth, audio_search, themes, users
 from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
 from backend.services.structured_logging import setup_structured_logging
+from backend.middleware.audit_logging import AuditLoggingMiddleware
 
 
 from backend.version import VERSION
@@ -99,6 +100,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add audit logging middleware (captures all requests with request_id for correlation)
+app.add_middleware(AuditLoggingMiddleware)
 
 # Include routers
 app.include_router(health.router, prefix="/api")

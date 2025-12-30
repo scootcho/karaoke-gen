@@ -54,10 +54,16 @@ def client(mock_job_manager, mock_worker_service):
     """Create TestClient with mocked dependencies."""
     mock_creds = MagicMock()
     mock_creds.universe_domain = 'googleapis.com'
-    
+
+    # Create a JobManager class that returns our mock instance
+    def mock_job_manager_factory(*args, **kwargs):
+        return mock_job_manager
+
     # Patch at the module level where jobs.py imports them
+    # Also patch JobManager class used in dependencies.py for auth checks
     with patch('backend.api.routes.jobs.job_manager', mock_job_manager), \
          patch('backend.api.routes.jobs.worker_service', mock_worker_service), \
+         patch('backend.services.job_manager.JobManager', mock_job_manager_factory), \
          patch('backend.services.firestore_service.firestore'), \
          patch('backend.services.storage_service.storage'), \
          patch('google.auth.default', return_value=(mock_creds, 'test-project')):
@@ -87,9 +93,13 @@ class TestGetJob:
         mock_job_manager.get_job.return_value = None
         mock_creds = MagicMock()
         mock_creds.universe_domain = 'googleapis.com'
-        
+
+        def mock_job_manager_factory(*args, **kwargs):
+            return mock_job_manager
+
         with patch('backend.api.routes.jobs.job_manager', mock_job_manager), \
              patch('backend.api.routes.jobs.worker_service', mock_worker_service), \
+             patch('backend.services.job_manager.JobManager', mock_job_manager_factory), \
              patch('backend.services.firestore_service.firestore'), \
              patch('backend.services.storage_service.storage'), \
              patch('google.auth.default', return_value=(mock_creds, 'test-project')):
@@ -173,12 +183,17 @@ class TestDeleteJob:
     def test_delete_nonexistent_job(self, mock_worker_service, auth_headers):
         """Test deleting non-existent job."""
         mock_job_manager = MagicMock()
+        mock_job_manager.get_job.return_value = None  # Job doesn't exist
         mock_job_manager.delete_job.return_value = False
         mock_creds = MagicMock()
         mock_creds.universe_domain = 'googleapis.com'
-        
+
+        def mock_job_manager_factory(*args, **kwargs):
+            return mock_job_manager
+
         with patch('backend.api.routes.jobs.job_manager', mock_job_manager), \
              patch('backend.api.routes.jobs.worker_service', mock_worker_service), \
+             patch('backend.services.job_manager.JobManager', mock_job_manager_factory), \
              patch('backend.services.firestore_service.firestore'), \
              patch('backend.services.storage_service.storage'), \
              patch('google.auth.default', return_value=(mock_creds, 'test-project')):

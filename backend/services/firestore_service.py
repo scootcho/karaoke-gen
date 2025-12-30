@@ -114,47 +114,53 @@ class FirestoreService:
         client_id: Optional[str] = None,
         created_after: Optional[datetime] = None,
         created_before: Optional[datetime] = None,
+        user_email: Optional[str] = None,
         limit: int = 100
     ) -> List[Job]:
         """
         List jobs with optional filters.
-        
+
         Args:
             status: Filter by job status
             environment: Filter by request_metadata.environment (test/production/development)
             client_id: Filter by request_metadata.client_id
             created_after: Filter jobs created after this datetime
             created_before: Filter jobs created before this datetime
+            user_email: Filter by user_email (owner of the job)
             limit: Maximum number of jobs to return
-            
+
         Returns:
             List of Job objects matching filters, ordered by created_at descending
         """
         try:
             query = self.db.collection(self.collection)
-            
+
             if status:
                 query = query.where(filter=FieldFilter('status', '==', status.value))
-            
+
             # Filter by request_metadata fields using dot notation
             if environment:
                 query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
-            
+
             if client_id:
                 query = query.where(filter=FieldFilter('request_metadata.client_id', '==', client_id))
-            
+
+            # Filter by user_email (job owner)
+            if user_email:
+                query = query.where(filter=FieldFilter('user_email', '==', user_email.lower()))
+
             # Date range filters
             if created_after:
                 query = query.where(filter=FieldFilter('created_at', '>=', created_after))
-            
+
             if created_before:
                 query = query.where(filter=FieldFilter('created_at', '<=', created_before))
-            
+
             query = query.order_by('created_at', direction=firestore.Query.DESCENDING).limit(limit)
-            
+
             docs = query.stream()
             jobs = [Job(**doc.to_dict()) for doc in docs]
-            
+
             return jobs
         except Exception as e:
             logger.error(f"Error listing jobs: {e}")

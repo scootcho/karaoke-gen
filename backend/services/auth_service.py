@@ -3,23 +3,31 @@ Authentication service for karaoke backend.
 
 Provides token-based authentication with support for:
 - Admin tokens (hardcoded in environment)
+- Admin by email domain (@nomadkaraoke.com)
 - User tokens (stored in Firestore auth_tokens collection)
 - Session tokens (stored in Firestore sessions collection, from magic link auth)
+- API keys for business users
 - Usage tracking and limits
 - Token management API
 """
 import logging
 import hashlib
 import time
+import secrets
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from datetime import datetime
 
 from backend.services.firestore_service import FirestoreService
 from backend.config import get_settings
+from backend.models.user import UserRole
 
 
 logger = logging.getLogger(__name__)
+
+# Admin email domains - users with these domains are automatically admin
+ADMIN_EMAIL_DOMAINS = ["nomadkaraoke.com"]
 
 
 class UserType(str, Enum):
@@ -27,24 +35,49 @@ class UserType(str, Enum):
     ADMIN = "admin"          # Unlimited access, can manage tokens
     UNLIMITED = "unlimited"  # Unlimited karaoke generation
     LIMITED = "limited"      # Limited number of uses
-    STRIPE = "stripe"        # Paid access via Stripe (future)
+    STRIPE = "stripe"        # Paid access via Stripe
+    API_KEY = "api_key"      # Business API key access
+
+
+@dataclass
+class AuthResult:
+    """Result of authentication validation."""
+    is_valid: bool
+    user_type: UserType
+    remaining_uses: int  # -1 = unlimited, 0 = exhausted, >0 = remaining
+    message: str
+    user_email: Optional[str] = None  # Email if authenticated via session/API key
+    is_admin: bool = False  # True if admin token or admin email domain
+    api_key_id: Optional[str] = None  # API key ID if authenticated via API key
+
+    def __iter__(self):
+        """Allow unpacking as tuple for backward compatibility."""
+        return iter((self.is_valid, self.user_type, self.remaining_uses, self.message))
+
+
+def is_admin_email(email: str) -> bool:
+    """Check if an email belongs to an admin domain."""
+    if not email:
+        return False
+    email_lower = email.lower()
+    return any(email_lower.endswith(f"@{domain}") for domain in ADMIN_EMAIL_DOMAINS)
 
 
 class AuthService:
     """Service for authentication and token management."""
-    
+
     def __init__(self):
         """Initialize auth service."""
         self.firestore = FirestoreService()
         self.settings = get_settings()
         self._init_admin_tokens()
-    
+
     def _init_admin_tokens(self):
         """Load admin tokens from environment variables."""
         # Get admin tokens from secret manager or env vars
         admin_tokens_str = self.settings.admin_tokens or ""
         self.admin_tokens = [t.strip() for t in admin_tokens_str.split(",") if t.strip()]
-        
+
         if self.admin_tokens:
             logger.info(f"Loaded {len(self.admin_tokens)} admin token(s)")
         else:
@@ -147,7 +180,261 @@ class AuthService:
             return True, token_type, -1, "Stripe access granted"
         
         return False, UserType.LIMITED, 0, "Unknown token type"
-    
+
+    def validate_token_full(self, token: str) -> AuthResult:
+        """
+        Validate an access token and return full authentication details.
+
+        This is the preferred method for new code as it returns complete
+        authentication context including user email and admin status.
+
+        Returns:
+            AuthResult with full authentication details
+        """
+        if not token:
+            return AuthResult(
+                is_valid=False,
+                user_type=UserType.LIMITED,
+                remaining_uses=0,
+                message="No token provided"
+            )
+
+        # Check for admin tokens (highest priority)
+        # Admin tokens from env var are associated with the system admin email
+        if token in self.admin_tokens:
+            logger.info("Admin token validated")
+            return AuthResult(
+                is_valid=True,
+                user_type=UserType.ADMIN,
+                remaining_uses=-1,
+                message="Admin access granted",
+                user_email="admin@nomadkaraoke.com",
+                is_admin=True
+            )
+
+        # Check stored tokens in Firestore (auth_tokens collection)
+        token_data = self.firestore.get_token(token)
+
+        if not token_data:
+            # Fall back to checking session tokens (from magic link auth)
+            from backend.services.user_service import get_user_service
+
+            user_service = get_user_service()
+            is_valid, user, _message = user_service.validate_session(token)
+
+            if is_valid and user:
+                # Session is valid - user is authenticated via magic link
+                credits = user.credits
+                user_email = user.email
+
+                # Check if user is admin by email domain or role
+                user_is_admin = is_admin_email(user_email) or user.role == UserRole.ADMIN
+
+                if user_is_admin:
+                    logger.info(f"Admin session validated for {user_email}")
+                    return AuthResult(
+                        is_valid=True,
+                        user_type=UserType.ADMIN,
+                        remaining_uses=-1,
+                        message="Admin access granted (domain)",
+                        user_email=user_email,
+                        is_admin=True
+                    )
+
+                logger.info(f"Session token validated for user {user_email} (credits: {credits})")
+
+                if credits <= 0:
+                    return AuthResult(
+                        is_valid=True,
+                        user_type=UserType.STRIPE,
+                        remaining_uses=0,
+                        message="Authenticated but no credits remaining",
+                        user_email=user_email,
+                        is_admin=False
+                    )
+
+                return AuthResult(
+                    is_valid=True,
+                    user_type=UserType.STRIPE,
+                    remaining_uses=credits,
+                    message=f"Session valid: {credits} credits",
+                    user_email=user_email,
+                    is_admin=False
+                )
+
+            # Neither auth_token nor session found
+            return AuthResult(
+                is_valid=False,
+                user_type=UserType.LIMITED,
+                remaining_uses=0,
+                message="Invalid token"
+            )
+
+        # Check if token is active
+        if not token_data.get("active", True):
+            return AuthResult(
+                is_valid=False,
+                user_type=UserType(token_data["type"]),
+                remaining_uses=0,
+                message="Token has been revoked"
+            )
+
+        token_type = UserType(token_data["type"])
+        max_uses = token_data.get("max_uses", -1)
+        # All auth_tokens must have an associated user_email for job ownership
+        token_user_email = token_data.get("user_email")
+        api_key_id = token_data.get("api_key_id")
+
+        # Require user_email on all auth_tokens (no anonymous token auth)
+        if not token_user_email:
+            logger.warning("Auth token missing required user_email field")
+            return AuthResult(
+                is_valid=False,
+                user_type=token_type,
+                remaining_uses=0,
+                message="Token configuration error: missing user_email. Please contact support."
+            )
+
+        # Check if token's user is an admin (by email domain)
+        token_is_admin = is_admin_email(token_user_email)
+
+        # UNLIMITED tokens: no usage limits
+        if token_type == UserType.UNLIMITED:
+            return AuthResult(
+                is_valid=True,
+                user_type=token_type,
+                remaining_uses=-1,
+                message="Unlimited access granted",
+                user_email=token_user_email,
+                is_admin=token_is_admin,
+                api_key_id=api_key_id
+            )
+
+        # LIMITED tokens: check usage count
+        if token_type == UserType.LIMITED:
+            if max_uses <= 0:  # -1 means unlimited
+                return AuthResult(
+                    is_valid=True,
+                    user_type=token_type,
+                    remaining_uses=-1,
+                    message="Limited token with unlimited uses",
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
+                    api_key_id=api_key_id
+                )
+
+            current_uses = token_data.get("usage_count", 0)
+            remaining = max_uses - current_uses
+
+            if remaining <= 0:
+                return AuthResult(
+                    is_valid=False,
+                    user_type=token_type,
+                    remaining_uses=0,
+                    message="Token usage limit exceeded",
+                    user_email=token_user_email,
+                    api_key_id=api_key_id
+                )
+
+            return AuthResult(
+                is_valid=True,
+                user_type=token_type,
+                remaining_uses=remaining,
+                message=f"Limited token: {remaining} uses remaining",
+                user_email=token_user_email,
+                is_admin=token_is_admin,
+                api_key_id=api_key_id
+            )
+
+        # STRIPE tokens: check expiration and usage
+        if token_type == UserType.STRIPE:
+            expires_at = token_data.get("expires_at")
+
+            if expires_at and time.time() > expires_at:
+                return AuthResult(
+                    is_valid=False,
+                    user_type=token_type,
+                    remaining_uses=0,
+                    message="Token has expired",
+                    user_email=token_user_email,
+                    api_key_id=api_key_id
+                )
+
+            if max_uses > 0:
+                current_uses = token_data.get("usage_count", 0)
+                remaining = max_uses - current_uses
+
+                if remaining <= 0:
+                    return AuthResult(
+                        is_valid=False,
+                        user_type=token_type,
+                        remaining_uses=0,
+                        message="Token usage limit exceeded",
+                        user_email=token_user_email,
+                        api_key_id=api_key_id
+                    )
+
+                return AuthResult(
+                    is_valid=True,
+                    user_type=token_type,
+                    remaining_uses=remaining,
+                    message=f"Stripe token: {remaining} uses remaining",
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
+                    api_key_id=api_key_id
+                )
+
+            return AuthResult(
+                is_valid=True,
+                user_type=token_type,
+                remaining_uses=-1,
+                message="Stripe access granted",
+                user_email=token_user_email,
+                is_admin=token_is_admin,
+                api_key_id=api_key_id
+            )
+
+        # API_KEY tokens
+        if token_type == UserType.API_KEY:
+            if max_uses > 0:
+                current_uses = token_data.get("usage_count", 0)
+                remaining = max_uses - current_uses
+                if remaining <= 0:
+                    return AuthResult(
+                        is_valid=False,
+                        user_type=token_type,
+                        remaining_uses=0,
+                        message="API key usage limit exceeded",
+                        user_email=token_user_email,
+                        api_key_id=api_key_id
+                    )
+                return AuthResult(
+                    is_valid=True,
+                    user_type=token_type,
+                    remaining_uses=remaining,
+                    message=f"API key valid: {remaining} uses remaining",
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
+                    api_key_id=api_key_id
+                )
+
+            return AuthResult(
+                is_valid=True,
+                user_type=token_type,
+                remaining_uses=-1,
+                message="API key access granted",
+                user_email=token_user_email,
+                is_admin=token_is_admin,
+                api_key_id=api_key_id
+            )
+
+        return AuthResult(
+            is_valid=False,
+            user_type=UserType.LIMITED,
+            remaining_uses=0,
+            message="Unknown token type"
+        )
+
     def increment_token_usage(self, token: str, job_id: str) -> bool:
         """
         Increment usage count for a token and track the job.

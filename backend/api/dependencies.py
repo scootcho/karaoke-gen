@@ -4,11 +4,11 @@ FastAPI dependencies for authentication and authorization.
 import logging
 import secrets
 from datetime import datetime, timedelta, UTC
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Union
 from fastapi import Depends, HTTPException, Header, Query, Request, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from backend.services.auth_service import get_auth_service, UserType, AuthService
+from backend.services.auth_service import get_auth_service, UserType, AuthService, AuthResult
 
 
 logger = logging.getLogger(__name__)
@@ -66,70 +66,130 @@ async def require_auth(
     auth_service: AuthService = Depends(get_auth_service),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     token: Optional[str] = Query(None)
-) -> Tuple[str, UserType, int]:
+) -> AuthResult:
     """
     Require authentication for an endpoint.
-    
+
     Returns:
-        (token, user_type, remaining_uses)
-        
+        AuthResult with full authentication context including:
+        - is_valid, user_type, remaining_uses, message (backward compatible via tuple unpacking)
+        - user_email: Email of authenticated user (if session/API key auth)
+        - is_admin: Whether user has admin privileges
+
     Raises:
         HTTPException: 401 if authentication fails
     """
     # Get token from request
     token_str = await get_token_from_request(request, credentials, token)
-    
+
     if not token_str:
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide token via Authorization header or ?token= parameter"
         )
-    
-    # Validate token
-    is_valid, user_type, remaining_uses, message = auth_service.validate_token(token_str)
-    
-    if not is_valid:
-        # Log more details for debugging token issues
+
+    # Validate token using the full method
+    auth_result = auth_service.validate_token_full(token_str)
+
+    # Get request_id from middleware for correlation
+    request_id = getattr(request.state, "request_id", None)
+
+    if not auth_result.is_valid:
+        # Log auth failure with request_id for correlation
         auth_header = request.headers.get("Authorization", "")
         logger.warning(
-            f"Authentication failed: {message}. "
-            f"Token provided: {bool(token_str)}, "
-            f"Token length: {len(token_str) if token_str else 0}, "
-            f"Auth header present: {bool(auth_header)}, "
-            f"Header prefix: {auth_header[:20] if auth_header else 'none'}..."
+            "auth_failed",
+            extra={
+                "request_id": request_id,
+                "audit_type": "auth_event",
+                "auth_message": auth_result.message,
+                "token_provided": bool(token_str),
+                "token_length": len(token_str) if token_str else 0,
+                "auth_header_present": bool(auth_header),
+            }
         )
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {auth_result.message}"
+        )
+
+    # Log successful auth with request_id for correlation with request audit
+    logger.info(
+        "auth_success",
+        extra={
+            "request_id": request_id,
+            "user_email": auth_result.user_email,
+            "user_type": auth_result.user_type.value if auth_result.user_type else None,
+            "is_admin": auth_result.is_admin,
+            "remaining_uses": auth_result.remaining_uses,
+            "audit_type": "auth_event",
+        }
+    )
+
+    return auth_result
+
+
+async def require_auth_legacy(
+    request: Request,
+    auth_service: AuthService = Depends(get_auth_service),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    token: Optional[str] = Query(None)
+) -> Tuple[str, UserType, int]:
+    """
+    Legacy authentication dependency that returns tuple.
+
+    DEPRECATED: Use require_auth which returns AuthResult instead.
+
+    Returns:
+        (token, user_type, remaining_uses)
+    """
+    token_str = await get_token_from_request(request, credentials, token)
+
+    if not token_str:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Provide token via Authorization header or ?token= parameter"
+        )
+
+    is_valid, user_type, remaining_uses, message = auth_service.validate_token(token_str)
+
+    if not is_valid:
         raise HTTPException(
             status_code=401,
             detail=f"Authentication failed: {message}"
         )
-    
-    logger.info(f"Authenticated as {user_type} (remaining: {remaining_uses})")
-    
+
     return token_str, user_type, remaining_uses
 
 
 async def require_admin(
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
-) -> Tuple[str, UserType, int]:
+    auth_result: AuthResult = Depends(require_auth)
+) -> AuthResult:
     """
     Require admin access for an endpoint.
-    
+
+    Admin access is granted if:
+    - Using an admin token from ADMIN_TOKENS env var
+    - User email is from admin domain (e.g., @nomadkaraoke.com)
+    - User role is set to ADMIN in database
+
     Returns:
-        (token, user_type, remaining_uses)
-        
+        AuthResult with admin privileges
+
     Raises:
         HTTPException: 403 if user is not admin
     """
-    token, user_type, remaining_uses = auth_data
-    
-    if user_type != UserType.ADMIN:
-        logger.warning(f"Admin access denied for {user_type} user")
+    if not auth_result.is_admin:
+        logger.warning(
+            f"Admin access denied for {auth_result.user_type} user "
+            f"(email: {auth_result.user_email or 'unknown'})"
+        )
         raise HTTPException(
             status_code=403,
             detail="Admin access required"
         )
-    
-    return token, user_type, remaining_uses
+
+    return auth_result
 
 
 def optional_auth(
@@ -168,14 +228,14 @@ def optional_auth(
 def require_review_auth_factory(job_id_param: str = "job_id"):
     """
     Factory to create a review authentication dependency.
-    
+
     Accepts either:
-    1. Full user authentication (admin/user token)
+    1. Full user authentication (admin/user token) - also validates job ownership
     2. Job-specific review token (only valid for the specific job)
-    
+
     Args:
         job_id_param: Name of the path parameter containing the job ID
-    
+
     Returns:
         Dependency function that validates review access
     """
@@ -189,37 +249,63 @@ def require_review_auth_factory(job_id_param: str = "job_id"):
     ) -> Tuple[str, str]:
         """
         Validate review access for a job.
-        
+
         Returns:
             (job_id, auth_type) where auth_type is "full" or "review_token"
-            
+
         Raises:
             HTTPException: 401 if authentication fails
+            HTTPException: 403 if user doesn't own the job (for full auth)
         """
         # Import here to avoid circular dependency
         from backend.services.job_manager import JobManager
-        
+
+        job_manager = JobManager()
+
         # Try full authentication first
         full_token = None
         if credentials:
             full_token = credentials.credentials
         elif token:
             full_token = token
-        
+
         if full_token:
-            is_valid, user_type, remaining_uses, message = auth_service.validate_token(full_token)
-            if is_valid:
-                logger.info(f"Review access granted via full auth ({user_type}) for job {job_id}")
+            auth_result = auth_service.validate_token_full(full_token)
+            if auth_result.is_valid:
+                # For full auth, also verify job ownership
+                job = job_manager.get_job(job_id)
+                if not job:
+                    raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+                # Check ownership: admin can access all, users only their own jobs
+                if not auth_result.is_admin:
+                    if auth_result.user_email and job.user_email:
+                        if auth_result.user_email.lower() != job.user_email.lower():
+                            logger.warning(
+                                f"Review access denied: user {auth_result.user_email} "
+                                f"tried to access job {job_id} owned by {job.user_email}"
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail="You don't have permission to access this job's review"
+                            )
+                    elif job.user_email:
+                        # Token auth without email trying to access a job with owner
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You don't have permission to access this job's review"
+                        )
+
+                logger.info(f"Review access granted via full auth ({auth_result.user_type}) for job {job_id}")
                 return job_id, "full"
-        
+
         # Try review token
         if review_token:
-            job_manager = JobManager()
             job = job_manager.get_job(job_id)
-            
+
             if not job:
                 raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-            
+
             # Validate review token matches
             if job.review_token and secrets.compare_digest(job.review_token, review_token):
                 # Check expiry if set
@@ -229,25 +315,25 @@ def require_review_auth_factory(job_id_param: str = "job_id"):
                     expiry = job.review_token_expires_at
                     if expiry.tzinfo is None:
                         expiry = expiry.replace(tzinfo=UTC)
-                    
+
                     if now > expiry:
                         logger.warning(f"Review token expired for job {job_id}")
                         raise HTTPException(
                             status_code=401,
                             detail="Review token has expired. Please request a new review link."
                         )
-                
+
                 logger.info(f"Review access granted via review_token for job {job_id}")
                 return job_id, "review_token"
             else:
                 logger.warning(f"Invalid review token for job {job_id}")
-        
+
         # No valid authentication
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide either a full access token or a valid review_token for this job."
         )
-    
+
     return require_review_auth
 
 
@@ -258,14 +344,14 @@ require_review_auth = require_review_auth_factory()
 def require_instrumental_auth_factory(job_id_param: str = "job_id"):
     """
     Factory to create an instrumental review authentication dependency.
-    
+
     Accepts either:
-    1. Full user authentication (admin/user token)
+    1. Full user authentication (admin/user token) - also validates job ownership
     2. Job-specific instrumental token (only valid for the specific job)
-    
+
     Args:
         job_id_param: Name of the path parameter containing the job ID
-    
+
     Returns:
         Dependency function that validates instrumental review access
     """
@@ -279,37 +365,63 @@ def require_instrumental_auth_factory(job_id_param: str = "job_id"):
     ) -> Tuple[str, str]:
         """
         Validate instrumental review access for a job.
-        
+
         Returns:
             (job_id, auth_type) where auth_type is "full" or "instrumental_token"
-            
+
         Raises:
             HTTPException: 401 if authentication fails
+            HTTPException: 403 if user doesn't own the job (for full auth)
         """
         # Import here to avoid circular dependency
         from backend.services.job_manager import JobManager
-        
+
+        job_manager = JobManager()
+
         # Try full authentication first
         full_token = None
         if credentials:
             full_token = credentials.credentials
         elif token:
             full_token = token
-        
+
         if full_token:
-            is_valid, user_type, remaining_uses, message = auth_service.validate_token(full_token)
-            if is_valid:
-                logger.info(f"Instrumental access granted via full auth ({user_type}) for job {job_id}")
+            auth_result = auth_service.validate_token_full(full_token)
+            if auth_result.is_valid:
+                # For full auth, also verify job ownership
+                job = job_manager.get_job(job_id)
+                if not job:
+                    raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+                # Check ownership: admin can access all, users only their own jobs
+                if not auth_result.is_admin:
+                    if auth_result.user_email and job.user_email:
+                        if auth_result.user_email.lower() != job.user_email.lower():
+                            logger.warning(
+                                f"Instrumental access denied: user {auth_result.user_email} "
+                                f"tried to access job {job_id} owned by {job.user_email}"
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail="You don't have permission to access this job's instrumental review"
+                            )
+                    elif job.user_email:
+                        # Token auth without email trying to access a job with owner
+                        raise HTTPException(
+                            status_code=403,
+                            detail="You don't have permission to access this job's instrumental review"
+                        )
+
+                logger.info(f"Instrumental access granted via full auth ({auth_result.user_type}) for job {job_id}")
                 return job_id, "full"
-        
+
         # Try instrumental token
         if instrumental_token:
-            job_manager = JobManager()
             job = job_manager.get_job(job_id)
-            
+
             if not job:
                 raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
-            
+
             # Validate instrumental token matches
             if job.instrumental_token and secrets.compare_digest(job.instrumental_token, instrumental_token):
                 # Check expiry if set
@@ -319,25 +431,25 @@ def require_instrumental_auth_factory(job_id_param: str = "job_id"):
                     expiry = job.instrumental_token_expires_at
                     if expiry.tzinfo is None:
                         expiry = expiry.replace(tzinfo=UTC)
-                    
+
                     if now > expiry:
                         logger.warning(f"Instrumental token expired for job {job_id}")
                         raise HTTPException(
                             status_code=401,
                             detail="Instrumental review token has expired. Please request a new review link."
                         )
-                
+
                 logger.info(f"Instrumental access granted via instrumental_token for job {job_id}")
                 return job_id, "instrumental_token"
             else:
                 logger.warning(f"Invalid instrumental token for job {job_id}")
-        
+
         # No valid authentication
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide either a full access token or a valid instrumental_token for this job."
         )
-    
+
     return require_instrumental_auth
 
 
