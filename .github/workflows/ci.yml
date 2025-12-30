@@ -126,8 +126,8 @@ jobs:
         run: npx playwright test smoke.spec.ts --project=chromium --reporter=line
 
   frontend-e2e-full:
-    name: "Frontend - E2E Full (~40 min)"
-    runs-on: ubuntu-latest
+    name: "Frontend - E2E Full"
+    runs-on: [self-hosted, linux, gcp]
     needs: changes
     # Full E2E suite only runs when PR has 'e2e' label (on-demand)
     if: >-
