@@ -329,9 +329,32 @@ gcloud run deploy service-name \
 For Gemini via Vertex AI, use Application Default Credentials (ADC) rather than API keys:
 - **Cloud Run**: Service account automatically authenticated - just grant `roles/aiplatform.user`
 - **Local dev**: Run `gcloud auth application-default login`
-- **Config**: Set `GOOGLE_CLOUD_PROJECT` and optionally `GCP_LOCATION` (defaults to `us-central1`)
+- **Config**: Set `GOOGLE_CLOUD_PROJECT` and optionally `GCP_LOCATION` (defaults to `global`)
 
 This approach uses GCP's free credits and existing IAM rather than separate API key management.
+
+### Gemini 3 Models Require Global Location
+
+**Problem**: Gemini 3 Flash (`gemini-3-flash-preview`) returns 404 errors when using regional Vertex AI endpoints.
+
+```
+404 Publisher Model `projects/PROJECT/locations/us-central1/publishers/google/models/gemini-3-flash-preview` was not found
+```
+
+**Solution**: Use `global` location instead of regional endpoints like `us-central1`:
+```python
+gcp_location: str = "global"  # Required for Gemini 3 models
+```
+
+**Additional gotcha**: Gemini 3 returns multimodal response format:
+```python
+# Gemini 2: response.content = "text"
+# Gemini 3: response.content = [{'type': 'text', 'text': '...'}]
+```
+
+Code must handle both formats when invoking LangChain ChatVertexAI.
+
+See `docs/archive/2025-12-30-gemini3-agentic-correction-fix.md` for full details.
 
 ### CI/CD: GitHub Actions
 
