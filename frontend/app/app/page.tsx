@@ -8,6 +8,7 @@ import { useJobNotifications, useVisibilityRefresh } from "@/hooks/use-notificat
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Music2, RefreshCw, Loader2, Zap, ZapOff, Moon, Sun } from "lucide-react"
+import { WarmingUpLoader } from "@/components/WarmingUpLoader"
 import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
 import { AuthStatus } from "@/components/auth"
@@ -25,6 +26,7 @@ export default function AppPage() {
   const router = useRouter()
   const [jobs, setJobs] = useState<Job[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const { enabled: autoModeEnabled, setEnabled: setAutoMode, toggle: toggleAutoMode } = useAutoMode()
   const { isDarkMode, toggleTheme, mounted } = useTheme()
@@ -33,6 +35,7 @@ export default function AppPage() {
   const loadJobs = useCallback(async () => {
     if (!getAccessToken()) {
       setIsLoadingJobs(false)
+      setIsInitialLoad(false)
       return
     }
     try {
@@ -45,6 +48,7 @@ export default function AppPage() {
       }
     } finally {
       setIsLoadingJobs(false)
+      setIsInitialLoad(false)
     }
   }, [])
 
@@ -90,6 +94,15 @@ export default function AppPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
+      </div>
+    )
+  }
+
+  // Show warming up loader during initial job load (cold start scenario)
+  if (isInitialLoad && isLoadingJobs) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <WarmingUpLoader spinnerClassName="w-10 h-10" />
       </div>
     )
   }
