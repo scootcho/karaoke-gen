@@ -126,7 +126,7 @@ def investigate_user(
         })
 
     # 4. Magic links (recent)
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     try:
         magic_query = db.collection("magic_links").where(
             filter=FieldFilter("email", "==", email)
