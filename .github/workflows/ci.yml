@@ -779,8 +779,19 @@ jobs:
           BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
 
           # Try to get the existing base image's hash label
+          # First check if image exists locally (fast, no network call)
+          # Only pull from registry if not cached locally
           EXISTING_HASH=""
-          if docker pull $BASE_IMAGE 2>/dev/null; then
+          if docker image inspect $BASE_IMAGE >/dev/null 2>&1; then
+            echo "✅ Base image found in local cache (skipping slow registry pull)"
+            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
+            # Fallback to old label name for backwards compatibility
+            if [ -z "$EXISTING_HASH" ]; then
+              EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
+            fi
+            echo "Existing base image hash: $EXISTING_HASH"
+          elif docker pull $BASE_IMAGE 2>/dev/null; then
+            echo "📥 Base image pulled from registry"
             EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
             # Fallback to old label name for backwards compatibility
             if [ -z "$EXISTING_HASH" ]; then
