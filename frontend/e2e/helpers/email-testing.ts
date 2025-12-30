@@ -49,9 +49,35 @@ export async function createEmailHelper(): Promise<EmailHelper> {
      * Create a new disposable inbox for testing
      */
     async createInbox(): Promise<InboxDto> {
-      const inbox = await mailslurp.createInbox();
-      console.log(`Created test inbox: ${inbox.emailAddress}`);
-      return inbox;
+      try {
+        const inbox = await mailslurp.createInbox();
+        console.log(`Created test inbox: ${inbox.emailAddress}`);
+        return inbox;
+      } catch (error: any) {
+        // Check for rate limit / subscription errors
+        const errorMessage = error?.message || error?.toString() || '';
+        const errorBody = error?.body ? JSON.stringify(error.body) : '';
+
+        if (
+          errorMessage.includes('429') ||
+          errorMessage.includes('limit') ||
+          errorMessage.includes('subscription') ||
+          errorMessage.includes('Upgrade') ||
+          errorBody.includes('limit') ||
+          errorBody.includes('Upgrade')
+        ) {
+          throw new Error(
+            `MailSlurp rate limit reached (free tier: 30 inboxes/month).\n\n` +
+            `To continue testing, either:\n` +
+            `1. Set KARAOKE_ACCESS_TOKEN in .env.local with a valid production token\n` +
+            `2. Upgrade your MailSlurp account\n` +
+            `3. Wait for the monthly limit to reset\n\n` +
+            `To get a token: Log in manually at https://gen.nomadkaraoke.com, ` +
+            `then run in browser console: localStorage.getItem('karaoke_access_token')`
+          );
+        }
+        throw error;
+      }
     },
 
     /**
