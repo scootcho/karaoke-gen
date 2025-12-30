@@ -372,6 +372,51 @@ def verify_in_transaction(transaction):
     transaction.update(doc_ref, {'used': True})
 ```
 
+### Firestore Returns Timezone-Aware Datetimes
+
+**Problem**: Firestore stores datetimes as timezone-aware (UTC). Code using `datetime.utcnow()` (naive) for comparisons fails with `TypeError: can't compare offset-naive and offset-aware datetimes`.
+
+**Symptoms**:
+- Session validation fails silently (exception caught, returns error)
+- Session exists and appears valid in database
+- First request after login may work, subsequent requests fail (because `last_activity_at` is updated to TZ-aware on first access)
+
+**Solution**: Always use timezone-aware datetimes:
+```python
+from datetime import datetime, timezone
+
+# GOOD
+now = datetime.now(timezone.utc)
+
+# Normalize Firestore datetimes that might be naive (legacy data)
+if session.expires_at.tzinfo is None:
+    expires_at = session.expires_at.replace(tzinfo=timezone.utc)
+```
+
+**Note**: `datetime.utcnow()` is deprecated in Python 3.12+. Use `datetime.now(timezone.utc)` instead.
+
+See `docs/archive/2025-12-30-auth-session-persistence-fix.md` for full details.
+
+### Frontend Module-Level State in Next.js
+
+**Problem**: Caching values in module-level variables can cause stale state in Next.js due to module caching and hydration timing.
+
+```javascript
+// BAD - may return stale value
+let accessToken = localStorage.getItem('key');
+export function getToken() { return accessToken; }
+
+// GOOD - always fresh
+export function getToken() {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('key');
+  }
+  return null;
+}
+```
+
+**Lesson**: For values that can change (auth tokens, user preferences), read fresh from storage on each access rather than caching in module scope.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
