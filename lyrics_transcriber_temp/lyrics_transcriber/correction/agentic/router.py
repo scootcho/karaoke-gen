@@ -5,8 +5,10 @@ from typing import Dict, Any
 
 from .providers.config import ProviderConfig
 
-# Default model for cloud deployments - Gemini 3 Flash via Vertex AI
-DEFAULT_CLOUD_MODEL = "vertexai/gemini-3-flash-preview"
+# Default model for cloud deployments - Gemini 2.0 Flash via Vertex AI
+# Note: gemini-3-flash-preview requires 'global' location, not us-central1
+# Using gemini-2.0-flash for broader regional availability
+DEFAULT_CLOUD_MODEL = "vertexai/gemini-2.0-flash"
 
 
 class ModelRouter:
@@ -19,7 +21,7 @@ class ModelRouter:
         """Choose appropriate model based on gap characteristics.
 
         Returns model identifier in format "provider/model" for LangChain:
-        - "vertexai/gemini-3-flash-preview" for Gemini via Vertex AI (default)
+        - "vertexai/gemini-2.0-flash" for Gemini via Vertex AI (default)
         - "ollama/llama3.2:latest" for local Ollama models
         - "openai/gpt-4" for OpenAI models
         - "anthropic/claude-3-sonnet-20240229" for Anthropic models
@@ -33,7 +35,7 @@ class ModelRouter:
         if self._config.privacy_mode:
             return "ollama/llama3.2:latest"
 
-        # Default to Gemini 3 Flash for all cases (fast, cost-effective)
+        # Default to Gemini 2.0 Flash for all cases (fast, cost-effective)
         return DEFAULT_CLOUD_MODEL
 
 
