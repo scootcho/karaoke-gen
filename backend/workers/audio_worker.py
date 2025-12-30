@@ -303,7 +303,17 @@ async def process_audio_separation(job_id: str) -> bool:
                     backing_vocals_models=job.backing_vocals_models,
                     other_stems_models=job.other_stems_models
                 )
-                
+
+                # Store effective model names in state_data for video_worker to use in file naming
+                # This ensures output filenames match local CLI behavior (e.g., "Instrumental model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+                effective_model_names = {
+                    'clean_instrumental_model': job.clean_instrumental_model or "model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+                    'backing_vocals_models': job.backing_vocals_models or ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"],
+                    'other_stems_models': job.other_stems_models or ["htdemucs_6s.yaml"],
+                }
+                job_manager.update_state_data(job_id, 'model_names', effective_model_names)
+                job_log.info(f"Stored effective model names: clean={effective_model_names['clean_instrumental_model']}")
+
                 # Format artist-title for file naming (matches CLI behavior)
                 artist_title = f"{job.artist} - {job.title}"
                 

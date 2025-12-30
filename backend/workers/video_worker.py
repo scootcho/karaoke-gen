@@ -268,6 +268,7 @@ async def generate_video(job_id: str) -> bool:
                     job_manager=job_manager,
                     temp_dir=temp_dir,
                     result=result,
+                    storage=storage,
                 )
             
             # Upload generated files to GCS
@@ -348,16 +349,17 @@ async def _handle_native_distribution(
     job_manager: JobManager,
     temp_dir: str,
     result: Dict[str, Any],
+    storage: StorageService = None,
 ) -> None:
     """
     Handle distribution uploads using native APIs (Dropbox SDK, Google Drive API).
-    
+
     This is used by the remote CLI instead of rclone-based uploads.
     The native APIs provide:
     - Better error handling and retry logic
     - No need for rclone binary in container
     - Credentials managed via Secret Manager
-    
+
     Args:
         job_id: Job ID
         job: Job object with dropbox_path and gdrive_folder_id fields
@@ -365,6 +367,7 @@ async def _handle_native_distribution(
         job_manager: Job manager for updating job state
         temp_dir: Temporary directory with output files
         result: Result dict from KaraokeFinalise.process()
+        storage: StorageService instance for downloading stems/lyrics
     """
     brand_code = result.get('brand_code')
     base_name = f"{job.artist} - {job.title}"
@@ -397,10 +400,22 @@ async def _handle_native_distribution(
                     result['brand_code'] = brand_code
                     job_log.info(f"Generated brand code: {brand_code}")
                 
+                # Prepare full distribution directory with stems/ and lyrics/ subfolders
+                # This must be done before upload to ensure complete output structure
+                if storage:
+                    await _prepare_distribution_directory(
+                        job_id=job_id,
+                        job=job,
+                        storage=storage,
+                        temp_dir=temp_dir,
+                        base_name=base_name,
+                        job_log=job_log,
+                    )
+
                 # Create folder name and upload files
                 folder_name = f"{brand_code} - {base_name}"
                 remote_folder = f"{dropbox_path}/{folder_name}"
-                
+
                 job_log.info(f"Uploading to Dropbox folder: {remote_folder}")
                 dropbox.upload_folder(temp_dir, remote_folder)
                 
@@ -606,6 +621,139 @@ async def _setup_working_directory(
         log_progress("Downloaded end JPG")
 
 
+async def _prepare_distribution_directory(
+    job_id: str,
+    job,
+    storage: StorageService,
+    temp_dir: str,
+    base_name: str,
+    job_log=None
+) -> None:
+    """
+    Prepare the full distribution directory structure matching local CLI output.
+
+    Creates:
+    - stems/ subfolder with all audio stems (proper model names)
+    - lyrics/ subfolder with intermediate lyrics files
+    - Root-level instrumentals with proper model names
+
+    This ensures the Dropbox upload contains the complete output structure.
+    """
+    def log_progress(message: str):
+        """Log to both module logger and job logger if available."""
+        logger.info(f"Job {job_id}: {message}")
+        if job_log:
+            job_log.info(message)
+
+    log_progress("Preparing full distribution directory structure")
+
+    # Get model names from state_data (stored by audio_worker)
+    model_names = job.state_data.get('model_names', {})
+    clean_model = model_names.get('clean_instrumental_model', 'model_bs_roformer_ep_317_sdr_12.9755.ckpt')
+    backing_models = model_names.get('backing_vocals_models', ['mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt'])
+    other_models = model_names.get('other_stems_models', ['htdemucs_6s.yaml'])
+    backing_model = backing_models[0] if backing_models else 'mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt'
+    other_model = other_models[0] if other_models else 'htdemucs_6s.yaml'
+
+    # Create stems subdirectory
+    stems_dir = os.path.join(temp_dir, "stems")
+    os.makedirs(stems_dir, exist_ok=True)
+
+    # Create lyrics subdirectory
+    lyrics_dir = os.path.join(temp_dir, "lyrics")
+    os.makedirs(lyrics_dir, exist_ok=True)
+
+    stems = job.file_urls.get('stems', {})
+    lyrics = job.file_urls.get('lyrics', {})
+
+    # --- Download stems to stems/ subfolder with proper model names ---
+
+    # Clean up simplified-named instrumentals from _setup_working_directory
+    # These were needed for KaraokeFinalise but shouldn't go to distribution
+    simplified_instrumental_patterns = [
+        f"{base_name} (Instrumental Clean).flac",
+        f"{base_name} (Instrumental Backing).flac",
+    ]
+    for pattern in simplified_instrumental_patterns:
+        simplified_path = os.path.join(temp_dir, pattern)
+        if os.path.exists(simplified_path):
+            os.remove(simplified_path)
+            log_progress(f"Removed simplified instrumental: {pattern}")
+
+    # Clean instrumental (from clean_instrumental_model)
+    if stems.get('instrumental_clean'):
+        dest_path = os.path.join(stems_dir, f"{base_name} (Instrumental {clean_model}).flac")
+        storage.download_file(stems['instrumental_clean'], dest_path)
+        log_progress(f"Downloaded clean instrumental to stems/")
+
+        # Also copy to root level for distribution
+        root_path = os.path.join(temp_dir, f"{base_name} (Instrumental {clean_model}).flac")
+        shutil.copy2(dest_path, root_path)
+
+    # Clean vocals (from clean_instrumental_model)
+    if stems.get('vocals_clean'):
+        dest_path = os.path.join(stems_dir, f"{base_name} (Vocals {clean_model}).flac")
+        storage.download_file(stems['vocals_clean'], dest_path)
+        log_progress(f"Downloaded clean vocals to stems/")
+
+    # Instrumental with backing vocals (from backing_vocals_model)
+    if stems.get('instrumental_with_backing'):
+        dest_path = os.path.join(stems_dir, f"{base_name} (Instrumental +BV {backing_model}).flac")
+        storage.download_file(stems['instrumental_with_backing'], dest_path)
+        log_progress(f"Downloaded instrumental+BV to stems/")
+
+        # Also copy to root level for distribution
+        root_path = os.path.join(temp_dir, f"{base_name} (Instrumental +BV {backing_model}).flac")
+        shutil.copy2(dest_path, root_path)
+
+    # Lead vocals (from backing_vocals_model)
+    if stems.get('lead_vocals'):
+        dest_path = os.path.join(stems_dir, f"{base_name} (Lead Vocals {backing_model}).flac")
+        storage.download_file(stems['lead_vocals'], dest_path)
+        log_progress(f"Downloaded lead vocals to stems/")
+
+    # Backing vocals (from backing_vocals_model)
+    if stems.get('backing_vocals'):
+        dest_path = os.path.join(stems_dir, f"{base_name} (Backing Vocals {backing_model}).flac")
+        storage.download_file(stems['backing_vocals'], dest_path)
+        log_progress(f"Downloaded backing vocals to stems/")
+
+    # Other stems (from other_stems_model - typically htdemucs_6s)
+    other_stem_keys = ['bass', 'drums', 'guitar', 'piano', 'other']
+    for stem_key in other_stem_keys:
+        if stems.get(stem_key):
+            stem_name = stem_key.capitalize()
+            dest_path = os.path.join(stems_dir, f"{base_name} ({stem_name} {other_model}).flac")
+            storage.download_file(stems[stem_key], dest_path)
+            log_progress(f"Downloaded {stem_key} to stems/")
+
+    # --- Download lyrics files to lyrics/ subfolder ---
+
+    # Common lyrics file types
+    lyrics_file_keys = ['lrc', 'ass', 'srt', 'txt', 'json', 'original_json', 'corrected_json']
+    for lyrics_key in lyrics_file_keys:
+        if lyrics.get(lyrics_key):
+            # Determine proper extension
+            ext_map = {
+                'lrc': '.lrc',
+                'ass': '.ass',
+                'srt': '.srt',
+                'txt': '.txt',
+                'json': '.json',
+                'original_json': '_original.json',
+                'corrected_json': '_corrected.json',
+            }
+            ext = ext_map.get(lyrics_key, f'.{lyrics_key}')
+            dest_path = os.path.join(lyrics_dir, f"{base_name} (Karaoke){ext}")
+            try:
+                storage.download_file(lyrics[lyrics_key], dest_path)
+                log_progress(f"Downloaded {lyrics_key} to lyrics/")
+            except Exception as e:
+                log_progress(f"Could not download {lyrics_key}: {e}")
+
+    log_progress(f"Distribution directory prepared with stems/ and lyrics/ subfolders")
+
+
 async def _upload_results(
     job_id: str,
     job_manager: JobManager,
@@ -614,7 +762,7 @@ async def _upload_results(
     result: Dict[str, Any]
 ) -> None:
     """Upload generated files to GCS."""
-    
+
     # Map of result keys to GCS paths
     file_mappings = [
         ('final_video', 'finals', 'lossless_4k_mp4'),

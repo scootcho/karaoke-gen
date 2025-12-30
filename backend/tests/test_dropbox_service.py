@@ -321,30 +321,94 @@ class TestUploadFile:
 
 class TestUploadFolder:
     """Test upload_folder method."""
-    
+
     @patch("backend.services.dropbox_service.secretmanager.SecretManagerServiceClient")
     def test_upload_folder(self, mock_sm_client_class, tmp_path):
         """Test uploading a folder with multiple files."""
         from backend.services.dropbox_service import DropboxService
-        
+
         mock_sm_client = Mock()
         mock_response = Mock()
         mock_response.payload.data = json.dumps({"access_token": "token"}).encode()
         mock_sm_client.access_secret_version.return_value = mock_response
         mock_sm_client_class.return_value = mock_sm_client
-        
-        # Create test folder with files
+
+        # Create test folder with files (no subdirs for this test)
         (tmp_path / "file1.txt").write_text("content1")
         (tmp_path / "file2.txt").write_text("content2")
-        (tmp_path / "subdir").mkdir()  # Should be skipped
-        
+
         service = DropboxService()
-        
+
         with patch.object(service, "upload_file") as mock_upload:
             service.upload_folder(str(tmp_path), "/Uploads/folder")
-            
-            # Should upload 2 files (not subdir)
+
+            # Should upload 2 files
             assert mock_upload.call_count == 2
+
+    @patch("backend.services.dropbox_service.secretmanager.SecretManagerServiceClient")
+    def test_upload_folder_recursive(self, mock_sm_client_class, tmp_path):
+        """Test uploading a folder recursively includes subdirectories."""
+        from backend.services.dropbox_service import DropboxService
+
+        mock_sm_client = Mock()
+        mock_response = Mock()
+        mock_response.payload.data = json.dumps({"access_token": "token"}).encode()
+        mock_sm_client.access_secret_version.return_value = mock_response
+        mock_sm_client_class.return_value = mock_sm_client
+
+        # Create test folder with files and subdirectories
+        (tmp_path / "root_file.txt").write_text("root content")
+        (tmp_path / "stems").mkdir()
+        (tmp_path / "stems" / "vocals.flac").write_text("vocals")
+        (tmp_path / "stems" / "instrumental.flac").write_text("instrumental")
+        (tmp_path / "lyrics").mkdir()
+        (tmp_path / "lyrics" / "song.lrc").write_text("lyrics")
+
+        service = DropboxService()
+
+        uploaded_files = []
+        def capture_upload(local_path, remote_path):
+            uploaded_files.append(remote_path)
+
+        with patch.object(service, "upload_file", side_effect=capture_upload) as mock_upload:
+            service.upload_folder(str(tmp_path), "/Uploads/folder")
+
+            # Should upload 4 files (1 root + 2 stems + 1 lyrics)
+            assert mock_upload.call_count == 4
+
+            # Check that subdirectory structure is preserved
+            assert "/Uploads/folder/root_file.txt" in uploaded_files
+            assert "/Uploads/folder/stems/vocals.flac" in uploaded_files
+            assert "/Uploads/folder/stems/instrumental.flac" in uploaded_files
+            assert "/Uploads/folder/lyrics/song.lrc" in uploaded_files
+
+    @patch("backend.services.dropbox_service.secretmanager.SecretManagerServiceClient")
+    def test_upload_folder_deeply_nested(self, mock_sm_client_class, tmp_path):
+        """Test uploading deeply nested folder structure."""
+        from backend.services.dropbox_service import DropboxService
+
+        mock_sm_client = Mock()
+        mock_response = Mock()
+        mock_response.payload.data = json.dumps({"access_token": "token"}).encode()
+        mock_sm_client.access_secret_version.return_value = mock_response
+        mock_sm_client_class.return_value = mock_sm_client
+
+        # Create deeply nested structure
+        (tmp_path / "level1").mkdir()
+        (tmp_path / "level1" / "level2").mkdir()
+        (tmp_path / "level1" / "level2" / "deep_file.txt").write_text("deep")
+
+        service = DropboxService()
+
+        uploaded_files = []
+        def capture_upload(local_path, remote_path):
+            uploaded_files.append(remote_path)
+
+        with patch.object(service, "upload_file", side_effect=capture_upload):
+            service.upload_folder(str(tmp_path), "/Uploads/folder")
+
+            # Check deeply nested file is uploaded with correct path
+            assert "/Uploads/folder/level1/level2/deep_file.txt" in uploaded_files
 
 
 class TestCreateSharedLink:
