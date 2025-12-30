@@ -87,6 +87,7 @@ class LangChainBridge(BaseAIProvider):
         
         # Lazy-initialized chat model
         self._chat_model: Optional[Any] = None
+        self._warmed_up: bool = False
     
     def name(self) -> str:
         """Return provider name for logging."""
@@ -134,9 +135,11 @@ class LangChainBridge(BaseAIProvider):
         if not self._chat_model:
             try:
                 self._chat_model = self._factory.create_chat_model(
-                    self._model, 
+                    self._model,
                     self._config
                 )
+                # Warm up the model to establish connection before real work
+                self._warm_up_model()
             except Exception as e:
                 self._circuit_breaker.record_failure(self._model)
                 logger.error(f"🤖 Failed to initialize chat model: {e}")
@@ -224,4 +227,29 @@ class LangChainBridge(BaseAIProvider):
             )
 
         return content
+
+    def _warm_up_model(self) -> None:
+        """Send a lightweight request to warm up the model connection.
+
+        This helps establish the gRPC connection and potentially warm up any
+        server-side resources before processing real correction requests.
+        The warm-up is non-blocking - if it fails, we log and continue.
+        """
+        if self._warmed_up:
+            return
+
+        logger.info(f"🔥 Warming up {self._model} connection...")
+        try:
+            from langchain_core.messages import HumanMessage
+
+            # Minimal prompt that requires almost no processing
+            warm_up_prompt = 'Respond with exactly: {"status":"ready"}'
+            response = self._chat_model.invoke([HumanMessage(content=warm_up_prompt)])
+
+            self._warmed_up = True
+            logger.info(f"🔥 Warm-up complete for {self._model}")
+        except Exception as e:
+            # Don't fail the actual request if warm-up fails
+            # Just log and continue - the real request might still work
+            logger.warning(f"🔥 Warm-up failed for {self._model}: {e} (continuing anyway)")
 
