@@ -21,6 +21,7 @@ from datetime import datetime
 
 from backend.services.firestore_service import FirestoreService
 from backend.config import get_settings
+from backend.models.user import UserRole
 
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ class AuthService:
                 user_email = user.email
 
                 # Check if user is admin by email domain or role
-                user_is_admin = is_admin_email(user_email) or user.role.value == "admin"
+                user_is_admin = is_admin_email(user_email) or user.role == UserRole.ADMIN
 
                 if user_is_admin:
                     logger.info(f"Admin session validated for {user_email}")

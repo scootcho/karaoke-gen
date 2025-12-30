@@ -21,8 +21,9 @@ Requires:
 """
 import argparse
 import json
+import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from google.cloud import firestore
@@ -47,14 +48,13 @@ def investigate_user(
     Returns:
         Dictionary with all user data
     """
-    import os
     project_id = os.environ.get('GOOGLE_CLOUD_PROJECT', 'nomadkaraoke')
     db = firestore.Client(project=project_id)
     email = email.lower()
 
     results = {
         "email": email,
-        "investigated_at": datetime.utcnow().isoformat() + "Z",
+        "investigated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "lookback_days": days,
     }
 

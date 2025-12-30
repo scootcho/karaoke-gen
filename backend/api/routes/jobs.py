@@ -206,14 +206,14 @@ async def list_jobs(
         if created_after:
             try:
                 created_after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid created_after format: {created_after}")
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid created_after format: {created_after}") from e
 
         if created_before:
             try:
                 created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}") from e
 
         # Determine user_email filter based on admin status
         # Admins see all jobs, regular users only see their own
@@ -280,7 +280,7 @@ async def bulk_delete_jobs(
     created_before: Optional[str] = None,
     delete_files: bool = True,
     confirm: bool = False,
-    auth_result: AuthResult = Depends(require_admin)
+    _auth_result: AuthResult = Depends(require_admin)
 ) -> dict:
     """
     Delete multiple jobs matching filter criteria.
