@@ -33,6 +33,65 @@ firestore_db = firestore.Database(
     app_engine_integration_mode="DISABLED",
 )
 
+# =============================================================================
+# Firestore Composite Indexes
+# These are required for queries that filter/sort on multiple fields.
+# Created manually via console, now managed here for reproducibility.
+# =============================================================================
+
+# Jobs: query by user_email, order by created_at (for user job lists)
+firestore_index_jobs_user_email = firestore.Index(
+    "firestore-index-jobs-user-email",
+    project=project_id,
+    database=firestore_db.name,
+    collection="jobs",
+    fields=[
+        firestore.IndexFieldArgs(field_path="user_email", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Jobs: query by status, order by created_at (for admin/system job lists)
+firestore_index_jobs_status = firestore.Index(
+    "firestore-index-jobs-status",
+    project=project_id,
+    database=firestore_db.name,
+    collection="jobs",
+    fields=[
+        firestore.IndexFieldArgs(field_path="status", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Sessions: query by user_email + is_active, order by created_at (for active session lists)
+firestore_index_sessions_active = firestore.Index(
+    "firestore-index-sessions-active",
+    project=project_id,
+    database=firestore_db.name,
+    collection="sessions",
+    fields=[
+        firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="user_email", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Magic links: query by email, order by created_at (for user magic link history)
+firestore_index_magic_links = firestore.Index(
+    "firestore-index-magic-links",
+    project=project_id,
+    database=firestore_db.name,
+    collection="magic_links",
+    fields=[
+        firestore.IndexFieldArgs(field_path="email", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
 # Create Cloud Storage Bucket
 bucket = storage.Bucket(
     "karaoke-storage",
@@ -658,6 +717,10 @@ domain_mapping = cloudrun.DomainMapping(
 pulumi.export("project_id", project_id)
 pulumi.export("bucket_name", bucket.name)
 pulumi.export("firestore_database", firestore_db.name)
+pulumi.export("firestore_index_jobs_user_email", firestore_index_jobs_user_email.name)
+pulumi.export("firestore_index_jobs_status", firestore_index_jobs_status.name)
+pulumi.export("firestore_index_sessions_active", firestore_index_sessions_active.name)
+pulumi.export("firestore_index_magic_links", firestore_index_magic_links.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("artifact_repo_url", artifact_repo.name.apply(
     lambda name: f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo"
