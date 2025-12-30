@@ -12,25 +12,23 @@ const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname =
   : (process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com');
 
 // Token management - stored in localStorage (client-side only)
-let accessToken: string | null = null;
-
-if (typeof window !== 'undefined') {
-  accessToken = localStorage.getItem('karaoke_access_token');
-}
+// Always read fresh from localStorage to avoid stale cached values
+// during Next.js module caching or hydration edge cases
 
 export function setAccessToken(token: string) {
-  accessToken = token;
   if (typeof window !== 'undefined') {
     localStorage.setItem('karaoke_access_token', token);
   }
 }
 
 export function getAccessToken(): string | null {
-  return accessToken;
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('karaoke_access_token');
+  }
+  return null;
 }
 
 export function clearAccessToken() {
-  accessToken = null;
   if (typeof window !== 'undefined') {
     localStorage.removeItem('karaoke_access_token');
   }
@@ -38,8 +36,9 @@ export function clearAccessToken() {
 
 function getAuthHeaders(): HeadersInit {
   const headers: HeadersInit = {};
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
+  const token = getAccessToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
