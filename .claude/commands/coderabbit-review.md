@@ -20,17 +20,26 @@ Then use GitHub tools to find the PR for this branch in the `nomadkaraoke/karaok
 
 ### 2. Fetch CodeRabbit Comments
 
-Get all review comments and regular comments on the PR:
+Get all reviews, review comments, and regular comments on the PR:
 
-**Review Comments (Potential Issues)**
-- Use `pull_request_read` with `method: "get_review_comments"` to get all review comment threads
-- Look for comments from the `coderabbitai` bot user
-- These are typically marked as "Potential issue" and MUST be resolved before merge
+**PR Reviews (MOST IMPORTANT - Contains Nitpicks and Issues)**
+- Use `pull_request_read` with `method: "get_reviews"` to get all PR reviews
+- Look for reviews from the `coderabbitai[bot]` user
+- The review `body` field contains the detailed analysis with:
+  - "Nitpick comments" section with specific code suggestions
+  - "Potential issues" flagged in the diff
+  - Code improvement suggestions with file paths and line numbers
+- **This is the primary source of CodeRabbit feedback** - parse this carefully
 
-**PR Comments (Including Nitpicks)**
+**Review Comments (Inline Code Comments)**
+- Use `pull_request_read` with `method: "get_review_comments"` to get inline code comments
+- These are comments attached to specific lines in the diff
+- Also check for `coderabbitai[bot]` comments here
+
+**PR Comments (Summary)**
 - Use `pull_request_read` with `method: "get_comments"` to get regular PR comments
-- CodeRabbit posts a summary comment that includes "Nitpick comments" section
-- These should also be reviewed and considered for action
+- CodeRabbit posts a walkthrough/summary comment here
+- Less actionable than the review body, but may contain additional context
 
 ### 3. Analyze Each Comment
 
