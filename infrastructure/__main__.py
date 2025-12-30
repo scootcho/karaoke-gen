@@ -1451,6 +1451,30 @@ docker system prune -af --filter "until=168h"
 CRON
 chmod +x /etc/cron.daily/docker-cleanup
 
+# ==================== Docker pre-warm cron ====================
+# Keep base images fresh by pulling hourly
+echo "Setting up Docker pre-warm cron..."
+cat > /etc/cron.hourly/docker-prewarm << 'CRON'
+#!/bin/bash
+# Pre-warm Docker images used by CI/CD
+# This ensures runners always have the latest base images cached
+
+# Log to syslog
+exec 1> >(logger -t docker-prewarm) 2>&1
+
+echo "Starting Docker image pre-warm..."
+
+# Configure Docker auth (uses instance service account)
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet 2>/dev/null
+
+# Pull latest images (|| true to not fail if network issues)
+docker pull us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend-base:latest || true
+docker pull us-central1-docker.pkg.dev/nomadkaraoke/karaoke-repo/karaoke-backend:latest || true
+
+echo "Docker image pre-warm complete"
+CRON
+chmod +x /etc/cron.hourly/docker-prewarm
+
 # ==================== Pre-warm Docker images ====================
 # Pre-fetch commonly used Docker images to speed up first CI runs
 echo "Pre-warming Docker images for faster CI builds..."
