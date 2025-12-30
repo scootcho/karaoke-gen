@@ -6,7 +6,6 @@ import os
 import shortuuid
 
 from lyrics_transcriber.correction.handlers.levenshtein import LevenshteinHandler
-from lyrics_transcriber.correction.handlers.llm import LLMHandler
 from lyrics_transcriber.correction.handlers.no_space_punct_match import NoSpacePunctuationMatchHandler
 from lyrics_transcriber.correction.handlers.relaxed_word_count_match import RelaxedWordCountMatchHandler
 from lyrics_transcriber.correction.handlers.repeat import RepeatCorrectionHandler
@@ -27,7 +26,6 @@ from lyrics_transcriber.correction.anchor_sequence import AnchorSequenceFinder
 from lyrics_transcriber.correction.handlers.base import GapCorrectionHandler
 from lyrics_transcriber.correction.handlers.extend_anchor import ExtendAnchorHandler
 from lyrics_transcriber.utils.word_utils import WordUtils
-from lyrics_transcriber.correction.handlers.llm_providers import OllamaProvider, OpenAIProvider
 
 
 class LyricsCorrector:
@@ -57,59 +55,17 @@ class LyricsCorrector:
         ]
 
         # Create all handlers but respect enabled_handlers if provided
+        # Note: Legacy LLMHandler removed - use AgenticCorrector via USE_AGENTIC_AI=1 instead
         all_handlers = [
             ("ExtendAnchorHandler", ExtendAnchorHandler(logger=self.logger)),
             ("WordCountMatchHandler", WordCountMatchHandler(logger=self.logger)),
             ("SyllablesMatchHandler", SyllablesMatchHandler(logger=self.logger)),
             ("RelaxedWordCountMatchHandler", RelaxedWordCountMatchHandler(logger=self.logger)),
             ("NoSpacePunctuationMatchHandler", NoSpacePunctuationMatchHandler(logger=self.logger)),
-            (
-                "LLMHandler_Ollama_R17B",
-                LLMHandler(
-                    provider=OllamaProvider(model="deepseek-r1:7b", logger=self.logger),
-                    name="LLMHandler_Ollama_R17B",
-                    logger=self.logger,
-                    cache_dir=self._cache_dir,
-                ),
-            ),
             ("RepeatCorrectionHandler", RepeatCorrectionHandler(logger=self.logger)),
             ("SoundAlikeHandler", SoundAlikeHandler(logger=self.logger)),
             ("LevenshteinHandler", LevenshteinHandler(logger=self.logger)),
         ]
-
-        # Add OpenRouter handlers only if API key is available
-        if os.getenv("OPENROUTER_API_KEY"):
-            openrouter_handlers = [
-                (
-                    "LLMHandler_OpenRouter_Sonnet",
-                    LLMHandler(
-                        provider=OpenAIProvider(
-                            model="anthropic/claude-3-sonnet",
-                            api_key=os.getenv("OPENROUTER_API_KEY"),
-                            base_url="https://openrouter.ai/api/v1",
-                            logger=self.logger,
-                        ),
-                        name="LLMHandler_OpenRouter_Sonnet",
-                        logger=self.logger,
-                        cache_dir=self._cache_dir,
-                    ),
-                ),
-                (
-                    "LLMHandler_OpenRouter_R1",
-                    LLMHandler(
-                        provider=OpenAIProvider(
-                            model="deepseek/deepseek-r1",
-                            api_key=os.getenv("OPENROUTER_API_KEY"),
-                            base_url="https://openrouter.ai/api/v1",
-                            logger=self.logger,
-                        ),
-                        name="LLMHandler_OpenRouter_R1",
-                        logger=self.logger,
-                        cache_dir=self._cache_dir,
-                    ),
-                ),
-            ]
-            all_handlers.extend(openrouter_handlers)
 
         # Store all handler information
         self.all_handlers = [

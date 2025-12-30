@@ -107,7 +107,7 @@ class ModelFactory:
             langfuse_client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
-                host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+                host=os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com"),
             )
             
             # Then create callback handler with the same public_key
