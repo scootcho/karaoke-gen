@@ -187,26 +187,41 @@ class LangChainBridge(BaseAIProvider):
     
     def _invoke_model(self, prompt: str) -> str:
         """Invoke the chat model with a prompt.
-        
+
         This is a simple wrapper that can be passed to the retry executor.
-        
+
         Args:
             prompt: The prompt to send
-            
+
         Returns:
             Response content as string
-            
+
         Raises:
             Exception: Any error from the model invocation
         """
         from langchain_core.messages import HumanMessage
-        
+
         # Prepare config with session_id in metadata (Langfuse format)
         config = {}
         if hasattr(self, '_session_id') and self._session_id:
             config["metadata"] = {"langfuse_session_id": self._session_id}
             logger.debug(f"🤖 [LangChain] Invoking with session_id: {self._session_id}")
-        
+
         response = self._chat_model.invoke([HumanMessage(content=prompt)], config=config)
-        return response.content
+        content = response.content
+
+        # Handle multimodal response format from Gemini 3+ models
+        # Response can be a list of content parts: [{'type': 'text', 'text': '...'}]
+        if isinstance(content, list):
+            # Extract text from the first text content part
+            for part in content:
+                if isinstance(part, dict) and part.get('type') == 'text':
+                    return part.get('text', '')
+            # Fallback: concatenate all text parts
+            return ''.join(
+                part.get('text', '') if isinstance(part, dict) else str(part)
+                for part in content
+            )
+
+        return content
 
