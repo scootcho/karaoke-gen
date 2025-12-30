@@ -205,6 +205,43 @@ def _get_effective_distribution_settings(...) -> EffectiveDistributionSettings:
 
 ## Testing Insights
 
+### E2E Mock Responses Must Match API Types Exactly
+
+**Problem**: E2E tests with mocked API responses were failing silently because mock response format didn't match the TypeScript type the app expected.
+
+The test mocked `/api/users/me` returning:
+```javascript
+{ body: { email: 'test@example.com', credits: 5 } }
+```
+
+But `UserProfileResponse` type expects:
+```typescript
+interface UserProfileResponse {
+  user: UserPublic;  // { email, credits, role }
+  has_session: boolean;
+}
+```
+
+**Symptoms**:
+- Tests passed initial auth check but `/api/jobs` was never called
+- Mock server showed only 2 of 4 endpoints being called
+- App redirected to `/` instead of loading job list
+- No error messages (silent failure)
+
+**Root cause**: The auth module's `fetchUser()` ran at page load and tried to access `response.user.email`. With the wrong mock format, this threw an error, the catch block called `clearAccessToken()`, and the app page saw no token and redirected.
+
+**Solution**: Mock must return the exact structure the TypeScript type expects:
+```javascript
+{
+  body: {
+    user: { email: 'test@example.com', credits: 5, role: 'user' },
+    has_session: true,
+  },
+}
+```
+
+**Lesson**: When writing E2E test mocks, check the TypeScript interface/type definition for the API response, not just what fields the UI displays. Silent failures from type mismatches are hard to debug.
+
 ### Emulator Tests Catch Real Bugs
 
 Unit tests with mocks didn't catch the `input_media_gcs_path` bug. Emulator integration tests did because they use real Firestore behavior.
