@@ -69,19 +69,23 @@ async def create_job(
     4. When both complete, job transitions to AWAITING_REVIEW
     """
     try:
-        # Determine job owner email securely:
-        # 1. Use authenticated user's email (most secure)
-        # 2. Allow admins to create jobs on behalf of other users via request.user_email
-        # 3. Token-based auth without email: no owner (legacy behavior)
+        # Determine job owner email:
+        # All authentication methods must provide a user_email for job ownership
         if auth_result.user_email:
+            # Use authenticated user's email (standard case)
             user_email = auth_result.user_email
-        elif request.user_email and auth_result.is_admin:
-            # Admins can create jobs on behalf of other users
-            user_email = request.user_email
-            logger.info(f"Admin creating job on behalf of {user_email}")
         else:
-            # Token-based auth without email - no owner
-            user_email = None
+            # This should never happen - all auth methods now require user_email
+            logger.error("Authentication succeeded but no user_email provided")
+            raise HTTPException(
+                status_code=500,
+                detail="Authentication error: no user identity available"
+            )
+
+        # Admins can optionally create jobs on behalf of other users
+        if request.user_email and auth_result.is_admin and request.user_email != auth_result.user_email:
+            user_email = request.user_email
+            logger.info(f"Admin {auth_result.user_email} creating job on behalf of {user_email}")
 
         # Create job with all preferences
         job_create = JobCreate(

@@ -285,8 +285,9 @@ class UserService:
         verify_doc = doc_ref.get()
         if not verify_doc.exists:
             logger.error(f"Session write verification FAILED for {user_email}: {token_prefix}...")
-        else:
-            logger.info(f"Created and verified session for {user_email}: {token_prefix}... (expires: {session.expires_at})")
+            raise RuntimeError(f"Failed to persist session for {user_email}")
+
+        logger.info(f"Created and verified session for {user_email}: {token_prefix}... (expires: {session.expires_at})")
 
         return session
 

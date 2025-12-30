@@ -199,6 +199,7 @@ class AuthService:
             )
 
         # Check for admin tokens (highest priority)
+        # Admin tokens from env var are associated with the system admin email
         if token in self.admin_tokens:
             logger.info("Admin token validated")
             return AuthResult(
@@ -206,6 +207,7 @@ class AuthService:
                 user_type=UserType.ADMIN,
                 remaining_uses=-1,
                 message="Admin access granted",
+                user_email="admin@nomadkaraoke.com",
                 is_admin=True
             )
 
@@ -278,9 +280,22 @@ class AuthService:
 
         token_type = UserType(token_data["type"])
         max_uses = token_data.get("max_uses", -1)
-        # API keys can have associated user email
-        api_key_email = token_data.get("user_email")
+        # All auth_tokens must have an associated user_email for job ownership
+        token_user_email = token_data.get("user_email")
         api_key_id = token_data.get("api_key_id")
+
+        # Require user_email on all auth_tokens (no anonymous token auth)
+        if not token_user_email:
+            logger.warning("Auth token missing required user_email field")
+            return AuthResult(
+                is_valid=False,
+                user_type=token_type,
+                remaining_uses=0,
+                message="Token configuration error: missing user_email. Please contact support."
+            )
+
+        # Check if token's user is an admin (by email domain)
+        token_is_admin = is_admin_email(token_user_email)
 
         # UNLIMITED tokens: no usage limits
         if token_type == UserType.UNLIMITED:
@@ -289,8 +304,8 @@ class AuthService:
                 user_type=token_type,
                 remaining_uses=-1,
                 message="Unlimited access granted",
-                user_email=api_key_email,
-                is_admin=False,
+                user_email=token_user_email,
+                is_admin=token_is_admin,
                 api_key_id=api_key_id
             )
 
@@ -302,8 +317,8 @@ class AuthService:
                     user_type=token_type,
                     remaining_uses=-1,
                     message="Limited token with unlimited uses",
-                    user_email=api_key_email,
-                    is_admin=False,
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
                     api_key_id=api_key_id
                 )
 
@@ -316,7 +331,7 @@ class AuthService:
                     user_type=token_type,
                     remaining_uses=0,
                     message="Token usage limit exceeded",
-                    user_email=api_key_email,
+                    user_email=token_user_email,
                     api_key_id=api_key_id
                 )
 
@@ -325,8 +340,8 @@ class AuthService:
                 user_type=token_type,
                 remaining_uses=remaining,
                 message=f"Limited token: {remaining} uses remaining",
-                user_email=api_key_email,
-                is_admin=False,
+                user_email=token_user_email,
+                is_admin=token_is_admin,
                 api_key_id=api_key_id
             )
 
@@ -340,7 +355,7 @@ class AuthService:
                     user_type=token_type,
                     remaining_uses=0,
                     message="Token has expired",
-                    user_email=api_key_email,
+                    user_email=token_user_email,
                     api_key_id=api_key_id
                 )
 
@@ -354,7 +369,7 @@ class AuthService:
                         user_type=token_type,
                         remaining_uses=0,
                         message="Token usage limit exceeded",
-                        user_email=api_key_email,
+                        user_email=token_user_email,
                         api_key_id=api_key_id
                     )
 
@@ -363,8 +378,8 @@ class AuthService:
                     user_type=token_type,
                     remaining_uses=remaining,
                     message=f"Stripe token: {remaining} uses remaining",
-                    user_email=api_key_email,
-                    is_admin=False,
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
                     api_key_id=api_key_id
                 )
 
@@ -373,8 +388,8 @@ class AuthService:
                 user_type=token_type,
                 remaining_uses=-1,
                 message="Stripe access granted",
-                user_email=api_key_email,
-                is_admin=False,
+                user_email=token_user_email,
+                is_admin=token_is_admin,
                 api_key_id=api_key_id
             )
 
@@ -389,7 +404,7 @@ class AuthService:
                         user_type=token_type,
                         remaining_uses=0,
                         message="API key usage limit exceeded",
-                        user_email=api_key_email,
+                        user_email=token_user_email,
                         api_key_id=api_key_id
                     )
                 return AuthResult(
@@ -397,8 +412,8 @@ class AuthService:
                     user_type=token_type,
                     remaining_uses=remaining,
                     message=f"API key valid: {remaining} uses remaining",
-                    user_email=api_key_email,
-                    is_admin=False,
+                    user_email=token_user_email,
+                    is_admin=token_is_admin,
                     api_key_id=api_key_id
                 )
 
@@ -407,8 +422,8 @@ class AuthService:
                 user_type=token_type,
                 remaining_uses=-1,
                 message="API key access granted",
-                user_email=api_key_email,
-                is_admin=False,
+                user_email=token_user_email,
+                is_admin=token_is_admin,
                 api_key_id=api_key_id
             )
 
