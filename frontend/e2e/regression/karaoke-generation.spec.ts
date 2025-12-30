@@ -57,7 +57,12 @@ const APP_PAGE_MOCKS = [
   {
     method: 'GET',
     path: '/api/users/me',
-    response: { body: { email: 'test@example.com', credits: 5 } },
+    response: {
+      body: {
+        user: { email: 'test@example.com', credits: 5, role: 'user' },
+        has_session: true,
+      },
+    },
   },
   {
     method: 'GET',
@@ -166,7 +171,12 @@ test.describe('Karaoke Generation - Audio Selection', () => {
         {
           method: 'GET',
           path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
+          response: {
+            body: {
+              user: { email: 'test@example.com', credits: 5, role: 'user' },
+              has_session: true,
+            },
+          },
         },
         {
           method: 'GET',
@@ -220,7 +230,12 @@ test.describe('Karaoke Generation - Instrumental Selection', () => {
         {
           method: 'GET',
           path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
+          response: {
+            body: {
+              user: { email: 'test@example.com', credits: 5, role: 'user' },
+              has_session: true,
+            },
+          },
         },
         {
           method: 'GET',
@@ -276,7 +291,12 @@ test.describe('Karaoke Generation - Lyrics Review', () => {
         {
           method: 'GET',
           path: '/api/users/me',
-          response: { body: { email: 'test@example.com', credits: 5 } },
+          response: {
+            body: {
+              user: { email: 'test@example.com', credits: 5, role: 'user' },
+              has_session: true,
+            },
+          },
         },
         {
           method: 'GET',
