@@ -111,19 +111,21 @@ class JobManager:
         client_id: Optional[str] = None,
         created_after: Optional[datetime] = None,
         created_before: Optional[datetime] = None,
+        user_email: Optional[str] = None,
         limit: int = 100
     ) -> List[Job]:
         """
         List jobs with optional filtering.
-        
+
         Args:
             status: Filter by job status
             environment: Filter by request_metadata.environment (test/production/development)
             client_id: Filter by request_metadata.client_id (customer identifier)
             created_after: Filter jobs created after this datetime
             created_before: Filter jobs created before this datetime
+            user_email: Filter by user_email (job owner)
             limit: Maximum number of jobs to return
-            
+
         Returns:
             List of Job objects matching filters
         """
@@ -133,6 +135,7 @@ class JobManager:
             client_id=client_id,
             created_after=created_after,
             created_before=created_before,
+            user_email=user_email,
             limit=limit
         )
     

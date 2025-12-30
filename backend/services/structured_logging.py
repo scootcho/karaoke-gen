@@ -91,7 +91,15 @@ class StructuredFormatter(logging.Formatter):
         
         # Add custom fields from 'extra' dict
         # Common fields we want to extract from log records
-        custom_fields = ["job_id", "worker", "operation", "duration", "status", "error"]
+        custom_fields = [
+            # Job-related fields
+            "job_id", "worker", "operation", "duration", "status", "error",
+            # Audit logging fields (from middleware and auth)
+            "request_id", "user_email", "client_ip", "latency_ms",
+            "audit_type", "method", "path", "status_code", "query_string",
+            "user_agent", "user_type", "is_admin", "remaining_uses",
+            "auth_message", "token_provided", "token_length", "auth_header_present",
+        ]
         for field in custom_fields:
             value = getattr(record, field, None)
             if value is not None:

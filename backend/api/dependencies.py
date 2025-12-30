@@ -4,11 +4,11 @@ FastAPI dependencies for authentication and authorization.
 import logging
 import secrets
 from datetime import datetime, timedelta, UTC
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Union
 from fastapi import Depends, HTTPException, Header, Query, Request, Path
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from backend.services.auth_service import get_auth_service, UserType, AuthService
+from backend.services.auth_service import get_auth_service, UserType, AuthService, AuthResult
 
 
 logger = logging.getLogger(__name__)
@@ -66,70 +66,130 @@ async def require_auth(
     auth_service: AuthService = Depends(get_auth_service),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     token: Optional[str] = Query(None)
-) -> Tuple[str, UserType, int]:
+) -> AuthResult:
     """
     Require authentication for an endpoint.
-    
+
     Returns:
-        (token, user_type, remaining_uses)
-        
+        AuthResult with full authentication context including:
+        - is_valid, user_type, remaining_uses, message (backward compatible via tuple unpacking)
+        - user_email: Email of authenticated user (if session/API key auth)
+        - is_admin: Whether user has admin privileges
+
     Raises:
         HTTPException: 401 if authentication fails
     """
     # Get token from request
     token_str = await get_token_from_request(request, credentials, token)
-    
+
     if not token_str:
         raise HTTPException(
             status_code=401,
             detail="Authentication required. Provide token via Authorization header or ?token= parameter"
         )
-    
-    # Validate token
-    is_valid, user_type, remaining_uses, message = auth_service.validate_token(token_str)
-    
-    if not is_valid:
-        # Log more details for debugging token issues
+
+    # Validate token using the full method
+    auth_result = auth_service.validate_token_full(token_str)
+
+    # Get request_id from middleware for correlation
+    request_id = getattr(request.state, "request_id", None)
+
+    if not auth_result.is_valid:
+        # Log auth failure with request_id for correlation
         auth_header = request.headers.get("Authorization", "")
         logger.warning(
-            f"Authentication failed: {message}. "
-            f"Token provided: {bool(token_str)}, "
-            f"Token length: {len(token_str) if token_str else 0}, "
-            f"Auth header present: {bool(auth_header)}, "
-            f"Header prefix: {auth_header[:20] if auth_header else 'none'}..."
+            "auth_failed",
+            extra={
+                "request_id": request_id,
+                "audit_type": "auth_event",
+                "auth_message": auth_result.message,
+                "token_provided": bool(token_str),
+                "token_length": len(token_str) if token_str else 0,
+                "auth_header_present": bool(auth_header),
+            }
         )
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authentication failed: {auth_result.message}"
+        )
+
+    # Log successful auth with request_id for correlation with request audit
+    logger.info(
+        "auth_success",
+        extra={
+            "request_id": request_id,
+            "user_email": auth_result.user_email,
+            "user_type": auth_result.user_type.value if auth_result.user_type else None,
+            "is_admin": auth_result.is_admin,
+            "remaining_uses": auth_result.remaining_uses,
+            "audit_type": "auth_event",
+        }
+    )
+
+    return auth_result
+
+
+async def require_auth_legacy(
+    request: Request,
+    auth_service: AuthService = Depends(get_auth_service),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    token: Optional[str] = Query(None)
+) -> Tuple[str, UserType, int]:
+    """
+    Legacy authentication dependency that returns tuple.
+
+    DEPRECATED: Use require_auth which returns AuthResult instead.
+
+    Returns:
+        (token, user_type, remaining_uses)
+    """
+    token_str = await get_token_from_request(request, credentials, token)
+
+    if not token_str:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Provide token via Authorization header or ?token= parameter"
+        )
+
+    is_valid, user_type, remaining_uses, message = auth_service.validate_token(token_str)
+
+    if not is_valid:
         raise HTTPException(
             status_code=401,
             detail=f"Authentication failed: {message}"
         )
-    
-    logger.info(f"Authenticated as {user_type} (remaining: {remaining_uses})")
-    
+
     return token_str, user_type, remaining_uses
 
 
 async def require_admin(
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
-) -> Tuple[str, UserType, int]:
+    auth_result: AuthResult = Depends(require_auth)
+) -> AuthResult:
     """
     Require admin access for an endpoint.
-    
+
+    Admin access is granted if:
+    - Using an admin token from ADMIN_TOKENS env var
+    - User email is from admin domain (e.g., @nomadkaraoke.com)
+    - User role is set to ADMIN in database
+
     Returns:
-        (token, user_type, remaining_uses)
-        
+        AuthResult with admin privileges
+
     Raises:
         HTTPException: 403 if user is not admin
     """
-    token, user_type, remaining_uses = auth_data
-    
-    if user_type != UserType.ADMIN:
-        logger.warning(f"Admin access denied for {user_type} user")
+    if not auth_result.is_admin:
+        logger.warning(
+            f"Admin access denied for {auth_result.user_type} user "
+            f"(email: {auth_result.user_email or 'unknown'})"
+        )
         raise HTTPException(
             status_code=403,
             detail="Admin access required"
         )
-    
-    return token, user_type, remaining_uses
+
+    return auth_result
 
 
 def optional_auth(

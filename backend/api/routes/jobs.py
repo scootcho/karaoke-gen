@@ -27,7 +27,7 @@ from backend.services.worker_service import get_worker_service
 from backend.services.storage_service import StorageService
 from backend.config import get_settings
 from backend.api.dependencies import require_admin, require_auth, require_instrumental_auth
-from backend.services.auth_service import UserType
+from backend.services.auth_service import UserType, AuthResult
 from backend.services.metrics import metrics
 
 
@@ -57,7 +57,7 @@ async def _trigger_workers_parallel(job_id: str) -> None:
 async def create_job(
     request: URLSubmissionRequest,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> JobResponse:
     """
     Create a new karaoke generation job from a URL.
@@ -69,6 +69,10 @@ async def create_job(
     4. When both complete, job transitions to AWAITING_REVIEW
     """
     try:
+        # Use authenticated user's email (prefer auth email over request for security)
+        # This ensures the job is always owned by the authenticated user
+        user_email = auth_result.user_email or request.user_email
+
         # Create job with all preferences
         job_create = JobCreate(
             url=str(request.url),
@@ -79,7 +83,7 @@ async def create_job(
             enable_youtube_upload=request.enable_youtube_upload,
             youtube_description=request.youtube_description,
             webhook_url=request.webhook_url,
-            user_email=request.user_email
+            user_email=user_email
         )
         job = job_manager.create_job(job_create)
         
@@ -109,18 +113,47 @@ async def create_job(
 @router.get("/{job_id}", response_model=Job)
 async def get_job(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> Job:
     """Get job status and details."""
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership - users can only see their own jobs, admins can see all
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this job")
+
     # If job is complete, include download URLs
     if job.status == JobStatus.COMPLETE:
         job.download_urls = job_manager.get_output_urls(job_id)
-    
+
     return job
+
+
+def _check_job_ownership(job: Job, auth_result: AuthResult) -> bool:
+    """
+    Check if the authenticated user owns the job or has admin access.
+
+    Returns:
+        True if user can access the job, False otherwise
+    """
+    # Admins can access all jobs
+    if auth_result.is_admin:
+        return True
+
+    # Check if user owns the job
+    if auth_result.user_email and job.user_email:
+        return auth_result.user_email.lower() == job.user_email.lower()
+
+    # If no user_email on auth (token auth without email), deny access to jobs with user_email
+    # This prevents token-based auth from accessing user jobs
+    if job.user_email:
+        return False
+
+    # Legacy jobs without user_email - allow access for backward compatibility
+    # TODO: Consider restricting this in the future
+    return True
 
 
 @router.get("", response_model=List[Job])
@@ -131,11 +164,13 @@ async def list_jobs(
     created_after: Optional[str] = None,
     created_before: Optional[str] = None,
     limit: int = 100,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> List[Job]:
     """
     List jobs with optional filters.
-    
+
+    Regular users only see their own jobs. Admins see all jobs.
+
     Args:
         status: Filter by job status (pending, complete, failed, etc.)
         environment: Filter by request_metadata.environment (test/production/development)
@@ -143,37 +178,52 @@ async def list_jobs(
         created_after: Filter jobs created after this ISO datetime (e.g., 2024-01-01T00:00:00Z)
         created_before: Filter jobs created before this ISO datetime
         limit: Maximum number of jobs to return (default 100)
-        
+
     Returns:
         List of jobs matching filters, ordered by created_at descending
     """
     from datetime import datetime
-    
+
     try:
         # Parse datetime strings if provided
         created_after_dt = None
         created_before_dt = None
-        
+
         if created_after:
             try:
                 created_after_dt = datetime.fromisoformat(created_after.replace('Z', '+00:00'))
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid created_after format: {created_after}")
-        
+
         if created_before:
             try:
                 created_before_dt = datetime.fromisoformat(created_before.replace('Z', '+00:00'))
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid created_before format: {created_before}")
-        
+
+        # Determine user_email filter based on admin status
+        # Admins see all jobs, regular users only see their own
+        user_email_filter = None
+        if not auth_result.is_admin:
+            if auth_result.user_email:
+                user_email_filter = auth_result.user_email
+                logger.debug(f"Filtering jobs for user: {user_email_filter}")
+            else:
+                # Token-based auth without user email - show no jobs for security
+                logger.warning("Non-admin auth without user_email, returning empty job list")
+                return []
+
         jobs = job_manager.list_jobs(
             status=status,
             environment=environment,
             client_id=client_id,
             created_after=created_after_dt,
             created_before=created_before_dt,
+            user_email=user_email_filter,
             limit=limit
         )
+
+        logger.debug(f"Listed {len(jobs)} jobs for user={auth_result.user_email}, admin={auth_result.is_admin}")
         return jobs
     except HTTPException:
         raise
@@ -186,16 +236,20 @@ async def list_jobs(
 async def delete_job(
     job_id: str,
     delete_files: bool = True,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """Delete a job and optionally its output files."""
     try:
         job = job_manager.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        
+
+        # Check ownership - users can only delete their own jobs
+        if not _check_job_ownership(job, auth_result):
+            raise HTTPException(status_code=403, detail="You don't have permission to delete this job")
+
         job_manager.delete_job(job_id, delete_files=delete_files)
-        
+
         return {"status": "success", "message": f"Job {job_id} deleted"}
     except HTTPException:
         raise
@@ -212,7 +266,7 @@ async def bulk_delete_jobs(
     created_before: Optional[str] = None,
     delete_files: bool = True,
     confirm: bool = False,
-    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
+    auth_result: AuthResult = Depends(require_admin)
 ) -> dict:
     """
     Delete multiple jobs matching filter criteria.
@@ -316,18 +370,22 @@ async def bulk_delete_jobs(
 @router.get("/{job_id}/review-data")
 async def get_review_data(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> Dict[str, Any]:
     """
     Get data needed for lyrics review interface.
-    
+
     Returns corrections JSON URL and audio URL.
     Frontend loads these to render the review UI.
     """
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this job")
+
     if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
         raise HTTPException(
             status_code=400,
@@ -376,13 +434,21 @@ async def get_review_data(
 async def start_review(
     job_id: str,
     request: StartReviewRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Mark job as IN_REVIEW (user opened review interface).
-    
+
     This helps track that the user is actively working on the review.
     """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this job")
+
     success = job_manager.transition_to_state(
         job_id=job_id,
         new_status=JobStatus.IN_REVIEW,
@@ -400,20 +466,24 @@ async def submit_corrections(
     job_id: str,
     submission: CorrectionsSubmission,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Save corrected lyrics during human review.
-    
+
     This endpoint saves review progress but does NOT complete the review.
     Call POST /{job_id}/complete-review to finish and trigger video rendering.
-    
+
     Can be called multiple times to save progress.
     """
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to modify this job")
+
     if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
         raise HTTPException(
             status_code=400,
@@ -459,11 +529,11 @@ async def submit_corrections(
 async def complete_review(
     job_id: str,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Complete the human review and trigger video rendering.
-    
+
     This is the FIRST critical human-in-the-loop completion point.
     After this:
     1. Job transitions to REVIEW_COMPLETE
@@ -474,7 +544,11 @@ async def complete_review(
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to modify this job")
+
     if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
         raise HTTPException(
             status_code=400,
@@ -948,18 +1022,22 @@ async def select_instrumental(
 @router.get("/{job_id}/download-urls")
 async def get_download_urls(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Get download URLs for all job output files.
-    
+
     Returns a dictionary mapping file types to download URLs.
     Uses the streaming download endpoint which proxies through the backend.
     """
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this job")
+
     if job.status != JobStatus.COMPLETE:
         raise HTTPException(
             status_code=400,
@@ -995,21 +1073,25 @@ async def download_file(
     job_id: str,
     category: str,
     file_key: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Stream download a specific file from a completed job.
-    
+
     This endpoint proxies the file from GCS through the backend,
     so no client-side authentication is required.
     """
     from fastapi.responses import StreamingResponse
     import tempfile
-    
+
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access this job")
+
     if job.status != JobStatus.COMPLETE:
         raise HTTPException(
             status_code=400,
@@ -1086,13 +1168,21 @@ async def download_file(
 async def cancel_job(
     job_id: str,
     request: CancelJobRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Cancel a job.
-    
+
     Jobs can be cancelled at any stage before completion.
     """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to cancel this job")
+
     success = job_manager.cancel_job(job_id, reason=request.reason)
     
     if not success:
@@ -1109,7 +1199,7 @@ async def cancel_job(
 async def retry_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> dict:
     """
     Retry a failed or cancelled job from the last successful checkpoint.
@@ -1126,6 +1216,10 @@ async def retry_job(
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check ownership
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to retry this job")
 
     if job.status not in [JobStatus.FAILED, JobStatus.CANCELLED]:
         raise HTTPException(
@@ -1301,19 +1395,19 @@ async def get_worker_logs(
     job_id: str,
     since_index: int = 0,
     worker: Optional[str] = None,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ) -> Dict[str, Any]:
     """
     Get worker logs for debugging.
-    
+
     This endpoint returns worker logs stored in Firestore.
     Use `since_index` for efficient polling (returns only new logs).
-    
+
     Args:
         job_id: Job ID
         since_index: Return only logs after this index (for pagination/polling)
         worker: Filter by worker name (audio, lyrics, screens, video, render)
-    
+
     Returns:
         {
             "logs": [{"timestamp": "...", "level": "INFO", "worker": "audio", "message": "..."}],
@@ -1324,10 +1418,14 @@ async def get_worker_logs(
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
+    # Check ownership - users can only see logs for their own jobs
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to access logs for this job")
+
     logs = job_manager.get_worker_logs(job_id, since_index=since_index, worker=worker)
     total = len(job.worker_logs) if job.worker_logs else 0
-    
+
     return {
         "logs": logs,
         "next_index": total,

@@ -266,6 +266,7 @@ class UserService:
     ) -> Session:
         """Create a new session for an authenticated user."""
         token = secrets.token_urlsafe(32)
+        token_prefix = token[:12]
 
         session = Session(
             token=token,
@@ -275,10 +276,18 @@ class UserService:
             user_agent=user_agent,
         )
 
+        # Serialize and write to Firestore
+        session_data = session.model_dump(mode='json')
         doc_ref = self.db.collection(SESSIONS_COLLECTION).document(token)
-        doc_ref.set(session.model_dump(mode='json'))
+        doc_ref.set(session_data)
 
-        logger.info(f"Created session for {user_email}")
+        # Verify the write succeeded by reading back
+        verify_doc = doc_ref.get()
+        if not verify_doc.exists:
+            logger.error(f"Session write verification FAILED for {user_email}: {token_prefix}...")
+        else:
+            logger.info(f"Created and verified session for {user_email}: {token_prefix}... (expires: {session.expires_at})")
+
         return session
 
     def validate_session(self, token: str) -> Tuple[bool, Optional[User], str]:
@@ -288,43 +297,58 @@ class UserService:
         Returns:
             (valid, user, message)
         """
+        # Log token info for debugging (only prefix for security)
+        token_prefix = token[:12] if token and len(token) >= 12 else token
+        logger.debug(f"Validating session token: {token_prefix}... (len={len(token) if token else 0})")
+
         try:
             doc_ref = self.db.collection(SESSIONS_COLLECTION).document(token)
             doc = doc_ref.get()
 
             if not doc.exists:
+                logger.warning(f"Session not found in Firestore: {token_prefix}...")
                 return False, None, "Invalid session"
 
-            session = Session(**doc.to_dict())
+            raw_data = doc.to_dict()
+            logger.debug(f"Session data found for {token_prefix}...: user_email={raw_data.get('user_email')}, is_active={raw_data.get('is_active')}")
+
+            session = Session(**raw_data)
 
             # Check if active
             if not session.is_active:
+                logger.warning(f"Session revoked for {token_prefix}... (user: {session.user_email})")
                 return False, None, "Session has been revoked"
 
             # Check expiry
-            if datetime.utcnow() > session.expires_at:
+            now = datetime.utcnow()
+            if now > session.expires_at:
+                logger.warning(f"Session expired for {token_prefix}... (user: {session.user_email}, expired_at: {session.expires_at}, now: {now})")
                 return False, None, "Session has expired"
 
             # Check inactivity (7 days)
-            inactivity_limit = datetime.utcnow() - timedelta(days=SESSION_EXPIRY_DAYS)
+            inactivity_limit = now - timedelta(days=SESSION_EXPIRY_DAYS)
             if session.last_activity_at < inactivity_limit:
+                logger.warning(f"Session inactive for {token_prefix}... (user: {session.user_email}, last_activity: {session.last_activity_at}, limit: {inactivity_limit})")
                 return False, None, "Session expired due to inactivity"
 
             # Update last activity
-            doc_ref.update({'last_activity_at': datetime.utcnow()})
+            doc_ref.update({'last_activity_at': now})
 
             # Get user
             user = self.get_user(session.user_email)
             if not user:
+                logger.warning(f"User not found for session {token_prefix}...: {session.user_email}")
                 return False, None, "User not found"
 
             if not user.is_active:
+                logger.warning(f"User account disabled for session {token_prefix}...: {session.user_email}")
                 return False, None, "User account is disabled"
 
+            logger.debug(f"Session valid for {token_prefix}... (user: {user.email}, credits: {user.credits})")
             return True, user, "Valid session"
 
-        except Exception:
-            logger.exception("Error validating session")
+        except Exception as e:
+            logger.exception(f"Error validating session {token_prefix}...: {e}")
             return False, None, "An error occurred during validation"
 
     def revoke_session(self, token: str) -> bool:
@@ -357,6 +381,47 @@ class UserService:
         except Exception:
             logger.exception("Error revoking sessions")
             return 0
+
+    def list_sessions_for_user(
+        self,
+        user_email: str,
+        include_revoked: bool = False,
+        limit: int = 50
+    ) -> List[Session]:
+        """
+        List all sessions for a user.
+
+        Args:
+            user_email: User's email address
+            include_revoked: If True, include revoked/inactive sessions
+            limit: Maximum number of sessions to return
+
+        Returns:
+            List of Session objects, ordered by created_at descending
+        """
+        try:
+            query = self.db.collection(SESSIONS_COLLECTION).where(
+                filter=FieldFilter('user_email', '==', user_email.lower())
+            )
+
+            if not include_revoked:
+                query = query.where(filter=FieldFilter('is_active', '==', True))
+
+            query = query.order_by('created_at', direction=firestore.Query.DESCENDING)
+            query = query.limit(limit)
+
+            sessions = []
+            for doc in query.stream():
+                try:
+                    sessions.append(Session(**doc.to_dict()))
+                except Exception as e:
+                    logger.warning(f"Failed to parse session document: {e}")
+
+            logger.debug(f"Found {len(sessions)} sessions for {user_email}")
+            return sessions
+        except Exception:
+            logger.exception(f"Error listing sessions for {user_email}")
+            return []
 
     # =========================================================================
     # Credit Operations
