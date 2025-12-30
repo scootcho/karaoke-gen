@@ -47,8 +47,8 @@ const TIMEOUTS = {
   action: 30_000,       // 30s for UI actions
   expect: 60_000,       // 60s for assertions
   apiCall: 120_000,     // 2min for API calls
-  jobProcessing: 600_000, // 10min for job processing
-  fullTest: 900_000,    // 15min for full test
+  jobProcessing: 1200_000, // 20min for job processing (AI services can be slow)
+  fullTest: 1800_000,   // 30min for full test
 } as const;
 
 // =============================================================================
@@ -713,7 +713,7 @@ test.describe('Production E2E - Full User Journey', () => {
     const { status: statusAfterProcessing, job: jobAfterProcessing } = await pollJobStatus(
       request,
       jobId,
-      ['in_review', 'awaiting_instrumental_selection', 'completed'],
+      ['in_review', 'awaiting_review', 'generating_screens', 'awaiting_instrumental_selection', 'completed'],
       accessToken!
     );
 
@@ -726,7 +726,22 @@ test.describe('Production E2E - Full User Journey', () => {
     console.log('STEP 7: Lyrics Review');
     console.log('========================================');
 
-    if (statusAfterProcessing === 'in_review') {
+    // If still generating screens, wait for it to reach review state
+    let reviewStatus = statusAfterProcessing;
+    if (statusAfterProcessing === 'generating_screens') {
+      console.log('  Waiting for screen generation to complete...');
+      const { status: newStatus } = await pollJobStatus(
+        request,
+        jobId,
+        ['in_review', 'awaiting_review', 'awaiting_instrumental_selection', 'completed'],
+        accessToken!,
+        600000 // 10 minutes for screen generation
+      );
+      reviewStatus = newStatus;
+      console.log(`  Status transitioned to: ${reviewStatus}`);
+    }
+
+    if (reviewStatus === 'in_review' || reviewStatus === 'awaiting_review') {
       await page.reload();
       await page.waitForLoadState('networkidle');
 
@@ -772,7 +787,7 @@ test.describe('Production E2E - Full User Journey', () => {
         }
       }
     } else {
-      console.log(`  Skipping - job status is ${statusAfterProcessing}`);
+      console.log(`  Skipping - job status is ${reviewStatus}`);
     }
 
     console.log('STEP 7 COMPLETE: Lyrics review handled');

@@ -32,6 +32,16 @@ This document summarizes improvements made to the production E2E test and backen
 - Created `capture-token.ts` helper for manual token capture
 - Run with `--headed` mode for manual login when MailSlurp is unavailable
 
+### 6. Generating Screens Status Handling
+- Added `generating_screens` to accepted statuses in Step 6
+- Step 7 waits for screen generation to complete before attempting lyrics review
+- Handles transition from `generating_screens` → `awaiting_review`
+
+### 7. Increased Timeouts
+- Job processing timeout increased from 10min to 20min
+- Full test timeout increased from 15min to 30min
+- Accounts for slow AI services and AudioShake latency
+
 ## Backend Issues Discovered
 
 ### 1. Job Status Not Updating
@@ -39,14 +49,24 @@ This document summarizes improvements made to the production E2E test and backen
 - **Workaround**: Test checks `state_data.audio_progress.stage` and `state_data.lyrics_progress.stage` for actual progress
 - **Impact**: Test needs to rely on state_data rather than status field
 
-### 2. Lyrics Worker Timeout/Crash
-- **Issue**: Lyrics worker appears to crash or timeout during agentic correction phase
-- **Observed**: Workers stop logging after "Attempting agentic correction for gap X/Y"
-- **Jobs affected**: bcc74e79 (stuck at gap 1/52), 4c585c6f (stuck at gap 1/52)
-- **Likely cause**: Cloud Run timeout or AI service rate limit during agentic correction
-- **Impact**: Jobs don't complete, stay in "downloading" status forever
+### 2. AudioShake Transcription Stuck
+- **Issue**: Lyrics worker appears to hang during AudioShake transcription
+- **Observed**: Jobs stuck at "Starting lyrics transcription via AudioShake" for 20+ minutes with no progress
+- **Jobs affected** (Dec 30, 2025):
+  - 76fa1d91: stuck at "lyrics: running" for 21 minutes
+  - 2faabfe8: stuck at "lyrics: transcribing" (progress 10%) for 21.7 minutes
+  - 5be65b1d: stuck at "lyrics: transcribing" - test cancelled
+- **Likely cause**: AudioShake API not responding or queue backlog
+- **Impact**: Jobs don't progress past transcription, E2E tests always timeout
 
-### 3. UI Job List Not Refreshing
+### 3. Lyrics Worker Agentic Correction Timeout
+- **Issue**: Lyrics worker crashes or times out during agentic correction phase
+- **Observed**: Workers stop logging after "Attempting agentic correction for gap X/Y"
+- **Jobs affected**: bcc74e79 (stuck at gap 1/52), 4c585c6f (stuck at gap 1/52), 66bbb6b5 (reached generating_screens but with AI errors)
+- **Likely cause**: Cloud Run timeout, Vertex AI/Gemini 404 errors ("Publisher Mode" errors)
+- **Impact**: Jobs either don't complete, or complete with gaps flagged for manual review
+
+### 4. UI Job List Not Refreshing
 - **Issue**: Frontend job list shows "0 jobs" even after job creation
 - **Workaround**: Test captures job_id from API response directly
 - **Impact**: "Select Audio" button never visible in UI
@@ -69,16 +89,21 @@ This document summarizes improvements made to the production E2E test and backen
 
 ## Recommendations
 
-1. **Fix Lyrics Worker Timeouts**
+1. **Fix AudioShake Integration**
+   - Add timeout/retry for AudioShake API calls
+   - Add health check/monitoring for AudioShake API
+   - Consider fallback to Whisper if AudioShake is unavailable
+
+2. **Fix Lyrics Worker Timeouts**
    - Increase Cloud Run timeout for lyrics worker
    - Add better error handling/retry in agentic correction
    - Log errors when AI service fails
 
-2. **Fix Status Field Updates**
+3. **Fix Status Field Updates**
    - Ensure job status updates as workers complete
    - Add status field for each worker (audio_status, lyrics_status)
 
-3. **Fix Frontend Job List**
+4. **Fix Frontend Job List**
    - Investigate why jobs don't appear after creation
    - May be a caching or state management issue
 
