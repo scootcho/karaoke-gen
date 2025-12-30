@@ -699,6 +699,37 @@ sendgrid_api_key = secretmanager.Secret(
     ),
 )
 
+# ==================== Langfuse Observability Secrets ====================
+# Langfuse provides LLM observability for the agentic AI correction workflow.
+# These secrets enable tracing of all Vertex AI/LLM calls for debugging and monitoring.
+
+# Langfuse Public Key (for client identification)
+langfuse_public_key = secretmanager.Secret(
+    "langfuse-public-key",
+    secret_id="langfuse-public-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Langfuse Secret Key (for authentication)
+langfuse_secret_key = secretmanager.Secret(
+    "langfuse-secret-key",
+    secret_id="langfuse-secret-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Langfuse Host (API endpoint - US region)
+langfuse_host = secretmanager.Secret(
+    "langfuse-host",
+    secret_id="langfuse-host",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
 # Create Cloud Run Domain Mapping
 # Maps api.nomadkaraoke.com to the karaoke-backend service
 domain_mapping = cloudrun.DomainMapping(

@@ -224,6 +224,7 @@ class ModelFactory:
             model=model_name,
             project=config.gcp_project_id,
             location=config.gcp_location,
+            timeout=config.request_timeout_seconds,
             max_retries=config.max_retries,
             callbacks=callbacks,
         )
