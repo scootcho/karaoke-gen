@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
 import { AuthDialog } from '@/components/auth/AuthDialog';
+import { WarmingUpLoader } from '@/components/WarmingUpLoader';
 
 // FAQ data
 const faqs = [
@@ -398,9 +399,7 @@ export default function LandingPage() {
 
           {/* Package Selection */}
           {packagesLoading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-primary-400" />
-            </div>
+            <WarmingUpLoader className="py-8" />
           )}
           {packagesError && (
             <div className="text-center py-8 text-red-400">
