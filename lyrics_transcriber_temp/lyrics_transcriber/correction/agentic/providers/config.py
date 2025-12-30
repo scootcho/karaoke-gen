@@ -19,8 +19,9 @@ class ProviderConfig:
     cache_dir: str
 
     # GCP/Vertex AI settings
+    # Note: Gemini 3 models require 'global' location (not regional like us-central1)
     gcp_project_id: Optional[str] = None
-    gcp_location: str = "us-central1"
+    gcp_location: str = "global"
 
     request_timeout_seconds: float = 30.0
     max_retries: int = 2
@@ -51,7 +52,7 @@ class ProviderConfig:
             privacy_mode=os.getenv("PRIVACY_MODE", "false").lower() in {"1", "true", "yes"},
             cache_dir=cache_dir,
             gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT_ID"),
-            gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
+            gcp_location=os.getenv("GCP_LOCATION", "global"),
             request_timeout_seconds=float(os.getenv("AGENTIC_TIMEOUT_SECONDS", "30.0")),
             max_retries=int(os.getenv("AGENTIC_MAX_RETRIES", "2")),
             retry_backoff_base_seconds=float(os.getenv("AGENTIC_BACKOFF_BASE_SECONDS", "0.2")),
