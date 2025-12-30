@@ -49,24 +49,14 @@ This document summarizes improvements made to the production E2E test and backen
 - **Workaround**: Test checks `state_data.audio_progress.stage` and `state_data.lyrics_progress.stage` for actual progress
 - **Impact**: Test needs to rely on state_data rather than status field
 
-### 2. AudioShake Transcription Stuck
-- **Issue**: Lyrics worker appears to hang during AudioShake transcription
-- **Observed**: Jobs stuck at "Starting lyrics transcription via AudioShake" for 20+ minutes with no progress
-- **Jobs affected** (Dec 30, 2025):
-  - 76fa1d91: stuck at "lyrics: running" for 21 minutes
-  - 2faabfe8: stuck at "lyrics: transcribing" (progress 10%) for 21.7 minutes
-  - 5be65b1d: stuck at "lyrics: transcribing" - test cancelled
-- **Likely cause**: AudioShake API not responding or queue backlog
-- **Impact**: Jobs don't progress past transcription, E2E tests always timeout
-
-### 3. Lyrics Worker Agentic Correction Timeout
+### 2. Lyrics Worker Agentic Correction Stuck
 - **Issue**: Lyrics worker crashes or times out during agentic correction phase
 - **Observed**: Workers stop logging after "Attempting agentic correction for gap X/Y"
 - **Jobs affected**: bcc74e79 (stuck at gap 1/52), 4c585c6f (stuck at gap 1/52), 66bbb6b5 (reached generating_screens but with AI errors)
 - **Likely cause**: Cloud Run timeout, Vertex AI/Gemini 404 errors ("Publisher Mode" errors)
 - **Impact**: Jobs either don't complete, or complete with gaps flagged for manual review
 
-### 4. UI Job List Not Refreshing
+### 3. UI Job List Not Refreshing
 - **Issue**: Frontend job list shows "0 jobs" even after job creation
 - **Workaround**: Test captures job_id from API response directly
 - **Impact**: "Select Audio" button never visible in UI
@@ -89,21 +79,17 @@ This document summarizes improvements made to the production E2E test and backen
 
 ## Recommendations
 
-1. **Fix AudioShake Integration**
-   - Add timeout/retry for AudioShake API calls
-   - Add health check/monitoring for AudioShake API
-   - Consider fallback to Whisper if AudioShake is unavailable
+1. **Fix Agentic Lyrics Correction**
+   - Workers hang at "Attempting agentic correction for gap 1/52"
+   - Add timeout/retry for agentic correction AI calls
+   - Consider making agentic correction optional or async
+   - Add better error logging when AI service fails
 
-2. **Fix Lyrics Worker Timeouts**
-   - Increase Cloud Run timeout for lyrics worker
-   - Add better error handling/retry in agentic correction
-   - Log errors when AI service fails
-
-3. **Fix Status Field Updates**
+2. **Fix Status Field Updates**
    - Ensure job status updates as workers complete
    - Add status field for each worker (audio_status, lyrics_status)
 
-4. **Fix Frontend Job List**
+3. **Fix Frontend Job List**
    - Investigate why jobs don't appear after creation
    - May be a caching or state management issue
 
