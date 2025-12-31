@@ -4,6 +4,7 @@ from pathlib import Path
 from copy import deepcopy
 import os
 import shortuuid
+import time
 
 from lyrics_transcriber.correction.handlers.levenshtein import LevenshteinHandler
 from lyrics_transcriber.correction.handlers.no_space_punct_match import NoSpacePunctuationMatchHandler
@@ -107,8 +108,24 @@ class LyricsCorrector:
         transcription_results: List[TranscriptionResult],
         lyrics_results: Dict[str, LyricsData],
         metadata: Optional[Dict[str, Any]] = None,
+        agentic_deadline: Optional[float] = None,
     ) -> CorrectionResult:
-        """Execute the correction process."""
+        """Execute the correction process.
+
+        Args:
+            transcription_results: List of transcription results to correct.
+            lyrics_results: Dictionary of lyrics data from various sources.
+            metadata: Optional metadata including artist, title, audio file hash.
+            agentic_deadline: Optional Unix timestamp (from time.time()). If agentic
+                correction is still running after this time, it will abort and return
+                uncorrected results for human review.
+
+        Note:
+            The deadline is checked between gap iterations, not during LLM processing.
+            A single long-running LLM call may exceed the deadline. The caller should
+            wrap this method with an outer timeout (e.g., asyncio.wait_for) as a safety
+            net for hung operations.
+        """
         # Optional agentic routing flag from environment; default off for safety
         agentic_enabled = os.getenv("USE_AGENTIC_AI", "").lower() in {"1", "true", "yes"}
         self.logger.info(f"🤖 AGENTIC MODE: {'ENABLED' if agentic_enabled else 'DISABLED'} (USE_AGENTIC_AI={os.getenv('USE_AGENTIC_AI', 'NOT_SET')})")
@@ -132,9 +149,9 @@ class LyricsCorrector:
         # Store anchor sequences for use in correction handlers
         self._anchor_sequences = anchor_sequences
 
-        # Process corrections with metadata
+        # Process corrections with metadata and optional deadline for agentic timeout
         corrections, corrected_segments, correction_steps, word_id_map, segment_id_map = self._process_corrections(
-            primary_transcription.segments, gap_sequences, metadata=metadata
+            primary_transcription.segments, gap_sequences, metadata=metadata, deadline=agentic_deadline
         )
 
         # Calculate correction ratio
@@ -178,9 +195,21 @@ class LyricsCorrector:
         return leading_space + new_word.strip() + trailing_space
 
     def _process_corrections(
-        self, segments: List[LyricsSegment], gap_sequences: List[GapSequence], metadata: Optional[Dict[str, Any]] = None
+        self, segments: List[LyricsSegment], gap_sequences: List[GapSequence], metadata: Optional[Dict[str, Any]] = None,
+        deadline: Optional[float] = None
     ) -> Tuple[List[WordCorrection], List[LyricsSegment], List[CorrectionStep], Dict[str, str], Dict[str, str]]:
         """Process corrections using handlers.
+
+        Args:
+            segments: List of lyrics segments to process.
+            gap_sequences: List of gap sequences to correct.
+            metadata: Optional metadata including artist, title, audio file hash.
+            deadline: Optional Unix timestamp (from time.time()). When agentic mode is
+                enabled and this deadline is exceeded, remaining gaps are skipped and
+                the method returns with whatever corrections have been made (likely none).
+
+        Returns:
+            Tuple of (corrections, corrected_segments, correction_steps, word_id_map, segment_id_map).
 
         The correction flow works as follows:
         1. First pass: Process all gaps
@@ -415,6 +444,16 @@ class LyricsCorrector:
         # === END TEMPORARY CODE ===
 
         for i, gap in enumerate(gap_sequences, 1):
+            # Check deadline before processing each gap (agentic mode only)
+            # This allows us to abort early and return uncorrected results for human review
+            if deadline and use_agentic_env and time.time() > deadline:
+                self.logger.warning(
+                    f"⏰ AGENTIC TIMEOUT: Deadline exceeded after processing {i-1}/{len(gap_sequences)} gaps. "
+                    "Skipping remaining gaps - human review will correct any issues."
+                )
+                # Break out of loop - continue with whatever corrections we have (likely none)
+                break
+
             self.logger.info(f"Processing gap {i}/{len(gap_sequences)} at position {gap.transcription_position}")
 
             # Get the actual words for logging
