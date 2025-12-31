@@ -549,6 +549,77 @@ rm /tmp/policy.yaml key.json  # After copying key contents
 
 **Lesson**: Service account keys are a security risk and should be avoided when possible. Use Workload Identity Federation instead. But for third-party services that require JSON keys (like LangFuse), this temporary policy override is the safest approach.
 
+### Cloud Run Horizontal Scaling and In-Memory Cache
+
+**Problem**: In-memory caches (singletons, module-level dicts) don't persist across Cloud Run instances. When scaling horizontally, request 1 may hit instance A and populate the cache, but request 2 may hit instance B which has an empty cache.
+
+**Example**: `AudioSearchService` cached search results in `self._cached_results`. Search hit instance A, but download hit instance B:
+```
+Error: No cached result for index 0. Available indices: 0--1. Run search() first.
+```
+
+**Solution**: Never rely on in-memory state across requests. Persist to Firestore/GCS:
+```python
+# BAD - cache lost if next request hits different instance
+self._cached_results = search_results
+result = self._cached_results[selection_index]
+
+# GOOD - persist in job state_data
+job_manager.update_job(job_id, {'state_data': {'search_results': results}})
+# Later...
+job = job_manager.get_job(job_id)
+result = job.state_data['search_results'][selection_index]
+```
+
+**Lesson**: Design for stateless request handling. Any state that must survive between requests must be persisted externally.
+
+### Sequential vs Parallel Worker Triggering
+
+**Problem**: For URL-based jobs (YouTube), triggering both audio and lyrics workers in parallel caused failures. Lyrics worker needs the audio file, but audio worker hadn't downloaded it yet.
+
+```python
+# BAD - for URL jobs, audio isn't ready yet
+background_tasks.add_task(_trigger_workers_parallel, job_id)  # Both start together
+# Lyrics worker times out waiting for audio
+```
+
+**Solution**: For URL jobs, trigger workers sequentially:
+```python
+# GOOD - audio downloads first, then triggers lyrics
+if job.url and not job.input_media_gcs_path:
+    # Only trigger audio worker; it will trigger lyrics after download
+    background_tasks.add_task(worker_service.trigger_audio_worker, job_id)
+else:
+    # For uploaded files, parallel is fine
+    background_tasks.add_task(_trigger_workers_parallel, job_id)
+```
+
+**Lesson**: Understand data dependencies between workers. If worker B needs output from worker A, don't run them in parallel.
+
+### Always Extract Auth Context Into Jobs
+
+**Problem**: Job creation endpoints used `require_auth` but never extracted `auth_result.user_email` to store on the job. Jobs were created with `user_email=None`, so users couldn't see their own jobs.
+
+```python
+# BAD - auth used for access control but email not captured
+@router.post("/jobs/upload")
+async def upload(auth_result = Depends(require_auth)):
+    job = JobCreate(...)  # user_email not set!
+```
+
+**Solution**: Extract user identity from auth and set on job:
+```python
+# GOOD - capture authenticated user's identity
+@router.post("/jobs/upload")
+async def upload(auth_result: AuthResult = Depends(require_auth)):
+    effective_user_email = auth_result.user_email or form_user_email
+    job = JobCreate(user_email=effective_user_email, ...)
+```
+
+**Lesson**: Auth provides identity, not just access control. If jobs need owner association, explicitly extract and store the user identifier.
+
+See `docs/archive/2024-12-31-job-failure-investigation.md` for full details.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
