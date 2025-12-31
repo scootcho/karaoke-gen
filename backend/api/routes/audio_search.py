@@ -35,7 +35,7 @@ from backend.services.audio_search_service import (
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.api.dependencies import require_auth
-from backend.services.auth_service import UserType
+from backend.services.auth_service import UserType, AuthResult
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -372,8 +372,31 @@ async def _download_and_start_processing(
                     target_file=target_file,
                     download_url=download_url,
                 )
+            elif source_name == 'YouTube' and download_url:
+                # For YouTube without remote, download directly using URL from state_data
+                # This avoids relying on in-memory cache which doesn't persist across instances
+                logger.info(f"Downloading YouTube audio directly from URL: {download_url}")
+                from backend.workers.audio_worker import download_from_url
+
+                local_path = await download_from_url(
+                    download_url,
+                    temp_dir,
+                    selected.get('artist'),
+                    selected.get('title')
+                )
+
+                if not local_path or not os.path.exists(local_path):
+                    raise DownloadError(f"Failed to download from YouTube: {download_url}")
+
+                # Create a result-like object
+                class DownloadResult:
+                    def __init__(self, filepath):
+                        self.filepath = filepath
+
+                result = DownloadResult(local_path)
             else:
-                # Fallback to search-based download
+                # Fallback to search-based download (may fail if cache is empty)
+                logger.warning(f"Falling back to cache-based download for {source_name} - this may fail on multi-instance deployments")
                 result = audio_search_service.download(
                     result_index=selection_index,
                     output_dir=temp_dir,
@@ -436,7 +459,7 @@ async def search_audio(
     request: Request,
     background_tasks: BackgroundTasks,
     body: AudioSearchRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Search for audio by artist and title, creating a new job.
@@ -500,6 +523,9 @@ async def search_audio(
             body.theme_id, body.enable_cdg, body.enable_txt
         )
 
+        # Use authenticated user's email
+        effective_user_email = auth_result.user_email
+
         # Create job
         job_create = JobCreate(
             artist=body.artist,
@@ -515,6 +541,7 @@ async def search_audio(
             discord_webhook_url=effective_discord_webhook_url,
             dropbox_path=effective_dropbox_path,
             gdrive_folder_id=effective_gdrive_folder_id,
+            user_email=effective_user_email,
             lyrics_artist=body.lyrics_artist,
             lyrics_title=body.lyrics_title,
             subtitle_offset_ms=body.subtitle_offset_ms,
@@ -766,7 +793,7 @@ async def search_audio(
 @router.get("/audio-search/{job_id}/results")
 async def get_audio_search_results(
     job_id: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Get audio search results for a job.
@@ -801,7 +828,7 @@ async def select_audio_source(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: AudioSelectRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Select an audio source and start job processing.
