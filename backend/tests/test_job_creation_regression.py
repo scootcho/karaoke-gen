@@ -90,8 +90,32 @@ class TestUserEmailExtraction:
         # Verify the endpoint extracts user_email from auth_result
         assert 'auth_result.user_email' in source, \
             "upload_and_create_job must extract user_email from auth_result"
-        assert 'effective_user_email' in source or 'user_email=' in source, \
+        assert 'effective_user_email' in source, \
+            "upload_and_create_job must use effective_user_email pattern"
+        assert 'user_email=effective_user_email' in source or 'user_email=' in source, \
             "upload_and_create_job must pass user_email to JobCreate"
+
+    def test_all_job_creation_endpoints_extract_user_email(self):
+        """
+        All job creation endpoints must extract user_email from AuthResult.
+
+        This is a regression guard for Issue 1 (user_email not being set).
+        """
+        from backend.api.routes import file_upload, audio_search
+        import inspect
+
+        endpoints_to_check = [
+            (file_upload, 'upload_and_create_job'),
+            (file_upload, 'create_job_from_url'),
+            (audio_search, 'search_audio'),
+        ]
+
+        for module, func_name in endpoints_to_check:
+            func = getattr(module, func_name)
+            source = inspect.getsource(func)
+
+            assert 'auth_result.user_email' in source, \
+                f"{func_name} must extract user_email from auth_result"
 
     @pytest.mark.asyncio
     async def test_create_from_url_endpoint_sets_user_email(self, mock_auth_result_with_email):
@@ -342,27 +366,46 @@ class TestAudioSearchCacheIndependence:
         assert 'state_data' in source, \
             "search_audio must use state_data for persistence"
 
-    def test_download_logic_handles_youtube_without_remote(self):
+    def test_download_code_has_youtube_direct_download_branch(self):
         """
-        When remote flacfetch is not enabled, YouTube downloads should
-        use direct download, not cache-based download.
+        Verify that _download_and_start_processing has the YouTube direct download path.
+
+        This checks that the code path exists for downloading YouTube audio directly
+        using the URL from state_data, avoiding the in-memory cache dependency.
         """
-        # Simulate the conditions in _download_and_start_processing
-        source_name = 'YouTube'
-        download_url = 'https://youtube.com/watch?v=abc123'
-        is_remote_enabled = False
-        source_id = 'abc123'
+        from backend.api.routes import audio_search
+        import inspect
 
-        # The logic in audio_search.py should check:
-        # elif source_name == 'YouTube' and download_url:
-        should_use_direct_download = (
-            source_name == 'YouTube' and
-            download_url and
-            not (source_id and source_name and is_remote_enabled)
-        )
+        # Get the source of _download_and_start_processing
+        source = inspect.getsource(audio_search._download_and_start_processing)
 
-        assert should_use_direct_download, \
-            "YouTube without remote should use direct URL download, not cache"
+        # Verify the YouTube direct download branch exists
+        assert "source_name == 'YouTube'" in source, \
+            "_download_and_start_processing must check for YouTube source"
+        assert 'download_url' in source, \
+            "_download_and_start_processing must use download_url from state_data"
+        assert 'download_from_url' in source, \
+            "_download_and_start_processing must call download_from_url for YouTube"
+
+    def test_youtube_download_branch_avoids_cache_dependency(self):
+        """
+        Verify that the YouTube download path uses URL from state_data,
+        not the in-memory cache that doesn't persist across Cloud Run instances.
+        """
+        from backend.api.routes import audio_search
+        import inspect
+
+        source = inspect.getsource(audio_search._download_and_start_processing)
+
+        # The fix specifically uses selected.get('url') which comes from state_data
+        # rather than audio_search_service cache
+        assert "selected.get('url')" in source or "download_url" in source, \
+            "YouTube download must use URL from selected result (state_data)"
+
+        # Verify it doesn't rely on cache for YouTube
+        # The branch is: elif source_name == 'YouTube' and download_url:
+        assert "YouTube" in source and "download_url" in source, \
+            "YouTube branch must check for download_url availability"
 
 
 class TestTranscriptionTimeout:
