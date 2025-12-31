@@ -23,9 +23,14 @@ class ProviderConfig:
     gcp_project_id: Optional[str] = None
     gcp_location: str = "global"
 
-    request_timeout_seconds: float = 30.0
+    # Timeout increased to 120s to handle Vertex AI connection establishment
+    # and potential network latency. The 499 "operation cancelled" errors seen
+    # at ~60s suggest internal timeouts; 120s provides headroom.
+    request_timeout_seconds: float = 120.0
     max_retries: int = 2
-    retry_backoff_base_seconds: float = 0.2
+    # Backoff increased from 0.2s to 2.0s base - if a request times out,
+    # retrying immediately is unlikely to help. Give the service time to recover.
+    retry_backoff_base_seconds: float = 2.0
     retry_backoff_factor: float = 2.0
     circuit_breaker_failure_threshold: int = 3
     circuit_breaker_open_seconds: int = 60
@@ -53,9 +58,9 @@ class ProviderConfig:
             cache_dir=cache_dir,
             gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT_ID"),
             gcp_location=os.getenv("GCP_LOCATION", "global"),
-            request_timeout_seconds=float(os.getenv("AGENTIC_TIMEOUT_SECONDS", "30.0")),
+            request_timeout_seconds=float(os.getenv("AGENTIC_TIMEOUT_SECONDS", "120.0")),
             max_retries=int(os.getenv("AGENTIC_MAX_RETRIES", "2")),
-            retry_backoff_base_seconds=float(os.getenv("AGENTIC_BACKOFF_BASE_SECONDS", "0.2")),
+            retry_backoff_base_seconds=float(os.getenv("AGENTIC_BACKOFF_BASE_SECONDS", "2.0")),
             retry_backoff_factor=float(os.getenv("AGENTIC_BACKOFF_FACTOR", "2.0")),
             circuit_breaker_failure_threshold=int(os.getenv("AGENTIC_CIRCUIT_THRESHOLD", "3")),
             circuit_breaker_open_seconds=int(os.getenv("AGENTIC_CIRCUIT_OPEN_SECONDS", "60")),
