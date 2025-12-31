@@ -44,6 +44,9 @@ from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Timeout for transcription (10 minutes) - used by asyncio.wait_for to prevent hanging
+TRANSCRIPTION_TIMEOUT_SECONDS = 600
+
 
 def _configure_agentic_ai():
     """Configure environment variables for agentic AI correction.
@@ -285,10 +288,9 @@ async def process_lyrics_transcription(job_id: str) -> bool:
                 if lyrics_search_title != job.title:
                     job_log.info(f"  Lyrics search title override: {lyrics_search_title}")
                 logger.info(f"[job:{job_id}] Calling lyrics_processor.transcribe_lyrics()")
-                
+
                 # Run transcription + correction with timeout
-                # AudioShake typically takes 1-2 minutes, but can hang. Set 10 minute timeout.
-                TRANSCRIPTION_TIMEOUT_SECONDS = 600  # 10 minutes
+                # AudioShake typically takes 1-2 minutes, but can hang. Uses TRANSCRIPTION_TIMEOUT_SECONDS.
                 with job_span("audioshake-transcription", job_id) as trans_span:
                     trans_start = time.time()
                     add_span_event("transcription_started")

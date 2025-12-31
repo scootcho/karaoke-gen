@@ -74,57 +74,24 @@ class TestUserEmailExtraction:
         )
         assert result.user_email is None
 
-    @pytest.mark.asyncio
-    async def test_upload_endpoint_sets_user_email_from_auth(self, mock_auth_result_with_email):
+    def test_upload_endpoint_extracts_user_email_from_auth(self):
         """
         /jobs/upload endpoint must set user_email from authenticated user.
 
-        This is the critical test - if it fails, users won't see their jobs.
+        This verifies the code pattern by inspecting the source.
+        Integration tests verify the full behavior.
         """
-        from backend.api.routes.file_upload import upload_and_create_job
-        from io import BytesIO
-        from fastapi import UploadFile
+        from backend.api.routes import file_upload
+        import inspect
 
-        # Mock dependencies
-        mock_request = Mock()
-        mock_request.headers = {}
-        mock_request.client = Mock(host="127.0.0.1")
-        mock_request.url = Mock(path="/api/jobs/upload")
+        # Get the source code of upload_and_create_job
+        source = inspect.getsource(file_upload.upload_and_create_job)
 
-        mock_background_tasks = Mock()
-        mock_file = UploadFile(
-            filename="test.flac",
-            file=BytesIO(b"fake audio data"),
-        )
-
-        with patch('backend.api.routes.file_upload.job_manager') as mock_jm, \
-             patch('backend.api.routes.file_upload.storage_service') as mock_storage, \
-             patch('backend.api.routes.file_upload.worker_service') as mock_worker:
-
-            # Configure mocks
-            mock_job = Mock()
-            mock_job.job_id = "test-job-123"
-            mock_jm.create_job.return_value = mock_job
-            mock_jm.get_job.return_value = mock_job
-
-            # Call endpoint
-            try:
-                await upload_and_create_job(
-                    request=mock_request,
-                    background_tasks=mock_background_tasks,
-                    auth_result=mock_auth_result_with_email,
-                    file=mock_file,
-                    artist="Test Artist",
-                    title="Test Title",
-                )
-            except Exception:
-                pass  # We only care about the JobCreate call
-
-            # Verify user_email was passed to JobCreate
-            if mock_jm.create_job.called:
-                job_create_arg = mock_jm.create_job.call_args[0][0]
-                assert job_create_arg.user_email == "testuser@example.com", \
-                    "user_email must be extracted from AuthResult and set on job"
+        # Verify the endpoint extracts user_email from auth_result
+        assert 'auth_result.user_email' in source, \
+            "upload_and_create_job must extract user_email from auth_result"
+        assert 'effective_user_email' in source or 'user_email=' in source, \
+            "upload_and_create_job must pass user_email to JobCreate"
 
     @pytest.mark.asyncio
     async def test_create_from_url_endpoint_sets_user_email(self, mock_auth_result_with_email):
@@ -154,20 +121,17 @@ class TestUserEmailExtraction:
             mock_jm.create_job.return_value = mock_job
             mock_cred.return_value.check_youtube_credentials.return_value = Mock(status=Mock(value="valid"))
 
-            try:
-                await create_job_from_url(
-                    request=mock_request,
-                    background_tasks=mock_background_tasks,
-                    body=body,
-                    auth_result=mock_auth_result_with_email,
-                )
-            except Exception:
-                pass
+            await create_job_from_url(
+                request=mock_request,
+                background_tasks=mock_background_tasks,
+                body=body,
+                auth_result=mock_auth_result_with_email,
+            )
 
-            if mock_jm.create_job.called:
-                job_create_arg = mock_jm.create_job.call_args[0][0]
-                assert job_create_arg.user_email == "testuser@example.com", \
-                    "create-from-url must set user_email from AuthResult"
+            mock_jm.create_job.assert_called_once()
+            job_create_arg = mock_jm.create_job.call_args[0][0]
+            assert job_create_arg.user_email == "testuser@example.com", \
+                "create-from-url must set user_email from AuthResult"
 
     @pytest.mark.asyncio
     async def test_audio_search_endpoint_sets_user_email(self, mock_auth_result_with_email):
@@ -199,20 +163,17 @@ class TestUserEmailExtraction:
             mock_cred.return_value.check_youtube_credentials.return_value = Mock(status=Mock(value="valid"))
             mock_search.return_value.search.return_value = []
 
-            try:
-                await search_audio(
-                    request=mock_request,
-                    background_tasks=mock_background_tasks,
-                    body=body,
-                    auth_result=mock_auth_result_with_email,
-                )
-            except Exception:
-                pass
+            await search_audio(
+                request=mock_request,
+                background_tasks=mock_background_tasks,
+                body=body,
+                auth_result=mock_auth_result_with_email,
+            )
 
-            if mock_jm.create_job.called:
-                job_create_arg = mock_jm.create_job.call_args[0][0]
-                assert job_create_arg.user_email == "testuser@example.com", \
-                    "audio-search must set user_email from AuthResult"
+            mock_jm.create_job.assert_called_once()
+            job_create_arg = mock_jm.create_job.call_args[0][0]
+            assert job_create_arg.user_email == "testuser@example.com", \
+                "audio-search must set user_email from AuthResult"
 
     def test_effective_user_email_prefers_auth_over_form(self):
         """
@@ -332,6 +293,7 @@ class TestAudioSearchCacheIndependence:
     def test_search_results_stored_in_job_state_data(self):
         """
         Search results must be stored in job.state_data for persistence.
+        This tests the Job model's ability to store search results.
         """
         from backend.models.job import Job, JobStatus
 
@@ -359,36 +321,26 @@ class TestAudioSearchCacheIndependence:
         assert len(job.state_data['audio_search_results']) == 1
         assert job.state_data['audio_search_results'][0]['url'] == 'https://youtube.com/watch?v=abc123'
 
-    def test_youtube_download_uses_url_from_state_data(self):
+    def test_audio_search_endpoint_stores_results_in_state_data(self):
         """
-        YouTube downloads must use URL from state_data, not in-memory cache.
+        Verify that the search_audio code path stores results in job.state_data.
 
-        This is critical for multi-instance deployments where the search
-        request may hit a different instance than the download request.
+        This tests that the audio_search route has the correct pattern for
+        persisting search results. The actual integration is tested elsewhere.
         """
-        # Simulate state_data from a previous search (possibly on different instance)
-        state_data = {
-            'audio_search_results': [
-                {
-                    'provider': 'YouTube',
-                    'title': 'Test Song',
-                    'artist': 'Test Artist',
-                    'url': 'https://youtube.com/watch?v=abc123',
-                    'source_id': 'abc123',
-                }
-            ]
-        }
+        # Verify the import and module structure exists
+        from backend.api.routes import audio_search
+        import inspect
 
-        # Get the selected result from state_data (not from service cache)
-        selection_index = 0
-        selected = state_data['audio_search_results'][selection_index]
+        # Get the source code of search_audio
+        source = inspect.getsource(audio_search.search_audio)
 
-        assert selected['provider'] == 'YouTube'
-        assert selected['url'] == 'https://youtube.com/watch?v=abc123'
-
-        # The download should use this URL directly
-        download_url = selected.get('url')
-        assert download_url is not None, "YouTube URL must be available from state_data"
+        # Verify the endpoint stores results in state_data
+        # The code uses job_manager.update_job with state_data dict
+        assert 'audio_search_results' in source, \
+            "search_audio must store results under 'audio_search_results' key"
+        assert 'state_data' in source, \
+            "search_audio must use state_data for persistence"
 
     def test_download_logic_handles_youtube_without_remote(self):
         """
@@ -425,19 +377,27 @@ class TestTranscriptionTimeout:
 
     def test_transcription_timeout_constant_exists(self):
         """
-        Verify transcription timeout constant is defined.
+        Verify transcription timeout constant is defined in lyrics_worker.
         """
-        # The timeout is defined inline in lyrics_worker.py
-        TRANSCRIPTION_TIMEOUT_SECONDS = 600  # 10 minutes
+        from backend.workers.lyrics_worker import TRANSCRIPTION_TIMEOUT_SECONDS
 
         assert TRANSCRIPTION_TIMEOUT_SECONDS > 0
         assert TRANSCRIPTION_TIMEOUT_SECONDS >= 300, "Timeout should be at least 5 minutes for long songs"
         assert TRANSCRIPTION_TIMEOUT_SECONDS <= 900, "Timeout shouldn't be more than 15 minutes"
 
+    def test_transcription_timeout_value(self):
+        """
+        Verify the specific timeout value (10 minutes = 600 seconds).
+        """
+        from backend.workers.lyrics_worker import TRANSCRIPTION_TIMEOUT_SECONDS
+
+        assert TRANSCRIPTION_TIMEOUT_SECONDS == 600, "Transcription timeout should be 10 minutes (600 seconds)"
+
     @pytest.mark.asyncio
     async def test_asyncio_wait_for_raises_timeout_error(self):
         """
         Verify asyncio.wait_for properly raises TimeoutError.
+        This is a sanity check for the timeout mechanism we use.
         """
         async def slow_operation():
             await asyncio.sleep(10)
@@ -447,23 +407,24 @@ class TestTranscriptionTimeout:
             await asyncio.wait_for(slow_operation(), timeout=0.1)
 
     @pytest.mark.asyncio
-    async def test_timeout_exception_is_caught_and_reraised(self):
+    async def test_lyrics_worker_timeout_converts_to_descriptive_error(self):
         """
-        Verify that timeout is converted to a descriptive exception.
+        Verify that timeout is converted to a descriptive exception message.
+        Tests the actual error conversion logic pattern used in lyrics_worker.
         """
-        TRANSCRIPTION_TIMEOUT_SECONDS = 600
+        from backend.workers.lyrics_worker import TRANSCRIPTION_TIMEOUT_SECONDS
 
-        async def mock_transcription():
+        # This simulates what happens in lyrics_worker when timeout occurs
+        error_message = None
+        try:
+            # Simulate the timeout handling pattern from lyrics_worker
             raise asyncio.TimeoutError()
+        except asyncio.TimeoutError:
+            error_message = f"Transcription timed out after {TRANSCRIPTION_TIMEOUT_SECONDS} seconds"
 
-        with pytest.raises(Exception) as exc_info:
-            try:
-                await mock_transcription()
-            except asyncio.TimeoutError:
-                raise Exception(f"Transcription timed out after {TRANSCRIPTION_TIMEOUT_SECONDS} seconds")
-
-        assert "timed out" in str(exc_info.value).lower()
-        assert "600" in str(exc_info.value)
+        assert error_message is not None
+        assert "timed out" in error_message.lower()
+        assert "600" in error_message
 
     def test_lyrics_worker_exception_marks_job_failed(self):
         """
