@@ -51,22 +51,34 @@ class ResponseParser:
     
     def _attempt_json_fix(self, content: str) -> str:
         """Attempt to fix common JSON formatting issues.
-        
+
         Args:
             content: Raw JSON string
-            
+
         Returns:
             Fixed JSON string (or original if no fixes applied)
         """
+        import re
+
+        # Fix 0: Strip markdown code fences (```json ... ``` or ``` ... ```)
+        # Models often wrap JSON in markdown code blocks
+        fixed = content.strip()
+        if fixed.startswith("```"):
+            # Remove opening fence (with optional language identifier)
+            fixed = re.sub(r'^```\w*\s*\n?', '', fixed)
+            # Remove closing fence
+            fixed = re.sub(r'\n?```\s*$', '', fixed)
+            fixed = fixed.strip()
+            logger.debug("🤖 Stripped markdown code fences from response")
+
         # Fix 1: Replace invalid escape sequences like \' with '
         # (JSON only allows \", \\, \/, \b, \f, \n, \r, \t)
-        fixed = content.replace("\\'", "'")
-        
+        fixed = fixed.replace("\\'", "'")
+
         # Fix 2: Remove any trailing commas before } or ]
-        import re
         fixed = re.sub(r',\s*}', '}', fixed)
         fixed = re.sub(r',\s*]', ']', fixed)
-        
+
         return fixed
     
     def _normalize_json_response(self, data: Any) -> List[Dict[str, Any]]:

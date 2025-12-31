@@ -238,6 +238,8 @@ class LangChainBridge(BaseAIProvider):
         if self._warmed_up:
             return
 
+        # Use print for visibility since logger config may not capture this
+        print(f"🔥 Warming up {self._model} connection...")
         logger.info(f"🔥 Warming up {self._model} connection...")
         try:
             from langchain_core.messages import HumanMessage
@@ -247,9 +249,11 @@ class LangChainBridge(BaseAIProvider):
             response = self._chat_model.invoke([HumanMessage(content=warm_up_prompt)])
 
             self._warmed_up = True
+            print(f"🔥 Warm-up complete for {self._model}")
             logger.info(f"🔥 Warm-up complete for {self._model}")
         except Exception as e:
             # Don't fail the actual request if warm-up fails
             # Just log and continue - the real request might still work
+            print(f"🔥 Warm-up failed for {self._model}: {e} (continuing anyway)")
             logger.warning(f"🔥 Warm-up failed for {self._model}: {e} (continuing anyway)")
 
