@@ -365,16 +365,21 @@ See `docs/archive/2025-12-30-gemini3-agentic-correction-fix.md` for full details
 - No timeout or error - just waits forever
 - Hard to diagnose because no exception is raised
 
-**Solution**: Use `langchain-google-genai` (REST-based) instead:
+**Solution**: Use `langchain-google-genai` (REST-based) instead. This package supports BOTH Vertex AI (service account auth) and Google AI Studio (API key auth):
 ```python
 # Before (gRPC, can hang)
 from langchain_google_vertexai import ChatVertexAI
 model = ChatVertexAI(model=model_name, project=project)
 
-# After (REST, reliable)
+# After (REST, reliable) - Using Vertex AI with service account/ADC
 from langchain_google_genai import ChatGoogleGenerativeAI
+model = ChatGoogleGenerativeAI(model=model_name, project=project_id)  # Uses ADC
+
+# Alternative - Using Google AI Studio with API key
 model = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key)
 ```
+
+**Key insight**: When `project` parameter is provided, `ChatGoogleGenerativeAI` automatically uses the Vertex AI backend with Application Default Credentials (ADC). On Cloud Run, this uses the attached service account - no API key needed.
 
 **Additional protection**: Wrap model initialization in ThreadPoolExecutor timeout:
 ```python
