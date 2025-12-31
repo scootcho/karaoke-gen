@@ -33,7 +33,7 @@ from backend.config import get_settings
 from backend.version import VERSION
 from backend.services.metrics import metrics
 from backend.api.dependencies import require_auth
-from backend.services.auth_service import UserType
+from backend.services.auth_service import UserType, AuthResult
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
@@ -247,6 +247,16 @@ async def _trigger_workers_parallel(job_id: str) -> None:
     )
 
 
+async def _trigger_audio_worker_only(job_id: str) -> None:
+    """
+    Trigger only the audio worker.
+
+    Used for URL jobs where audio needs to be downloaded first.
+    The audio worker will trigger the lyrics worker after download completes.
+    """
+    await worker_service.trigger_audio_worker(job_id)
+
+
 def _resolve_cdg_txt_defaults(
     theme_id: Optional[str],
     enable_cdg: Optional[bool],
@@ -368,7 +378,7 @@ def _prepare_theme_for_job(
 async def upload_and_create_job(
     request: Request,
     background_tasks: BackgroundTasks,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth),
+    auth_result: AuthResult = Depends(require_auth),
     # Required fields
     file: UploadFile = File(..., description="Audio file to process"),
     artist: str = Form(..., description="Artist name"),
@@ -563,6 +573,9 @@ async def upload_and_create_job(
         if other_stems_models:
             parsed_other_stems_models = [m.strip() for m in other_stems_models.split(',') if m.strip()]
         
+        # Prefer authenticated user's email over form parameter
+        effective_user_email = auth_result.user_email or user_email
+
         # Create job first to get job_id
         job_create = JobCreate(
             artist=artist,
@@ -577,7 +590,7 @@ async def upload_and_create_job(
             youtube_description=youtube_description,
             discord_webhook_url=dist.discord_webhook_url,
             webhook_url=webhook_url,
-            user_email=user_email,
+            user_email=effective_user_email,
             # Native API distribution (preferred for remote CLI)
             dropbox_path=dist.dropbox_path,
             gdrive_folder_id=dist.gdrive_folder_id,
@@ -973,7 +986,7 @@ def _get_gcs_path_for_file(job_id: str, file_type: str, filename: str) -> str:
 async def create_job_with_upload_urls(
     request: Request,
     body: CreateJobWithUploadUrlsRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Create a karaoke generation job and return signed URLs for direct file upload to GCS.
@@ -1069,6 +1082,9 @@ async def create_job_with_upload_urls(
         # Check if style_params is being uploaded (overrides theme)
         has_style_params_upload = any(f.file_type == 'style_params' for f in body.files)
 
+        # Prefer authenticated user's email over request body
+        effective_user_email = auth_result.user_email or body.user_email
+
         # Create job
         job_create = JobCreate(
             artist=body.artist,
@@ -1084,7 +1100,7 @@ async def create_job_with_upload_urls(
             youtube_description_template=body.youtube_description,  # video_worker reads this field
             discord_webhook_url=dist.discord_webhook_url,
             webhook_url=body.webhook_url,
-            user_email=body.user_email,
+            user_email=effective_user_email,
             dropbox_path=dist.dropbox_path,
             gdrive_folder_id=dist.gdrive_folder_id,
             organised_dir_rclone_root=body.organised_dir_rclone_root,
@@ -1160,7 +1176,7 @@ async def mark_uploads_complete(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: UploadsCompleteRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Mark file uploads as complete and start job processing.
@@ -1406,7 +1422,7 @@ async def create_job_from_url(
     request: Request,
     background_tasks: BackgroundTasks,
     body: CreateJobFromUrlRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Create a karaoke generation job from a YouTube or other online video URL.
@@ -1481,6 +1497,9 @@ async def create_job_from_url(
             body.theme_id, body.enable_cdg, body.enable_txt
         )
 
+        # Prefer authenticated user's email over request body
+        effective_user_email = auth_result.user_email or body.user_email
+
         # Create job with URL
         job_create = JobCreate(
             url=body.url,
@@ -1496,7 +1515,7 @@ async def create_job_from_url(
             youtube_description=body.youtube_description,
             discord_webhook_url=dist.discord_webhook_url,
             webhook_url=body.webhook_url,
-            user_email=body.user_email,
+            user_email=effective_user_email,
             dropbox_path=dist.dropbox_path,
             gdrive_folder_id=dist.gdrive_folder_id,
             organised_dir_rclone_root=body.organised_dir_rclone_root,
@@ -1542,10 +1561,11 @@ async def create_job_from_url(
             progress=5,
             message="Starting audio download from URL"
         )
-        
-        # Trigger workers in parallel
-        # The audio worker will handle downloading from URL
-        background_tasks.add_task(_trigger_workers_parallel, job_id)
+
+        # For URL jobs, trigger ONLY audio worker first
+        # The audio worker will trigger lyrics worker after download completes
+        # This prevents race condition where lyrics worker times out waiting for audio
+        background_tasks.add_task(_trigger_audio_worker_only, job_id)
         
         return CreateJobFromUrlResponse(
             status="success",
@@ -1608,7 +1628,7 @@ def _get_gcs_path_for_finalise_file(job_id: str, file_type: str, filename: str) 
 async def create_finalise_only_job(
     request: Request,
     body: CreateFinaliseOnlyJobRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Create a finalise-only job for continuing from a local prep phase.
@@ -1721,6 +1741,9 @@ async def create_finalise_only_job(
         # Check if style_params is being uploaded (overrides theme)
         has_style_params_upload = any(f.file_type == 'style_params' for f in body.files)
 
+        # Use authenticated user's email
+        effective_user_email = auth_result.user_email
+
         # Create job with finalise_only=True
         job_create = JobCreate(
             artist=body.artist,
@@ -1736,6 +1759,7 @@ async def create_finalise_only_job(
             discord_webhook_url=dist.discord_webhook_url,
             dropbox_path=dist.dropbox_path,
             gdrive_folder_id=dist.gdrive_folder_id,
+            user_email=effective_user_email,
             finalise_only=True,
             keep_brand_code=body.keep_brand_code,
             request_metadata=request_metadata,
@@ -1804,7 +1828,7 @@ async def mark_finalise_uploads_complete(
     job_id: str,
     background_tasks: BackgroundTasks,
     body: UploadsCompleteRequest,
-    auth_data: Tuple[str, UserType, int] = Depends(require_auth)
+    auth_result: AuthResult = Depends(require_auth)
 ):
     """
     Mark finalise-only file uploads as complete and start video generation.

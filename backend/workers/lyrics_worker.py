@@ -44,6 +44,9 @@ from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Timeout for transcription (10 minutes) - used by asyncio.wait_for to prevent hanging
+TRANSCRIPTION_TIMEOUT_SECONDS = 600
+
 
 def _configure_agentic_ai():
     """Configure environment variables for agentic AI correction.
@@ -285,25 +288,32 @@ async def process_lyrics_transcription(job_id: str) -> bool:
                 if lyrics_search_title != job.title:
                     job_log.info(f"  Lyrics search title override: {lyrics_search_title}")
                 logger.info(f"[job:{job_id}] Calling lyrics_processor.transcribe_lyrics()")
-                
-                # Run transcription + correction
+
+                # Run transcription + correction with timeout
+                # AudioShake typically takes 1-2 minutes, but can hang. Uses TRANSCRIPTION_TIMEOUT_SECONDS.
                 with job_span("audioshake-transcription", job_id) as trans_span:
                     trans_start = time.time()
                     add_span_event("transcription_started")
-                    
+
                     # Run transcription in thread pool to avoid blocking the event loop
                     # (transcribe_lyrics is synchronous and takes 1-2 minutes)
                     # Note: transcribe_lyrics internally calls AudioShake and lyrics APIs
-                    with metrics.time_external_api("audioshake", job_id):
-                        result = await asyncio.to_thread(
-                            lyrics_processor.transcribe_lyrics,
-                            input_audio_wav=audio_path,
-                            artist=job.artist,  # Original artist for file naming
-                            title=job.title,    # Original title for file naming
-                            track_output_dir=temp_dir,
-                            lyrics_artist=lyrics_search_artist,  # Override for lyrics search
-                            lyrics_title=lyrics_search_title     # Override for lyrics search
-                        )
+                    try:
+                        with metrics.time_external_api("audioshake", job_id):
+                            result = await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    lyrics_processor.transcribe_lyrics,
+                                    input_audio_wav=audio_path,
+                                    artist=job.artist,  # Original artist for file naming
+                                    title=job.title,    # Original title for file naming
+                                    track_output_dir=temp_dir,
+                                    lyrics_artist=lyrics_search_artist,  # Override for lyrics search
+                                    lyrics_title=lyrics_search_title     # Override for lyrics search
+                                ),
+                                timeout=TRANSCRIPTION_TIMEOUT_SECONDS
+                            )
+                    except asyncio.TimeoutError:
+                        raise Exception(f"Transcription timed out after {TRANSCRIPTION_TIMEOUT_SECONDS} seconds")
                     
                     trans_duration = time.time() - trans_start
                     trans_span.set_attribute("duration_seconds", trans_duration)

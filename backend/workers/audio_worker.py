@@ -36,6 +36,29 @@ from karaoke_gen.audio_processor import AudioProcessor
 logger = logging.getLogger(__name__)
 
 
+async def _trigger_lyrics_worker_after_url_download(job_id: str) -> None:
+    """
+    Trigger lyrics worker after URL audio download completes.
+
+    For URL jobs, we use sequential triggering:
+    1. Audio worker downloads and uploads audio to GCS
+    2. Audio worker triggers lyrics worker (this function)
+    3. Both workers then proceed in parallel (audio separation + lyrics transcription)
+
+    This prevents the race condition where lyrics worker times out waiting for audio.
+    """
+    from backend.services.worker_service import get_worker_service
+
+    try:
+        worker_service = get_worker_service()
+        await worker_service.trigger_lyrics_worker(job_id)
+        logger.info(f"Job {job_id}: Triggered lyrics worker after URL download")
+    except Exception as e:
+        # Log but don't fail - audio processing can still continue
+        # The job will eventually timeout if lyrics worker doesn't run
+        logger.error(f"Job {job_id}: Failed to trigger lyrics worker: {e}")
+
+
 # Default model names - used by create_audio_processor and stored in state_data
 DEFAULT_CLEAN_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
 DEFAULT_BACKING_MODELS = ["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"]
@@ -445,29 +468,34 @@ async def download_audio(
         # Case 3: Fresh URL that needs downloading
         if job.url:
             logger.info(f"Job {job_id}: Downloading from URL: {job.url}")
-            
+
             # Use provided job_manager or create new one
             jm = job_manager_instance or JobManager()
-            
+
             local_path = await download_from_url(
-                job.url, 
-                temp_dir, 
-                job.artist, 
+                job.url,
+                temp_dir,
+                job.artist,
                 job.title,
                 job_manager=jm,
                 job_id=job_id
             )
-            
+
             if local_path and os.path.exists(local_path):
                 # Upload to GCS and update job
                 gcs_path = f"jobs/{job_id}/input/{os.path.basename(local_path)}"
                 url = storage.upload_file(local_path, gcs_path)
-                
+
                 # Update job with GCS path for lyrics worker
                 jm.update_job(job_id, {'input_media_gcs_path': gcs_path})
                 jm.update_file_url(job_id, 'input', 'audio', url)
-                
+
                 logger.info(f"Job {job_id}: Downloaded and uploaded audio to GCS: {gcs_path}")
+
+                # For URL jobs, trigger lyrics worker now that audio is available
+                # This is the sequential trigger pattern - audio first, then lyrics
+                await _trigger_lyrics_worker_after_url_download(job_id)
+
                 return local_path
             else:
                 logger.error(f"Job {job_id}: Failed to download from URL: {job.url}")
