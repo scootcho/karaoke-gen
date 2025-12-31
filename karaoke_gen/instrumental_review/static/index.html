@@ -786,8 +786,8 @@
                 
                 if (waveformRes.ok) {
                     waveformData = await waveformRes.json();
-                    // API returns duration_seconds, not duration
-                    duration = waveformData.duration_seconds || 0;
+                    // API may return duration_seconds (cloud) or duration (local)
+                    duration = waveformData.duration_seconds || waveformData.duration || 0;
                 }
                 
                 // Set initial selection based on recommendation
