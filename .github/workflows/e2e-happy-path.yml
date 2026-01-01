@@ -136,6 +136,30 @@ jobs:
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Send email notification
+        if: always() && github.event_name == 'schedule'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.sendgrid.net
+          server_port: 587
+          username: apikey
+          password: ${{ secrets.SENDGRID_API_KEY }}
+          subject: "E2E Happy Path Test ${{ steps.test_result.outputs.result == 'success' && 'PASSED' || 'FAILED' }} - Run #${{ github.run_number }}"
+          to: andrew@nomadkaraoke.com
+          from: "Karaoke Gen CI <noreply@nomadkaraoke.com>"
+          body: |
+            E2E Happy Path Test Results
+            ===========================
+
+            Status: ${{ steps.test_result.outputs.result == 'success' && 'PASSED ✅' || 'FAILED ❌' }}
+            Run: #${{ github.run_number }}
+            Trigger: ${{ github.event_name }}
+            Time: ${{ github.event.repository.updated_at }}
+
+            View details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This is an automated notification from the daily E2E happy path test.
+
       - name: Fail if test failed
         if: steps.test_result.outputs.result == 'failure'
         run: exit 1
