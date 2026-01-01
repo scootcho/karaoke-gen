@@ -168,14 +168,50 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       inboxId = inbox.id!;
       console.log(`  Test email: ${inbox.emailAddress}`);
 
+      // Scroll to beta section first to ensure it's in view
+      const betaSection = page.locator('text=Beta Tester Program').first();
+      await betaSection.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+
       // Open beta form - click the Join Beta Program button
       const betaButton = page.getByRole('button', { name: /join beta program/i });
       await expect(betaButton).toBeVisible({ timeout: TIMEOUTS.action });
-      await betaButton.click();
-      await page.waitForTimeout(1000); // Wait for form animation
 
-      // Wait for beta form to appear
+      // Take screenshot before clicking
+      await page.screenshot({ path: 'test-results/02-before-beta-click.png' });
+      console.log('  Clicking Join Beta Program button...');
+
+      // Click and wait for the form to appear
+      await betaButton.click();
+
+      // Wait for beta form to appear - the button should be replaced by the form
       const betaEmailInput = page.locator('#beta-email');
+
+      // Poll for form visibility with retries
+      let formVisible = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await page.waitForTimeout(1000);
+        formVisible = await betaEmailInput.isVisible().catch(() => false);
+        if (formVisible) break;
+        console.log(`  Form not visible yet, attempt ${attempt + 1}/5`);
+        // Try clicking again if form didn't appear
+        const buttonStillVisible = await betaButton.isVisible().catch(() => false);
+        if (buttonStillVisible) {
+          console.log('  Button still visible, clicking again...');
+          await betaButton.click();
+        }
+      }
+
+      await page.screenshot({ path: 'test-results/02-after-beta-click.png' });
+
+      if (!formVisible) {
+        // Debug: log the page state
+        const pageContent = await page.content();
+        console.log('  Page HTML length:', pageContent.length);
+        console.log('  Looking for beta-email in HTML:', pageContent.includes('beta-email'));
+        throw new Error('Beta form did not appear after clicking Join Beta Program button');
+      }
+
       await expect(betaEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
       console.log('  Beta form visible');
 
