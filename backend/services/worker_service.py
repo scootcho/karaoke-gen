@@ -20,6 +20,7 @@ import os
 import json
 from typing import Optional
 import httpx
+from google.protobuf import duration_pb2
 
 from backend.config import get_settings
 from backend.services.tracing import inject_trace_context
@@ -36,6 +37,18 @@ WORKER_QUEUES = {
     "screens": "screens-worker-queue",
     "render-video": "render-worker-queue",
     "video": "video-worker-queue",
+}
+
+# Dispatch deadlines for each worker type (in seconds)
+# Cloud Tasks max is 1800s (30 min). These set how long Cloud Tasks waits
+# for the HTTP handler to respond before considering it failed.
+# Must be >= actual worker timeout + buffer for startup/upload.
+WORKER_DISPATCH_DEADLINES = {
+    "audio": 1800,       # 30 min - Modal separation can take 15-20 min
+    "lyrics": 1500,      # 25 min - TRANSCRIPTION_TIMEOUT_SECONDS is 1200s (20 min)
+    "screens": 600,      # 10 min - Screen generation is fast
+    "render-video": 1800,  # 30 min - Video encoding can be slow
+    "video": 1800,       # 30 min - Video encoding can be slow
 }
 
 
@@ -234,6 +247,9 @@ class WorkerService:
             # This allows worker spans to link back to the original request trace
             headers = inject_trace_context(headers)
             
+            # Get dispatch deadline for this worker type (how long Cloud Tasks waits for response)
+            dispatch_deadline_seconds = WORKER_DISPATCH_DEADLINES.get(worker_type, 600)
+
             # Build task payload
             task = {
                 "http_request": {
@@ -247,6 +263,10 @@ class WorkerService:
                         "service_account_email": f"karaoke-backend@{project}.iam.gserviceaccount.com",
                     },
                 },
+                # Set dispatch_deadline - how long Cloud Tasks waits for the handler to respond
+                # Default is 10 min, but audio separation can take 30+ min
+                # Max is 1800s (30 min) for Cloud Tasks
+                "dispatch_deadline": duration_pb2.Duration(seconds=dispatch_deadline_seconds),
             }
             
             # Create task
@@ -254,7 +274,8 @@ class WorkerService:
             # This prevents duplicate task errors on retries
             response = self.tasks_client.create_task(parent=parent, task=task)
             logger.info(
-                f"[job:{job_id}] Created Cloud Task for {worker_type} worker: {response.name}"
+                f"[job:{job_id}] Created Cloud Task for {worker_type} worker: {response.name} "
+                f"(dispatch_deadline={dispatch_deadline_seconds}s)"
             )
             return True
             
