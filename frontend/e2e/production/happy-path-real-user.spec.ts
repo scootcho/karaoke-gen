@@ -168,21 +168,35 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       inboxId = inbox.id!;
       console.log(`  Test email: ${inbox.emailAddress}`);
 
-      // Open beta form
-      await page.getByRole('button', { name: /join beta program/i }).click();
-      await expect(page.locator('#beta-email')).toBeVisible({ timeout: TIMEOUTS.expect });
+      // Open beta form - click the Join Beta Program button
+      const betaButton = page.getByRole('button', { name: /join beta program/i });
+      await expect(betaButton).toBeVisible({ timeout: TIMEOUTS.action });
+      await betaButton.click();
+      await page.waitForTimeout(1000); // Wait for form animation
+
+      // Wait for beta form to appear
+      const betaEmailInput = page.locator('#beta-email');
+      await expect(betaEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Beta form visible');
 
       // Fill beta form
-      await page.locator('#beta-email').fill(inbox.emailAddress!);
-      await page.locator('textarea').fill(
-        'E2E test user - testing the complete karaoke generation flow.'
-      );
-      await page.locator('input[type="checkbox"]').check();
+      await betaEmailInput.fill(inbox.emailAddress!);
+
+      // Fill the promise/reason field
+      const promiseField = page.locator('#beta-promise, textarea');
+      await promiseField.first().fill('piri - dog (E2E test: testing complete karaoke generation flow)');
+
+      // Check the acceptance checkbox
+      const acceptCheckbox = page.locator('#beta-accept, input[type="checkbox"]');
+      await acceptCheckbox.first().check();
 
       await page.screenshot({ path: 'test-results/02a-beta-form-filled.png' });
+      console.log('  Beta form filled');
 
-      // Submit form
-      await page.getByRole('button', { name: /get my free credit/i }).click();
+      // Submit form - look for the submit button
+      const submitButton = page.getByRole('button', { name: /get.*free.*credit|submit|enroll/i });
+      await expect(submitButton).toBeEnabled({ timeout: TIMEOUTS.action });
+      await submitButton.click();
 
       // Wait for success and redirect
       await expect(
