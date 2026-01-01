@@ -1446,3 +1446,132 @@ async def get_worker_logs(
         "total_logs": total
     }
 
+
+@router.post("/{job_id}/cleanup-distribution")
+async def cleanup_distribution(
+    job_id: str,
+    delete_job: bool = True,
+    auth_result: AuthResult = Depends(require_admin)
+) -> dict:
+    """
+    Clean up all distributed content for a job (YouTube, Dropbox, Google Drive).
+
+    This admin-only endpoint is designed for E2E test cleanup. It:
+    1. Deletes YouTube video (if uploaded)
+    2. Deletes Dropbox folder (if uploaded)
+    3. Deletes Google Drive files (if uploaded)
+    4. Optionally deletes the job itself
+
+    Args:
+        job_id: Job ID to clean up
+        delete_job: If True, also delete the job after cleaning up distribution
+
+    Returns:
+        Cleanup results for each service
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    state_data = job.state_data or {}
+    results = {
+        "job_id": job_id,
+        "youtube": {"status": "skipped", "reason": "no youtube_url in state_data"},
+        "dropbox": {"status": "skipped", "reason": "no brand_code or dropbox_path"},
+        "gdrive": {"status": "skipped", "reason": "no gdrive_files in state_data"},
+        "job_deleted": False
+    }
+
+    # Clean up YouTube
+    youtube_url = state_data.get('youtube_url')
+    if youtube_url:
+        try:
+            # Extract video ID from URL (format: https://youtu.be/VIDEO_ID or https://www.youtube.com/watch?v=VIDEO_ID)
+            import re
+            video_id_match = re.search(r'(?:youtu\.be/|youtube\.com/watch\?v=)([^&\s]+)', youtube_url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+
+                # Import and use karaoke_finalise for YouTube deletion
+                from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
+                from backend.services.youtube_service import get_youtube_service
+
+                youtube_service = get_youtube_service()
+                if youtube_service.is_configured:
+                    # Create minimal KaraokeFinalise instance for deletion
+                    finalise = KaraokeFinalise(
+                        dry_run=False,
+                        non_interactive=True,
+                        enable_youtube=True,
+                        user_youtube_credentials=youtube_service.get_credentials_dict()
+                    )
+                    success = finalise.delete_youtube_video(video_id)
+                    results["youtube"] = {
+                        "status": "success" if success else "failed",
+                        "video_id": video_id
+                    }
+                else:
+                    results["youtube"] = {"status": "failed", "reason": "YouTube credentials not configured"}
+            else:
+                results["youtube"] = {"status": "failed", "reason": f"Could not extract video ID from {youtube_url}"}
+        except Exception as e:
+            logger.error(f"Error cleaning up YouTube for job {job_id}: {e}", exc_info=True)
+            results["youtube"] = {"status": "error", "error": str(e)}
+
+    # Clean up Dropbox
+    brand_code = state_data.get('brand_code')
+    dropbox_path = getattr(job, 'dropbox_path', None)
+    if brand_code and dropbox_path:
+        try:
+            from backend.services.dropbox_service import get_dropbox_service
+            dropbox = get_dropbox_service()
+            if dropbox.is_configured:
+                base_name = f"{job.artist} - {job.title}"
+                folder_name = f"{brand_code} - {base_name}"
+                full_path = f"{dropbox_path}/{folder_name}"
+                success = dropbox.delete_folder(full_path)
+                results["dropbox"] = {
+                    "status": "success" if success else "failed",
+                    "path": full_path
+                }
+            else:
+                results["dropbox"] = {"status": "failed", "reason": "Dropbox credentials not configured"}
+        except Exception as e:
+            logger.error(f"Error cleaning up Dropbox for job {job_id}: {e}", exc_info=True)
+            results["dropbox"] = {"status": "error", "error": str(e)}
+
+    # Clean up Google Drive
+    gdrive_files = state_data.get('gdrive_files')
+    if gdrive_files:
+        try:
+            from backend.services.gdrive_service import get_gdrive_service
+            gdrive = get_gdrive_service()
+            if gdrive.is_configured:
+                # gdrive_files is a dict like {"mp4": "file_id", "mp4_720p": "file_id", "cdg": "file_id"}
+                file_ids = list(gdrive_files.values()) if isinstance(gdrive_files, dict) else []
+                delete_results = gdrive.delete_files(file_ids)
+                all_success = all(delete_results.values())
+                results["gdrive"] = {
+                    "status": "success" if all_success else "partial",
+                    "files": delete_results
+                }
+            else:
+                results["gdrive"] = {"status": "failed", "reason": "Google Drive credentials not configured"}
+        except Exception as e:
+            logger.error(f"Error cleaning up Google Drive for job {job_id}: {e}", exc_info=True)
+            results["gdrive"] = {"status": "error", "error": str(e)}
+
+    # Delete the job if requested
+    if delete_job:
+        try:
+            storage = StorageService()
+            job_manager.delete_job(job_id, storage=storage, delete_files=True)
+            results["job_deleted"] = True
+            logger.info(f"Deleted job {job_id} after distribution cleanup")
+        except Exception as e:
+            logger.error(f"Error deleting job {job_id}: {e}", exc_info=True)
+            results["job_deleted"] = False
+            results["job_delete_error"] = str(e)
+
+    return results
+
