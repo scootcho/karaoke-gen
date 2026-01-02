@@ -469,7 +469,8 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('STEP 6 COMPLETE: Lyrics processing finished');
 
       // =========================================================================
-      // STEP 7: Lyrics Review (via UI with API fallback)
+      // STEP 7: Lyrics Review (via UI - REAL USER FLOW)
+      // The minimal path: scroll to bottom -> click "Preview Video" -> wait for video -> click "Complete Review"
       // =========================================================================
       console.log('\n========================================');
       console.log('STEP 7: Lyrics Review (UI Interaction)');
@@ -491,88 +492,70 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       await reviewPage.screenshot({ path: 'test-results/07a-lyrics-review-opened.png', fullPage: true });
       console.log('  Lyrics review UI opened');
 
-      // Wait for lyrics to load
+      // Wait for the page content to load
       await expect(reviewPage.locator('body')).not.toBeEmpty({ timeout: TIMEOUTS.action });
 
-      // Look for approve/submit button - common patterns in lyrics review UIs
-      // The lyrics-reviewer app uses "Looks Good!" or similar button text
-      const approveSelectors = [
-        'button:has-text("Looks Good")',
-        'button:has-text("Complete")',
-        'button:has-text("Submit")',
-        'button:has-text("Approve")',
-        'button:has-text("Done")',
-        'button:has-text("Save")',
-        'button:has-text("Confirm")',
-        'button:has-text("Accept")',
-        '[data-testid="complete-review"]',
-        '[data-testid="submit-review"]',
-        // Common class patterns for primary buttons
-        'button.btn-primary',
-        'button.primary',
-      ];
+      // Wait for the main content to render - give MUI time to initialize
+      await reviewPage.waitForTimeout(2000);
 
-      let completedViaUI = false;
-      for (const selector of approveSelectors) {
-        const btn = reviewPage.locator(selector).first();
-        if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          console.log(`  Found approve button with selector: ${selector}`);
-          await reviewPage.screenshot({ path: 'test-results/07b-before-approve.png', fullPage: true });
+      // Scroll to bottom of the page to see the "Preview Video" button
+      console.log('  Scrolling to bottom of page...');
+      await reviewPage.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await reviewPage.waitForTimeout(1000);
 
-          await btn.click();
-          completedViaUI = true;
-          console.log('  Clicked approve/submit button via UI');
+      await reviewPage.screenshot({ path: 'test-results/07b-scrolled-to-bottom.png', fullPage: true });
 
-          // Wait for confirmation or redirect
-          await reviewPage.waitForTimeout(5000);
-          break;
-        }
-      }
+      // Click "Preview Video" button (at bottom of the lyrics review page)
+      // This button has text "Preview Video" and an OndemandVideo icon
+      const previewVideoBtn = reviewPage.getByRole('button', { name: /preview video/i });
+      await expect(previewVideoBtn).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Found "Preview Video" button');
 
-      if (!completedViaUI) {
-        console.log('  WARNING: Could not find approve button in UI');
-        // Take screenshot for debugging
-        await reviewPage.screenshot({ path: 'test-results/07b-no-approve-button.png', fullPage: true });
+      await reviewPage.screenshot({ path: 'test-results/07c-before-preview-click.png', fullPage: true });
+      await previewVideoBtn.click();
+      console.log('  Clicked "Preview Video" button');
 
-        // Try clicking any primary-looking button as last resort
-        const primaryBtn = reviewPage.locator('button[class*="primary"], button[class*="bg-blue"], button[class*="bg-green"], button[class*="success"]').first();
-        if (await primaryBtn.isVisible().catch(() => false)) {
-          const btnText = await primaryBtn.textContent();
-          console.log(`  Found primary-styled button with text: "${btnText}"`);
-          await primaryBtn.click();
-          completedViaUI = true;
-          console.log('  Clicked primary-styled button');
-          await reviewPage.waitForTimeout(5000);
-        }
-      }
+      // Wait for the modal dialog to appear
+      // The modal has title "Preview Video (With Vocals)"
+      const previewModal = reviewPage.getByRole('dialog');
+      await expect(previewModal).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Preview modal opened');
 
-      await reviewPage.screenshot({ path: 'test-results/07c-after-approve.png', fullPage: true });
+      await reviewPage.screenshot({ path: 'test-results/07d-preview-modal.png', fullPage: true });
 
-      // Close review page and go back to main app
-      await reviewPage.close();
-      console.log('  Closed review UI');
+      // Wait for video to load in the modal
+      // The video is rendered by PreviewVideoSection component
+      const videoElement = reviewPage.locator('video');
+      await expect(videoElement).toBeVisible({ timeout: 30000 });
+      console.log('  Video element visible in modal');
 
-      // If UI interaction didn't work, use API to complete the review
-      // This is a fallback to ensure the test can continue
-      if (!completedViaUI && jobId) {
-        console.log('  Using API fallback to complete lyrics review...');
-        try {
-          const completeReviewResponse = await page.request.post(
-            `${API_URL}/api/jobs/${jobId}/complete-review`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-              },
-            }
-          );
-          if (completeReviewResponse.ok()) {
-            console.log('  Review completed via API');
-          } else {
-            console.log(`  WARNING: API fallback failed with status ${completeReviewResponse.status()}`);
-          }
-        } catch (e) {
-          console.log(`  WARNING: API fallback error: ${e}`);
-        }
+      // Give the video a moment to buffer/load
+      await reviewPage.waitForTimeout(5000);
+
+      await reviewPage.screenshot({ path: 'test-results/07e-video-loaded.png', fullPage: true });
+
+      // Click "Complete Review" button in the modal
+      // This button has variant="contained", color="success", and endIcon={<CloudUpload />}
+      const completeReviewBtn = reviewPage.getByRole('button', { name: /complete review/i });
+      await expect(completeReviewBtn).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Found "Complete Review" button');
+
+      await completeReviewBtn.click();
+      console.log('  Clicked "Complete Review" button');
+
+      // Wait for the submission to process
+      // The handleSubmitToServer function calls apiClient.submitCorrections() then window.close()
+      await reviewPage.waitForTimeout(5000);
+
+      await reviewPage.screenshot({ path: 'test-results/07f-after-complete-review.png', fullPage: true });
+
+      // The review page may close automatically after submission (window.close())
+      // If it's still open, close it manually
+      if (!reviewPage.isClosed()) {
+        await reviewPage.close();
+        console.log('  Closed review UI');
+      } else {
+        console.log('  Review UI closed automatically after submission');
       }
 
       // Refresh main app to see updated status
@@ -583,11 +566,12 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         await page.waitForTimeout(3000);
       }
 
-      await page.screenshot({ path: 'test-results/07d-after-review-refresh.png' });
-      console.log('STEP 7 COMPLETE: Lyrics review submitted');
+      await page.screenshot({ path: 'test-results/07g-after-review-refresh.png' });
+      console.log('STEP 7 COMPLETE: Lyrics review submitted via UI');
 
       // =========================================================================
-      // STEP 8: Wait for Video Rendering & Instrumental Selection (via UI with API fallback)
+      // STEP 8: Wait for Video Rendering & Instrumental Selection (via UI - REAL USER FLOW)
+      // The instrumental UI has: selection-option elements, submit button with id="submit-btn"
       // =========================================================================
       console.log('\n========================================');
       console.log('STEP 8: Wait for Video Rendering & Instrumental Selection');
@@ -597,7 +581,6 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('  Waiting for video rendering and instrumental selection...');
 
       let foundInstrumentalStatus = false;
-      let instrumentalCompletedViaUI = false;
       const renderStartTime = Date.now();
 
       while (Date.now() - renderStartTime < TIMEOUTS.videoRendering) {
@@ -641,104 +624,56 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       if (foundInstrumentalStatus) {
         // Click the Select Instrumental button/link
         const instrumentalLink = jobCard.getByRole('link', { name: /select instrumental/i });
-        if (await instrumentalLink.isVisible({ timeout: 5000 }).catch(() => false)) {
-          const instrumentalUrl = await instrumentalLink.getAttribute('href');
-          console.log(`  Instrumental URL: ${instrumentalUrl}`);
+        await expect(instrumentalLink).toBeVisible({ timeout: TIMEOUTS.action });
 
-          // Open instrumental UI in new page
-          const instrumentalPage = await context.newPage();
-          // Handle both absolute and relative URLs
-          const fullUrl = instrumentalUrl?.startsWith('http') ? instrumentalUrl : `${PROD_URL}${instrumentalUrl}`;
-          await instrumentalPage.goto(fullUrl, { waitUntil: 'networkidle' });
-          await instrumentalPage.waitForTimeout(3000);
+        const instrumentalUrl = await instrumentalLink.getAttribute('href');
+        console.log(`  Instrumental URL: ${instrumentalUrl}`);
 
-          await instrumentalPage.screenshot({ path: 'test-results/08a-instrumental-opened.png', fullPage: true });
-          console.log('  Instrumental selection UI opened');
+        // Open instrumental UI in new page
+        const instrumentalPage = await context.newPage();
+        // Handle both absolute and relative URLs
+        const fullUrl = instrumentalUrl?.startsWith('http') ? instrumentalUrl : `${PROD_URL}${instrumentalUrl}`;
+        await instrumentalPage.goto(fullUrl, { waitUntil: 'networkidle' });
+        await instrumentalPage.waitForTimeout(3000);
 
-          // Look for "Clean" instrumental option and select it
-          // The instrumental selector typically has radio buttons or clickable cards
-          const cleanSelectors = [
-            'button:has-text("Clean")',
-            '[data-value="clean"]',
-            'input[value="clean"]',
-            'label:has-text("Clean")',
-            '[role="radio"]:has-text("Clean")',
-            'div:has-text("Clean"):not(:has(div))',  // Leaf element containing "Clean"
-          ];
+        await instrumentalPage.screenshot({ path: 'test-results/08a-instrumental-opened.png', fullPage: true });
+        console.log('  Instrumental selection UI opened');
 
-          let selectedClean = false;
-          for (const selector of cleanSelectors) {
-            const element = instrumentalPage.locator(selector).first();
-            if (await element.isVisible({ timeout: 2000 }).catch(() => false)) {
-              await element.click();
-              selectedClean = true;
-              console.log(`  Selected "Clean" instrumental via: ${selector}`);
-              break;
-            }
-          }
+        // Wait for the page to fully load - the instrumental UI renders selection options
+        await instrumentalPage.waitForSelector('.selection-option, .selection-panel', { timeout: 30000 });
 
-          if (!selectedClean) {
-            // Just click the first option if we can't find "Clean"
-            const firstOption = instrumentalPage.locator('[role="radio"], input[type="radio"], [role="option"]').first();
-            if (await firstOption.isVisible().catch(() => false)) {
-              await firstOption.click();
-              console.log('  Selected first instrumental option');
-            }
-          }
-
-          // Look for confirm/submit button
-          const confirmSelectors = [
-            'button:has-text("Confirm")',
-            'button:has-text("Select")',
-            'button:has-text("Continue")',
-            'button:has-text("Submit")',
-            'button:has-text("Use This")',
-            'button:has-text("Choose")',
-            '[data-testid="confirm-selection"]',
-            'button.btn-primary',
-            'button[type="submit"]',
-          ];
-
-          for (const selector of confirmSelectors) {
-            const btn = instrumentalPage.locator(selector).first();
-            if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-              await btn.click();
-              instrumentalCompletedViaUI = true;
-              console.log(`  Clicked confirm button: ${selector}`);
-              await instrumentalPage.waitForTimeout(3000);
-              break;
-            }
-          }
-
-          await instrumentalPage.screenshot({ path: 'test-results/08b-instrumental-selected.png', fullPage: true });
-
-          // Close instrumental page
-          await instrumentalPage.close();
-          console.log('  Closed instrumental UI');
+        // Select "Clean" instrumental option
+        // The options have class "selection-option" and contain labels with "Clean" or "With Backing"
+        const cleanOption = instrumentalPage.locator('.selection-option:has-text("Clean")').first();
+        if (await cleanOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+          await cleanOption.click();
+          console.log('  Selected "Clean" instrumental option');
+        } else {
+          // If we can't find "Clean" specifically, the first option might already be selected
+          console.log('  Clean option not found - using default selection');
         }
 
-        // If UI interaction didn't work, use API to select instrumental
-        if (!instrumentalCompletedViaUI && jobId) {
-          console.log('  Using API fallback to select instrumental...');
-          try {
-            const selectInstrumentalResponse = await page.request.post(
-              `${API_URL}/api/jobs/${jobId}/select-instrumental`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json',
-                },
-                data: { selection: 'clean' },
-              }
-            );
-            if (selectInstrumentalResponse.ok()) {
-              console.log('  Instrumental selected via API ("clean")');
-            } else {
-              console.log(`  WARNING: API fallback failed with status ${selectInstrumentalResponse.status()}`);
-            }
-          } catch (e) {
-            console.log(`  WARNING: API fallback error: ${e}`);
-          }
+        await instrumentalPage.screenshot({ path: 'test-results/08b-clean-selected.png', fullPage: true });
+
+        // Click the submit button: "✓ Confirm & Continue" (id="submit-btn")
+        const submitBtn = instrumentalPage.locator('#submit-btn');
+        await expect(submitBtn).toBeVisible({ timeout: TIMEOUTS.action });
+        console.log('  Found submit button');
+
+        await submitBtn.click();
+        console.log('  Clicked "Confirm & Continue" button');
+
+        // Wait for submission to complete - the page shows a success screen then auto-closes
+        await instrumentalPage.waitForTimeout(5000);
+
+        await instrumentalPage.screenshot({ path: 'test-results/08c-instrumental-submitted.png', fullPage: true });
+
+        // The page may auto-close after submission
+        if (!instrumentalPage.isClosed()) {
+          await instrumentalPage.close();
+          console.log('  Closed instrumental UI');
+        } else {
+          console.log('  Instrumental UI closed automatically after submission');
         }
       }
 
@@ -749,8 +684,8 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         await page.waitForTimeout(3000);
       }
 
-      await page.screenshot({ path: 'test-results/08c-after-instrumental.png' });
-      console.log('STEP 8 COMPLETE: Instrumental selection handled');
+      await page.screenshot({ path: 'test-results/08d-after-instrumental.png' });
+      console.log('STEP 8 COMPLETE: Instrumental selection handled via UI');
 
       // =========================================================================
       // STEP 9: Wait for Final Encoding and Completion
