@@ -29,11 +29,8 @@
 ## Essential Rules
 
 ### Git Workflow
-- **Never commit directly to `main`** - always use feature branches
-- **Use git worktrees** for all changes:
-  ```bash
-  git worktree add -b feature/xyz ../karaoke-gen-feat-xyz main
-  ```
+- **Never commit directly to `main`** - use `/new-worktree <description>` to start
+- **Follow global workflow** - see `~/.claude/CLAUDE.md` for command sequence
 - Create PR with summary, changes, testing info
 - Merge only after CI passes
 
@@ -90,9 +87,12 @@ Location: `/Users/andrew/Projects/flacfetch`
 
 Workflow: Make changes on `main`, bump version, push, wait for CI, then `poetry update flacfetch` in karaoke-gen.
 
-## Pre-Commit Checklist
+## Pre-PR Checklist
 
-- [ ] Tests pass (`make test` / `npm run test:all`)
+Follow global workflow (`~/.claude/CLAUDE.md`):
+
+- [ ] Tests pass: `/test` (or `make test` / `npm run test:all`)
 - [ ] Version bumped (if code changed)
-- [ ] `/docs-review` run (check for doc updates)
-- [ ] PR created with clear description
+- [ ] Docs checked: `/docs-review`
+- [ ] Code reviewed: `/review` (CodeRabbit CLI)
+- [ ] PR created: `/pr` (adds @coderabbitai ignore)
