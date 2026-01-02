@@ -684,7 +684,10 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         }
 
         // Check if encoding is in progress (past instrumental stage)
-        if (statusText.toLowerCase().includes('encoding') || statusText.toLowerCase().includes('rendering')) {
+        // NOTE: "rendering" status is BEFORE instrumental selection, not after!
+        // The flow is: rendering_video -> awaiting_instrumental_selection -> encoding -> complete
+        // So only skip if job is at encoding (not rendering)
+        if (statusText.toLowerCase().includes('encoding') && !statusText.toLowerCase().includes('awaiting')) {
           console.log('  Job is encoding - instrumental selection was handled');
           break;
         }
