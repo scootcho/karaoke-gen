@@ -749,12 +749,14 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('STEP 9: Wait for Completion');
       console.log('========================================');
 
-      console.log('  Waiting for final encoding (this may take 5-10 minutes)...');
+      console.log('  Waiting for video rendering and encoding (this may take 15-25 minutes)...');
 
       let isComplete = false;
       const encodeStartTime = Date.now();
+      // After instrumental selection, job needs: video rendering (~15 min) + encoding (~10 min)
+      const completionTimeout = TIMEOUTS.videoRendering + TIMEOUTS.finalEncoding; // 25 minutes total
 
-      while (Date.now() - encodeStartTime < TIMEOUTS.finalEncoding) {
+      while (Date.now() - encodeStartTime < completionTimeout) {
         if (await refreshBtn.isVisible().catch(() => false)) {
           await refreshBtn.click();
           await page.waitForTimeout(2000);
