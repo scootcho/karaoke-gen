@@ -209,6 +209,7 @@ jobs:
         working-directory: frontend
         env:
           MAILSLURP_API_KEY: ${{ secrets.MAILSLURP_API_KEY }}
+          E2E_TEST_TOKEN: ${{ secrets.E2E_TEST_TOKEN }}
           E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
         run: |
           echo "Starting E2E Happy Path Test against Production"

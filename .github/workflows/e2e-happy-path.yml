@@ -27,6 +27,11 @@ on:
           - chromium
           - firefox
           - webkit
+      use_test_token:
+        description: 'Skip signup and use E2E_TEST_TOKEN (for iterations)'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: read
@@ -66,12 +71,14 @@ jobs:
         working-directory: frontend
         env:
           MAILSLURP_API_KEY: ${{ secrets.MAILSLURP_API_KEY }}
+          E2E_TEST_TOKEN: ${{ inputs.use_test_token == 'true' && secrets.E2E_TEST_TOKEN || '' }}
+          E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
           DEBUG_MODE: ${{ inputs.debug_mode || 'false' }}
-          # No KARAOKE_ACCESS_TOKEN - test must handle full signup
         run: |
           echo "Starting E2E Happy Path Test"
           echo "Browser: ${{ inputs.browser || 'chromium' }}"
           echo "Debug mode: ${{ inputs.debug_mode || 'false' }}"
+          echo "Use test token: ${{ inputs.use_test_token || 'false' }}"
           echo "Time: $(date)"
           echo ""
 

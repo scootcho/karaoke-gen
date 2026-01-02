@@ -24,9 +24,21 @@ import { createEmailHelper, isEmailTestingAvailable } from '../helpers/email-tes
  * 12. Cleanup - Delete distributed content and job
  *
  * Environment Variables:
- *   - MAILSLURP_API_KEY: Required for email testing
+ *   - MAILSLURP_API_KEY: Required for email testing (can be skipped with E2E_TEST_TOKEN)
+ *   - E2E_TEST_TOKEN: Pre-configured user token to skip signup flow (for iterations)
  *   - E2E_ADMIN_TOKEN: Required for cleanup endpoint (optional - cleanup skipped if not set)
  */
+
+/**
+ * Check if we should use a pre-configured test token instead of creating a new user
+ */
+function hasPreConfiguredToken(): boolean {
+  return !!process.env.E2E_TEST_TOKEN;
+}
+
+function getPreConfiguredToken(): string {
+  return process.env.E2E_TEST_TOKEN || '';
+}
 
 // =============================================================================
 // CONSTANTS
@@ -122,9 +134,12 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
   }) => {
     test.setTimeout(TIMEOUTS.fullTest);
 
-    // Skip if MailSlurp not available
-    if (!isEmailTestingAvailable()) {
-      test.skip(true, 'MAILSLURP_API_KEY not set - cannot run real user test');
+    // Check if we have a pre-configured token (for iterations without using MailSlurp)
+    const usePreConfiguredToken = hasPreConfiguredToken();
+
+    // Skip if neither pre-configured token nor MailSlurp is available
+    if (!usePreConfiguredToken && !isEmailTestingAvailable()) {
+      test.skip(true, 'Neither E2E_TEST_TOKEN nor MAILSLURP_API_KEY set - cannot run test');
       return;
     }
 
@@ -132,7 +147,8 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
     let jobId: string | null = null;
     let inboxId: string | null = null;
 
-    const emailHelper = await createEmailHelper();
+    // Only create email helper if we're doing the full signup flow
+    const emailHelper = usePreConfiguredToken ? null : await createEmailHelper();
 
     try {
       // =========================================================================
@@ -157,113 +173,153 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('STEP 1 COMPLETE: Landing page loads correctly');
 
       // =========================================================================
-      // STEP 2: New User Beta Enrollment
+      // STEP 2 & 3: Authentication (either via pre-configured token or beta signup)
       // =========================================================================
-      console.log('\n========================================');
-      console.log('STEP 2: New User Beta Enrollment');
-      console.log('========================================');
 
-      // Create test inbox
-      const inbox = await emailHelper.createInbox();
-      inboxId = inbox.id!;
-      console.log(`  Test email: ${inbox.emailAddress}`);
+      if (usePreConfiguredToken) {
+        // ----- FAST PATH: Use pre-configured token -----
+        console.log('\n========================================');
+        console.log('STEP 2: Using Pre-Configured Token (skipping signup)');
+        console.log('========================================');
 
-      // Scroll to beta section first to ensure it's in view
-      const betaSection = page.locator('text=Beta Tester Program').first();
-      await betaSection.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(500);
+        accessToken = getPreConfiguredToken();
+        console.log(`  Using token: ${accessToken.substring(0, 8)}...`);
 
-      // Open beta form - click the Join Beta Program button
-      const betaButton = page.getByRole('button', { name: /join beta program/i });
-      await expect(betaButton).toBeVisible({ timeout: TIMEOUTS.action });
+        // Navigate to app and inject token into localStorage
+        await page.goto(`${PROD_URL}/app`);
+        await page.evaluate((token) => {
+          localStorage.setItem('karaoke_access_token', token);
+        }, accessToken);
 
-      // Take screenshot before clicking
-      await page.screenshot({ path: 'test-results/02-before-beta-click.png' });
-      console.log('  Clicking Join Beta Program button...');
+        // Reload to apply the token
+        await page.reload();
+        await page.waitForLoadState('networkidle');
 
-      // Click and wait for the form to appear
-      await betaButton.click();
+        await page.screenshot({ path: 'test-results/02-token-injected.png' });
+        console.log('STEP 2 COMPLETE: Token injected, skipping beta enrollment');
 
-      // Wait for beta form to appear - the button should be replaced by the form
-      const betaEmailInput = page.locator('#beta-email');
+        console.log('\n========================================');
+        console.log('STEP 3: Verify Authentication');
+        console.log('========================================');
 
-      // Poll for form visibility with retries
-      let formVisible = false;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await page.waitForTimeout(1000);
-        formVisible = await betaEmailInput.isVisible().catch(() => false);
-        if (formVisible) break;
-        console.log(`  Form not visible yet, attempt ${attempt + 1}/5`);
-        // Try clicking again if form didn't appear
-        const buttonStillVisible = await betaButton.isVisible().catch(() => false);
-        if (buttonStillVisible) {
-          console.log('  Button still visible, clicking again...');
-          await betaButton.click();
+        // Verify we're authenticated by checking for the app UI
+        await expect(page.locator('body')).not.toContainText('Sign in', { timeout: TIMEOUTS.action });
+        console.log('  User authenticated');
+
+        // Try to find credit indicator
+        const creditText = await page.getByText(/credit/i).first().textContent().catch(() => 'N/A');
+        console.log(`  Credits visible: ${creditText}`);
+
+        console.log('STEP 3 COMPLETE: User authenticated with pre-configured token');
+
+      } else {
+        // ----- FULL PATH: Beta signup with MailSlurp -----
+        console.log('\n========================================');
+        console.log('STEP 2: New User Beta Enrollment');
+        console.log('========================================');
+
+        // Create test inbox
+        const inbox = await emailHelper!.createInbox();
+        inboxId = inbox.id!;
+        console.log(`  Test email: ${inbox.emailAddress}`);
+
+        // Scroll to beta section first to ensure it's in view
+        const betaSection = page.locator('text=Beta Tester Program').first();
+        await betaSection.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(500);
+
+        // Open beta form - click the Join Beta Program button
+        const betaButton = page.getByRole('button', { name: /join beta program/i });
+        await expect(betaButton).toBeVisible({ timeout: TIMEOUTS.action });
+
+        // Take screenshot before clicking
+        await page.screenshot({ path: 'test-results/02-before-beta-click.png' });
+        console.log('  Clicking Join Beta Program button...');
+
+        // Click and wait for the form to appear
+        await betaButton.click();
+
+        // Wait for beta form to appear - the button should be replaced by the form
+        const betaEmailInput = page.locator('#beta-email');
+
+        // Poll for form visibility with retries
+        let formVisible = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          await page.waitForTimeout(1000);
+          formVisible = await betaEmailInput.isVisible().catch(() => false);
+          if (formVisible) break;
+          console.log(`  Form not visible yet, attempt ${attempt + 1}/5`);
+          // Try clicking again if form didn't appear
+          const buttonStillVisible = await betaButton.isVisible().catch(() => false);
+          if (buttonStillVisible) {
+            console.log('  Button still visible, clicking again...');
+            await betaButton.click();
+          }
         }
+
+        await page.screenshot({ path: 'test-results/02-after-beta-click.png' });
+
+        if (!formVisible) {
+          // Debug: log the page state
+          const pageContent = await page.content();
+          console.log('  Page HTML length:', pageContent.length);
+          console.log('  Looking for beta-email in HTML:', pageContent.includes('beta-email'));
+          throw new Error('Beta form did not appear after clicking Join Beta Program button');
+        }
+
+        await expect(betaEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
+        console.log('  Beta form visible');
+
+        // Fill beta form
+        await betaEmailInput.fill(inbox.emailAddress!);
+
+        // Fill the promise/reason field
+        const promiseField = page.locator('#beta-promise, textarea');
+        await promiseField.first().fill('piri - dog (E2E test: testing complete karaoke generation flow)');
+
+        // Check the acceptance checkbox
+        const acceptCheckbox = page.locator('#beta-accept, input[type="checkbox"]');
+        await acceptCheckbox.first().check();
+
+        await page.screenshot({ path: 'test-results/02a-beta-form-filled.png' });
+        console.log('  Beta form filled');
+
+        // Submit form - look for the submit button
+        const submitButton = page.getByRole('button', { name: /get.*free.*credit|submit|enroll/i });
+        await expect(submitButton).toBeEnabled({ timeout: TIMEOUTS.action });
+        await submitButton.click();
+
+        // Wait for success and redirect
+        await expect(
+          page.getByText(/welcome to the beta|redirecting to the app/i)
+        ).toBeVisible({ timeout: 15000 });
+
+        await page.waitForURL(/\/app/, { timeout: 10000 });
+        console.log('  Redirected to /app');
+
+        // Get the token from localStorage
+        accessToken = await getAuthToken(page);
+        if (!accessToken) {
+          throw new Error('No access token received after beta enrollment');
+        }
+        console.log('  Session token received');
+
+        await page.screenshot({ path: 'test-results/02b-app-after-enrollment.png' });
+        console.log('STEP 2 COMPLETE: Beta enrollment successful');
+
+        // =========================================================================
+        // STEP 3: Verify Credits (via UI)
+        // =========================================================================
+        console.log('\n========================================');
+        console.log('STEP 3: Verify Credits');
+        console.log('========================================');
+
+        // Look for credit indicator in the UI
+        const creditText = await page.getByText(/credit/i).first().textContent();
+        console.log(`  Credits visible: ${creditText}`);
+
+        console.log('STEP 3 COMPLETE: User authenticated with credits');
       }
-
-      await page.screenshot({ path: 'test-results/02-after-beta-click.png' });
-
-      if (!formVisible) {
-        // Debug: log the page state
-        const pageContent = await page.content();
-        console.log('  Page HTML length:', pageContent.length);
-        console.log('  Looking for beta-email in HTML:', pageContent.includes('beta-email'));
-        throw new Error('Beta form did not appear after clicking Join Beta Program button');
-      }
-
-      await expect(betaEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
-      console.log('  Beta form visible');
-
-      // Fill beta form
-      await betaEmailInput.fill(inbox.emailAddress!);
-
-      // Fill the promise/reason field
-      const promiseField = page.locator('#beta-promise, textarea');
-      await promiseField.first().fill('piri - dog (E2E test: testing complete karaoke generation flow)');
-
-      // Check the acceptance checkbox
-      const acceptCheckbox = page.locator('#beta-accept, input[type="checkbox"]');
-      await acceptCheckbox.first().check();
-
-      await page.screenshot({ path: 'test-results/02a-beta-form-filled.png' });
-      console.log('  Beta form filled');
-
-      // Submit form - look for the submit button
-      const submitButton = page.getByRole('button', { name: /get.*free.*credit|submit|enroll/i });
-      await expect(submitButton).toBeEnabled({ timeout: TIMEOUTS.action });
-      await submitButton.click();
-
-      // Wait for success and redirect
-      await expect(
-        page.getByText(/welcome to the beta|redirecting to the app/i)
-      ).toBeVisible({ timeout: 15000 });
-
-      await page.waitForURL(/\/app/, { timeout: 10000 });
-      console.log('  Redirected to /app');
-
-      // Get the token from localStorage
-      accessToken = await getAuthToken(page);
-      if (!accessToken) {
-        throw new Error('No access token received after beta enrollment');
-      }
-      console.log('  Session token received');
-
-      await page.screenshot({ path: 'test-results/02b-app-after-enrollment.png' });
-      console.log('STEP 2 COMPLETE: Beta enrollment successful');
-
-      // =========================================================================
-      // STEP 3: Verify Credits (via UI)
-      // =========================================================================
-      console.log('\n========================================');
-      console.log('STEP 3: Verify Credits');
-      console.log('========================================');
-
-      // Look for credit indicator in the UI
-      const creditText = await page.getByText(/credit/i).first().textContent();
-      console.log(`  Credits visible: ${creditText}`);
-
-      console.log('STEP 3 COMPLETE: User authenticated with credits');
 
       // =========================================================================
       // STEP 4: Create Karaoke Job (via UI)
@@ -744,8 +800,8 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('All UI interactions completed successfully.');
 
     } finally {
-      // Always clean up the email inbox
-      if (inboxId) {
+      // Always clean up the email inbox (if we created one)
+      if (inboxId && emailHelper) {
         try {
           await emailHelper.deleteInbox(inboxId);
           console.log('  Cleaned up test email inbox');
