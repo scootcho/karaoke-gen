@@ -398,7 +398,26 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
 
         const dialog = page.locator('[role="dialog"]');
         if (await dialog.isVisible({ timeout: 5000 })) {
-          await page.screenshot({ path: 'test-results/05a-audio-dialog.png' });
+          await page.screenshot({ path: 'test-results/05a-audio-dialog-loading.png' });
+
+          // Wait for the loading spinner to disappear
+          // The AudioSearchDialog shows "Loading..." while fetching results
+          const loadingIndicator = dialog.getByText(/loading/i);
+          try {
+            await expect(loadingIndicator).not.toBeVisible({ timeout: 60000 });
+            console.log('  Audio results loaded');
+          } catch {
+            console.log('  WARNING: Loading indicator timeout');
+          }
+
+          await page.screenshot({ path: 'test-results/05b-audio-dialog-loaded.png' });
+
+          // Check for "No audio sources found" message
+          const noResultsMsg = dialog.getByText(/no audio sources found/i);
+          if (await noResultsMsg.isVisible({ timeout: 2000 }).catch(() => false)) {
+            console.log('  WARNING: No audio sources found - this may cause the test to fail');
+            await page.screenshot({ path: 'test-results/05b-no-audio-sources.png' });
+          }
 
           // Find and click first Select button
           const selectButtons = dialog.getByRole('button', { name: /^select$/i });
@@ -414,13 +433,18 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
               console.log('  Dialog still open - pressing Escape');
               return page.keyboard.press('Escape');
             });
+          } else {
+            console.log('  ERROR: No Select buttons found - closing dialog');
+            await page.keyboard.press('Escape');
+            // This is a critical error - the job won't progress without audio selection
+            throw new Error('No audio sources available for selection. The job cannot proceed.');
           }
         }
       } else {
         console.log('  No audio selection needed - job auto-selected or cached');
       }
 
-      await page.screenshot({ path: 'test-results/05b-after-audio.png' });
+      await page.screenshot({ path: 'test-results/05c-after-audio.png' });
       console.log('STEP 5 COMPLETE: Audio selection handled');
 
       // =========================================================================
