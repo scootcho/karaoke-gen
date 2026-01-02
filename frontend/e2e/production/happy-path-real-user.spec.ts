@@ -754,7 +754,8 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       let isComplete = false;
       const encodeStartTime = Date.now();
       // After instrumental selection, job needs: video rendering (~15 min) + encoding (~10 min)
-      const completionTimeout = TIMEOUTS.videoRendering + TIMEOUTS.finalEncoding; // 25 minutes total
+      // Add extra buffer for variable processing times
+      const completionTimeout = TIMEOUTS.videoRendering + TIMEOUTS.finalEncoding + 600_000; // 35 minutes total
 
       while (Date.now() - encodeStartTime < completionTimeout) {
         if (await refreshBtn.isVisible().catch(() => false)) {
