@@ -368,12 +368,16 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       await expect(jobCard).toBeVisible({ timeout: TIMEOUTS.audioSearch });
       console.log('  Job card visible');
 
-      // Extract job ID from the card
-      const jobIdText = await jobCard.getByText(/ID:/).first().textContent();
-      const idMatch = jobIdText?.match(/ID:\s*([a-zA-Z0-9-]+)/);
+      // Extract job ID from the card's full text content
+      // The ID appears as "ID: xxxxxxxx" in the card text
+      const cardFullText = await jobCard.textContent() || '';
+      const idMatch = cardFullText.match(/ID:\s*([a-f0-9]{8,})/i);
       if (idMatch) {
         jobId = idMatch[1];
         console.log(`  Job ID: ${jobId}`);
+      } else {
+        console.log(`  WARNING: Could not extract job ID from card text`);
+        console.log(`  Card text sample: ${cardFullText.substring(0, 100)}...`);
       }
 
       await page.screenshot({ path: 'test-results/04b-job-created.png' });
