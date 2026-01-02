@@ -77,9 +77,9 @@ test.describe('Test Existing Job - Focused Stage Testing', () => {
 
     console.log('   Access token set in localStorage');
 
-    // STEP 2: Navigate to jobs page and find the job
-    console.log('2. Navigating to jobs page...');
-    await page.goto(`${PROD_URL}/jobs`, { waitUntil: 'networkidle' });
+    // STEP 2: Navigate to app page (where jobs are shown) and find the job
+    console.log('2. Navigating to app page...');
+    await page.goto(`${PROD_URL}/app`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(3000);
 
     await page.screenshot({ path: 'test-results/existing-01-jobs-page.png', fullPage: true });

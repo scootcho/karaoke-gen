@@ -41,7 +41,7 @@ test.describe('Lyrics Review Only - Focused Test', () => {
   test.describe.configure({ retries: 0 });
 
   test('Complete lyrics review via UI', async ({ page, context }) => {
-    test.setTimeout(120_000); // 2 minutes should be plenty for this focused test
+    test.setTimeout(900_000); // 15 minutes - preview generation can take up to 10 min
 
     const jobId = getJobId();
     const reviewToken = getReviewToken();
@@ -148,12 +148,12 @@ test.describe('Lyrics Review Only - Focused Test', () => {
     const loadingText = page.getByText(/generating preview video/i);
 
     if (await loadingText.isVisible({ timeout: 5000 }).catch(() => false)) {
-      console.log('   Preview is generating... waiting up to 2 minutes');
+      console.log('   Preview is generating... waiting up to 10 minutes');
       try {
-        await expect(loadingText).not.toBeVisible({ timeout: 120_000 });
+        await expect(loadingText).not.toBeVisible({ timeout: 600_000 });
         console.log('   Preview generation complete');
       } catch {
-        console.log('   WARNING: Preview generation timed out');
+        console.log('   WARNING: Preview generation timed out after 10 minutes');
       }
     } else {
       console.log('   No loading indicator found - preview may already be ready or errored');
