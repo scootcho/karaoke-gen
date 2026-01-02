@@ -711,7 +711,9 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         const instrumentalPage = await context.newPage();
         // Handle both absolute and relative URLs
         const fullUrl = instrumentalUrl?.startsWith('http') ? instrumentalUrl : `${PROD_URL}${instrumentalUrl}`;
-        await instrumentalPage.goto(fullUrl, { waitUntil: 'networkidle' });
+        // Use 'load' instead of 'networkidle' - instrumental page has ongoing audio requests
+        // that prevent networkidle from ever being reached
+        await instrumentalPage.goto(fullUrl, { waitUntil: 'load' });
         await instrumentalPage.waitForTimeout(3000);
 
         await instrumentalPage.screenshot({ path: 'test-results/08a-instrumental-opened.png', fullPage: true });
