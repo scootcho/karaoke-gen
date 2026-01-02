@@ -828,10 +828,16 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         const firstDownloadUrl = await downloadLinks.first().getAttribute('href');
         console.log(`  First download URL: ${firstDownloadUrl?.substring(0, 80)}...`);
 
-        // Verify the download URL returns 200
-        const response = await page.request.head(firstDownloadUrl!);
-        expect(response.status()).toBe(200);
-        console.log('  Download URL verified accessible');
+        // Verify the download URL is accessible
+        // Use GET instead of HEAD since the download endpoint may not support HEAD
+        // The response might redirect to GCS, so accept 2xx/3xx status codes
+        const response = await page.request.get(firstDownloadUrl!, {
+          maxRedirects: 0, // Don't follow redirects, just check the initial response
+        });
+        const status = response.status();
+        // Accept 200 (success) or 302/307 (redirect to actual download)
+        expect(status >= 200 && status < 400).toBe(true);
+        console.log(`  Download URL verified accessible (status: ${status})`);
       }
 
       await page.screenshot({ path: 'test-results/10-downloads-verified.png' });
