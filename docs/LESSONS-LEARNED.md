@@ -295,6 +295,77 @@ await expect(page.getByText('Hello,')).toBeVisible({ timeout: 5000 });
 
 **Why it matters**: Playwright assertions have built-in retry logic and fail fast when conditions aren't met. Arbitrary timeouts either waste time (waiting when condition is already met) or cause flaky tests (not waiting long enough on slow CI).
 
+### Playwright: Use 'load' Instead of 'networkidle' for Audio-Heavy Pages
+
+**Problem**: Pages with audio players or ongoing audio network requests never reach `networkidle` state.
+
+```typescript
+// BAD - hangs indefinitely on pages with audio players
+await page.goto(url, { waitUntil: 'networkidle' });
+```
+
+**Symptom**: Test times out after 30-45 minutes waiting for navigation to complete, even though the page is fully rendered and usable.
+
+**Solution**: Use `waitUntil: 'load'` plus a small fixed wait if needed:
+
+```typescript
+// GOOD - works with audio-heavy pages
+await page.goto(url, { waitUntil: 'load' });
+await page.waitForTimeout(3000);  // Allow JS to initialize
+```
+
+**Root cause**: Audio players make continuous network requests for streaming/buffering, preventing the network from ever becoming "idle".
+
+### Playwright: HEAD Requests May Not Be Supported
+
+**Problem**: Using `page.request.head()` to verify download URLs returns 405 Method Not Allowed on some endpoints.
+
+```typescript
+// BAD - many download endpoints don't support HEAD
+const response = await page.request.head(downloadUrl);
+// Returns 405 instead of 200
+```
+
+**Solution**: Use GET with `maxRedirects: 0` to check accessibility without downloading:
+
+```typescript
+// GOOD - works with all endpoints, doesn't follow redirects
+const response = await page.request.get(downloadUrl, { maxRedirects: 0 });
+expect(response.status() >= 200 && response.status() < 400).toBe(true);
+```
+
+**Why maxRedirects: 0**: Download URLs often redirect to cloud storage (GCS, S3). A 302/307 redirect means the URL is valid. Following the redirect would download the entire file.
+
+### E2E Tests: Understand Job State Machine Flow
+
+**Problem**: E2E test skipped instrumental selection because it checked for "rendering" in status, but rendering happens BEFORE instrumental selection, not after.
+
+```typescript
+// BAD - assumes rendering means instrumental is done
+if (status.includes('rendering') || status.includes('encoding')) {
+  console.log('Past instrumental stage');
+  break;
+}
+```
+
+**Actual job flow**:
+```
+downloading → transcribing → in_review → rendering_video →
+awaiting_instrumental_selection → encoding → complete
+```
+
+**Solution**: Only skip on statuses that are definitively past the target stage:
+
+```typescript
+// GOOD - encoding is definitely past instrumental
+if (status.includes('encoding') && !status.includes('awaiting')) {
+  console.log('Past instrumental stage');
+  break;
+}
+```
+
+**Lesson**: Before writing status-checking logic, trace through the actual state machine to understand which states come before/after your target state.
+
 ## Deployment Notes
 
 ### Cloud Run Timeouts

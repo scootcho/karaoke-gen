@@ -1,5 +1,7 @@
 # E2E Happy Path Test Specification
 
+> **STATUS**: ✅ **PASSING** - Test completes all 12 steps in ~38 minutes. Last verified 2026-01-02.
+
 > **IMPORTANT**: This document defines the requirements for a comprehensive end-to-end test that validates the entire karaoke generation flow with REAL user interactions only. NO API shortcuts allowed.
 
 ## Overview
@@ -209,14 +211,24 @@ This is separate from the existing `full-user-journey.spec.ts` which uses API sh
 
 ## Iteration Plan
 
-1. Create initial test with all steps stubbed
-2. Implement each section one at a time
-3. Run via GHA workflow
-4. Debug failures using artifacts
-5. Iterate until fully passing
+1. ~~Create initial test with all steps stubbed~~
+2. ~~Implement each section one at a time~~
+3. ~~Run via GHA workflow~~
+4. ~~Debug failures using artifacts~~
+5. ~~Iterate until fully passing~~ ✅ Completed 2026-01-02
 6. Add to required CI checks once stable
+
+## Key Fixes Applied
+
+During iteration, three issues were fixed:
+
+1. **STEP 8 status detection**: "rendering" status comes BEFORE instrumental selection, not after. Changed to only skip on "encoding".
+2. **Instrumental page navigation**: Changed `waitUntil: 'networkidle'` to `'load'` because audio players prevent networkidle.
+3. **Download verification**: Changed HEAD to GET request with `maxRedirects: 0` since download endpoint doesn't support HEAD.
+
+See [LESSONS-LEARNED.md](LESSONS-LEARNED.md) for details.
 
 ---
 
-*Last updated: 2026-01-01*
+*Last updated: 2026-01-02*
 *Author: Claude (via Andrew's request)*
