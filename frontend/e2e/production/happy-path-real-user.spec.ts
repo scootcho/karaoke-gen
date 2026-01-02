@@ -128,6 +128,10 @@ async function getAuthToken(page: Page): Promise<string | null> {
 // =============================================================================
 
 test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
+  // IMPORTANT: Disable retries for this test - each retry creates a new karaoke job
+  // which wastes 15-20 minutes of processing time
+  test.describe.configure({ retries: 0 });
+
   test('Complete flow: New user signup -> Karaoke generation -> Distribution -> Cleanup', async ({
     page,
     context,
