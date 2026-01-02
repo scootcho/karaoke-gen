@@ -59,7 +59,7 @@ const TIMEOUTS = {
   expect: 60_000,           // 60s for assertions
   emailArrival: 120_000,    // 2min for email to arrive
   audioSearch: 120_000,     // 2min for audio search
-  lyricsProcessing: 1200_000, // 20min for lyrics transcription
+  lyricsProcessing: 1500_000, // 25min for lyrics transcription (matches Cloud Tasks deadline)
   videoRendering: 900_000,  // 15min for video rendering
   finalEncoding: 600_000,   // 10min for final encoding
   fullTest: 3600_000,       // 60min for full test
@@ -457,11 +457,15 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('  Waiting for lyrics transcription (this may take 10-20 minutes)...');
 
       // Poll the UI for status changes
-      const reviewStatuses = ['review lyrics', 'action needed'];
       let foundReviewStatus = false;
 
       const startTime = Date.now();
+      let pollCount = 0;
       while (Date.now() - startTime < TIMEOUTS.lyricsProcessing) {
+        pollCount++;
+        const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
+        const elapsedSec = Math.floor(((Date.now() - startTime) % 60000) / 1000);
+
         // Refresh the page/jobs
         const refreshBtn = page.getByRole('button', { name: /refresh/i });
         if (await refreshBtn.isVisible().catch(() => false)) {
@@ -469,20 +473,33 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
           await page.waitForTimeout(2000);
         }
 
-        // Check job card status
+        // Check job card status text
         const statusText = await jobCard.textContent() || '';
-        console.log(`  Status: ${statusText.substring(0, 100)}...`);
 
-        // Check if we've reached review stage
+        // Check if the "Review Lyrics" link is visible (most reliable indicator)
+        const reviewLink = jobCard.getByRole('link', { name: /review lyrics/i });
+        const reviewLinkVisible = await reviewLink.isVisible().catch(() => false);
+
+        console.log(`  [${elapsedMin}m ${elapsedSec}s] Poll #${pollCount}: reviewLink=${reviewLinkVisible}, status="${statusText.substring(0, 80)}..."`);
+
+        // Primary check: Is the Review Lyrics link visible?
+        if (reviewLinkVisible) {
+          foundReviewStatus = true;
+          console.log('  Job ready for lyrics review (found Review Lyrics link)');
+          break;
+        }
+
+        // Secondary check: Text-based status detection
         if (statusText.toLowerCase().includes('review lyrics') ||
             (statusText.toLowerCase().includes('action needed') && statusText.toLowerCase().includes('review'))) {
           foundReviewStatus = true;
-          console.log('  Job ready for lyrics review');
+          console.log('  Job ready for lyrics review (found status text)');
           break;
         }
 
         // Check for failure
         if (statusText.toLowerCase().includes('failed')) {
+          await page.screenshot({ path: 'test-results/06-job-failed.png' });
           throw new Error('Job failed during lyrics processing');
         }
 
@@ -490,7 +507,10 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       }
 
       if (!foundReviewStatus) {
-        throw new Error('Timeout waiting for lyrics review stage');
+        const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
+        console.log(`  TIMEOUT after ${elapsedMin} minutes (${pollCount} polls)`);
+        await page.screenshot({ path: 'test-results/06-timeout.png' });
+        throw new Error(`Timeout waiting for lyrics review stage after ${elapsedMin} minutes`);
       }
 
       await page.screenshot({ path: 'test-results/06-ready-for-review.png' });
