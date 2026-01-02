@@ -32,6 +32,7 @@ from backend.models.job import JobStatus
 from karaoke_gen.utils import sanitize_filename
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.lyrics_cache_service import LyricsCacheService
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 from backend.workers.style_helper import load_style_config
 from backend.services.tracing import job_span, add_span_event, add_span_attribute
@@ -229,7 +230,40 @@ async def process_lyrics_transcription(job_id: str) -> bool:
                         raise Exception("Failed to download audio file")
                     job_log.info(f"Audio downloaded: {os.path.basename(audio_path)}")
                     download_span.set_attribute("audio_file", os.path.basename(audio_path))
-                
+
+                # Set up LyricsTranscriber cache directory and sync from GCS
+                # This allows reusing cached AudioShake/lyrics API responses across Cloud Run instances
+                cache_dir = os.path.join(temp_dir, "lyrics-cache")
+                os.makedirs(cache_dir, exist_ok=True)
+                os.environ["LYRICS_TRANSCRIBER_CACHE_DIR"] = cache_dir
+                job_log.info(f"LyricsTranscriber cache dir: {cache_dir}")
+
+                # Sync cache from GCS (download any existing cached API responses)
+                # Note: Cache sync is best-effort - failures should not fail the job
+                cache_service = LyricsCacheService(storage)
+                audio_hash = None
+                lyrics_hash = None
+                with job_span("sync-cache-from-gcs", job_id):
+                    try:
+                        # Compute cache keys
+                        audio_hash = cache_service.compute_audio_hash(audio_path)
+                        # Use lyrics_artist/lyrics_title for lyrics hash (these are what LyricsTranscriber uses)
+                        lyrics_search_artist = getattr(job, 'lyrics_artist', None) or job.artist
+                        lyrics_search_title = getattr(job, 'lyrics_title', None) or job.title
+                        lyrics_hash = cache_service.compute_lyrics_hash(lyrics_search_artist, lyrics_search_title)
+
+                        job_log.info(f"Cache keys: audio_hash={audio_hash[:8]}..., lyrics_hash={lyrics_hash[:8]}...")
+                        add_span_attribute("audio_hash", audio_hash[:8])
+                        add_span_attribute("lyrics_hash", lyrics_hash[:8])
+
+                        # Download relevant cache files from GCS
+                        cache_stats = cache_service.sync_cache_from_gcs(cache_dir, audio_hash, lyrics_hash)
+                        job_log.info(f"Cache sync from GCS: {cache_stats['downloaded']} downloaded, {cache_stats['not_found']} not found")
+                        add_span_attribute("cache_hits", cache_stats["downloaded"])
+                    except Exception as e:
+                        job_log.warning(f"Cache sync from GCS failed (non-fatal): {e}", exc_info=True)
+                        add_span_attribute("cache_sync_error", str(e)[:100])
+
                 # Update progress using state_data (don't change status during parallel processing)
                 # The status is managed at a higher level - workers just track their progress
                 job_manager.update_state_data(job_id, 'lyrics_progress', {
@@ -380,7 +414,23 @@ async def process_lyrics_transcription(job_id: str) -> bool:
                 
                 job_log.info("All lyrics data uploaded successfully")
                 logger.info(f"[job:{job_id}] All lyrics data uploaded successfully")
-                
+
+                # Sync new cache files to GCS (upload any newly created cache entries)
+                # This persists cache across Cloud Run instances for future jobs
+                # Note: Cache upload is best-effort - failures should not fail the job
+                with job_span("sync-cache-to-gcs", job_id):
+                    try:
+                        if audio_hash and lyrics_hash:
+                            upload_stats = cache_service.sync_cache_to_gcs(cache_dir, audio_hash, lyrics_hash)
+                            job_log.info(f"Cache sync to GCS: {upload_stats['uploaded']} uploaded, {upload_stats['skipped']} already existed")
+                            add_span_attribute("cache_uploads", upload_stats["uploaded"])
+                        else:
+                            job_log.warning("Skipping cache upload: missing audio_hash or lyrics_hash")
+                            add_span_attribute("cache_upload_skipped", "missing_hashes")
+                    except Exception as e:
+                        job_log.warning(f"Cache upload to GCS failed (non-fatal): {e}")
+                        add_span_attribute("cache_upload_error", str(e)[:100])
+
                 # Update progress using state_data (don't change status during parallel processing)
                 job_manager.update_state_data(job_id, 'lyrics_progress', {
                     'stage': 'lyrics_complete',

@@ -33,6 +33,8 @@
 
 ## Recent Changes
 
+- **LyricsTranscriber Cache Persistence** (2026-01-02): Added GCS-backed cache for LyricsTranscriber to avoid redundant API calls. AudioShake transcription and lyrics provider responses (Genius, Spotify, LRCLib, Musixmatch) are now cached to `gs://karaoke-gen-storage/lyrics-transcriber-cache/`. Cache is synced before/after each job, persisting across Cloud Run instances. Significantly reduces API costs and speeds up repeated processing of same songs.
+
 - **Worker Timeout Fixes** (2026-01-01): Fixed 3 timeout issues blocking job completion: (1) Lyrics transcription timeout increased to 20 min (PR #153), (2) Cloud Tasks dispatch_deadline added for audio worker - default 10 min was killing Modal API calls (PR #154), (3) Enabled Cloud Run Jobs for video encoding - 1-hour timeout vs 30-min Cloud Run service limit (PR #155). Full E2E pipeline now verified working. See [archive/2026-01-01-worker-timeout-fixes.md](archive/2026-01-01-worker-timeout-fixes.md)
 
 - **Agentic Correction Timeout** (2025-12-31): Added 3-minute configurable timeout for agentic AI lyrics correction. Prevents stuck jobs when songs have many gaps (74+ gaps could take 30+ minutes). On timeout, skips correction and proceeds to human review with raw transcription. See [archive/2025-12-31-agentic-timeout-implementation.md](archive/2025-12-31-agentic-timeout-implementation.md)
