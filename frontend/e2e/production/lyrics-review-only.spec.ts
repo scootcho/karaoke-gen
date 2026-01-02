@@ -142,15 +142,36 @@ test.describe('Lyrics Review Only - Focused Test', () => {
     const modalContent = await previewModal.textContent();
     console.log(`   Modal content preview: ${modalContent?.substring(0, 200)}...`);
 
-    // Wait for video to load in the modal
-    console.log('5. Waiting for video element...');
+    // Wait for video preview to generate
+    // The PreviewVideoSection shows "Generating preview video..." while loading
+    console.log('5. Waiting for preview video generation...');
+    const loadingText = page.getByText(/generating preview video/i);
+
+    if (await loadingText.isVisible({ timeout: 5000 }).catch(() => false)) {
+      console.log('   Preview is generating... waiting up to 2 minutes');
+      try {
+        await expect(loadingText).not.toBeVisible({ timeout: 120_000 });
+        console.log('   Preview generation complete');
+      } catch {
+        console.log('   WARNING: Preview generation timed out');
+      }
+    } else {
+      console.log('   No loading indicator found - preview may already be ready or errored');
+    }
+
+    await page.screenshot({ path: 'test-results/focused-05-after-generation.png', fullPage: true });
+
+    // Check for video element or error
     const videoElement = page.locator('video');
+    const errorAlert = page.locator('[role="alert"]');
 
-    // Check if video element exists at all
-    const videoCount = await videoElement.count();
-    console.log(`   Found ${videoCount} video element(s)`);
-
-    if (videoCount > 0) {
+    if (await errorAlert.isVisible({ timeout: 5000 }).catch(() => false)) {
+      const errorText = await errorAlert.textContent();
+      console.log(`   WARNING: Preview error: ${errorText}`);
+      await page.screenshot({ path: 'test-results/focused-05-preview-error.png', fullPage: true });
+      // Continue anyway
+    } else if (await videoElement.isVisible({ timeout: 10000 }).catch(() => false)) {
+      console.log('   Video element visible');
       // Check video state
       const videoState = await videoElement.first().evaluate((el) => {
         const video = el as HTMLVideoElement;
@@ -159,31 +180,15 @@ test.describe('Lyrics Review Only - Focused Test', () => {
           readyState: video.readyState,
           networkState: video.networkState,
           error: video.error?.message,
-          width: video.offsetWidth,
-          height: video.offsetHeight,
-          display: window.getComputedStyle(el).display,
-          visibility: window.getComputedStyle(el).visibility,
         };
       });
       console.log(`   Video state: ${JSON.stringify(videoState)}`);
-
-      // Wait for video to be visible
-      try {
-        await expect(videoElement.first()).toBeVisible({ timeout: 30000 });
-        console.log('   Video element is visible');
-      } catch (e) {
-        console.log('   Video element not visible - checking if we can proceed anyway');
-        await page.screenshot({ path: 'test-results/focused-05-video-not-visible.png', fullPage: true });
-      }
+      await page.waitForTimeout(3000);
     } else {
-      console.log('   No video element found - checking for loading indicator');
-      await page.screenshot({ path: 'test-results/focused-05-no-video.png', fullPage: true });
+      console.log('   WARNING: No video element found, but continuing anyway');
     }
 
-    // Give the video a moment to buffer/load
-    await page.waitForTimeout(5000);
-
-    await page.screenshot({ path: 'test-results/focused-05-video-loaded.png', fullPage: true });
+    await page.screenshot({ path: 'test-results/focused-06-video-state.png', fullPage: true });
 
     // Click "Complete Review" button in the modal
     console.log('6. Looking for "Complete Review" button...');
@@ -207,7 +212,7 @@ test.describe('Lyrics Review Only - Focused Test', () => {
         await submitBtn.click();
       } else {
         console.log('   Could not find Complete Review or similar button');
-        await page.screenshot({ path: 'test-results/focused-06-no-complete-btn.png', fullPage: true });
+        await page.screenshot({ path: 'test-results/focused-07-no-complete-btn.png', fullPage: true });
         throw new Error('Could not find Complete Review button');
       }
     }
@@ -216,7 +221,7 @@ test.describe('Lyrics Review Only - Focused Test', () => {
     console.log('7. Waiting for submission to complete...');
     await page.waitForTimeout(5000);
 
-    await page.screenshot({ path: 'test-results/focused-07-after-submit.png', fullPage: true });
+    await page.screenshot({ path: 'test-results/focused-08-after-submit.png', fullPage: true });
 
     console.log('');
     console.log('========================================');
