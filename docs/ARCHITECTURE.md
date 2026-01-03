@@ -155,6 +155,20 @@ LyricsTranscriber                 LyricsTranscriber
 | Genius | Reference lyrics | Yes |
 | YouTube API | Video upload | Optional |
 
+## Firestore Collections
+
+karaoke-gen shares a GCP project (`nomadkaraoke`) with karaoke-decide, but uses separate Firestore collections:
+
+| Collection | Purpose | Key Fields |
+|------------|---------|------------|
+| `gen_users` | karaoke-gen user accounts | email, credits, role, is_active |
+| `jobs` | Karaoke generation jobs | job_id, user_email, status, state_data |
+| `sessions` | Magic link auth sessions | user_email, token, expires_at |
+| `magic_links` | Passwordless auth tokens | email, token, expires_at, used |
+| `beta_feedback` | Beta program feedback | user_email, ratings, comments |
+
+**Note**: The `users` collection in the same Firestore instance belongs to karaoke-decide (different schema: user_id, is_guest, quiz_* fields). Don't use it for karaoke-gen.
+
 ## Tech Stack
 
 - **Backend**: FastAPI, Python 3.12, Cloud Run

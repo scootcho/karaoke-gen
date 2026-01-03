@@ -4,6 +4,25 @@ Key insights for future AI agents working on this codebase.
 
 ## Architecture Decisions
 
+### Separate Collections for Multi-App Projects
+
+**Problem**: karaoke-gen and karaoke-decide shared the same `users` Firestore collection with incompatible schemas. karaoke-gen users have `credits`, `role`, `is_active`; karaoke-decide users have `user_id`, `is_guest`, `quiz_*` fields.
+
+**Symptoms**:
+- Admin dashboard showed users from both apps mixed together
+- Potential for data corruption if wrong app writes to wrong user
+- Hard to run collection-wide queries (indexes, aggregations) for one app
+
+**Solution**: Migrate karaoke-gen to dedicated `gen_users` collection. Created migration script that:
+1. Identified karaoke-gen users by schema (has `credits` + `role` + `is_active`, lacks `user_id` + `is_guest`)
+2. Copied 42 users to `gen_users` with same document IDs (email addresses)
+3. Updated Pulumi indexes from `users` to `gen_users`
+4. Left karaoke-decide's `users` collection untouched
+
+**Key insight**: When multiple apps share a GCP project, use distinct collection names from day one. Prefixing collections with app name (e.g., `gen_users`, `decide_users`) avoids schema conflicts and makes ownership clear.
+
+**Migration script**: `scripts/migrate_users_to_gen_users.py` - supports `--dry-run` and `--delete` flags.
+
 ### LyricsTranscriber: Library, Not Server
 
 **Problem**: LyricsTranscriber's `ReviewServer` blocks waiting for human input - incompatible with async cloud architecture.
