@@ -245,7 +245,7 @@ export default function AdminUsersPage() {
                 <TableRow
                   key={user.email}
                   className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => router.push(`/admin/users/${encodeURIComponent(user.email)}`)}
+                  onClick={() => router.push(`/admin/users/detail?email=${encodeURIComponent(user.email)}`)}
                 >
                   <TableCell className="font-medium">
                     {user.display_name || user.email}
