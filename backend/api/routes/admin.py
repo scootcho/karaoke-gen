@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
-from backend.services.user_service import get_user_service, UserService
+from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.job_manager import JobManager
 from backend.models.job import JobStatus
 
@@ -90,7 +90,7 @@ async def get_admin_stats_overview(
             return 0
 
     # User statistics
-    users_collection = db.collection("users")
+    users_collection = db.collection(USERS_COLLECTION)
 
     total_users = get_count(users_collection)
 
