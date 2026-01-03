@@ -29,7 +29,7 @@ from backend.models.user import (
     BetaFeedbackResponse,
     BetaTesterFeedback,
 )
-from backend.services.user_service import get_user_service, UserService
+from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
 from backend.api.dependencies import require_admin
@@ -684,7 +684,7 @@ async def list_users(
     limit = min(limit, 100)
 
     db = user_service.db
-    query = db.collection("users")
+    query = db.collection(USERS_COLLECTION)
 
     # Filter inactive users
     if not include_inactive:
@@ -952,7 +952,7 @@ async def get_beta_stats(
     from google.cloud.firestore_v1 import aggregation
 
     # Count beta testers by status using efficient aggregation queries
-    users_collection = user_service.db.collection("users")
+    users_collection = user_service.db.collection(USERS_COLLECTION)
 
     # Helper function to get count using aggregation
     def get_count(query) -> int:
