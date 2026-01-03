@@ -795,6 +795,49 @@ input_files = [f for f in input_files if "outputs" not in str(f)]
 
 **Lesson**: When writing code that processes files downloaded from GCS, always use recursive glob patterns and verify the expected directory structure matches what's actually stored.
 
+### GCS Blob Paths vs Full URIs
+
+**Problem**: When uploading files to GCS and returning paths to other services, there's confusion between "blob paths" (just the path within a bucket) and "full GCS URIs" (gs://bucket/path).
+
+**Symptoms**:
+- 404 errors when downloading files that were just uploaded
+- Paths look like: `bucket/gs://bucket/path/file.mp4` (doubled prefix)
+- Storage service prepends bucket name to what's already a full URI
+
+**Example of the bug**:
+```python
+# GCE worker uploads to gs://bucket/jobs/id/encoded/
+# Then returns full URI in response: "gs://bucket/jobs/id/encoded/file.mp4"
+# Backend tries: storage.download_file("gs://bucket/jobs/id/encoded/file.mp4")
+# Storage service prepends bucket: "bucket/gs://bucket/jobs/id/encoded/file.mp4"
+# Result: 404 - No such object
+```
+
+**Solution**: Return blob paths (path within bucket), not full GCS URIs:
+```python
+# output_gcs_path = "gs://bucket/jobs/id/encoded/"
+gcs_path = output_gcs_path.replace("gs://", "")
+parts = gcs_path.split("/", 1)
+bucket = parts[0]
+prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
+
+# Return blob paths like: "jobs/id/encoded/file.mp4"
+blob_path = f"{prefix}/{filename}" if prefix else filename
+```
+
+**Related gotcha**: Double slashes in paths. When the prefix already ends with "/" and you concatenate with another "/":
+```python
+# BAD - creates "encoded//file.mp4"
+prefix = "jobs/id/encoded/"  # Has trailing slash
+blob_name = f"{prefix}/{filename}"  # Adds another slash
+
+# GOOD - strip trailing slash first
+prefix = parts[1].rstrip("/")
+blob_name = f"{prefix}/{filename}" if prefix else filename
+```
+
+**Lesson**: When building systems that pass GCS paths between services, establish a clear contract: either always use full URIs (`gs://bucket/path`) or always use blob paths (`path/within/bucket`). Document which format each API expects.
+
 ### Library Caches Need GCS Sync in Cloud Run
 
 **Problem**: Libraries like LyricsTranscriber cache API responses to local directories (e.g., `~/lyrics-transcriber-cache`). In Cloud Run, each container is ephemeral - the cache is lost on every restart or scale-up, causing redundant API calls.

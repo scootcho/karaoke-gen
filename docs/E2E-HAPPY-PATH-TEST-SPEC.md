@@ -18,13 +18,15 @@
 
 - [ ] Navigate to landing page (`gen.nomadkaraoke.com`)
 - [ ] Click "Sign In" or "Get Started" button
-- [ ] Create a NEW testmail.app inbox (fresh email address for each test run)
+- [ ] Generate a unique test email address (testmail.app namespace)
 - [ ] Enter the test email in the beta enrollment form
 - [ ] Submit the form
-- [ ] Wait for welcome/magic-link email in testmail.app inbox
+- [ ] Wait for welcome/magic-link email via testmail.app API
 - [ ] Extract the magic link from the email
 - [ ] Click/navigate to the magic link to authenticate
 - [ ] Verify user is logged in and has credits
+
+**Note**: When `use_test_token=true` workflow input is set, steps 1-9 above are skipped and the test uses a pre-authenticated token instead.
 
 ### 2. Create Karaoke Job (UI Only)
 
@@ -118,9 +120,10 @@
 ### Environment Variables
 
 ```bash
-TESTMAIL_API_KEY=xxx           # Required - for email testing
-TESTMAIL_NAMESPACE=xxx         # Required - testmail.app namespace
-# No pre-auth tokens - test handles full signup
+TESTMAIL_NAMESPACE=xxx         # Required - for email testing (testmail.app)
+TESTMAIL_API_KEY=xxx           # Required - for email testing (testmail.app)
+E2E_TEST_TOKEN=xxx             # Optional - skip signup, use existing account
+# When use_test_token=true, skips email signup and uses pre-authenticated token
 ```
 
 ### Test Song
@@ -161,8 +164,8 @@ Log detailed progress at each step with timestamps for debugging.
 
 ### Secrets Required
 
-- `TESTMAIL_API_KEY` - For email testing
-- `TESTMAIL_NAMESPACE` - testmail.app namespace
+- `TESTMAIL_API_KEY` - For email testing (testmail.app)
+- `TESTMAIL_NAMESPACE` - testmail.app namespace for unique email addresses
 
 ### Workflow Steps
 
