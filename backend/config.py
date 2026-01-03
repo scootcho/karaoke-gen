@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     # instead of Cloud Tasks. This supports encoding times >30 minutes (up to 24 hours).
     # Default is false - Cloud Tasks is sufficient for most videos (15-20 min).
     use_cloud_run_jobs_for_video: bool = os.getenv("USE_CLOUD_RUN_JOBS_FOR_VIDEO", "false").lower() in ("true", "1", "yes")
+
+    # GCE Encoding Worker (for high-performance video encoding)
+    # When enabled, video encoding is offloaded to a dedicated C4 GCE instance
+    # with faster CPU (Intel Granite Rapids 3.9 GHz) instead of Cloud Run.
+    # This provides 2-3x faster encoding times for CPU-bound FFmpeg libx264 encoding.
+    use_gce_encoding: bool = os.getenv("USE_GCE_ENCODING", "false").lower() in ("true", "1", "yes")
+    encoding_worker_url: Optional[str] = os.getenv("ENCODING_WORKER_URL")  # e.g., http://136.119.50.148:8080
+    encoding_worker_api_key: Optional[str] = os.getenv("ENCODING_WORKER_API_KEY")
     
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")

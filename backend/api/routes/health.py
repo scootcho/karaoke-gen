@@ -12,6 +12,7 @@ from backend.version import VERSION
 from backend.services.flacfetch_client import get_flacfetch_client
 from backend.services.email_service import get_email_service
 from backend.services.stripe_service import get_stripe_service
+from backend.services.encoding_service import get_encoding_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -205,6 +206,37 @@ async def check_flacfetch_service_status() -> Dict[str, Any]:
         }
 
 
+async def check_encoding_worker_status() -> Dict[str, Any]:
+    """Check if GCE encoding worker is available and healthy."""
+    encoding_service = get_encoding_service()
+
+    if not encoding_service.is_configured:
+        return {
+            "configured": False,
+            "enabled": encoding_service.settings.use_gce_encoding,
+            "message": "GCE encoding worker not configured (ENCODING_WORKER_URL or API key not set)",
+        }
+
+    try:
+        health = await encoding_service.health_check()
+        return {
+            "configured": True,
+            "enabled": encoding_service.is_enabled,
+            "available": health.get("status") == "ok",
+            "status": health.get("status"),
+            "active_jobs": health.get("active_jobs", 0),
+            "queue_length": health.get("queue_length", 0),
+            "ffmpeg_version": health.get("ffmpeg_version"),
+        }
+    except Exception as e:
+        return {
+            "configured": True,
+            "enabled": encoding_service.is_enabled,
+            "available": False,
+            "error": str(e),
+        }
+
+
 @router.get("/health/detailed")
 async def detailed_health_check() -> Dict[str, Any]:
     """
@@ -214,6 +246,7 @@ async def detailed_health_check() -> Dict[str, Any]:
     """
     transmission_status = check_transmission_status()
     flacfetch_status = await check_flacfetch_service_status()
+    encoding_status = await check_encoding_worker_status()
 
     # Check email service
     email_service = get_email_service()
@@ -258,6 +291,7 @@ async def detailed_health_check() -> Dict[str, Any]:
         "dependencies": {
             "transmission_local": transmission_status,
             "flacfetch_remote": flacfetch_status,
+            "encoding_worker": encoding_status,
         },
         "services": {
             "email": email_status,

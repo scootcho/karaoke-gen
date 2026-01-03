@@ -35,6 +35,7 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.rclone_service import get_rclone_service
 from backend.services.youtube_service import get_youtube_service
+from backend.services.encoding_service import get_encoding_service
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
@@ -53,6 +54,122 @@ VIDEO_WORKER_LOGGERS = [
     "karaoke_gen.karaoke_finalise",
     "karaoke_gen.karaoke_finalise.karaoke_finalise",  # The actual logger name from __name__
 ]
+
+
+async def _encode_via_gce(
+    job_id: str,
+    job,
+    job_manager: JobManager,
+    storage: StorageService,
+    temp_dir: str,
+    base_name: str,
+    job_log,
+) -> Dict[str, Any]:
+    """
+    Encode videos using the high-performance GCE encoding worker.
+
+    This offloads FFmpeg encoding to a dedicated C4 GCE instance with
+    Intel Granite Rapids 3.9 GHz CPU for 2-3x faster encoding.
+
+    Args:
+        job_id: Job ID
+        job: Job object
+        job_manager: Job manager instance
+        storage: Storage service instance
+        temp_dir: Temporary directory for output files
+        base_name: Base name for output files (e.g., "Artist - Title")
+        job_log: Job-specific logger
+
+    Returns:
+        Result dict with paths to encoded files
+    """
+    settings = get_settings()
+    encoding_service = get_encoding_service()
+
+    job_log.info("Using GCE encoding worker for high-performance encoding")
+    logger.info(f"[job:{job_id}] Using GCE encoding worker")
+
+    # Construct GCS paths for the encoding worker
+    bucket_name = settings.gcs_bucket_name
+    input_gcs_path = f"gs://{bucket_name}/jobs/{job_id}/"
+    output_gcs_path = f"gs://{bucket_name}/jobs/{job_id}/encoded/"
+
+    # Determine instrumental selection for encoding config
+    instrumental_selection = job.state_data.get('instrumental_selection', 'clean')
+    existing_instrumental = getattr(job, 'existing_instrumental_gcs_path', None)
+
+    encoding_config = {
+        "formats": ["mp4_4k_lossless", "mp4_4k_lossy", "mp4_720p"],
+        "base_name": base_name,
+        "instrumental_selection": instrumental_selection,
+        "existing_instrumental": existing_instrumental,
+        "ffmpeg_threads": 8,  # c4-standard-8 has 8 vCPUs
+    }
+
+    job_log.info(f"Submitting encoding job to GCE worker")
+    job_log.info(f"  Input: {input_gcs_path}")
+    job_log.info(f"  Output: {output_gcs_path}")
+
+    def progress_callback(progress: int):
+        # Update job progress (encoding is 75-95% of total)
+        scaled_progress = 75 + int(progress * 0.2)  # Map 0-100 to 75-95
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.ENCODING,
+            progress=scaled_progress,
+            message=f"Encoding videos ({progress}%)"
+        )
+
+    try:
+        # Submit and wait for encoding
+        with job_span("gce-encoding", job_id) as encoding_span:
+            encode_start = time.time()
+            add_span_event("gce_encoding_started")
+
+            result = await encoding_service.encode_videos(
+                job_id=job_id,
+                input_gcs_path=input_gcs_path,
+                output_gcs_path=output_gcs_path,
+                encoding_config=encoding_config,
+                progress_callback=progress_callback,
+            )
+
+            encode_duration = time.time() - encode_start
+            encoding_span.set_attribute("duration_seconds", encode_duration)
+            add_span_event("gce_encoding_completed", {"duration_seconds": encode_duration})
+
+        job_log.info(f"GCE encoding complete in {encode_duration:.1f}s")
+        logger.info(f"[job:{job_id}] GCE encoding complete in {encode_duration:.1f}s")
+
+        # Download encoded files from GCS to temp_dir
+        output_files = result.get("output_files", [])
+        local_files = {}
+
+        for gcs_path in output_files:
+            filename = os.path.basename(gcs_path)
+            local_path = os.path.join(temp_dir, filename)
+
+            job_log.info(f"Downloading encoded file: {filename}")
+            storage.download_file(gcs_path, local_path)
+
+            # Map to result keys expected by _upload_results
+            if "4K Lossless" in filename or "4k_lossless" in filename.lower():
+                local_files["final_video"] = local_path
+            elif "4K Lossy" in filename or "4k_lossy" in filename.lower():
+                local_files["final_video_lossy"] = local_path
+            elif "720p" in filename:
+                local_files["final_video_720p"] = local_path
+            elif filename.endswith(".mkv"):
+                local_files["final_video_mkv"] = local_path
+
+        job_log.info(f"Downloaded {len(local_files)} encoded files")
+
+        return local_files
+
+    except Exception as e:
+        job_log.error(f"GCE encoding failed: {e}")
+        logger.error(f"[job:{job_id}] GCE encoding failed: {e}")
+        raise
 
 
 async def generate_video(job_id: str) -> bool:
@@ -184,80 +301,105 @@ async def generate_video(job_id: str) -> bool:
                 countdown_padding_seconds = lyrics_metadata.get('countdown_padding_seconds', 3.0)
                 job_log.info(f"Countdown padding detected: {countdown_padding_seconds}s - instrumental will be padded if needed")
             
-            # Log finalization parameters
-            job_log.info("Creating KaraokeFinalise with parameters:")
-            job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
-            job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
-            job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
-            job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
-            job_log.info(f"  instrumental source: {instrumental_source}")
-            job_log.info(f"  countdown_padding_seconds: {countdown_padding_seconds}")
-            if existing_instrumental_path:
-                job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
-            
-            # Create KaraokeFinalise with ALL the parameters from the job
-            # This reuses all existing functionality!
-            
-            # Set up YouTube description file if template is provided
-            youtube_desc_path = None
-            if youtube_credentials and getattr(job, 'youtube_description_template', None):
-                youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
-                with open(youtube_desc_path, 'w') as f:
-                    f.write(job.youtube_description_template)
-                job_log.info("YouTube description template written to temp file")
-            
-            finalise = KaraokeFinalise(
-                logger=logger,
-                log_level=logging.INFO,
-                dry_run=False,
-                instrumental_format="flac",
-                # CDG/TXT generation
-                enable_cdg=getattr(job, 'enable_cdg', False),
-                enable_txt=getattr(job, 'enable_txt', False),
-                cdg_styles=cdg_styles,
-                # Brand code and organization (server-side mode uses rclone)
-                brand_prefix=getattr(job, 'brand_prefix', None),
-                organised_dir=None,  # Not used in cloud - files stay in GCS
-                organised_dir_rclone_root=getattr(job, 'organised_dir_rclone_root', None),
-                public_share_dir=None,  # Not used in cloud
-                # Notifications
-                discord_webhook_url=getattr(job, 'discord_webhook_url', None),
-                # YouTube upload (server-side with pre-loaded credentials)
-                youtube_client_secrets_file=None,  # Not used with pre-stored credentials
-                youtube_description_file=youtube_desc_path,
-                user_youtube_credentials=youtube_credentials,  # Pre-loaded from Secret Manager
-                rclone_destination=None,
-                email_template_file=None,
-                # Server-side optimizations
-                non_interactive=True,
-                server_side_mode=True,
-                selected_instrumental_file=instrumental_file,
-                # Audio synchronization - ensure instrumental matches vocal padding
-                countdown_padding_seconds=countdown_padding_seconds,
-            )
-            
-            # Call process() - this does ALL the work:
-            # - Encodes to 4 video formats
-            # - Generates CDG/TXT packages if enabled
-            # - Posts Discord notification if configured
-            # - Handles brand code generation
-            with job_span("karaoke-finalise", job_id) as finalise_span:
-                finalise_start = time.time()
-                job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
-                logger.info(f"[job:{job_id}] Starting KaraokeFinalise.process()")
-                add_span_event("finalise_started")
-                
-                result = finalise.process()
-                
-                finalise_duration = time.time() - finalise_start
-                finalise_span.set_attribute("duration_seconds", finalise_duration)
-                add_span_event("finalise_completed", {"duration_seconds": finalise_duration})
-            
-            job_log.info("KaraokeFinalise.process() complete!")
-            if result.get('brand_code'):
-                job_log.info(f"Brand code: {result.get('brand_code')}")
-            logger.info(f"[job:{job_id}] KaraokeFinalise.process() complete in {finalise_duration:.1f}s")
-            logger.info(f"[job:{job_id}] Brand code: {result.get('brand_code')}")
+            # Check if GCE encoding is enabled for high-performance encoding
+            encoding_service = get_encoding_service()
+            use_gce_encoding = encoding_service.is_enabled
+
+            if use_gce_encoding:
+                # ============ GCE ENCODING PATH ============
+                # Use dedicated C4 GCE instance for 2-3x faster FFmpeg encoding
+                job_log.info("GCE encoding enabled - using high-performance encoding worker")
+                job_log.info(f"  instrumental source: {instrumental_source}")
+
+                result = await _encode_via_gce(
+                    job_id=job_id,
+                    job=job,
+                    job_manager=job_manager,
+                    storage=storage,
+                    temp_dir=temp_dir,
+                    base_name=base_name,
+                    job_log=job_log,
+                )
+
+                # GCE encoding doesn't generate brand_code, CDG/TXT, or Discord notifications
+                # These will be handled by distribution if needed
+                job_log.info("GCE encoding complete - encoded files downloaded")
+
+            else:
+                # ============ STANDARD ENCODING PATH ============
+                # Use KaraokeFinalise for encoding (runs on Cloud Run)
+
+                # Log finalization parameters
+                job_log.info("Using KaraokeFinalise for encoding (standard path)")
+                job_log.info(f"  enable_cdg: {getattr(job, 'enable_cdg', False)}")
+                job_log.info(f"  enable_txt: {getattr(job, 'enable_txt', False)}")
+                job_log.info(f"  brand_prefix: {getattr(job, 'brand_prefix', None)}")
+                job_log.info(f"  discord_webhook: {'configured' if getattr(job, 'discord_webhook_url', None) else 'not configured'}")
+                job_log.info(f"  instrumental source: {instrumental_source}")
+                job_log.info(f"  countdown_padding_seconds: {countdown_padding_seconds}")
+                if existing_instrumental_path:
+                    job_log.info(f"  using user-provided instrumental (selection was: {instrumental_selection})")
+
+                # Set up YouTube description file if template is provided
+                youtube_desc_path = None
+                if youtube_credentials and getattr(job, 'youtube_description_template', None):
+                    youtube_desc_path = os.path.join(temp_dir, "youtube_description.txt")
+                    with open(youtube_desc_path, 'w') as f:
+                        f.write(job.youtube_description_template)
+                    job_log.info("YouTube description template written to temp file")
+
+                finalise = KaraokeFinalise(
+                    logger=logger,
+                    log_level=logging.INFO,
+                    dry_run=False,
+                    instrumental_format="flac",
+                    # CDG/TXT generation
+                    enable_cdg=getattr(job, 'enable_cdg', False),
+                    enable_txt=getattr(job, 'enable_txt', False),
+                    cdg_styles=cdg_styles,
+                    # Brand code and organization (server-side mode uses rclone)
+                    brand_prefix=getattr(job, 'brand_prefix', None),
+                    organised_dir=None,  # Not used in cloud - files stay in GCS
+                    organised_dir_rclone_root=getattr(job, 'organised_dir_rclone_root', None),
+                    public_share_dir=None,  # Not used in cloud
+                    # Notifications
+                    discord_webhook_url=getattr(job, 'discord_webhook_url', None),
+                    # YouTube upload (server-side with pre-loaded credentials)
+                    youtube_client_secrets_file=None,  # Not used with pre-stored credentials
+                    youtube_description_file=youtube_desc_path,
+                    user_youtube_credentials=youtube_credentials,  # Pre-loaded from Secret Manager
+                    rclone_destination=None,
+                    email_template_file=None,
+                    # Server-side optimizations
+                    non_interactive=True,
+                    server_side_mode=True,
+                    selected_instrumental_file=instrumental_file,
+                    # Audio synchronization - ensure instrumental matches vocal padding
+                    countdown_padding_seconds=countdown_padding_seconds,
+                )
+
+                # Call process() - this does ALL the work:
+                # - Encodes to 4 video formats
+                # - Generates CDG/TXT packages if enabled
+                # - Posts Discord notification if configured
+                # - Handles brand code generation
+                with job_span("karaoke-finalise", job_id) as finalise_span:
+                    finalise_start = time.time()
+                    job_log.info("Starting KaraokeFinalise.process() - this may take 15-20 minutes...")
+                    logger.info(f"[job:{job_id}] Starting KaraokeFinalise.process()")
+                    add_span_event("finalise_started")
+
+                    result = finalise.process()
+
+                    finalise_duration = time.time() - finalise_start
+                    finalise_span.set_attribute("duration_seconds", finalise_duration)
+                    add_span_event("finalise_completed", {"duration_seconds": finalise_duration})
+
+                job_log.info("KaraokeFinalise.process() complete!")
+                if result.get('brand_code'):
+                    job_log.info(f"Brand code: {result.get('brand_code')}")
+                logger.info(f"[job:{job_id}] KaraokeFinalise.process() complete in {finalise_duration:.1f}s")
+                logger.info(f"[job:{job_id}] Brand code: {result.get('brand_code')}")
             
             # Native API distribution uploads (used by remote CLI instead of rclone)
             with job_span("distribution", job_id):
