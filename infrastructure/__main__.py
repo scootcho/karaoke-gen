@@ -1537,13 +1537,44 @@ echo "Python 3.13 added to tool cache"
 
 # ==================== Docker cleanup cron ====================
 # Prevent disk from filling up with old Docker images
+# Run hourly instead of daily, with threshold-based cleanup
 echo "Setting up Docker cleanup cron..."
-cat > /etc/cron.daily/docker-cleanup << 'CRON'
+cat > /etc/cron.hourly/docker-cleanup << 'CRON'
 #!/bin/bash
-# Clean up Docker resources older than 7 days
-docker system prune -af --filter "until=168h"
+# Docker disk space cleanup for GitHub Actions runners
+# Runs hourly, with aggressive cleanup when disk usage exceeds threshold
+
+# Log to syslog
+exec 1> >(logger -t docker-cleanup) 2>&1
+
+THRESHOLD=70  # Cleanup when disk usage exceeds this percentage
+
+# Get current disk usage percentage (remove % sign)
+USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+
+echo "Current disk usage: ${USAGE}%"
+
+if [ "$USAGE" -gt "$THRESHOLD" ]; then
+    echo "Disk usage ${USAGE}% exceeds threshold ${THRESHOLD}%, running cleanup..."
+
+    # Remove ALL unused images (not just old ones) - this is the key fix
+    # The previous 168h filter let recent images accumulate
+    docker system prune -af
+
+    # Also clean builder cache which can grow large
+    docker builder prune -af
+
+    # Report new usage
+    NEW_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    echo "Cleanup complete. Disk usage: ${NEW_USAGE}%"
+else
+    echo "Disk usage ${USAGE}% is below threshold ${THRESHOLD}%, skipping cleanup"
+fi
 CRON
-chmod +x /etc/cron.daily/docker-cleanup
+chmod +x /etc/cron.hourly/docker-cleanup
+
+# Remove old daily cleanup if it exists (migrating to hourly)
+rm -f /etc/cron.daily/docker-cleanup
 
 # ==================== Docker pre-warm cron ====================
 # Keep base images fresh by pulling hourly
