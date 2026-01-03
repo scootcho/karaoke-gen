@@ -92,6 +92,58 @@ firestore_index_magic_links = firestore.Index(
     opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
 )
 
+# Users: query by is_active, order by created_at (for admin user list)
+firestore_index_users_active_created = firestore.Index(
+    "firestore-index-users-active-created",
+    project=project_id,
+    database=firestore_db.name,
+    collection="users",
+    fields=[
+        firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Users: query by is_active, order by last_login_at (for admin user list sorting)
+firestore_index_users_active_login = firestore.Index(
+    "firestore-index-users-active-login",
+    project=project_id,
+    database=firestore_db.name,
+    collection="users",
+    fields=[
+        firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="last_login_at", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Users: query by is_active, order by credits (for admin user list sorting)
+firestore_index_users_active_credits = firestore.Index(
+    "firestore-index-users-active-credits",
+    project=project_id,
+    database=firestore_db.name,
+    collection="users",
+    fields=[
+        firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="credits", order="DESCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# Users: query by is_active, order by email (for admin user list sorting)
+firestore_index_users_active_email = firestore.Index(
+    "firestore-index-users-active-email",
+    project=project_id,
+    database=firestore_db.name,
+    collection="users",
+    fields=[
+        firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="email", order="ASCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
 # Create Cloud Storage Bucket
 bucket = storage.Bucket(
     "karaoke-storage",
@@ -755,6 +807,10 @@ pulumi.export("firestore_index_jobs_user_email", firestore_index_jobs_user_email
 pulumi.export("firestore_index_jobs_status", firestore_index_jobs_status.name)
 pulumi.export("firestore_index_sessions_active", firestore_index_sessions_active.name)
 pulumi.export("firestore_index_magic_links", firestore_index_magic_links.name)
+pulumi.export("firestore_index_users_active_created", firestore_index_users_active_created.name)
+pulumi.export("firestore_index_users_active_login", firestore_index_users_active_login.name)
+pulumi.export("firestore_index_users_active_credits", firestore_index_users_active_credits.name)
+pulumi.export("firestore_index_users_active_email", firestore_index_users_active_email.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("artifact_repo_url", artifact_repo.name.apply(
     lambda name: f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo"

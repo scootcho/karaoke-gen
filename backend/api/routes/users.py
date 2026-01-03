@@ -228,15 +228,34 @@ async def get_current_user(
     """
     Get the current user's profile.
 
-    Requires a valid session token.
+    Requires a valid session token or admin token.
     """
+    from backend.services.auth_service import get_auth_service
+
     if not authorization:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     # Extract token
     token = authorization.replace("Bearer ", "") if authorization.startswith("Bearer ") else authorization
 
-    # Validate session
+    # First try auth service (handles admin tokens and auth_tokens)
+    auth_service = get_auth_service()
+    auth_result = auth_service.validate_token_full(token)
+
+    if auth_result.is_valid and auth_result.user_email:
+        # Get or create user record for the authenticated email
+        user = user_service.get_or_create_user(auth_result.user_email)
+        user_public = UserPublic(
+            email=user.email,
+            role=user.role if not auth_result.is_admin else UserRole.ADMIN,
+            credits=user.credits,
+            display_name=user.display_name,
+            total_jobs_created=user.total_jobs_created,
+            total_jobs_completed=user.total_jobs_completed,
+        )
+        return UserProfileResponse(user=user_public, has_session=True)
+
+    # Fall back to session validation (for magic link sessions)
     valid, user, message = user_service.validate_session(token)
 
     if not valid or not user:
