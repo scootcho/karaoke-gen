@@ -569,6 +569,51 @@ GitHub-hosted runners have ~14GB disk, which caused failures during Docker build
 
 See `docs/archive/2025-12-28-self-hosted-github-runner.md` for full details.
 
+### Docker Disk Space Management on Self-Hosted Runners
+
+**Problem**: Even with 200GB SSDs, self-hosted runners can fill up with Docker images. Each CI build creates new dangling images (~15GB each), and without aggressive cleanup, disk fills in days.
+
+**Symptoms**:
+- CI jobs fail with `No space left on device`
+- Jobs that require Docker (build, deploy, emulator tests) fail
+- Runners 11-20 at 100% while 1-10 at 30% (newer runners had less cleanup history)
+
+**Root cause**: Original cleanup cron used `docker system prune -af --filter "until=168h"` which only removes images older than 7 days. With frequent CI builds, most dangling images are < 7 days old and never get cleaned.
+
+**Solution** (two-layer approach):
+
+1. **Hourly threshold-based cleanup** (on runners):
+   ```bash
+   # /etc/cron.hourly/docker-cleanup
+   THRESHOLD=70
+   USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+   if [ "$USAGE" -gt "$THRESHOLD" ]; then
+       docker system prune -af  # No age filter!
+       docker builder prune -af
+   fi
+   ```
+
+2. **Pre-job disk check** (in CI workflow):
+   ```yaml
+   - name: Check disk space
+     run: |
+       USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+       if [ "$USAGE" -gt 70 ]; then
+         docker system prune -af || true
+         docker builder prune -af || true
+       fi
+       if [ "$USAGE" -gt 85 ]; then
+         echo "::error::Disk usage exceeds 85%. Runner needs maintenance."
+         exit 1
+       fi
+   ```
+
+**Key insights**:
+- Remove the age filter (`--filter "until=168h"`) - dangling images should always be cleaned
+- Threshold-based cleanup is better than time-based (don't clean if disk is fine)
+- Pre-job checks provide fail-fast behavior with clear error messages
+- `docker builder prune -af` catches buildkit cache that `system prune` misses
+
 ## Performance Observations
 
 | Operation | Duration |

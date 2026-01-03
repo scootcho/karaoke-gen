@@ -144,6 +144,23 @@ jobs:
       needs.changes.outputs.frontend == 'true' &&
       contains(github.event.pull_request.labels.*.name, 'e2e')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Setup Node.js with caching
@@ -265,6 +282,23 @@ jobs:
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -323,6 +357,23 @@ jobs:
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -376,6 +427,23 @@ jobs:
       (needs.package-integration-tests.result == 'success' || needs.package-integration-tests.result == 'skipped') &&
       (needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -409,6 +477,23 @@ jobs:
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -446,6 +531,23 @@ jobs:
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true' || needs.changes.outputs.deps == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -493,6 +595,23 @@ jobs:
     needs: changes
     if: github.ref != 'refs/heads/main' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.package == 'true')
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -568,6 +687,23 @@ jobs:
     runs-on: [self-hosted, linux, gcp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           submodules: true
@@ -778,6 +914,23 @@ jobs:
       BASE_IMAGE_NAME: karaoke-backend-base
       APP_IMAGE_NAME: karaoke-backend
     steps:
+      - name: Check disk space
+        run: |
+          echo "Checking disk space..."
+          USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+          echo "Current disk usage: ${USAGE}%"
+          if [ "$USAGE" -gt 70 ]; then
+            echo "Disk usage high, running cleanup..."
+            docker system prune -af || true
+            docker builder prune -af || true
+            USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            echo "After cleanup: ${USAGE}%"
+          fi
+          if [ "$USAGE" -gt 85 ]; then
+            echo "::error::Disk usage ${USAGE}% exceeds 85% even after cleanup. Runner needs maintenance."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
