@@ -763,12 +763,18 @@ async def get_user_detail(
     recent_jobs = []
     for job_doc in jobs_query.stream():
         job_data = job_doc.to_dict()
+        created_at = job_data.get("created_at")
+        # Handle both datetime objects and ISO strings
+        if created_at:
+            created_at_str = created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at)
+        else:
+            created_at_str = None
         recent_jobs.append({
             "job_id": job_data.get("job_id"),
             "status": job_data.get("status"),
             "artist": job_data.get("artist"),
             "title": job_data.get("title"),
-            "created_at": job_data.get("created_at").isoformat() if job_data.get("created_at") else None,
+            "created_at": created_at_str,
         })
 
     # Count active sessions
