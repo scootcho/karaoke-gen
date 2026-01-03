@@ -263,6 +263,38 @@ class DropboxService:
                     return links.links[0].url
             raise
 
+    def delete_folder(self, path: str) -> bool:
+        """
+        Delete a folder and all its contents from Dropbox.
+
+        Args:
+            path: Dropbox path to delete (e.g., "/Karaoke/Tracks-Organized/NOMAD-1234 - Artist - Title")
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        from dropbox.exceptions import ApiError
+
+        # Ensure path starts with /
+        if not path.startswith("/"):
+            path = f"/{path}"
+
+        logger.info(f"Deleting Dropbox folder: {path}")
+
+        try:
+            self.client.files_delete_v2(path)
+            logger.info(f"Successfully deleted: {path}")
+            return True
+        except ApiError as e:
+            if e.error.is_path_lookup() and e.error.get_path_lookup().is_not_found():
+                logger.warning(f"Folder not found (already deleted?): {path}")
+                return True  # Consider it success if already gone
+            logger.error(f"Failed to delete Dropbox folder: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting Dropbox folder: {e}")
+            return False
+
 
 def get_dropbox_service() -> DropboxService:
     """Factory function to get a DropboxService instance."""

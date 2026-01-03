@@ -300,6 +300,45 @@ class GoogleDriveService:
         logger.info(f"Public share upload complete: {len(uploaded_files)} files uploaded")
         return uploaded_files
 
+    def delete_file(self, file_id: str) -> bool:
+        """
+        Delete a file from Google Drive.
+
+        Args:
+            file_id: Google Drive file ID to delete
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        logger.info(f"Deleting Google Drive file: {file_id}")
+
+        try:
+            self.service.files().delete(fileId=file_id).execute()
+            logger.info(f"Successfully deleted file: {file_id}")
+            return True
+        except Exception as e:
+            # Check if it's a 404 (already deleted)
+            if hasattr(e, 'resp') and e.resp.status == 404:
+                logger.warning(f"File not found (already deleted?): {file_id}")
+                return True
+            logger.error(f"Failed to delete Google Drive file: {e}")
+            return False
+
+    def delete_files(self, file_ids: list[str]) -> dict[str, bool]:
+        """
+        Delete multiple files from Google Drive.
+
+        Args:
+            file_ids: List of Google Drive file IDs to delete
+
+        Returns:
+            Dictionary mapping file_id to success status
+        """
+        results = {}
+        for file_id in file_ids:
+            results[file_id] = self.delete_file(file_id)
+        return results
+
 
 # Singleton instance
 _gdrive_service: Optional[GoogleDriveService] = None

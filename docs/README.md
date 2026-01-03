@@ -26,12 +26,15 @@
 | Payment flow (Stripe) | Working |
 | Beta tester program | Working |
 | CI/CD self-hosted runner | Working (GCP) |
+| E2E happy path test | Working (38 min full pipeline) |
 
 ## Known Issues
 
 - CDG format generation requires additional style configuration
 
 ## Recent Changes
+
+- **E2E Happy Path Test** (2026-01-02): Added comprehensive E2E test that validates the complete karaoke generation journey using ONLY browser UI interactions (no API shortcuts). Test covers all 12 steps from landing page through cleanup. Runs daily via GitHub Actions and takes ~38 minutes. See [E2E-HAPPY-PATH-TEST-SPEC.md](E2E-HAPPY-PATH-TEST-SPEC.md)
 
 - **LyricsTranscriber Cache Persistence** (2026-01-02): Added GCS-backed cache for LyricsTranscriber to avoid redundant API calls. AudioShake transcription and lyrics provider responses (Genius, Spotify, LRCLib, Musixmatch) are now cached to `gs://karaoke-gen-storage/lyrics-transcriber-cache/`. Cache is synced before/after each job, persisting across Cloud Run instances. Significantly reduces API costs and speeds up repeated processing of same songs.
 
