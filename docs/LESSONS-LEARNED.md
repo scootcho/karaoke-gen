@@ -700,6 +700,39 @@ result = job.state_data['search_results'][selection_index]
 
 **Lesson**: Design for stateless request handling. Any state that must survive between requests must be persisted externally.
 
+### Library Caches Need GCS Sync in Cloud Run
+
+**Problem**: Libraries like LyricsTranscriber cache API responses to local directories (e.g., `~/lyrics-transcriber-cache`). In Cloud Run, each container is ephemeral - the cache is lost on every restart or scale-up, causing redundant API calls.
+
+**Symptoms**:
+- Same song processed multiple times always hits external APIs
+- Higher API costs than expected (AudioShake charges per transcription)
+- Slower processing even for repeated jobs
+
+**Solution**: Sync library cache to/from GCS before/after each job:
+
+```python
+# Set cache dir via environment variable (library reads this)
+cache_dir = os.path.join(temp_dir, "lyrics-cache")
+os.environ["LYRICS_TRANSCRIBER_CACHE_DIR"] = cache_dir
+
+# Download relevant cache files from GCS before processing
+cache_service.sync_cache_from_gcs(cache_dir, audio_hash, lyrics_hash)
+
+# ... run processing ...
+
+# Upload new cache files to GCS after processing
+cache_service.sync_cache_to_gcs(cache_dir, audio_hash, lyrics_hash)
+```
+
+**Key design decisions**:
+1. Download only relevant files (by hash) - don't sync entire cache directory
+2. Skip files that already exist in GCS on upload (same input = same output)
+3. Use environment variable to configure library cache dir (avoids modifying library code)
+4. Cache indefinitely (no TTL) - API responses don't change for same inputs
+
+**Lesson**: When using third-party libraries with local caching in Cloud Run, check if they support configurable cache directories. If so, sync to GCS for persistence across instances.
+
 ### Sequential vs Parallel Worker Triggering
 
 **Problem**: For URL-based jobs (YouTube), triggering both audio and lyrics workers in parallel caused failures. Lyrics worker needs the audio file, but audio worker hadn't downloaded it yet.
