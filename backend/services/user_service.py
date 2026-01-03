@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 # Collection names
-USERS_COLLECTION = "users"
+USERS_COLLECTION = "gen_users"
 MAGIC_LINKS_COLLECTION = "magic_links"
 SESSIONS_COLLECTION = "sessions"
 PROCESSED_STRIPE_SESSIONS_COLLECTION = "processed_stripe_sessions"
