@@ -349,7 +349,7 @@ if (status.includes('rendering') || status.includes('encoding')) {
 ```
 
 **Actual job flow**:
-```
+```text
 downloading → transcribing → in_review → rendering_video →
 awaiting_instrumental_selection → encoding → complete
 ```

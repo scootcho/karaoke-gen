@@ -1564,8 +1564,7 @@ async def cleanup_distribution(
     # Delete the job if requested
     if delete_job:
         try:
-            storage = StorageService()
-            job_manager.delete_job(job_id, storage=storage, delete_files=True)
+            job_manager.delete_job(job_id, delete_files=True)
             results["job_deleted"] = True
             logger.info(f"Deleted job {job_id} after distribution cleanup")
         except Exception as e:
