@@ -93,10 +93,13 @@ export default function AdminLayout({
       return
     }
 
-    // Check if user is admin
-    if (user && user.role !== "admin") {
-      router.replace("/app")
-      return
+    // Check if user is admin (either by role or @nomadkaraoke.com email)
+    if (user) {
+      const isAdmin = user.role === "admin" || user.email?.endsWith("@nomadkaraoke.com")
+      if (!isAdmin) {
+        router.replace("/app")
+        return
+      }
     }
 
     // If we have a token but no user yet, wait for auth to load
