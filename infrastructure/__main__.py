@@ -314,7 +314,7 @@ workload_identity_provider = gcp.iam.WorkloadIdentityPoolProvider(
 )
 
 # Allow GitHub Actions to impersonate the service account
-# Both karaoke-gen and flacfetch repos need access
+# All nomadkaraoke repos that deploy to GCP need access
 github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
     "github-actions-wif-binding",
     service_account_id=github_actions_sa.name,
@@ -325,6 +325,9 @@ github_actions_wif_binding = gcp.serviceaccount.IAMBinding(
         ),
         workload_identity_pool.name.apply(
             lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/flacfetch"
+        ),
+        workload_identity_pool.name.apply(
+            lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-decide"
         ),
     ],
 )
