@@ -369,7 +369,7 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('  Job card visible');
 
       // Extract job ID from the card's full text content
-      // The ID appears as "ID: xxxxxxxx" in the card text
+      // The ID appears as "ID: xxxxxxxx" in the card text (e.g., "piri - dogID: af10c81f")
       const cardFullText = await jobCard.textContent() || '';
       const idMatch = cardFullText.match(/ID:\s*([a-f0-9]{8,})/i);
       if (idMatch) {
