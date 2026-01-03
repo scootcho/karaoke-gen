@@ -1033,6 +1033,472 @@ pulumi.export("flacfetch_service_url", flacfetch_ip.address.apply(
 ))
 pulumi.export("flacfetch_service_account", flacfetch_sa.email)
 
+# ==================== High-Performance Encoding Worker ====================
+# A dedicated C4-standard-96 VM with Intel Granite Rapids CPU for fast video encoding.
+# This offloads CPU-intensive FFmpeg libx264 encoding from Cloud Run to achieve
+# 2-3x faster encoding times with dedicated high-frequency cores.
+# Cloud Run dispatches encoding jobs to this worker via HTTP.
+
+# Service account for encoding worker VM
+encoding_worker_sa = serviceaccount.Account(
+    "encoding-worker-sa",
+    account_id="encoding-worker",
+    display_name="Encoding Worker Service Account",
+    description="Service account for high-performance video encoding VM",
+)
+
+# Grant encoding worker service account GCS read/write permissions
+encoding_worker_storage_iam = gcp.storage.BucketIAMMember(
+    "encoding-worker-storage-admin",
+    bucket=bucket.name,
+    role="roles/storage.objectAdmin",
+    member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant encoding worker service account Secret Manager access
+encoding_worker_secrets_iam = gcp.projects.IAMMember(
+    "encoding-worker-secrets-access",
+    project=project_id,
+    role="roles/secretmanager.secretAccessor",
+    member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant encoding worker logging permissions
+encoding_worker_logging_iam = gcp.projects.IAMMember(
+    "encoding-worker-logging-access",
+    project=project_id,
+    role="roles/logging.logWriter",
+    member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Static external IP for encoding worker (Cloud Run doesn't have VPC access by default)
+encoding_worker_ip = gcp.compute.Address(
+    "encoding-worker-ip",
+    name="encoding-worker-static-ip",
+    region="us-central1",
+    address_type="EXTERNAL",
+    description="Static external IP for encoding worker service",
+)
+
+# Startup script for the encoding worker VM
+ENCODING_WORKER_STARTUP_SCRIPT = """#!/bin/bash
+set -e
+
+# Log to a file for debugging
+exec > >(tee /var/log/encoding-worker-startup.log) 2>&1
+echo "Starting encoding worker setup at $(date)"
+
+# Install dependencies
+apt-get update
+apt-get install -y python3-pip python3-venv docker.io curl git xz-utils
+
+# Enable and start Docker
+systemctl enable docker
+systemctl start docker
+
+# Install optimized static FFmpeg build (John Van Sickle)
+echo "Installing optimized FFmpeg..."
+curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o /tmp/ffmpeg.tar.xz
+tar -xf /tmp/ffmpeg.tar.xz -C /tmp
+cp /tmp/ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/
+cp /tmp/ffmpeg-*-amd64-static/ffprobe /usr/local/bin/
+chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+rm -rf /tmp/ffmpeg*
+ffmpeg -version
+
+# Create working directory
+mkdir -p /opt/encoding-worker
+cd /opt/encoding-worker
+
+# Create Python virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install Python dependencies
+pip install --upgrade pip
+pip install fastapi uvicorn google-cloud-storage aiofiles aiohttp
+
+# Get API key from Secret Manager
+echo "Fetching API key from Secret Manager..."
+ENCODING_API_KEY=$(gcloud secrets versions access latest --secret=encoding-worker-api-key 2>/dev/null || echo "")
+
+if [ -z "$ENCODING_API_KEY" ]; then
+    echo "WARNING: No API key found in Secret Manager, generating temporary key"
+    ENCODING_API_KEY=$(openssl rand -hex 32)
+    echo "Temporary API key: $ENCODING_API_KEY"
+fi
+
+# Create the encoding worker service
+cat > /opt/encoding-worker/main.py << 'PYTHON_CODE'
+import asyncio
+import json
+import logging
+import os
+import subprocess
+import tempfile
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
+from google.cloud import storage
+from pydantic import BaseModel
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Encoding Worker", version="1.0.0")
+
+# API key authentication
+API_KEY = os.environ.get("ENCODING_API_KEY", "")
+
+
+async def verify_api_key(x_api_key: str = Header(None)):
+    # Verify API key for authentication
+    if not API_KEY:
+        logger.warning("No API key configured - authentication disabled")
+        return True
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return True
+
+# Job tracking
+jobs: dict[str, dict] = {}
+executor = ThreadPoolExecutor(max_workers=4)  # 4 parallel encoding jobs
+
+# GCS client
+storage_client = storage.Client()
+
+class EncodeRequest(BaseModel):
+    job_id: str
+    input_gcs_path: str  # gs://bucket/path/to/inputs/
+    output_gcs_path: str  # gs://bucket/path/to/outputs/
+    encoding_config: dict  # Video formats to generate
+
+class JobStatus(BaseModel):
+    job_id: str
+    status: str  # pending, running, complete, failed
+    progress: int  # 0-100
+    error: Optional[str] = None
+    output_files: Optional[list[str]] = None
+
+
+def download_from_gcs(gcs_uri: str, local_path: Path):
+    # Download a file or folder from GCS
+    # Parse gs://bucket/path
+    parts = gcs_uri.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    bucket = storage_client.bucket(bucket_name)
+    blobs = list(bucket.list_blobs(prefix=prefix))
+
+    for blob in blobs:
+        # Get relative path from prefix
+        rel_path = blob.name[len(prefix):].lstrip("/")
+        if not rel_path:
+            continue
+        dest = local_path / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        blob.download_to_filename(str(dest))
+        logger.info(f"Downloaded: {blob.name} -> {dest}")
+
+
+def upload_to_gcs(local_path: Path, gcs_uri: str):
+    # Upload a file or folder to GCS
+    parts = gcs_uri.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    bucket = storage_client.bucket(bucket_name)
+
+    if local_path.is_file():
+        blob_name = f"{prefix}/{local_path.name}".strip("/")
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(str(local_path))
+        logger.info(f"Uploaded: {local_path} -> gs://{bucket_name}/{blob_name}")
+    else:
+        for file in local_path.rglob("*"):
+            if file.is_file():
+                rel_path = file.relative_to(local_path)
+                blob_name = f"{prefix}/{rel_path}".strip("/")
+                blob = bucket.blob(blob_name)
+                blob.upload_from_filename(str(file))
+                logger.info(f"Uploaded: {file} -> gs://{bucket_name}/{blob_name}")
+
+
+def run_encoding(job_id: str, work_dir: Path, config: dict):
+    # Run FFmpeg encoding for all video formats
+    jobs[job_id]["status"] = "running"
+    jobs[job_id]["progress"] = 10
+
+    try:
+        # Find input files
+        input_files = list(work_dir.glob("*.mkv")) + list(work_dir.glob("*.mp4")) + list(work_dir.glob("*.mov"))
+        if not input_files:
+            raise ValueError(f"No video files found in {work_dir}")
+
+        # Use first video file as input (With Vocals or Karaoke)
+        input_video = input_files[0]
+        logger.info(f"Using input video: {input_video}")
+
+        # Find instrumental audio
+        instrumental_files = list(work_dir.glob("*Instrumental*.flac")) + list(work_dir.glob("*Instrumental*.wav"))
+        instrumental = instrumental_files[0] if instrumental_files else None
+
+        output_dir = work_dir / "outputs"
+        output_dir.mkdir(exist_ok=True)
+
+        output_files = []
+        formats = config.get("formats", ["mp4_4k", "mp4_720p"])
+        total_formats = len(formats)
+
+        for i, fmt in enumerate(formats):
+            progress = 10 + int((i / total_formats) * 80)
+            jobs[job_id]["progress"] = progress
+
+            if fmt == "mp4_4k":
+                output_file = output_dir / "output_4k.mp4"
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(input_video),
+                ]
+                if instrumental:
+                    cmd.extend(["-i", str(instrumental)])
+                cmd.extend([
+                    "-map", "0:v",
+                    "-map", "1:a" if instrumental else "0:a",
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "18",
+                    "-c:a", "aac",
+                    "-b:a", "256k",
+                    "-threads", "24",
+                    str(output_file)
+                ])
+            elif fmt == "mp4_720p":
+                output_file = output_dir / "output_720p.mp4"
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(input_video),
+                ]
+                if instrumental:
+                    cmd.extend(["-i", str(instrumental)])
+                cmd.extend([
+                    "-map", "0:v",
+                    "-map", "1:a" if instrumental else "0:a",
+                    "-vf", "scale=-1:720",
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "20",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    "-threads", "24",
+                    str(output_file)
+                ])
+            else:
+                logger.warning(f"Unknown format: {fmt}")
+                continue
+
+            logger.info(f"Running: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                logger.error(f"FFmpeg failed: {result.stderr}")
+                raise RuntimeError(f"FFmpeg encoding failed: {result.stderr[-500:]}")
+
+            output_files.append(str(output_file))
+            logger.info(f"Encoded: {output_file}")
+
+        jobs[job_id]["output_files"] = output_files
+        jobs[job_id]["progress"] = 90
+        return output_dir
+
+    except Exception as e:
+        logger.error(f"Encoding failed: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+        raise
+
+
+async def process_job(job_id: str, request: EncodeRequest):
+    # Process an encoding job asynchronously
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir) / "work"
+            work_dir.mkdir()
+
+            # Download input files
+            jobs[job_id]["progress"] = 5
+            logger.info(f"Downloading from {request.input_gcs_path}")
+            download_from_gcs(request.input_gcs_path, work_dir)
+
+            # Run encoding in thread pool (CPU-bound)
+            loop = asyncio.get_event_loop()
+            output_dir = await loop.run_in_executor(
+                executor,
+                run_encoding,
+                job_id,
+                work_dir,
+                request.encoding_config
+            )
+
+            # Upload outputs
+            jobs[job_id]["progress"] = 95
+            logger.info(f"Uploading to {request.output_gcs_path}")
+            upload_to_gcs(output_dir, request.output_gcs_path)
+
+            jobs[job_id]["status"] = "complete"
+            jobs[job_id]["progress"] = 100
+            logger.info(f"Job {job_id} complete")
+
+    except Exception as e:
+        logger.error(f"Job {job_id} failed: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+
+
+@app.post("/encode")
+async def submit_encode_job(request: EncodeRequest, background_tasks: BackgroundTasks, _auth: bool = Depends(verify_api_key)):
+    # Submit an encoding job
+    job_id = request.job_id
+
+    if job_id in jobs:
+        raise HTTPException(status_code=409, detail=f"Job {job_id} already exists")
+
+    jobs[job_id] = {
+        "job_id": job_id,
+        "status": "pending",
+        "progress": 0,
+        "error": None,
+        "output_files": None,
+    }
+
+    background_tasks.add_task(process_job, job_id, request)
+
+    return {"status": "accepted", "job_id": job_id}
+
+
+@app.get("/status/{job_id}")
+async def get_job_status(job_id: str, _auth: bool = Depends(verify_api_key)) -> JobStatus:
+    # Get the status of an encoding job
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return JobStatus(**jobs[job_id])
+
+
+@app.get("/health")
+async def health_check():
+    # Health check endpoint
+    active_jobs = sum(1 for j in jobs.values() if j["status"] == "running")
+    return {
+        "status": "ok",
+        "active_jobs": active_jobs,
+        "queue_length": sum(1 for j in jobs.values() if j["status"] == "pending"),
+        "ffmpeg_version": subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout.split("\\n")[0],
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+PYTHON_CODE
+
+# Create systemd service (use heredoc without quotes to expand ENCODING_API_KEY)
+cat > /etc/systemd/system/encoding-worker.service << SYSTEMD
+[Unit]
+Description=Encoding Worker HTTP API Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/encoding-worker
+ExecStart=/opt/encoding-worker/venv/bin/python main.py
+Restart=always
+RestartSec=10
+Environment="GOOGLE_CLOUD_PROJECT=nomadkaraoke"
+Environment="ENCODING_API_KEY=${ENCODING_API_KEY}"
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+systemctl daemon-reload
+systemctl enable encoding-worker
+systemctl start encoding-worker
+
+echo "Encoding worker service started at $(date)"
+echo "Service listening on port 8080"
+"""
+
+# Encoding worker VM instance (C4-standard-96 for maximum performance)
+encoding_worker_vm = gcp.compute.Instance(
+    "encoding-worker",
+    name="encoding-worker",
+    machine_type="c4-standard-8",  # 8 vCPUs, Intel Granite Rapids 3.9 GHz (quota limit: 24 CPUs)
+    zone="us-central1-a",
+    boot_disk=gcp.compute.InstanceBootDiskArgs(
+        initialize_params=gcp.compute.InstanceBootDiskInitializeParamsArgs(
+            image="debian-cloud/debian-12",
+            size=100,  # GB - for temp video files during encoding
+            type="hyperdisk-balanced",  # C4 machines require Hyperdisk
+        ),
+    ),
+    network_interfaces=[gcp.compute.InstanceNetworkInterfaceArgs(
+        network="default",
+        access_configs=[gcp.compute.InstanceNetworkInterfaceAccessConfigArgs(
+            nat_ip=encoding_worker_ip.address,  # Static external IP
+        )],
+    )],
+    service_account=gcp.compute.InstanceServiceAccountArgs(
+        email=encoding_worker_sa.email,
+        scopes=["cloud-platform"],
+    ),
+    metadata_startup_script=ENCODING_WORKER_STARTUP_SCRIPT,
+    tags=["encoding-worker"],
+    allow_stopping_for_update=True,
+    # Enable ALL_CORE_MAX for maximum sustained frequency
+    advanced_machine_features=gcp.compute.InstanceAdvancedMachineFeaturesArgs(
+        threads_per_core=2,  # Enable hyperthreading
+    ),
+)
+
+# Firewall rule for encoding worker
+# Note: Cloud Run doesn't have VPC access by default, so we allow external access
+# with API key authentication at the application level
+encoding_worker_firewall = gcp.compute.Firewall(
+    "encoding-worker-firewall",
+    name="encoding-worker-allow-http",
+    network="default",
+    allows=[
+        # HTTP API
+        gcp.compute.FirewallAllowArgs(protocol="tcp", ports=["8080"]),
+    ],
+    # Allow from anywhere - auth is handled at application level via API key
+    source_ranges=["0.0.0.0/0"],
+    target_tags=["encoding-worker"],
+    description="Allow HTTP access to encoding worker (auth required)",
+)
+
+# API key secret for encoding worker authentication
+encoding_worker_api_key_secret = secretmanager.Secret(
+    "encoding-worker-api-key",
+    secret_id="encoding-worker-api-key",
+    replication=secretmanager.SecretReplicationArgs(
+        auto=secretmanager.SecretReplicationAutoArgs(),
+    ),
+)
+
+# Export encoding worker values
+pulumi.export("encoding_worker_external_ip", encoding_worker_ip.address)
+pulumi.export("encoding_worker_service_url", encoding_worker_ip.address.apply(
+    lambda ip: f"http://{ip}:8080"
+))
+pulumi.export("encoding_worker_service_account", encoding_worker_sa.email)
+pulumi.export("encoding_worker_vm_name", encoding_worker_vm.name)
+
 # ==================== Cloud Monitoring Alerting ====================
 # Alert policies for proactive monitoring and incident response
 
