@@ -1325,8 +1325,9 @@ def run_encoding(job_id: str, work_dir: Path, config: dict):
             progress = 10 + int((i / total_formats) * 80)
             jobs[job_id]["progress"] = progress
 
-            if fmt == "mp4_4k":
-                output_file = output_dir / "output_4k.mp4"
+            if fmt == "mp4_4k_lossless" or fmt == "mp4_4k":
+                # High quality 4K - CRF 18 (visually lossless)
+                output_file = output_dir / "output_4k_lossless.mp4"
                 cmd = [
                     "ffmpeg", "-y",
                     "-i", str(input_video),
@@ -1341,6 +1342,26 @@ def run_encoding(job_id: str, work_dir: Path, config: dict):
                     "-crf", "18",
                     "-c:a", "aac",
                     "-b:a", "256k",
+                    "-threads", "24",
+                    str(output_file)
+                ])
+            elif fmt == "mp4_4k_lossy":
+                # Smaller 4K file - CRF 23 (good quality, smaller size)
+                output_file = output_dir / "output_4k_lossy.mp4"
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(input_video),
+                ]
+                if instrumental:
+                    cmd.extend(["-i", str(instrumental)])
+                cmd.extend([
+                    "-map", "0:v",
+                    "-map", "1:a" if instrumental else "0:a",
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "23",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
                     "-threads", "24",
                     str(output_file)
                 ])
@@ -1415,6 +1436,21 @@ async def process_job(job_id: str, request: EncodeRequest):
             jobs[job_id]["progress"] = 95
             logger.info(f"Uploading to {request.output_gcs_path}")
             upload_to_gcs(output_dir, request.output_gcs_path)
+
+            # Convert local paths to blob paths (backend expects blob paths, not full gs:// URIs)
+            # output_gcs_path is like "gs://bucket/jobs/id/encoded/"
+            # We need paths like "jobs/id/encoded/output_4k.mp4"
+            gcs_path = request.output_gcs_path.replace("gs://", "")
+            parts = gcs_path.split("/", 1)
+            prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
+            local_output_files = jobs[job_id].get("output_files", [])
+            blob_paths = []
+            for local_path in local_output_files:
+                filename = Path(local_path).name
+                blob_path = f"{prefix}/{filename}" if prefix else filename
+                blob_paths.append(blob_path)
+            jobs[job_id]["output_files"] = blob_paths
+            logger.info(f"Output files (blob paths): {blob_paths}")
 
             jobs[job_id]["status"] = "complete"
             jobs[job_id]["progress"] = 100
