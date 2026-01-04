@@ -818,6 +818,22 @@ export interface ClearSearchCacheResponse {
   previous_status: string;
   new_status: string;
   results_cleared: number;
+  flacfetch_cache_cleared: boolean;
+  flacfetch_error?: string;
+}
+
+export interface ClearAllCacheResponse {
+  status: string;
+  message: string;
+  deleted_count: number;
+}
+
+export interface CacheStatsResponse {
+  count: number;
+  total_size_bytes: number;
+  oldest_entry?: string;
+  newest_entry?: string;
+  configured: boolean;
 }
 
 // Admin API namespace
@@ -997,6 +1013,28 @@ export const adminApi = {
     const response = await fetch(
       `${API_BASE_URL}/api/admin/audio-searches/${jobId}/clear-cache`,
       { method: 'POST', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Clear all flacfetch search cache
+   */
+  async clearAllCache(): Promise<ClearAllCacheResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/cache`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get flacfetch cache statistics
+   */
+  async getCacheStats(): Promise<CacheStatsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/cache/stats`,
+      { headers: getAuthHeaders() }
     );
     return handleResponse(response);
   },

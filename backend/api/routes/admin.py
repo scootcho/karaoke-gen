@@ -18,6 +18,7 @@ from backend.api.dependencies import require_admin
 from backend.services.auth_service import UserType
 from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.job_manager import JobManager
+from backend.services.flacfetch_client import get_flacfetch_client, FlacfetchServiceError
 from backend.models.job import JobStatus
 
 
@@ -243,6 +244,24 @@ class ClearSearchCacheResponse(BaseModel):
     previous_status: str
     new_status: str
     results_cleared: int
+    flacfetch_cache_cleared: bool = False
+    flacfetch_error: Optional[str] = None
+
+
+class ClearAllCacheResponse(BaseModel):
+    """Response for clearing all flacfetch cache."""
+    status: str
+    message: str
+    deleted_count: int
+
+
+class CacheStatsResponse(BaseModel):
+    """Response for cache statistics."""
+    count: int
+    total_size_bytes: int
+    oldest_entry: Optional[str] = None
+    newest_entry: Optional[str] = None
+    configured: bool
 
 
 # =============================================================================
@@ -343,6 +362,7 @@ async def clear_audio_search_cache(
     This will:
     1. Remove the cached search results from job.state_data
     2. Reset the job status to 'pending' so a new search can be performed
+    3. Clear the flacfetch GCS cache for this artist/title (if available)
 
     Use this when:
     - Cached results are stale (e.g., flacfetch was updated)
@@ -399,16 +419,127 @@ async def clear_audio_search_cache(
         "updated_at": datetime.utcnow(),
     })
 
+    # Also clear flacfetch's GCS cache if we have artist/title
+    flacfetch_cache_cleared = False
+    flacfetch_error = None
+    artist = job.audio_search_artist
+    title = job.audio_search_title
+
+    if artist and title:
+        flacfetch_client = get_flacfetch_client()
+        if flacfetch_client:
+            try:
+                flacfetch_cache_cleared = await flacfetch_client.clear_search_cache(artist, title)
+                logger.info(
+                    f"Cleared flacfetch cache for '{artist}' - '{title}': "
+                    f"{'deleted' if flacfetch_cache_cleared else 'no entry found'}"
+                )
+            except FlacfetchServiceError as e:
+                flacfetch_error = str(e)
+                logger.warning(f"Failed to clear flacfetch cache: {e}")
+        else:
+            flacfetch_error = "flacfetch client not configured"
+            logger.debug("Skipping flacfetch cache clear - client not configured")
+    else:
+        flacfetch_error = "missing artist or title"
+        logger.debug(f"Skipping flacfetch cache clear - missing artist ({artist}) or title ({title})")
+
     logger.info(
         f"Admin {auth_data[0]} cleared audio search cache for job {job_id}. "
-        f"Cleared {results_count} results. Status changed from {previous_status} to pending."
+        f"Cleared {results_count} results. Status changed from {previous_status} to pending. "
+        f"Flacfetch cache cleared: {flacfetch_cache_cleared}"
     )
+
+    message = f"Cleared {results_count} cached search results. Job reset to pending."
+    if flacfetch_cache_cleared:
+        message += " Flacfetch cache also cleared."
+    elif flacfetch_error:
+        message += f" Note: flacfetch cache not cleared ({flacfetch_error})."
 
     return ClearSearchCacheResponse(
         status="success",
         job_id=job_id,
-        message=f"Cleared {results_count} cached search results. Job reset to pending.",
+        message=message,
         previous_status=previous_status,
         new_status="pending",
         results_cleared=results_count,
+        flacfetch_cache_cleared=flacfetch_cache_cleared,
+        flacfetch_error=flacfetch_error,
     )
+
+
+@router.delete("/cache", response_model=ClearAllCacheResponse)
+async def clear_all_flacfetch_cache(
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+):
+    """
+    Clear the entire flacfetch search cache.
+
+    This will delete all cached search results from flacfetch's GCS cache.
+    Use with caution - this will cause all subsequent searches to hit
+    the trackers fresh.
+
+    Note: This does NOT clear Firestore job.state_data caches, only the
+    flacfetch-side GCS cache.
+    """
+    flacfetch_client = get_flacfetch_client()
+    if not flacfetch_client:
+        raise HTTPException(
+            status_code=503,
+            detail="flacfetch client not configured"
+        )
+
+    try:
+        deleted_count = await flacfetch_client.clear_all_cache()
+        logger.info(
+            f"Admin {auth_data[0]} cleared all flacfetch cache. "
+            f"Deleted {deleted_count} entries."
+        )
+        return ClearAllCacheResponse(
+            status="success",
+            message=f"Cleared {deleted_count} cache entries from flacfetch.",
+            deleted_count=deleted_count,
+        )
+    except FlacfetchServiceError as e:
+        logger.error(f"Failed to clear all flacfetch cache: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to clear flacfetch cache: {e}"
+        )
+
+
+@router.get("/cache/stats", response_model=CacheStatsResponse)
+async def get_flacfetch_cache_stats(
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+):
+    """
+    Get statistics about the flacfetch search cache.
+
+    Returns information about:
+    - Number of cached entries
+    - Total size in bytes
+    - Oldest and newest cache entries
+    - Whether cache is configured
+    """
+    flacfetch_client = get_flacfetch_client()
+    if not flacfetch_client:
+        raise HTTPException(
+            status_code=503,
+            detail="flacfetch client not configured"
+        )
+
+    try:
+        stats = await flacfetch_client.get_cache_stats()
+        return CacheStatsResponse(
+            count=stats.get("count", 0),
+            total_size_bytes=stats.get("total_size_bytes", 0),
+            oldest_entry=stats.get("oldest_entry"),
+            newest_entry=stats.get("newest_entry"),
+            configured=stats.get("configured", True),
+        )
+    except FlacfetchServiceError as e:
+        logger.error(f"Failed to get flacfetch cache stats: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to get cache stats: {e}"
+        )
