@@ -1,20 +1,21 @@
 """
 Video generation and finalization worker.
 
-This worker uses KaraokeFinalise from the karaoke_gen package to handle:
-1. Video encoding (4 formats)
-2. CDG/TXT package generation
-3. Discord notifications
-4. Brand code generation
-5. All other finalisation features
+This worker has two code paths controlled by USE_NEW_ORCHESTRATOR:
 
-The worker's job is simply to:
-1. Download files from GCS and set up the directory structure KaraokeFinalise expects
-2. Instantiate KaraokeFinalise with parameters from the job
-3. Call process()
-4. Upload results back to GCS
+1. NEW PATH (USE_NEW_ORCHESTRATOR=true):
+   Uses VideoWorkerOrchestrator which provides a unified pipeline for all
+   encoding backends (GCE or local). This ensures features like YouTube upload,
+   Discord notifications, and CDG/TXT packaging work regardless of encoding backend.
 
-This reuses 100% of the existing karaoke_gen functionality.
+2. LEGACY PATH (USE_NEW_ORCHESTRATOR=false):
+   Uses KaraokeFinalise from the karaoke_gen package. This path has divergent
+   behavior between GCE and local encoding - GCE encoding bypasses many features.
+
+The orchestrator-based approach is preferred as it:
+- Eliminates GCE vs local code path divergence
+- Ensures all features work consistently
+- Provides better testability and maintainability
 
 Observability:
 - All operations wrapped in tracing spans for Cloud Trace visibility
@@ -46,6 +47,12 @@ from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
 
 
 logger = logging.getLogger(__name__)
+
+
+# Feature flag for new orchestrator-based pipeline
+# Set to True to use the new unified pipeline that works with any encoding backend
+# Set to False to use the legacy KaraokeFinalise-based pipeline
+USE_NEW_ORCHESTRATOR = os.environ.get("USE_NEW_ORCHESTRATOR", "true").lower() == "true"
 
 
 # Loggers to capture for video worker
@@ -172,16 +179,247 @@ async def _encode_via_gce(
         raise
 
 
-async def generate_video(job_id: str) -> bool:
+async def generate_video_orchestrated(job_id: str) -> bool:
     """
-    Generate final karaoke videos using KaraokeFinalise.
-    
-    This sets up the directory structure and calls KaraokeFinalise.process()
-    which handles all encoding, packaging, and notifications.
-    
+    Generate final karaoke videos using the new VideoWorkerOrchestrator.
+
+    This provides a unified pipeline that works with any encoding backend
+    (GCE or local), ensuring all features like YouTube upload, Discord
+    notifications, and CDG/TXT packaging work consistently.
+
     Args:
         job_id: Job ID to process
-        
+
+    Returns:
+        True if successful, False otherwise
+    """
+    from backend.workers.video_worker_orchestrator import (
+        VideoWorkerOrchestrator,
+        create_orchestrator_config_from_job,
+    )
+
+    start_time = time.time()
+    job_manager = JobManager()
+    storage = StorageService()
+
+    # Create job logger for remote debugging
+    job_log = create_job_logger(job_id, "video")
+
+    # Log with structured markers for easy Cloud Logging queries
+    logger.info(f"[job:{job_id}] WORKER_START worker=video orchestrator=true")
+
+    # Set up log capture for KaraokeFinalise (still used by some services)
+    log_handler = setup_job_logging(job_id, "video", *VIDEO_WORKER_LOGGERS)
+
+    job = job_manager.get_job(job_id)
+    if not job:
+        logger.error(f"[job:{job_id}] Job not found")
+        return False
+
+    # Validate prerequisites
+    if not _validate_prerequisites(job):
+        logger.error(f"[job:{job_id}] Prerequisites not met for video generation")
+        return False
+
+    # Create temporary working directory
+    temp_dir = tempfile.mkdtemp(prefix=f"karaoke_video_{job_id}_")
+    original_cwd = os.getcwd()
+
+    # Set up rclone config if needed (for legacy Dropbox upload path)
+    rclone_service = None
+    if getattr(job, 'organised_dir_rclone_root', None):
+        rclone_service = get_rclone_service()
+        if rclone_service.setup_rclone_config():
+            job_log.info("Rclone config loaded for Dropbox upload")
+
+    # Load YouTube credentials if needed
+    youtube_credentials = None
+    if getattr(job, 'enable_youtube_upload', False):
+        youtube_service = get_youtube_service()
+        if youtube_service.is_configured:
+            youtube_credentials = youtube_service.get_credentials_dict()
+            job_log.info("YouTube credentials loaded for video upload")
+        else:
+            job_log.warning("YouTube credentials not available - upload will be skipped")
+
+    try:
+        # Wrap entire worker in a tracing span
+        with job_span("video-worker-orchestrated", job_id, {"artist": job.artist, "title": job.title}) as root_span:
+            with job_logging_context(job_id):
+                job_log.info(f"Starting orchestrated video generation for {job.artist} - {job.title}")
+                logger.info(f"[job:{job_id}] Starting orchestrated video generation")
+
+            # Transition to GENERATING_VIDEO state
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.GENERATING_VIDEO,
+                progress=70,
+                message="Preparing files for video generation"
+            )
+
+            # Download and set up files
+            base_name = f"{job.artist} - {job.title}"
+            with job_span("download-files", job_id):
+                job_log.info("Downloading files from GCS...")
+                await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
+                job_log.info("All files downloaded successfully")
+
+            # Load style config for CDG styles
+            style_config = await load_style_config(job, storage, temp_dir)
+            cdg_styles = style_config.get_cdg_styles()
+
+            # Change to working directory
+            os.chdir(temp_dir)
+
+            # Create orchestrator config from job
+            config = create_orchestrator_config_from_job(
+                job=job,
+                temp_dir=temp_dir,
+                youtube_credentials=youtube_credentials,
+                cdg_styles=cdg_styles,
+            )
+
+            # Run the orchestrated pipeline
+            orchestrator = VideoWorkerOrchestrator(
+                config=config,
+                job_manager=job_manager,
+                storage=storage,
+                job_logger=job_log,
+            )
+
+            with job_span("orchestrator-run", job_id):
+                result = await orchestrator.run()
+
+            if not result.success:
+                raise Exception(result.error_message or "Orchestrator failed")
+
+            # Prepare distribution directory for native uploads
+            with job_span("distribution", job_id):
+                await _handle_native_distribution(
+                    job_id=job_id,
+                    job=job,
+                    job_log=job_log,
+                    job_manager=job_manager,
+                    temp_dir=temp_dir,
+                    result={
+                        'brand_code': result.brand_code,
+                        'youtube_url': result.youtube_url,
+                        'final_video': result.final_video,
+                        'final_video_lossy': result.final_video_lossy,
+                        'final_video_720p': result.final_video_720p,
+                        'final_karaoke_cdg_zip': result.final_karaoke_cdg_zip,
+                        'dropbox_link': result.dropbox_link,
+                        'gdrive_files': result.gdrive_files,
+                    },
+                    storage=storage,
+                )
+
+            # Upload generated files to GCS
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.PACKAGING,
+                progress=95,
+                message="Uploading final files"
+            )
+
+            with job_span("upload-results", job_id):
+                await _upload_results(job_id, job_manager, storage, temp_dir, {
+                    'final_video': result.final_video,
+                    'final_video_mkv': result.final_video_mkv,
+                    'final_video_lossy': result.final_video_lossy,
+                    'final_video_720p': result.final_video_720p,
+                    'final_karaoke_cdg_zip': result.final_karaoke_cdg_zip,
+                    'final_karaoke_txt_zip': result.final_karaoke_txt_zip,
+                })
+
+            # Mark job as complete
+            logger.info(f"[job:{job_id}] Video generation complete")
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.COMPLETE,
+                progress=100,
+                message="Karaoke generation complete!"
+            )
+
+            # Store result metadata in job
+            job_manager.update_job(job_id, {
+                'state_data': {
+                    **job.state_data,
+                    'brand_code': result.brand_code,
+                    'youtube_url': result.youtube_url,
+                    'dropbox_link': result.dropbox_link,
+                    'gdrive_files': result.gdrive_files,
+                }
+            })
+
+            duration = time.time() - start_time
+            root_span.set_attribute("duration_seconds", duration)
+            root_span.set_attribute("brand_code", result.brand_code or '')
+            logger.info(f"[job:{job_id}] WORKER_END worker=video orchestrator=true status=success duration={duration:.1f}s")
+            return True
+
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error(f"[job:{job_id}] WORKER_END worker=video orchestrator=true status=error duration={duration:.1f}s error={e}")
+        job_manager.mark_job_failed(
+            job_id=job_id,
+            error_message=f"Video generation failed: {str(e)}",
+            error_details={"stage": "video_generation", "error": str(e)}
+        )
+        return False
+
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
+
+        # Remove log handler
+        for logger_name in VIDEO_WORKER_LOGGERS:
+            try:
+                logging.getLogger(logger_name).removeHandler(log_handler)
+            except Exception:
+                pass
+
+        # Cleanup rclone config file
+        if rclone_service:
+            rclone_service.cleanup()
+
+        # Cleanup temporary directory
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+            logger.debug(f"Cleaned up temp directory: {temp_dir}")
+
+
+async def generate_video(job_id: str) -> bool:
+    """
+    Generate final karaoke videos.
+
+    Routes to either the new orchestrator-based pipeline or the legacy
+    KaraokeFinalise-based pipeline based on USE_NEW_ORCHESTRATOR flag.
+
+    Args:
+        job_id: Job ID to process
+
+    Returns:
+        True if successful, False otherwise
+    """
+    if USE_NEW_ORCHESTRATOR:
+        logger.info(f"[job:{job_id}] Using new orchestrator-based pipeline")
+        return await generate_video_orchestrated(job_id)
+    else:
+        logger.info(f"[job:{job_id}] Using legacy KaraokeFinalise pipeline")
+        return await generate_video_legacy(job_id)
+
+
+async def generate_video_legacy(job_id: str) -> bool:
+    """
+    Generate final karaoke videos using KaraokeFinalise (legacy path).
+
+    This is the original implementation that has divergent behavior between
+    GCE and local encoding paths. Kept for rollback purposes.
+
+    Args:
+        job_id: Job ID to process
+
     Returns:
         True if successful, False otherwise
     """
