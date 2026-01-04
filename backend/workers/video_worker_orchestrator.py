@@ -347,6 +347,7 @@ class VideoWorkerOrchestrator:
             brand_code=self.config.keep_brand_code,
             output_dir=self.config.output_dir,
             options={
+                "job_id": self.config.job_id,
                 "input_gcs_path": input_gcs_path,
                 "output_gcs_path": output_gcs_path,
             },
