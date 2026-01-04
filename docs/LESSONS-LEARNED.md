@@ -633,6 +633,40 @@ See `docs/archive/2025-12-28-self-hosted-github-runner.md` for full details.
 - Pre-job checks provide fail-fast behavior with clear error messages
 - `docker builder prune -af` catches buildkit cache that `system prune` misses
 
+### Fonts in Docker for Video Rendering
+
+**Problem**: Video rendering showed replacement characters (squares with question marks) for special Unicode symbols like `♪` in intro/instrumental screens.
+
+**Root cause**: The `python:3.11-slim` Docker base image has NO fonts installed. FFmpeg/libass falls back to whatever it can find, which often lacks support for musical symbols, emoji, or non-Latin scripts.
+
+**Symptoms**:
+- `♪ INTRO (19 seconds) ♪` displayed as `□ INTRO (19 seconds) □`
+- Unicode characters render as tofu (replacement boxes)
+- Only appears in cloud-generated videos, not local dev (which uses system fonts)
+
+**Solution**: Install comprehensive Noto fonts in the Docker base image:
+```dockerfile
+RUN apt-get update && apt-get install -y \
+    fonts-noto-core \
+    fonts-noto-cjk \
+    fonts-noto-extra \
+    fonts-noto-color-emoji \
+    fontconfig \
+    && fc-cache -f \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**Package breakdown**:
+- `fonts-noto-core` (~10MB): Latin, Greek, Cyrillic, musical symbols
+- `fonts-noto-cjk` (~150MB): Chinese, Japanese, Korean
+- `fonts-noto-extra` (~50MB): Arabic, Hebrew, Thai, Hindi, other scripts
+- `fonts-noto-color-emoji` (~10MB): Color emoji (limited libass support)
+- `fontconfig`: Font configuration system (required for `fc-cache`)
+
+**Note on color emoji**: FFmpeg's libass subtitle renderer doesn't fully support color emoji fonts - it renders text as vectors and can't display color bitmap glyphs. Color emoji appears as monochrome outlines or may not render at all in ASS subtitles.
+
+**Lesson**: When building Docker images for video/subtitle rendering, install fonts explicitly. The default slim images have nothing, and font fallback behavior differs from local development machines.
+
 ## Performance Observations
 
 | Operation | Duration |

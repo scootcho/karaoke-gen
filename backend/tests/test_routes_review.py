@@ -99,7 +99,7 @@ class TestStylesConfigRequirements:
             "karaoke": {
                 "background_color": "#000000",
                 "font_path": "",  # MUST be string, NOT None
-                "font": "Arial",
+                "font": "Noto Sans",
                 "ass_name": "Default",  # REQUIRED
                 "primary_color": "112, 112, 247, 255",
                 "secondary_color": "255, 255, 255, 255",
@@ -241,7 +241,7 @@ class TestPreviewStyleLoading:
                 "background_image": "/original/path/background.png",
                 "font_path": "/original/path/font.ttf",
                 "background_color": "#000000",
-                "font": "Arial",
+                "font": "Noto Sans",
                 "ass_name": "Default",
             }
         }
@@ -308,7 +308,7 @@ class TestPreviewStyleLoading:
         # Should have karaoke section with minimal/default values
         assert "karaoke" in result_styles
         assert result_styles["karaoke"]["background_color"] == "#000000"
-        assert result_styles["karaoke"]["font"] == "Arial"
+        assert result_styles["karaoke"]["font"] == "Noto Sans"
         # Minimal styles have background_image as None (default)
         assert result_styles["karaoke"].get("background_image") is None
     
