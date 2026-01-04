@@ -70,7 +70,9 @@ DEFAULT_KARAOKE_STYLE = {
     "background_color": "#000000",
     "background_image": None,
     # Font settings
-    "font": "Arial",
+    # Using "Noto Sans" for full Unicode support (CJK, Arabic, symbols, etc.)
+    # Requires fonts-noto-* packages installed in Docker image
+    "font": "Noto Sans",
     "font_path": "",  # Must be string, not None (for ASS generator)
     "ass_name": "Default",
     # Colors in "R, G, B, A" format (required by ASS)
