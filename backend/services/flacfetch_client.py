@@ -408,11 +408,11 @@ class FlacfetchClient:
     ) -> Dict[str, Any]:
         """
         Trigger disk cleanup.
-        
+
         Args:
             strategy: Cleanup strategy (oldest, largest, lowest_ratio)
             target_free_gb: Target free space to achieve
-            
+
         Returns:
             Cleanup response with removed count and freed space
         """
@@ -429,11 +429,111 @@ class FlacfetchClient:
                 )
                 resp.raise_for_status()
                 return resp.json()
-                
+
         except httpx.RequestError as e:
             raise FlacfetchServiceError(f"Cleanup failed: {e}")
         except httpx.HTTPStatusError as e:
             raise FlacfetchServiceError(f"Cleanup failed: {e.response.status_code}")
+
+    # =========================================================================
+    # Cache Management
+    # =========================================================================
+
+    async def clear_search_cache(self, artist: str, title: str) -> bool:
+        """
+        Clear a specific cached search result by artist and title.
+
+        Args:
+            artist: Artist name
+            title: Track title
+
+        Returns:
+            True if a cache entry was deleted, False if no entry existed
+
+        Raises:
+            FlacfetchServiceError: On request failure
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.request(
+                    "DELETE",
+                    f"{self.base_url}/cache/search",
+                    headers=self._headers(),
+                    json={"artist": artist, "title": title},
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                deleted = data.get("deleted", False)
+                logger.info(
+                    f"Cleared flacfetch cache for '{artist}' - '{title}': "
+                    f"{'deleted' if deleted else 'no entry found'}"
+                )
+                return deleted
+
+        except httpx.RequestError as e:
+            raise FlacfetchServiceError(f"Clear search cache request failed: {e}")
+        except httpx.HTTPStatusError as e:
+            raise FlacfetchServiceError(
+                f"Clear search cache failed: {e.response.status_code} - {e.response.text}"
+            )
+
+    async def clear_all_cache(self) -> int:
+        """
+        Clear all cached search results.
+
+        Returns:
+            Number of cache entries deleted
+
+        Raises:
+            FlacfetchServiceError: On request failure
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.delete(
+                    f"{self.base_url}/cache",
+                    headers=self._headers(),
+                    timeout=60,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                deleted_count = data.get("deleted_count", 0)
+                logger.info(f"Cleared all flacfetch cache: {deleted_count} entries deleted")
+                return deleted_count
+
+        except httpx.RequestError as e:
+            raise FlacfetchServiceError(f"Clear all cache request failed: {e}")
+        except httpx.HTTPStatusError as e:
+            raise FlacfetchServiceError(
+                f"Clear all cache failed: {e.response.status_code} - {e.response.text}"
+            )
+
+    async def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about the cache.
+
+        Returns:
+            Dict with count, total_size_bytes, oldest_entry, newest_entry, configured
+
+        Raises:
+            FlacfetchServiceError: On request failure
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{self.base_url}/cache/stats",
+                    headers=self._headers(),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        except httpx.RequestError as e:
+            raise FlacfetchServiceError(f"Get cache stats request failed: {e}")
+        except httpx.HTTPStatusError as e:
+            raise FlacfetchServiceError(
+                f"Get cache stats failed: {e.response.status_code} - {e.response.text}"
+            )
 
 
 # Singleton client instance

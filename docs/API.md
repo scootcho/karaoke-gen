@@ -438,10 +438,52 @@ Response:
 {
   "status": "success",
   "job_id": "abc123",
-  "message": "Cleared 5 cached search results. Job reset to pending.",
+  "message": "Cleared 5 cached search results. Job reset to pending. Flacfetch cache also cleared.",
   "previous_status": "awaiting_audio_selection",
   "new_status": "pending",
-  "results_cleared": 5
+  "results_cleared": 5,
+  "flacfetch_cache_cleared": true,
+  "flacfetch_error": null
+}
+```
+
+Note: This endpoint now also clears the flacfetch GCS cache for the artist/title combination, ensuring the next search hits trackers fresh.
+
+#### Clear All Flacfetch Cache
+
+```http
+DELETE /api/admin/cache
+Authorization: Bearer ADMIN_TOKEN
+```
+
+Clears the entire flacfetch search cache (GCS-backed). Use when flacfetch has been updated and you want all subsequent searches to use fresh tracker results.
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Cleared 15 cache entries from flacfetch.",
+  "deleted_count": 15
+}
+```
+
+#### Get Flacfetch Cache Stats
+
+```http
+GET /api/admin/cache/stats
+Authorization: Bearer ADMIN_TOKEN
+```
+
+Returns statistics about the flacfetch search cache.
+
+Response:
+```json
+{
+  "count": 42,
+  "total_size_bytes": 128000,
+  "oldest_entry": "2025-12-15T10:30:00Z",
+  "newest_entry": "2026-01-03T15:45:00Z",
+  "configured": true
 }
 ```
 

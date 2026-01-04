@@ -802,15 +802,23 @@ result = job.state_data['search_results'][selection_index]
 
 **Solution**: Added admin endpoints and UI to manage cached searches:
 - `GET /api/admin/audio-searches` - List jobs with cached results
-- `POST /api/admin/audio-searches/{job_id}/clear-cache` - Clear cache and reset to pending
-- Admin UI at `/admin/searches` shows which jobs have YouTube-only results vs lossless
+- `POST /api/admin/audio-searches/{job_id}/clear-cache` - Clear both Firestore and flacfetch GCS cache
+- `DELETE /api/admin/cache` - Clear entire flacfetch cache
+- `GET /api/admin/cache/stats` - View cache statistics
+- Admin UI at `/admin/searches` shows cache stats and "Clear All Cache" button
+
+**Key insight**: There are TWO caches involved:
+1. **Firestore** (`job.state_data.audio_search_results`) - stores results for user selection UI
+2. **Flacfetch GCS** - caches tracker search responses (30-day TTL)
+
+Both must be cleared for a truly fresh search. The clear-cache endpoint now clears both automatically.
 
 **Future consideration**: Add automatic cache invalidation based on:
 - Time (TTL)
 - flacfetch version change
 - User-initiated "re-search" button
 
-**Lesson**: When caching external API results, consider how/when the cache should be invalidated. Permanent caches need admin tooling to manage stale data.
+**Lesson**: When caching external API results, consider how/when the cache should be invalidated. Permanent caches need admin tooling to manage stale data. When multiple layers cache the same data, clearing one layer isn't enough - you need to clear all of them.
 
 ### GCS Downloads Preserve Directory Structure
 

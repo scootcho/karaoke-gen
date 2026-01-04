@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { adminApi, AudioSearchJobSummary } from "@/lib/api"
+import { adminApi, AudioSearchJobSummary, CacheStatsResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -43,6 +43,8 @@ import {
   CheckCircle,
   XCircle,
   ExternalLink,
+  Database,
+  HardDrive,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -60,10 +62,18 @@ export default function AdminSearchesPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
 
-  // Clear cache dialog
+  // Clear cache dialog (single job)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [jobToClear, setJobToClear] = useState<AudioSearchJobSummary | null>(null)
   const [clearing, setClearing] = useState(false)
+
+  // Clear all cache dialog
+  const [clearAllDialogOpen, setClearAllDialogOpen] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
+
+  // Cache stats
+  const [cacheStats, setCacheStats] = useState<CacheStatsResponse | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
 
   const loadSearches = useCallback(async () => {
     try {
@@ -85,9 +95,24 @@ export default function AdminSearchesPage() {
     }
   }, [statusFilter, toast])
 
+  const loadCacheStats = useCallback(async () => {
+    try {
+      setStatsLoading(true)
+      const stats = await adminApi.getCacheStats()
+      setCacheStats(stats)
+    } catch (err: any) {
+      // Silently fail - stats are optional
+      console.error("Failed to load cache stats:", err)
+      setCacheStats(null)
+    } finally {
+      setStatsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadSearches()
-  }, [loadSearches])
+    loadCacheStats()
+  }, [loadSearches, loadCacheStats])
 
   const handleClearCache = async () => {
     if (!jobToClear) return
@@ -102,6 +127,7 @@ export default function AdminSearchesPage() {
       setClearDialogOpen(false)
       setJobToClear(null)
       loadSearches()
+      loadCacheStats()
     } catch (err: any) {
       toast({
         title: "Error",
@@ -111,6 +137,35 @@ export default function AdminSearchesPage() {
     } finally {
       setClearing(false)
     }
+  }
+
+  const handleClearAllCache = async () => {
+    try {
+      setClearingAll(true)
+      const result = await adminApi.clearAllCache()
+      toast({
+        title: "All Cache Cleared",
+        description: result.message,
+      })
+      setClearAllDialogOpen(false)
+      loadCacheStats()
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to clear all cache",
+        variant: "destructive",
+      })
+    } finally {
+      setClearingAll(false)
+    }
+  }
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return "0 B"
+    const k = 1024
+    const sizes = ["B", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i]
   }
 
   const getStatusVariant = (status: string) => {
@@ -149,11 +204,52 @@ export default function AdminSearchesPage() {
             View and manage cached audio search results
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadSearches} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => { loadSearches(); loadCacheStats() }} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-500 hover:text-red-400 hover:bg-red-500/10 border-red-500/30"
+                  onClick={() => setClearAllDialogOpen(true)}
+                >
+                  <Database className="w-4 h-4 mr-2" />
+                  Clear All Cache
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Clear entire flacfetch search cache</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
+
+      {/* Cache Stats */}
+      {cacheStats && (
+        <div className="flex items-center gap-4 text-sm text-muted-foreground bg-muted/30 rounded-lg px-4 py-2">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4" />
+            <span>Flacfetch Cache:</span>
+          </div>
+          <Badge variant="outline" className="font-mono">
+            {cacheStats.count} entries
+          </Badge>
+          <Badge variant="outline" className="font-mono">
+            {formatBytes(cacheStats.total_size_bytes)}
+          </Badge>
+          {cacheStats.newest_entry && (
+            <span className="text-xs">
+              Latest: {new Date(cacheStats.newest_entry).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex gap-4">
@@ -305,7 +401,7 @@ export default function AdminSearchesPage() {
         </div>
       )}
 
-      {/* Clear Cache Dialog */}
+      {/* Clear Cache Dialog (single job) */}
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -334,6 +430,40 @@ export default function AdminSearchesPage() {
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
               Clear Cache
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear All Cache Dialog */}
+      <AlertDialog open={clearAllDialogOpen} onOpenChange={setClearAllDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear Entire Flacfetch Cache?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all cached search results from flacfetch&apos;s GCS cache
+              {cacheStats && (
+                <span className="font-medium"> ({cacheStats.count} entries, {formatBytes(cacheStats.total_size_bytes)})</span>
+              )}.
+              <span className="block mt-2 text-orange-400">
+                All subsequent searches will hit the trackers fresh. This does NOT affect
+                the Firestore job caches - use individual &quot;Clear Cache&quot; buttons for those.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAllCache}
+              disabled={clearingAll}
+              className="bg-red-600 hover:bg-red-500"
+            >
+              {clearingAll ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Database className="w-4 h-4 mr-2" />
+              )}
+              Clear All Cache
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
