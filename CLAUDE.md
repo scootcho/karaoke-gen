@@ -52,6 +52,52 @@ cd frontend && npm run test:all 2>&1 | tail -n 200
 - `gcloud` CLI for reading/debugging only
 - Stop and notify user on auth issues
 
+## API Authentication (for Agents)
+
+When you need to call backend APIs programmatically:
+
+### Internal Worker Endpoints
+Use the `X-Admin-Token` header with the token from Secret Manager:
+```bash
+# Trigger video worker
+curl -X POST "https://api.nomadkaraoke.com/api/internal/workers/video" \
+  -H "X-Admin-Token: $(gcloud secrets versions access latest --secret=admin-tokens --project=nomadkaraoke)" \
+  -H "Content-Type: application/json" \
+  -d '{"job_id": "YOUR_JOB_ID"}'
+
+# Other internal endpoints follow the same pattern
+```
+
+### Firestore Direct Access
+```bash
+# Set the correct project
+export GOOGLE_CLOUD_PROJECT=nomadkaraoke
+
+# Use Python with google-cloud-firestore
+python3 << 'EOF'
+import os
+os.environ['GOOGLE_CLOUD_PROJECT'] = 'nomadkaraoke'
+from google.cloud import firestore
+db = firestore.Client(project='nomadkaraoke')
+# Query/update documents...
+EOF
+```
+
+### GCE Encoding Worker
+```bash
+# SSH to restart service (clears in-memory job queue)
+gcloud compute ssh encoding-worker --zone=us-central1-a --project=nomadkaraoke \
+  --command="sudo systemctl restart encoding-worker"
+
+# Check health
+gcloud compute ssh encoding-worker --zone=us-central1-a --project=nomadkaraoke \
+  --command="curl -s http://localhost:8080/health"
+```
+
+### What Doesn't Work
+- `gcloud auth print-identity-token` - Wrong token type for internal endpoints
+- Cloud Tasks without proper service account - Gets 401 from Cloud Run
+
 ## Documentation Maintenance
 
 ### Structure
