@@ -453,8 +453,8 @@ test.describe('Production E2E - Full User Journey', () => {
       jobId,
       ['awaiting_instrumental_selection', 'complete'],
       accessToken!,
-      TIMEOUTS.jobProcessing  // Video rendering can take several minutes
-    ).catch(() => ({ status: 'unknown', job: null }));
+      TIMEOUTS.download  // Video rendering can take 10-15 minutes with orchestrator
+    );
 
     if (statusBeforeInstrumental === 'awaiting_instrumental_selection') {
       console.log('  Selecting clean instrumental via API...');

@@ -70,7 +70,7 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
             </span>
             <span className="flex items-center gap-1 text-amber-400 font-medium">
               <Coins className="w-3 h-3" />
-              {user.credits}
+              {user.credits} {user.credits === 1 ? 'credit' : 'credits'}
             </span>
           </Button>
         </DropdownMenuTrigger>
