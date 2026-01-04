@@ -169,6 +169,43 @@ karaoke-gen shares a GCP project (`nomadkaraoke`) with karaoke-decide, but uses 
 
 **Note**: The `users` collection in the same Firestore instance belongs to karaoke-decide (different schema: user_id, is_guest, quiz_* fields). Don't use it for karaoke-gen.
 
+## Video Worker Orchestrator
+
+The Video Worker uses an orchestrator pattern to ensure all features work regardless of encoding backend (local Cloud Run or GCE VM).
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                 VideoWorkerOrchestrator                      │
+│                                                             │
+│  Stage 1: PACKAGING        Stage 2: ENCODING                │
+│  ├─ CDG file generation    ├─ Local (FFmpeg)               │
+│  └─ TXT lyrics export      └─ GCE (remote VM)              │
+│                                                             │
+│  Stage 3: ORGANIZATION     Stage 4: DISTRIBUTION           │
+│  ├─ Final path setup       ├─ Dropbox upload               │
+│  └─ File organization      ├─ Google Drive upload          │
+│                            └─ YouTube upload               │
+│                                                             │
+│  Stage 5: NOTIFICATIONS                                     │
+│  └─ Discord webhooks                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key Design Decision**: The orchestrator coordinates stages rather than embedding logic in monolithic functions. This:
+- Ensures all features work with both local and GCE encoding
+- Makes each stage independently testable (139 new tests)
+- Allows feature flag rollback via `USE_NEW_ORCHESTRATOR` env var
+
+**Service Modules**:
+| Module | Purpose |
+|--------|---------|
+| `youtube_upload_service.py` | YouTube OAuth flow and upload |
+| `discord_service.py` | Discord webhook notifications |
+| `packaging_service.py` | CDG/TXT package generation |
+| `local_encoding_service.py` | FFmpeg encoding (Cloud Run) |
+| `encoding_interface.py` | Abstract interface + GCE backend |
+| `video_worker_orchestrator.py` | Stage coordination |
+
 ## Tech Stack
 
 - **Backend**: FastAPI, Python 3.12, Cloud Run

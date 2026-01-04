@@ -1002,6 +1002,42 @@ async def upload(auth_result: AuthResult = Depends(require_auth)):
 
 See `docs/archive/2024-12-31-job-failure-investigation.md` for full details.
 
+### Alternative Code Paths Must Implement All Features
+
+**Problem**: Adding a GCE encoding option created a code path that completely bypassed the existing `KaraokeFinalise` class, which contained YouTube upload, Discord notifications, and CDG/TXT packaging. Jobs using GCE encoding silently missed these features.
+
+```python
+# BAD - two divergent code paths
+if use_gce_encoding:
+    await gce_encoding_worker.encode(job_id)  # Returns, does nothing else
+    return  # YouTube upload, Discord, CDG never happen!
+else:
+    finalise = KaraokeFinalise(...)  # Has all the features
+    await finalise.run()
+```
+
+**Symptoms**:
+- Jobs complete successfully but YouTube URL is never set
+- No Discord notifications for GCE-encoded jobs
+- CDG/TXT files never generated for GCE jobs
+- No errors in logs (the code path simply doesn't include those features)
+
+**Solution**: Create an orchestrator that runs all stages regardless of encoding backend:
+
+```python
+# GOOD - unified pipeline with swappable encoding
+orchestrator = VideoWorkerOrchestrator(config)
+result = await orchestrator.run()
+# Orchestrator always runs: packaging → encoding → organization → distribution → notifications
+# The encoding step uses either local or GCE backend based on config
+```
+
+**Key insight**: When adding an alternative implementation (like GCE encoding), audit ALL side effects of the original code path. The new path must replicate them or delegate to shared code.
+
+**Architecture pattern**: The orchestrator pattern separates "what stages run" from "how each stage runs". Stages are always executed; only the implementation varies.
+
+See `docs/archive/2026-01-04-video-worker-orchestrator-refactor.md` for full details.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
