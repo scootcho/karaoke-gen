@@ -45,7 +45,7 @@ describe('AuthStatus', () => {
 
     // Should show user email and credits
     expect(screen.getByText('test@example.com')).toBeInTheDocument()
-    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('5 credits')).toBeInTheDocument()
   })
 
   it('opens auth dialog when Login is clicked', () => {

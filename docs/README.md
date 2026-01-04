@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **Video Worker Orchestrator** (2026-01-04): Major refactor to unify video generation pipeline. Created VideoWorkerOrchestrator that coordinates all stages (packaging, encoding, distribution, notifications) regardless of encoding backend (GCE or local). Fixes issue where GCE encoding path bypassed YouTube upload, Discord notifications, and CDG/TXT packaging. Feature flag `USE_NEW_ORCHESTRATOR` (default: true) enables rollback. 139 new tests across 6 new service modules. See [ARCHITECTURE.md](ARCHITECTURE.md#video-worker-orchestrator) and [archive/2026-01-04-video-worker-orchestrator-refactor.md](archive/2026-01-04-video-worker-orchestrator-refactor.md).
+
 - **Full Unicode Font Support** (2026-01-03): Fixed rendering of musical symbols (♪) and added comprehensive international font support to Docker base image. Installed Noto fonts covering Latin, CJK (Chinese/Japanese/Korean), Arabic, Hebrew, Thai, and other scripts. Changed default karaoke font from Arial to Noto Sans. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#fonts-in-docker-for-video-rendering).
 
 - **Flacfetch Cache API Integration** (2026-01-03): Enhanced audio search cache management to also clear flacfetch's GCS cache. When admins clear a job's cache, both Firestore (job state) and flacfetch (GCS search results) are cleared simultaneously. Added "Clear All Cache" button and cache stats display to admin UI. New endpoints: `DELETE /api/admin/cache`, `GET /api/admin/cache/stats`. See [API.md](API.md#audio-search-management-admin).
