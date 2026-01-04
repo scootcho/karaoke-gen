@@ -177,6 +177,15 @@ class EncodingService:
                 raise TimeoutError(f"Encoding job {job_id} timed out after {timeout}s")
 
             status = await self.get_job_status(job_id)
+
+            # Handle case where GCE worker returns a list instead of dict
+            if isinstance(status, list):
+                logger.warning(f"[job:{job_id}] GCE returned list instead of dict: {status}")
+                status = status[0] if status and isinstance(status[0], dict) else {}
+            if not isinstance(status, dict):
+                logger.error(f"[job:{job_id}] Unexpected status type: {type(status)}")
+                status = {}
+
             job_status = status.get("status", "unknown")
             progress = status.get("progress", 0)
 
