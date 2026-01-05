@@ -247,6 +247,43 @@ def _get_effective_distribution_settings(...) -> EffectiveDistributionSettings:
 
 **Lesson**: When you see the same logic repeated in multiple places, refactor into a helper function immediately. Otherwise bugs will be fixed in one place but not others.
 
+### Python `or` Operator Can't Override True Defaults with False
+
+**Problem**: Using Python's `or` operator for default logic prevents explicit `false` from overriding a `true` server default.
+
+```python
+# BAD - can't explicitly disable if server default is true
+effective_value = body.enable_feature or settings.default_enable_feature
+# When body.enable_feature=False and settings.default=True:
+# False or True = True  (ignores explicit False!)
+```
+
+**Symptoms**:
+- Feature can be enabled but never disabled via API
+- Works fine when server default is `false` but breaks when default is `true`
+- No errors - just ignores the explicit `false` value
+
+**Solution**: Use `Optional[bool] = None` with explicit `is not None` check:
+
+```python
+# Request model
+enable_feature: Optional[bool] = None  # None = use server default
+
+# Default logic
+effective_value = (
+    body.enable_feature
+    if body.enable_feature is not None
+    else settings.default_enable_feature
+)
+```
+
+This allows three states:
+- `None` (not specified) → use server default
+- `True` → explicitly enable
+- `False` → explicitly disable (overrides server default)
+
+**Lesson**: When a boolean field needs to support "use server default" behavior, use `Optional[bool] = None` instead of `bool = False`. The `or` operator conflates "not specified" with "explicitly false".
+
 ### Field Name Mismatches Between Endpoints
 
 **Problem**: Different endpoints setting different field names for the same logical value, where consumers check only one field name.
@@ -1207,6 +1244,33 @@ if isinstance(output_files, list):
 **Key insight**: When integrating with external services, never assume the response format. Add explicit type checks and conversions, with logging when unexpected formats are encountered. This is especially important for services you don't control (internal microservices, third-party APIs).
 
 **Debugging tip**: When hitting format errors in async pipelines, check the raw response from the external service directly (curl with API key) before assuming the bug is in your code.
+
+### GCE Encoding Returns GCS Paths, Not Local Files
+
+**Problem**: When using GCE encoding (remote high-performance encoder), the orchestrator received GCS blob paths like `jobs/{id}/finals/output_4k_lossless.mp4` instead of local file paths. Subsequent operations like YouTube upload checked `os.path.isfile()` which returned `False`, causing silent failures.
+
+**Symptoms**:
+- YouTube upload logged "No video file available for YouTube upload"
+- Other file-based operations silently skipped
+- Dropbox/GDrive uploads succeeded (they use different code paths)
+- No errors in logs - just warnings that were easy to miss
+
+**Root cause**: The `VideoWorkerOrchestrator._run_encoding()` method stored the paths returned by `GCEEncodingBackend` directly without downloading the files. For local encoding, the paths are already local. For GCE encoding, the paths are GCS blob paths that need to be downloaded first.
+
+**Solution**: Added `_download_gce_encoded_files()` method that:
+1. Detects when GCE backend was used (`encoding_backend.name == "gce"`)
+2. Downloads each encoded file from GCS to the local temp directory
+3. Updates result paths to point to local files
+
+```python
+# After encoding completes
+if encoding_backend.name == "gce" and self.storage:
+    await self._download_gce_encoded_files(output)
+```
+
+**Key insight**: When an operation can run on multiple backends (local vs remote), ensure the outputs are normalized to a common format before subsequent stages consume them. The orchestrator pattern should abstract away backend differences, not leak them to downstream consumers.
+
+**Testing tip**: Test the full pipeline with each backend type, not just the encoding step in isolation. The bug only manifested when YouTube upload ran after GCE encoding - unit tests of each stage passed.
 
 ## What We'd Do Differently
 
