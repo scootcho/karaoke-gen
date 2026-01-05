@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     use_gce_encoding: bool = os.getenv("USE_GCE_ENCODING", "false").lower() in ("true", "1", "yes")
     encoding_worker_url: Optional[str] = os.getenv("ENCODING_WORKER_URL")  # e.g., http://136.119.50.148:8080
     encoding_worker_api_key: Optional[str] = os.getenv("ENCODING_WORKER_API_KEY")
+
+    # GCE Preview Encoding (for faster preview video generation)
+    # When enabled, preview video encoding during lyrics review is offloaded to the GCE worker.
+    # This reduces preview generation time from 60+ seconds to ~15-20 seconds.
+    # Requires use_gce_encoding to be enabled and the GCE worker to support /encode-preview endpoint.
+    use_gce_preview_encoding: bool = os.getenv("USE_GCE_PREVIEW_ENCODING", "false").lower() in ("true", "1", "yes")
     
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")

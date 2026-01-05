@@ -274,11 +274,12 @@ class CorrectionOperations:
         audio_filepath: str,
         artist: Optional[str] = None,
         title: Optional[str] = None,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        ass_only: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate a preview video with current corrections.
-        
+
         Args:
             correction_result: Current correction result
             updated_data: Updated correction data for preview
@@ -287,10 +288,12 @@ class CorrectionOperations:
             artist: Optional artist name
             title: Optional title
             logger: Optional logger instance
-            
+            ass_only: If True, generate only ASS subtitles without video encoding.
+                      Useful when video encoding is offloaded to external service.
+
         Returns:
-            Dict with status, preview_hash, and video_path
-            
+            Dict with status, preview_hash, and video_path (or ass_path if ass_only)
+
         Raises:
             ValueError: If preview video generation fails
         """
@@ -338,15 +341,27 @@ class CorrectionOperations:
             audio_filepath=audio_filepath,
             artist=artist,
             title=title,
+            ass_only=ass_only,
         )
-        
+
+        # When ass_only, we only need the ASS file (video encoding done externally)
+        if ass_only:
+            if not preview_outputs.ass:
+                raise ValueError("Preview ASS generation failed")
+            logger.info(f"Generated preview ASS: {preview_outputs.ass}")
+            return {
+                "status": "success",
+                "preview_hash": preview_hash,
+                "ass_path": preview_outputs.ass,
+            }
+
         if not preview_outputs.video:
             raise ValueError("Preview video generation failed")
-            
+
         logger.info(f"Generated preview video: {preview_outputs.video}")
-        
+
         return {
             "status": "success",
             "preview_hash": preview_hash,
-            "video_path": preview_outputs.video
+            "video_path": preview_outputs.video,
         } 

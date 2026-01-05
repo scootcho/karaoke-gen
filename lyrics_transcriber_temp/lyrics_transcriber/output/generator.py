@@ -148,8 +148,21 @@ class OutputGenerator:
         audio_filepath: str,
         artist: Optional[str] = None,
         title: Optional[str] = None,
+        ass_only: bool = False,
     ) -> OutputPaths:
-        """Generate all requested output formats."""
+        """Generate all requested output formats.
+
+        Args:
+            transcription_corrected: Corrected transcription data
+            lyrics_results: Lyrics data from various providers
+            output_prefix: Prefix for output filenames
+            audio_filepath: Path to audio file
+            artist: Optional artist name
+            title: Optional title
+            ass_only: If True (only in preview_mode), generate only ASS subtitles
+                      without video encoding. Useful when video encoding is offloaded
+                      to an external service.
+        """
         outputs = OutputPaths()
 
         try:
@@ -165,8 +178,9 @@ class OutputGenerator:
                     # Generate ASS subtitles for preview
                     outputs.ass = self.subtitle.generate_ass(transcription_corrected.resized_segments, output_prefix, audio_filepath)
 
-                    # Generate preview video
-                    outputs.video = self.video.generate_preview_video(outputs.ass, audio_filepath, output_prefix)
+                    # Generate preview video (unless ass_only mode for GCE encoding)
+                    if not ass_only:
+                        outputs.video = self.video.generate_preview_video(outputs.ass, audio_filepath, output_prefix)
 
                     return outputs
 

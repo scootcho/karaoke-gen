@@ -1158,6 +1158,45 @@ logs_ref.document(log_id).set({
 
 **Lesson**: Never use embedded arrays for unbounded data. If an array can grow indefinitely based on operation duration or user input, use a subcollection instead. The 1MB limit applies to the entire document, including all fields.
 
+### Splitting Fast Generation from Slow Encoding
+
+**Problem**: Preview video generation took 60+ seconds on Cloud Run, causing poor UX during lyrics review. The bottleneck was FFmpeg encoding (CPU-bound), not the subtitle generation (fast text processing).
+
+**Solution**: Split the operation into two phases with optional offloading:
+
+1. **ASS Generation (Cloud Run)**: Generate ASS subtitle file locally (~2s). This is pure text processing with no CPU-intensive encoding.
+
+2. **Video Encoding (GCE)**: Upload ASS to GCS and offload FFmpeg encoding to the high-performance GCE worker (~15-20s on C4-standard-8).
+
+```python
+# Generate ASS only (fast, local)
+result = CorrectionOperations.generate_preview_video(
+    ...,
+    ass_only=True,  # Skip video encoding
+)
+
+# Upload ASS to GCS
+storage.upload_file(result["ass_path"], f"jobs/{job_id}/previews/{preview_hash}.ass")
+
+# Offload encoding to GCE
+gce_result = await encoding_service.encode_preview_video(
+    job_id=preview_hash,
+    ass_gcs_path=f"gs://bucket/jobs/{job_id}/previews/{preview_hash}.ass",
+    audio_gcs_path=audio_gcs_path,
+    output_gcs_path=f"gs://bucket/jobs/{job_id}/previews/{preview_hash}.mp4",
+)
+```
+
+**Key insight**: When a pipeline has both fast (text generation) and slow (media encoding) steps, design for separability:
+- Add `_only` parameters to skip slow steps
+- Return intermediate outputs (paths to generated files)
+- Allow external services to handle the slow part
+- Keep fallback to local processing for reliability
+
+**Configuration**: Controlled by `USE_GCE_PREVIEW_ENCODING` env var. Falls back to local encoding if GCE fails or is disabled.
+
+**Result**: Preview generation dropped from 60+ seconds to ~15-20 seconds.
+
 ### External Service Response Format Mismatches
 
 **Problem**: The GCE encoding worker returned responses in unexpected formats, causing `'list' object has no attribute 'get'` errors that were hard to debug through the async pipeline.
