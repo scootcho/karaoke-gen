@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { api, Job, getAccessToken } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { useJobNotifications, useVisibilityRefresh } from "@/hooks/use-notifications"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +29,7 @@ export default function AppPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const { isDarkMode, toggleTheme, mounted } = useTheme()
+  const { user, fetchUser } = useAuth()
 
   // Memoize loadJobs for use with visibility refresh
   const loadJobs = useCallback(async () => {
@@ -66,6 +68,16 @@ export default function AppPage() {
     }
     setIsAuthenticated(true)
   }, [router])
+
+  // Ensure user data is loaded after authentication
+  // This handles the case where user navigates via client-side navigation
+  // (e.g., after beta enrollment) and the module-level fetchUser() didn't run
+  useEffect(() => {
+    const token = getAccessToken()
+    if (token && !user) {
+      fetchUser()
+    }
+  }, [user, fetchUser])
 
   // Load jobs on mount (only if authenticated)
   useEffect(() => {

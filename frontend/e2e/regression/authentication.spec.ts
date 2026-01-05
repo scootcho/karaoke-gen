@@ -171,6 +171,71 @@ test.describe('Authentication - Beta Enrollment', () => {
     await page.waitForURL(/\/app/, { timeout: 10000 });
     expect(page.url()).toContain('/app');
   });
+
+  test('beta enrollment shows credits after redirect to app', async ({ page }) => {
+    // This test verifies that after beta enrollment, the /app page
+    // correctly fetches and displays user data including credits.
+    // This catches the bug where client-side navigation didn't trigger fetchUser().
+    await setupApiFixtures(page, {
+      mocks: [
+        {
+          method: 'POST',
+          path: '/api/users/beta/enroll',
+          response: {
+            status: 200,
+            body: {
+              status: 'success',
+              message: 'Enrolled in beta',
+              credits_granted: 1,
+              session_token: 'mock-session-token-456',
+            },
+          },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/me',
+          response: {
+            status: 200,
+            body: {
+              user: {
+                email: 'beta-tester@example.com',
+                credits: 1,
+                role: 'user',
+                display_name: null,
+                total_jobs_created: 0,
+                total_jobs_completed: 0,
+              },
+              has_session: true,
+            },
+          },
+        },
+        {
+          method: 'GET',
+          path: '/api/jobs',
+          response: { body: [] },
+        },
+      ],
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Complete beta enrollment
+    await page.getByRole('button', { name: /join beta program/i }).click();
+    await page.locator('#beta-email').fill('beta-tester@example.com');
+    await page.locator('textarea').fill(
+      'I want to create a karaoke video for my favorite song!'
+    );
+    await page.locator('input[type="checkbox"]').check();
+    await page.getByRole('button', { name: /get my free credit/i }).click();
+
+    // Wait for redirect to /app
+    await page.waitForURL(/\/app/, { timeout: 10000 });
+
+    // Verify credits are displayed in the UI
+    // The AuthStatus component should show "1 credit" after fetchUser() completes
+    await expect(page.getByText(/1 credit/i)).toBeVisible({ timeout: 10000 });
+  });
 });
 
 test.describe('Authentication - Token Persistence', () => {
