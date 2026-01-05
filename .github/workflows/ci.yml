@@ -1189,7 +1189,9 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           echo "🚀 Deploying infrastructure changes..."
-          pulumi up --yes --refresh --stack nomadkaraoke/karaoke-gen-infrastructure/prod
+          # Skip preview to avoid needing broad read permissions on all GCP resources
+          # Pulumi state is authoritative since infrastructure is only managed via Pulumi
+          pulumi up --yes --skip-preview --stack nomadkaraoke/karaoke-gen-infrastructure/prod
 
       - name: Restart GCE Encoding Worker
         run: |

@@ -373,6 +373,22 @@ github_actions_service_usage = gcp.projects.IAMMember(
     member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant Project IAM Admin - required for Pulumi to refresh IAM binding state
+github_actions_iam_admin = gcp.projects.IAMMember(
+    "github-actions-iam-admin",
+    project=project_id,
+    role="roles/resourcemanager.projectIamAdmin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Grant Secret Manager Admin - required for Pulumi to refresh secret state
+github_actions_secretmanager = gcp.projects.IAMMember(
+    "github-actions-secretmanager",
+    project=project_id,
+    role="roles/secretmanager.admin",
+    member=github_actions_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # ==================== Workload Identity Federation ====================
 # Allows GitHub Actions to authenticate without service account keys
 
