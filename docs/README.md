@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **GCE Encoding Response Fixes** (2026-01-04): Fixed multiple response format mismatches with GCE encoding worker. The worker returns `output_files` as a list of paths, not a dict with format keys - added conversion logic. Also added defensive type checking for status responses that could be lists. Created worker logs rearchitecture plan to address Firestore 1MB document limit (logs will move to subcollection). See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#external-service-response-format-mismatches).
+
 - **Video Worker Orchestrator** (2026-01-04): Major refactor to unify video generation pipeline. Created VideoWorkerOrchestrator that coordinates all stages (packaging, encoding, distribution, notifications) regardless of encoding backend (GCE or local). Fixes issue where GCE encoding path bypassed YouTube upload, Discord notifications, and CDG/TXT packaging. Feature flag `USE_NEW_ORCHESTRATOR` (default: true) enables rollback. 139 new tests across 6 new service modules. See [ARCHITECTURE.md](ARCHITECTURE.md#video-worker-orchestrator) and [archive/2026-01-04-video-worker-orchestrator-refactor.md](archive/2026-01-04-video-worker-orchestrator-refactor.md).
 
 - **Full Unicode Font Support** (2026-01-03): Fixed rendering of musical symbols (♪) and added comprehensive international font support to Docker base image. Installed Noto fonts covering Latin, CJK (Chinese/Japanese/Korean), Arabic, Hebrew, Thai, and other scripts. Changed default karaoke font from Arial to Noto Sans. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#fonts-in-docker-for-video-rendering).
