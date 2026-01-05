@@ -1288,6 +1288,7 @@ class EncodePreviewRequest(BaseModel):
     output_gcs_path: str   # gs://bucket/path/to/output.mp4
     background_color: str = "black"
     background_image_gcs_path: Optional[str] = None
+    font_gcs_path: Optional[str] = None  # gs://bucket/path/to/custom-font.ttf
 
 
 class JobStatus(BaseModel):
@@ -1388,6 +1389,19 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
         if request.background_image_gcs_path:
             bg_image_path = work_dir / "background.png"
             download_single_file_from_gcs(request.background_image_gcs_path, bg_image_path)
+
+        # Download custom font if provided and register with fontconfig
+        if request.font_gcs_path:
+            # Use standard fontconfig location that's already in the search path
+            fonts_dir = Path("/usr/local/share/fonts/custom")
+            fonts_dir.mkdir(parents=True, exist_ok=True)
+            font_filename = request.font_gcs_path.split("/")[-1]
+            font_path = fonts_dir / font_filename
+            download_single_file_from_gcs(request.font_gcs_path, font_path)
+            logger.info(f"Downloaded custom font: {font_path}")
+            # Update fontconfig cache so libass can find the font
+            subprocess.run(["fc-cache", "-fv"], capture_output=True)
+            logger.info(f"Updated fontconfig cache with custom font: {font_filename}")
 
         # Build FFmpeg command
         output_path = work_dir / "preview.mp4"

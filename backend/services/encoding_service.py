@@ -255,6 +255,7 @@ class EncodingService:
         output_gcs_path: str,
         background_color: str = "black",
         background_image_gcs_path: Optional[str] = None,
+        font_gcs_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a preview video encoding job to the GCE worker.
@@ -266,6 +267,7 @@ class EncodingService:
             output_gcs_path: GCS path for output video
             background_color: Background color (default: black)
             background_image_gcs_path: Optional GCS path to background image
+            font_gcs_path: Optional GCS path to custom font file
 
         Returns:
             Response from the encoding worker
@@ -289,6 +291,8 @@ class EncodingService:
         }
         if background_image_gcs_path:
             payload["background_image_gcs_path"] = background_image_gcs_path
+        if font_gcs_path:
+            payload["font_gcs_path"] = font_gcs_path
 
         logger.info(f"[job:{job_id}] Submitting preview encoding job to GCE worker: {url}")
 
@@ -312,6 +316,7 @@ class EncodingService:
         output_gcs_path: str,
         background_color: str = "black",
         background_image_gcs_path: Optional[str] = None,
+        font_gcs_path: Optional[str] = None,
         timeout: float = 90.0,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
@@ -328,6 +333,7 @@ class EncodingService:
             output_gcs_path: GCS path for output video
             background_color: Background color (default: black)
             background_image_gcs_path: Optional GCS path to background image
+            font_gcs_path: Optional GCS path to custom font file
             timeout: Maximum time to wait (default 90s for preview)
             poll_interval: Seconds between status checks (default 2s)
 
@@ -342,6 +348,7 @@ class EncodingService:
             output_gcs_path=output_gcs_path,
             background_color=background_color,
             background_image_gcs_path=background_image_gcs_path,
+            font_gcs_path=font_gcs_path,
         )
 
         # If cached, return immediately - video already exists in GCS
