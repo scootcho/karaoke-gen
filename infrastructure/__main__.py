@@ -1189,6 +1189,13 @@ echo "Starting encoding worker setup at $(date)"
 apt-get update
 apt-get install -y python3-pip python3-venv docker.io curl git xz-utils
 
+# Install fonts for ASS subtitle rendering (libass uses fontconfig)
+# - fonts-noto: Noto Sans (default karaoke font)
+# - fonts-noto-cjk: CJK character support
+# - fontconfig: Font configuration system
+apt-get install -y fonts-noto fonts-noto-cjk fontconfig
+fc-cache -fv  # Rebuild font cache
+
 # Enable and start Docker
 systemctl enable docker
 systemctl start docker
