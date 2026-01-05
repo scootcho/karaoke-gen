@@ -335,7 +335,7 @@ class EncodingService:
             Final job status with output files
         """
         # Submit the job
-        await self.submit_preview_encoding_job(
+        submit_result = await self.submit_preview_encoding_job(
             job_id=job_id,
             ass_gcs_path=ass_gcs_path,
             audio_gcs_path=audio_gcs_path,
@@ -343,6 +343,16 @@ class EncodingService:
             background_color=background_color,
             background_image_gcs_path=background_image_gcs_path,
         )
+
+        # If cached, return immediately - video already exists in GCS
+        submit_status = submit_result.get("status")
+        if submit_status == "cached":
+            logger.info(f"[job:{job_id}] Preview already cached, returning immediately")
+            return {"status": "complete", "output_path": submit_result.get("output_path")}
+
+        # If in_progress, another request is encoding it - just wait for that
+        if submit_status == "in_progress":
+            logger.info(f"[job:{job_id}] Preview encoding already in progress, waiting")
 
         # Wait for completion with shorter timeout
         return await self.wait_for_completion(
