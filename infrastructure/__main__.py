@@ -1273,6 +1273,16 @@ class EncodeRequest(BaseModel):
     output_gcs_path: str  # gs://bucket/path/to/outputs/
     encoding_config: dict  # Video formats to generate
 
+
+class EncodePreviewRequest(BaseModel):
+    job_id: str
+    ass_gcs_path: str      # gs://bucket/path/to/subtitles.ass
+    audio_gcs_path: str    # gs://bucket/path/to/audio.flac
+    output_gcs_path: str   # gs://bucket/path/to/output.mp4
+    background_color: str = "black"
+    background_image_gcs_path: Optional[str] = None
+
+
 class JobStatus(BaseModel):
     job_id: str
     status: str  # pending, running, complete, failed
@@ -1323,6 +1333,120 @@ def upload_to_gcs(local_path: Path, gcs_uri: str):
                 blob = bucket.blob(blob_name)
                 blob.upload_from_filename(str(file))
                 logger.info(f"Uploaded: {file} -> gs://{bucket_name}/{blob_name}")
+
+
+def download_single_file_from_gcs(gcs_uri: str, local_path: Path):
+    # Download a single file from GCS
+    parts = gcs_uri.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    blob_name = parts[1] if len(parts) > 1 else ""
+
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    blob.download_to_filename(str(local_path))
+    logger.info(f"Downloaded: {gcs_uri} -> {local_path}")
+
+
+def upload_single_file_to_gcs(local_path: Path, gcs_uri: str):
+    # Upload a single file to a specific GCS path
+    parts = gcs_uri.replace("gs://", "").split("/", 1)
+    bucket_name = parts[0]
+    blob_name = parts[1] if len(parts) > 1 else ""
+
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(str(local_path))
+    logger.info(f"Uploaded: {local_path} -> {gcs_uri}")
+
+
+def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewRequest"):
+    # Run FFmpeg encoding for preview video (480x270, fast settings)
+    jobs[job_id]["status"] = "running"
+    jobs[job_id]["progress"] = 10
+
+    try:
+        # Download input files
+        ass_path = work_dir / "subtitles.ass"
+        audio_path = work_dir / "audio.flac"
+
+        download_single_file_from_gcs(request.ass_gcs_path, ass_path)
+        jobs[job_id]["progress"] = 20
+
+        download_single_file_from_gcs(request.audio_gcs_path, audio_path)
+        jobs[job_id]["progress"] = 30
+
+        # Download background image if provided
+        bg_image_path = None
+        if request.background_image_gcs_path:
+            bg_image_path = work_dir / "background.png"
+            download_single_file_from_gcs(request.background_image_gcs_path, bg_image_path)
+
+        # Build FFmpeg command
+        output_path = work_dir / "preview.mp4"
+
+        # Escape special characters in path for FFmpeg filter syntax
+        # FFmpeg filter parsing requires escaping: \ : , [ ] ;
+        def escape_ffmpeg_filter_path(path: str) -> str:
+            return path.replace("\\", "\\\\").replace(":", "\\:").replace(",", "\\,").replace("[", "\\[").replace("]", "\\]").replace(";", "\\;")
+
+        escaped_ass_path = escape_ffmpeg_filter_path(str(ass_path))
+
+        # Base command with frame rate
+        cmd = ["ffmpeg", "-y", "-r", "24"]
+
+        # Video input: background image or solid color
+        if bg_image_path and bg_image_path.exists():
+            cmd.extend(["-loop", "1", "-i", str(bg_image_path)])
+            # Scale and pad background to 480x270
+            vf = f"scale=480:270:force_original_aspect_ratio=decrease,pad=480:270:(ow-iw)/2:(oh-ih)/2,ass={escaped_ass_path}"
+        else:
+            # Solid color background
+            color = request.background_color or "black"
+            cmd.extend(["-f", "lavfi", "-i", f"color=c={color}:s=480x270:r=24"])
+            vf = f"ass={escaped_ass_path}"
+
+        # Audio input
+        cmd.extend(["-i", str(audio_path)])
+
+        # Video filter and encoding settings
+        cmd.extend([
+            "-vf", vf,
+            "-c:a", "aac", "-b:a", "96k",
+            "-c:v", "libx264",
+            "-preset", "superfast",
+            "-crf", "28",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-threads", "8",
+            "-shortest",
+            str(output_path)
+        ])
+
+        jobs[job_id]["progress"] = 40
+        logger.info(f"Running preview encoding: {' '.join(cmd)}")
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            logger.error(f"FFmpeg failed: {result.stderr}")
+            raise RuntimeError(f"FFmpeg preview encoding failed: {result.stderr[-500:]}")
+
+        jobs[job_id]["progress"] = 80
+        logger.info(f"Preview encoded: {output_path}")
+
+        # Upload output to GCS
+        upload_single_file_to_gcs(output_path, request.output_gcs_path)
+        jobs[job_id]["progress"] = 95
+
+        jobs[job_id]["output_files"] = [request.output_gcs_path]
+        return output_path
+
+    except Exception as e:
+        logger.error(f"Preview encoding failed: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+        raise
 
 
 def run_encoding(job_id: str, work_dir: Path, config: dict):
@@ -1498,6 +1622,55 @@ async def process_job(job_id: str, request: EncodeRequest):
         logger.error(f"Job {job_id} failed: {e}")
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["error"] = str(e)
+
+
+async def process_preview_job(job_id: str, request: EncodePreviewRequest):
+    # Process a preview encoding job asynchronously
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            work_dir = Path(temp_dir) / "work"
+            work_dir.mkdir()
+
+            # Run preview encoding in thread pool (CPU-bound)
+            # Note: run_preview_encoding handles download/upload internally
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                executor,
+                run_preview_encoding,
+                job_id,
+                work_dir,
+                request
+            )
+
+            jobs[job_id]["status"] = "complete"
+            jobs[job_id]["progress"] = 100
+            logger.info(f"Preview job {job_id} complete")
+
+    except Exception as e:
+        logger.error(f"Preview job {job_id} failed: {e}")
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = str(e)
+
+
+@app.post("/encode-preview")
+async def submit_preview_encode_job(request: EncodePreviewRequest, background_tasks: BackgroundTasks, _auth: bool = Depends(verify_api_key)):
+    # Submit a preview encoding job
+    job_id = request.job_id
+
+    if job_id in jobs:
+        raise HTTPException(status_code=409, detail=f"Job {job_id} already exists")
+
+    jobs[job_id] = {
+        "job_id": job_id,
+        "status": "pending",
+        "progress": 0,
+        "error": None,
+        "output_files": None,
+    }
+
+    background_tasks.add_task(process_preview_job, job_id, request)
+
+    return {"status": "accepted", "job_id": job_id}
 
 
 @app.post("/encode")

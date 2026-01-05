@@ -63,6 +63,11 @@ class EncodingService:
         """Check if GCE encoding is enabled and configured."""
         return self.settings.use_gce_encoding and self.is_configured
 
+    @property
+    def is_preview_enabled(self) -> bool:
+        """Check if GCE preview encoding is enabled and configured."""
+        return self.settings.use_gce_preview_encoding and self.is_configured
+
     async def submit_encoding_job(
         self,
         job_id: str,
@@ -240,6 +245,110 @@ class EncodingService:
         # Wait for completion
         return await self.wait_for_completion(
             job_id, progress_callback=progress_callback
+        )
+
+    async def submit_preview_encoding_job(
+        self,
+        job_id: str,
+        ass_gcs_path: str,
+        audio_gcs_path: str,
+        output_gcs_path: str,
+        background_color: str = "black",
+        background_image_gcs_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Submit a preview video encoding job to the GCE worker.
+
+        Args:
+            job_id: Unique job identifier
+            ass_gcs_path: GCS path to ASS subtitles file (gs://bucket/path/file.ass)
+            audio_gcs_path: GCS path to audio file
+            output_gcs_path: GCS path for output video
+            background_color: Background color (default: black)
+            background_image_gcs_path: Optional GCS path to background image
+
+        Returns:
+            Response from the encoding worker
+
+        Raises:
+            Exception: If submission fails
+        """
+        self._load_credentials()
+
+        if not self.is_configured:
+            raise RuntimeError("Encoding service not configured")
+
+        url = f"{self._url}/encode-preview"
+        headers = {"X-API-Key": self._api_key, "Content-Type": "application/json"}
+        payload = {
+            "job_id": job_id,
+            "ass_gcs_path": ass_gcs_path,
+            "audio_gcs_path": audio_gcs_path,
+            "output_gcs_path": output_gcs_path,
+            "background_color": background_color,
+        }
+        if background_image_gcs_path:
+            payload["background_image_gcs_path"] = background_image_gcs_path
+
+        logger.info(f"[job:{job_id}] Submitting preview encoding job to GCE worker: {url}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
+                if resp.status == 401:
+                    raise RuntimeError("Invalid API key for encoding worker")
+                if resp.status == 409:
+                    raise RuntimeError(f"Preview encoding job {job_id} already exists")
+                if resp.status != 200:
+                    text = await resp.text()
+                    raise RuntimeError(f"Failed to submit preview encoding job: {resp.status} - {text}")
+
+                return await resp.json()
+
+    async def encode_preview_video(
+        self,
+        job_id: str,
+        ass_gcs_path: str,
+        audio_gcs_path: str,
+        output_gcs_path: str,
+        background_color: str = "black",
+        background_image_gcs_path: Optional[str] = None,
+        timeout: float = 90.0,
+        poll_interval: float = 2.0,
+    ) -> Dict[str, Any]:
+        """
+        Submit preview encoding job and wait for completion.
+
+        This is a convenience method that combines submit + wait with shorter
+        timeouts suitable for preview videos.
+
+        Args:
+            job_id: Unique job identifier
+            ass_gcs_path: GCS path to ASS subtitles file
+            audio_gcs_path: GCS path to audio file
+            output_gcs_path: GCS path for output video
+            background_color: Background color (default: black)
+            background_image_gcs_path: Optional GCS path to background image
+            timeout: Maximum time to wait (default 90s for preview)
+            poll_interval: Seconds between status checks (default 2s)
+
+        Returns:
+            Final job status with output files
+        """
+        # Submit the job
+        await self.submit_preview_encoding_job(
+            job_id=job_id,
+            ass_gcs_path=ass_gcs_path,
+            audio_gcs_path=audio_gcs_path,
+            output_gcs_path=output_gcs_path,
+            background_color=background_color,
+            background_image_gcs_path=background_image_gcs_path,
+        )
+
+        # Wait for completion with shorter timeout
+        return await self.wait_for_completion(
+            job_id=job_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
         )
 
     async def health_check(self) -> Dict[str, Any]:

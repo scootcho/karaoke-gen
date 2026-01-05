@@ -27,8 +27,10 @@ from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.job_logging import job_log_context, JobLogger
 from backend.services.tracing import create_span, add_span_attribute, add_span_event
+from backend.services.encoding_service import get_encoding_service
 from backend.api.dependencies import require_auth, require_review_auth
 from backend.services.auth_service import UserType
+from backend.config import get_settings
 
 # LyricsTranscriber imports for preview generation
 from lyrics_transcriber.types import CorrectionResult
@@ -385,28 +387,35 @@ async def generate_preview_video(
 ):
     """
     Generate a preview video with the current corrections.
-    
+
     Uses the LyricsTranscriber's CorrectionOperations to generate a 360p preview
     video with the user's current corrections applied.
+
+    When USE_GCE_PREVIEW_ENCODING is enabled, video encoding is offloaded to
+    the high-performance GCE worker for faster generation (15-20s vs 60+s).
     """
     job_manager = JobManager()
     storage = StorageService()
-    
+    settings = get_settings()
+    encoding_service = get_encoding_service()
+
     job = job_manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     # Job must be in review state to generate preview
     if job.status not in [JobStatus.AWAITING_REVIEW, JobStatus.IN_REVIEW]:
         raise HTTPException(
             status_code=400,
             detail=f"Job not in review state (current status: {job.status})"
         )
-    
-    logger.info(f"Job {job_id}: Generating preview video")
-    
+
+    # Check if GCE preview encoding is enabled
+    use_gce_preview = encoding_service.is_preview_enabled
+    logger.info(f"Job {job_id}: Generating preview video (GCE preview: {use_gce_preview})")
+
     # Use tracing and job_log_context for full observability
-    with create_span("generate-preview-video", {"job_id": job_id}) as span:
+    with create_span("generate-preview-video", {"job_id": job_id, "use_gce": use_gce_preview}) as span:
         with job_log_context(job_id, worker="preview"):
             try:
                 # Create temp directory for this preview operation
@@ -416,19 +425,19 @@ async def generate_preview_video(
                         corrections_gcs = f"jobs/{job_id}/lyrics/corrections.json"
                         corrections_path = os.path.join(temp_dir, "corrections.json")
                         storage.download_file(corrections_gcs, corrections_path)
-                        
+
                         with open(corrections_path, 'r', encoding='utf-8') as f:
                             original_data = json.load(f)
-                        
+
                         # 2. Download input audio
                         audio_path = os.path.join(temp_dir, "audio.flac")
                         storage.download_file(job.input_media_gcs_path, audio_path)
                         download_span.set_attribute("audio_gcs_path", job.input_media_gcs_path)
-                    
+
                     # 3. Load original as CorrectionResult
                     correction_result = CorrectionResult.from_dict(original_data)
                     add_span_event("corrections_loaded")
-                    
+
                     # 4. Get or create styles file for preview using unified style loader
                     with create_span("load-styles") as styles_span:
                         styles_path, _ = load_styles_from_gcs(
@@ -439,54 +448,108 @@ async def generate_preview_video(
                             logger=logger,
                         )
                         styles_span.set_attribute("styles_path", styles_path)
-                    
+
                     # 5. Set up output config for preview
                     output_dir = os.path.join(temp_dir, "output")
                     cache_dir = os.path.join(temp_dir, "cache")
                     os.makedirs(output_dir, exist_ok=True)
                     os.makedirs(cache_dir, exist_ok=True)
-                    
+
                     output_config = OutputConfig(
                         output_styles_json=styles_path,
                         output_dir=output_dir,
                         cache_dir=cache_dir,
                         video_resolution="360p",
                     )
-                    
-                    # 6. Generate preview video using CorrectionOperations (heavy operation)
-                    with create_span("render-preview-video") as render_span:
-                        render_span.set_attribute("resolution", "360p")
-                        result = CorrectionOperations.generate_preview_video(
-                            correction_result=correction_result,
-                            updated_data=updated_data,
-                            output_config=output_config,
-                            audio_filepath=audio_path,
-                            artist=job.artist,
-                            title=job.title,
-                            logger=logger
-                        )
-                        add_span_event("render_complete")
-                    
-                    # 7. Upload preview video to GCS for serving
-                    preview_hash = result["preview_hash"]
-                    video_path = result["video_path"]
-                    
-                    with create_span("upload-preview-video") as upload_span:
-                        preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
-                        storage.upload_file(video_path, preview_gcs_path)
-                        upload_span.set_attribute("gcs_path", preview_gcs_path)
-                    
+
+                    # 6. Generate preview (ASS-only if using GCE, or full video if local)
+                    preview_gcs_path = None
+
+                    if use_gce_preview:
+                        # GCE path: Generate ASS only, then offload encoding to GCE
+                        try:
+                            with create_span("generate-ass-subtitles") as ass_span:
+                                result = CorrectionOperations.generate_preview_video(
+                                    correction_result=correction_result,
+                                    updated_data=updated_data,
+                                    output_config=output_config,
+                                    audio_filepath=audio_path,
+                                    artist=job.artist,
+                                    title=job.title,
+                                    logger=logger,
+                                    ass_only=True,  # Only generate ASS, skip video encoding
+                                )
+                                preview_hash = result["preview_hash"]
+                                ass_path = result["ass_path"]
+                                ass_span.set_attribute("ass_path", ass_path)
+                                add_span_event("ass_generated")
+
+                            # Upload ASS to GCS
+                            with create_span("upload-ass-to-gcs") as upload_ass_span:
+                                ass_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.ass"
+                                storage.upload_file(ass_path, ass_gcs_path)
+                                upload_ass_span.set_attribute("ass_gcs_path", ass_gcs_path)
+
+                            # Call GCE encoding service
+                            with create_span("gce-preview-encoding") as gce_span:
+                                bucket_name = settings.gcs_bucket_name
+                                preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
+
+                                gce_result = await encoding_service.encode_preview_video(
+                                    job_id=f"preview_{job_id}_{preview_hash}",
+                                    ass_gcs_path=f"gs://{bucket_name}/{ass_gcs_path}",
+                                    audio_gcs_path=f"gs://{bucket_name}/{job.input_media_gcs_path}",
+                                    output_gcs_path=f"gs://{bucket_name}/{preview_gcs_path}",
+                                    background_color="black",
+                                )
+                                gce_span.set_attribute("gce_status", gce_result.get("status"))
+                                add_span_event("gce_encoding_complete")
+
+                            logger.info(f"Job {job_id}: Preview generated via GCE: {preview_hash}")
+
+                        except Exception as gce_error:
+                            # Fall back to local encoding if GCE fails
+                            logger.warning(
+                                f"Job {job_id}: GCE preview encoding failed, falling back to local: {gce_error}"
+                            )
+                            span.set_attribute("gce_fallback", True)
+                            use_gce_preview = False  # Fall through to local encoding below
+
+                    if not use_gce_preview:
+                        # Local path: Generate full preview video locally
+                        with create_span("render-preview-video-local") as render_span:
+                            render_span.set_attribute("resolution", "360p")
+                            result = CorrectionOperations.generate_preview_video(
+                                correction_result=correction_result,
+                                updated_data=updated_data,
+                                output_config=output_config,
+                                audio_filepath=audio_path,
+                                artist=job.artist,
+                                title=job.title,
+                                logger=logger,
+                                ass_only=False,  # Generate full video locally
+                            )
+                            preview_hash = result["preview_hash"]
+                            video_path = result["video_path"]
+                            add_span_event("render_complete")
+
+                        # Upload preview video to GCS
+                        with create_span("upload-preview-video") as upload_span:
+                            preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
+                            storage.upload_file(video_path, preview_gcs_path)
+                            upload_span.set_attribute("gcs_path", preview_gcs_path)
+
                     # Store the GCS path for serving
                     if job_id not in _preview_videos:
                         _preview_videos[job_id] = {}
                     _preview_videos[job_id][preview_hash] = preview_gcs_path
-                    
+
                     logger.info(f"Job {job_id}: Preview video generated: {preview_hash}")
                     span.set_attribute("preview_hash", preview_hash)
                     span.set_attribute("success", True)
-                    
+
                     return {"status": "success", "preview_hash": preview_hash}
-                    
+
             except Exception as e:
                 logger.error(f"Job {job_id}: Failed to generate preview video: {e}", exc_info=True)
                 span.set_attribute("error", str(e))

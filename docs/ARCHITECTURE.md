@@ -31,7 +31,8 @@
         └──────────┘  └──────────┘  └──────────────┘ └──────────────┘
 
 (*) GCE Encoding Worker: C4-standard-8 VM with Intel Granite Rapids for
-    high-performance FFmpeg encoding. Optional - falls back to Cloud Run.
+    high-performance FFmpeg encoding. Used for both final video encoding and
+    preview video generation. Optional - falls back to Cloud Run.
 ```
 
 ## Processing Pipeline
@@ -57,7 +58,7 @@
                        ▼
 4. HUMAN REVIEW (AWAITING_REVIEW)
    • React UI for lyrics correction
-   • Preview video generation
+   • Preview video generation (optionally via GCE for speed)
    • Submit corrections
                        ▼
 5. VIDEO RENDERING
