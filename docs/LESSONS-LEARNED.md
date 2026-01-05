@@ -1038,6 +1038,54 @@ result = await orchestrator.run()
 
 See `docs/archive/2026-01-04-video-worker-orchestrator-refactor.md` for full details.
 
+### External Service Response Format Mismatches
+
+**Problem**: The GCE encoding worker returned responses in unexpected formats, causing `'list' object has no attribute 'get'` errors that were hard to debug through the async pipeline.
+
+**Issues encountered**:
+
+1. **Status endpoint returning list instead of dict**: The `/status/{job_id}` endpoint sometimes returned a list `[{...}]` instead of a dict `{...}`. Calling `.get()` on the list caused failures.
+
+2. **output_files as list of paths instead of dict**: The worker returned:
+   ```json
+   "output_files": ["jobs/id/finals/output_4k_lossless.mp4", "jobs/id/finals/output_720p.mp4"]
+   ```
+   But the backend expected:
+   ```json
+   "output_files": {"mp4_4k_lossless": "path/...", "mp4_720p": "path/..."}
+   ```
+
+**Symptoms**:
+- Job fails late in pipeline (during encoding completion handling)
+- Error message is cryptic (`'list' object has no attribute 'get'`)
+- Hard to reproduce locally (depends on GCE worker state)
+- Multiple similar errors from different root causes
+
+**Solution**: Add defensive type checking for all external service responses:
+
+```python
+# Always check response type before accessing
+if isinstance(status, list):
+    logger.warning(f"GCE returned list instead of dict: {status}")
+    status = status[0] if status and isinstance(status[0], dict) else {}
+if not isinstance(status, dict):
+    status = {}
+
+# Convert list of paths to expected dict format
+if isinstance(output_files, list):
+    output_dict = {}
+    for path in output_files:
+        filename = path.split("/")[-1]
+        if "4k_lossless" in filename:
+            output_dict["mp4_4k_lossless"] = path
+        # ... etc
+    output_files = output_dict
+```
+
+**Key insight**: When integrating with external services, never assume the response format. Add explicit type checks and conversions, with logging when unexpected formats are encountered. This is especially important for services you don't control (internal microservices, third-party APIs).
+
+**Debugging tip**: When hitting format errors in async pipelines, check the raw response from the external service directly (curl with API key) before assuming the bug is in your code.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately
