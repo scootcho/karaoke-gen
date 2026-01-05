@@ -1168,6 +1168,14 @@ encoding_worker_logging_iam = gcp.projects.IAMMember(
     member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant encoding worker monitoring permissions (for Ops Agent metrics)
+encoding_worker_monitoring_iam = gcp.projects.IAMMember(
+    "encoding-worker-monitoring-access",
+    project=project_id,
+    role="roles/monitoring.metricWriter",
+    member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Static external IP for encoding worker (Cloud Run doesn't have VPC access by default)
 encoding_worker_ip = gcp.compute.Address(
     "encoding-worker-ip",
