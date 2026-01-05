@@ -1168,6 +1168,14 @@ encoding_worker_logging_iam = gcp.projects.IAMMember(
     member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Grant encoding worker monitoring permissions (for Ops Agent metrics)
+encoding_worker_monitoring_iam = gcp.projects.IAMMember(
+    "encoding-worker-monitoring-access",
+    project=project_id,
+    role="roles/monitoring.metricWriter",
+    member=encoding_worker_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Static external IP for encoding worker (Cloud Run doesn't have VPC access by default)
 encoding_worker_ip = gcp.compute.Address(
     "encoding-worker-ip",
@@ -1188,6 +1196,13 @@ echo "Starting encoding worker setup at $(date)"
 # Install dependencies
 apt-get update
 apt-get install -y python3-pip python3-venv docker.io curl git xz-utils
+
+# Install fonts for ASS subtitle rendering (libass uses fontconfig)
+# - fonts-noto: Noto Sans (default karaoke font)
+# - fonts-noto-cjk: CJK character support
+# - fontconfig: Font configuration system
+apt-get install -y fonts-noto fonts-noto-cjk fontconfig
+fc-cache -fv  # Rebuild font cache
 
 # Enable and start Docker
 systemctl enable docker
@@ -1281,6 +1296,7 @@ class EncodePreviewRequest(BaseModel):
     output_gcs_path: str   # gs://bucket/path/to/output.mp4
     background_color: str = "black"
     background_image_gcs_path: Optional[str] = None
+    font_gcs_path: Optional[str] = None  # gs://bucket/path/to/custom-font.ttf
 
 
 class JobStatus(BaseModel):
@@ -1381,6 +1397,19 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
         if request.background_image_gcs_path:
             bg_image_path = work_dir / "background.png"
             download_single_file_from_gcs(request.background_image_gcs_path, bg_image_path)
+
+        # Download custom font if provided and register with fontconfig
+        if request.font_gcs_path:
+            # Use standard fontconfig location that's already in the search path
+            fonts_dir = Path("/usr/local/share/fonts/custom")
+            fonts_dir.mkdir(parents=True, exist_ok=True)
+            font_filename = request.font_gcs_path.split("/")[-1]
+            font_path = fonts_dir / font_filename
+            download_single_file_from_gcs(request.font_gcs_path, font_path)
+            logger.info(f"Downloaded custom font: {font_path}")
+            # Update fontconfig cache so libass can find the font
+            subprocess.run(["fc-cache", "-fv"], capture_output=True)
+            logger.info(f"Updated fontconfig cache with custom font: {font_filename}")
 
         # Build FFmpeg command
         output_path = work_dir / "preview.mp4"
@@ -1658,8 +1687,18 @@ async def submit_preview_encode_job(request: EncodePreviewRequest, background_ta
     # Submit a preview encoding job
     job_id = request.job_id
 
+    # If job already exists, return cached result or current status
     if job_id in jobs:
-        raise HTTPException(status_code=409, detail=f"Job {job_id} already exists")
+        existing_job = jobs[job_id]
+        if existing_job["status"] == "complete":
+            # Return cached result - preview already encoded
+            return {"status": "cached", "job_id": job_id, "output_path": existing_job.get("output_path")}
+        elif existing_job["status"] == "failed":
+            # Previous attempt failed, allow retry by replacing the job
+            pass
+        else:
+            # Job is still in progress
+            return {"status": "in_progress", "job_id": job_id}
 
     jobs[job_id] = {
         "job_id": job_id,

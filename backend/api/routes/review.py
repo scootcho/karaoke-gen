@@ -495,12 +495,31 @@ async def generate_preview_video(
                                 bucket_name = settings.gcs_bucket_name
                                 preview_gcs_path = f"jobs/{job_id}/previews/{preview_hash}.mp4"
 
+                                # Get background image and font from style assets if available
+                                style_assets = job.style_assets or {}
+
+                                background_image_gcs_path = None
+                                for key in ["karaoke_background", "style_karaoke_background"]:
+                                    if key in style_assets:
+                                        background_image_gcs_path = f"gs://{bucket_name}/{style_assets[key]}"
+                                        gce_span.set_attribute("background_image", background_image_gcs_path)
+                                        break
+
+                                font_gcs_path = None
+                                for key in ["font", "style_font"]:
+                                    if key in style_assets:
+                                        font_gcs_path = f"gs://{bucket_name}/{style_assets[key]}"
+                                        gce_span.set_attribute("font", font_gcs_path)
+                                        break
+
                                 gce_result = await encoding_service.encode_preview_video(
                                     job_id=f"preview_{job_id}_{preview_hash}",
                                     ass_gcs_path=f"gs://{bucket_name}/{ass_gcs_path}",
                                     audio_gcs_path=f"gs://{bucket_name}/{job.input_media_gcs_path}",
                                     output_gcs_path=f"gs://{bucket_name}/{preview_gcs_path}",
                                     background_color="black",
+                                    background_image_gcs_path=background_image_gcs_path,
+                                    font_gcs_path=font_gcs_path,
                                 )
                                 gce_span.set_attribute("gce_status", gce_result.get("status"))
                                 add_span_event("gce_encoding_complete")

@@ -255,6 +255,7 @@ class EncodingService:
         output_gcs_path: str,
         background_color: str = "black",
         background_image_gcs_path: Optional[str] = None,
+        font_gcs_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Submit a preview video encoding job to the GCE worker.
@@ -266,6 +267,7 @@ class EncodingService:
             output_gcs_path: GCS path for output video
             background_color: Background color (default: black)
             background_image_gcs_path: Optional GCS path to background image
+            font_gcs_path: Optional GCS path to custom font file
 
         Returns:
             Response from the encoding worker
@@ -289,6 +291,8 @@ class EncodingService:
         }
         if background_image_gcs_path:
             payload["background_image_gcs_path"] = background_image_gcs_path
+        if font_gcs_path:
+            payload["font_gcs_path"] = font_gcs_path
 
         logger.info(f"[job:{job_id}] Submitting preview encoding job to GCE worker: {url}")
 
@@ -312,6 +316,7 @@ class EncodingService:
         output_gcs_path: str,
         background_color: str = "black",
         background_image_gcs_path: Optional[str] = None,
+        font_gcs_path: Optional[str] = None,
         timeout: float = 90.0,
         poll_interval: float = 2.0,
     ) -> Dict[str, Any]:
@@ -328,6 +333,7 @@ class EncodingService:
             output_gcs_path: GCS path for output video
             background_color: Background color (default: black)
             background_image_gcs_path: Optional GCS path to background image
+            font_gcs_path: Optional GCS path to custom font file
             timeout: Maximum time to wait (default 90s for preview)
             poll_interval: Seconds between status checks (default 2s)
 
@@ -335,14 +341,25 @@ class EncodingService:
             Final job status with output files
         """
         # Submit the job
-        await self.submit_preview_encoding_job(
+        submit_result = await self.submit_preview_encoding_job(
             job_id=job_id,
             ass_gcs_path=ass_gcs_path,
             audio_gcs_path=audio_gcs_path,
             output_gcs_path=output_gcs_path,
             background_color=background_color,
             background_image_gcs_path=background_image_gcs_path,
+            font_gcs_path=font_gcs_path,
         )
+
+        # If cached, return immediately - video already exists in GCS
+        submit_status = submit_result.get("status")
+        if submit_status == "cached":
+            logger.info(f"[job:{job_id}] Preview already cached, returning immediately")
+            return {"status": "complete", "output_path": submit_result.get("output_path")}
+
+        # If in_progress, another request is encoding it - just wait for that
+        if submit_status == "in_progress":
+            logger.info(f"[job:{job_id}] Preview encoding already in progress, waiting")
 
         # Wait for completion with shorter timeout
         return await self.wait_for_completion(
