@@ -1038,6 +1038,47 @@ result = await orchestrator.run()
 
 See `docs/archive/2026-01-04-video-worker-orchestrator-refactor.md` for full details.
 
+### Firestore Document 1MB Limit with Embedded Arrays
+
+**Problem**: Firestore documents have a 1MB size limit. Storing logs as an embedded array (`worker_logs: [{...}, {...}, ...]`) within job documents caused job failures when logs exceeded the limit during long-running operations like video encoding.
+
+**Example**: Job `501258e1` failed when logs reached 1.26MB (2,547 log entries), representing 98.6% of the maximum document size. The job update failed with:
+```
+Document cannot be written because its size exceeds the maximum allowed size
+```
+
+**Root cause**: Video encoding jobs generate thousands of log entries (FFmpeg output, progress updates). Each log entry is ~500 bytes. 2,000+ entries easily exceed 1MB.
+
+**Solution**: Store logs in a Firestore subcollection instead of embedded array:
+
+```python
+# BAD - embedded array hits 1MB limit
+doc_ref.update({
+    "worker_logs": firestore.ArrayUnion([{"message": "..."}])
+})
+
+# GOOD - subcollection has no size limit per parent doc
+logs_ref = db.collection("jobs").document(job_id).collection("logs")
+logs_ref.document(log_id).set({
+    "timestamp": now,
+    "level": "INFO",
+    "worker": "video",
+    "message": "...",
+    "ttl_expiry": now + timedelta(days=30)
+})
+```
+
+**Key benefits of subcollection approach**:
+1. Each log entry is its own document (no size limit concerns)
+2. Natural association with parent job (path: `jobs/{job_id}/logs/{log_id}`)
+3. Can add TTL via Firestore TTL policies for automatic cleanup
+4. Efficient queries with composite indexes (worker + timestamp)
+5. Concurrent workers can write without race conditions (unlike ArrayUnion which can conflict)
+
+**Migration strategy**: Used feature flag (`USE_LOG_SUBCOLLECTION=true`) for rollback capability. New jobs use subcollection; old jobs with embedded arrays continue to work via fallback read logic.
+
+**Lesson**: Never use embedded arrays for unbounded data. If an array can grow indefinitely based on operation duration or user input, use a subcollection instead. The 1MB limit applies to the entire document, including all fields.
+
 ### External Service Response Format Mismatches
 
 **Problem**: The GCE encoding worker returned responses in unexpected formats, causing `'list' object has no attribute 'get'` errors that were hard to debug through the async pipeline.

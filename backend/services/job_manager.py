@@ -13,7 +13,9 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
+from backend.config import settings
 from backend.models.job import Job, JobStatus, JobCreate, STATE_TRANSITIONS
+from backend.models.worker_log import WorkerLogEntry
 from backend.services.firestore_service import FirestoreService
 from backend.services.storage_service import StorageService
 
@@ -224,7 +226,7 @@ class JobManager:
         return urls
     
     def delete_job(self, job_id: str, delete_files: bool = True) -> None:
-        """Delete a job and optionally its files."""
+        """Delete a job, its files, and its logs subcollection."""
         if delete_files:
             job = self.get_job(job_id)
             if job and job.output_files:
@@ -233,7 +235,15 @@ class JobManager:
                         self.storage.delete_file(gcs_path)
                     except Exception as e:
                         logger.error(f"Error deleting file {gcs_path}: {e}")
-        
+
+        # Delete logs subcollection first (must be done before deleting parent doc)
+        try:
+            deleted_logs = self.firestore.delete_logs_subcollection(job_id)
+            if deleted_logs > 0:
+                logger.info(f"Deleted {deleted_logs} log entries for job {job_id}")
+        except Exception as e:
+            logger.warning(f"Error deleting logs subcollection for job {job_id}: {e}")
+
         self.firestore.delete_job(job_id)
         logger.info(f"Deleted job {job_id}")
     
@@ -579,33 +589,45 @@ class JobManager:
         worker: str,
         level: str,
         message: str,
-        max_logs: int = 500
+        max_logs: int = 500,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        Append a log entry to the job's worker_logs atomically.
-        
-        Uses Firestore ArrayUnion for atomic append to avoid race conditions
-        when multiple workers (audio + lyrics) are logging concurrently.
-        
-        Note: max_logs is not enforced per-append (would require transactions).
-        Logs may grow beyond max_logs; trim periodically if needed.
-        
+        Append a log entry to the job's logs.
+
+        By default (USE_LOG_SUBCOLLECTION=true), logs are stored in a Firestore
+        subcollection (jobs/{job_id}/logs) to avoid the 1MB document size limit.
+
+        For backward compatibility (USE_LOG_SUBCOLLECTION=false), logs are stored
+        in the embedded worker_logs array using atomic ArrayUnion.
+
         Args:
             job_id: Job ID
-            worker: Worker name (audio, lyrics, screens, video, render)
+            worker: Worker name (audio, lyrics, screens, video, render, distribution)
             level: Log level (DEBUG, INFO, WARNING, ERROR)
             message: Log message
             max_logs: Not used (kept for API compatibility)
+            metadata: Optional additional metadata dict
         """
-        log_entry = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'level': level,
-            'worker': worker,
-            'message': message[:1000]  # Truncate long messages
-        }
-        
-        # Use atomic ArrayUnion to avoid race conditions
-        self.firestore.append_worker_log(job_id, log_entry)
+        if settings.use_log_subcollection:
+            # New subcollection approach - avoids 1MB limit
+            log_entry = WorkerLogEntry.create(
+                job_id=job_id,
+                worker=worker,
+                level=level,
+                message=message,
+                metadata=metadata
+            )
+            self.firestore.append_log_to_subcollection(job_id, log_entry)
+        else:
+            # Legacy embedded array approach
+            log_entry = {
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'level': level,
+                'worker': worker,
+                'message': message[:1000]  # Truncate long messages
+            }
+            self.firestore.append_worker_log(job_id, log_entry)
     
     def get_worker_logs(
         self,
@@ -615,28 +637,68 @@ class JobManager:
     ) -> List[Dict[str, Any]]:
         """
         Get worker logs for a job, optionally filtered by worker and index.
-        
+
+        By default (USE_LOG_SUBCOLLECTION=true), logs are read from the
+        subcollection. Falls back to embedded array for older jobs.
+
         Args:
             job_id: Job ID
             since_index: Return only logs after this index (for pagination)
             worker: Filter by worker name (optional)
-            
+
         Returns:
-            List of log entries as dicts
+            List of log entries as dicts (in legacy format for API compatibility)
         """
+        if settings.use_log_subcollection:
+            # Try subcollection first
+            subcollection_logs = self.firestore.get_logs_from_subcollection(
+                job_id=job_id,
+                offset=since_index,
+                worker=worker,
+                limit=500
+            )
+            if subcollection_logs:
+                # Convert to legacy format for API compatibility
+                return [log.to_legacy_dict() for log in subcollection_logs]
+            # Fall through to check embedded array for older jobs
+
+        # Embedded array approach (legacy jobs or fallback)
         job = self.get_job(job_id)
         if not job or not job.worker_logs:
             return []
-        
+
         logs = [log.dict() if hasattr(log, 'dict') else log for log in job.worker_logs]
-        
+
         # Filter by index
         if since_index > 0:
             logs = logs[since_index:]
-        
+
         # Filter by worker
         if worker:
             logs = [log for log in logs if log.get('worker') == worker]
-        
+
         return logs
+
+    def get_worker_logs_count(self, job_id: str) -> int:
+        """
+        Get the total count of worker logs for a job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Total count of logs
+        """
+        if settings.use_log_subcollection:
+            # Try subcollection first
+            count = self.firestore.get_logs_count_from_subcollection(job_id)
+            if count > 0:
+                return count
+            # Fall through to check embedded array
+
+        # Embedded array (legacy jobs or fallback)
+        job = self.get_job(job_id)
+        if not job or not job.worker_logs:
+            return 0
+        return len(job.worker_logs)
 
