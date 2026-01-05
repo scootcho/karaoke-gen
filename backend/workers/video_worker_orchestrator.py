@@ -425,6 +425,8 @@ class VideoWorkerOrchestrator:
 
             except Exception as e:
                 self.job_log.error(f"Failed to download {filename}: {e}")
+                # Clear the result attribute so downstream doesn't try to use invalid GCS path
+                setattr(self.result, result_attr, None)
                 # Don't fail - some formats might not be generated
 
         self.job_log.info(f"Downloaded {downloaded_count} encoded files from GCS")
