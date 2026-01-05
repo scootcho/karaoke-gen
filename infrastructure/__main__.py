@@ -1386,9 +1386,10 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
         output_path = work_dir / "preview.mp4"
 
         # Escape special characters in path for FFmpeg filter syntax
-        # FFmpeg filter parsing requires escaping: \ : , [ ] ;
+        # FFmpeg filter parsing requires escaping: \\ : , [ ] ;
         def escape_ffmpeg_filter_path(path: str) -> str:
-            return path.replace("\\", "\\\\").replace(":", "\\:").replace(",", "\\,").replace("[", "\\[").replace("]", "\\]").replace(";", "\\;")
+            # Note: Extra escaping needed since this is inside a triple-quoted string in Pulumi
+            return path.replace("\\\\", "\\\\\\\\").replace(":", "\\\\:").replace(",", "\\\\,").replace("[", "\\\\[").replace("]", "\\\\]").replace(";", "\\\\;")
 
         escaped_ass_path = escape_ffmpeg_filter_path(str(ass_path))
 
