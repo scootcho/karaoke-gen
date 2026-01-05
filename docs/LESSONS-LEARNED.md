@@ -755,6 +755,48 @@ export function getToken() {
 
 **Lesson**: For values that can change (auth tokens, user preferences), read fresh from storage on each access rather than caching in module scope.
 
+### Zustand Module-Level Initialization Doesn't Re-run on Client Navigation
+
+**Problem**: Module-level initialization code in zustand stores only runs once when the module is first imported. Client-side navigation (e.g., `router.push()`) doesn't reload modules, so initialization code doesn't re-run.
+
+**Example bug**: Auth module had initialization that fetched user data if a token existed:
+```typescript
+// auth.ts - module level (runs once at import)
+if (typeof window !== 'undefined') {
+  const token = getAccessToken()
+  if (token) {
+    useAuth.getState().fetchUser()  // Only runs on initial page load!
+  }
+}
+```
+
+After beta enrollment:
+1. User lands on `/` (landing page) - auth.ts imported, no token yet, `fetchUser()` not called
+2. User completes enrollment, token stored via `setAccessToken()`
+3. `router.push('/app')` - client-side navigation, modules already loaded
+4. Auth module initialization doesn't re-run - `user` stays `null`
+5. UI shows "Login" button instead of user credits
+
+**Symptoms**:
+- Feature works after page reload but not after client-side navigation
+- Zustand store has correct persisted data (token) but not computed data (user profile)
+- E2E tests that use reload pass; tests that use `router.push` fail
+
+**Solution**: Components that need fresh data should trigger fetches in useEffect:
+```typescript
+// In /app page component
+const { user, fetchUser } = useAuth()
+
+useEffect(() => {
+  const token = getAccessToken()
+  if (token && !user) {
+    fetchUser()  // Ensure user data is loaded regardless of how we got here
+  }
+}, [user, fetchUser])
+```
+
+**Lesson**: Don't rely on module-level initialization for data that might need to be fetched after client-side navigation. Use useEffect in components to ensure data is loaded when needed.
+
 ### GCP Organization Policies Block Service Account Keys
 
 **Problem**: GCP organization policies can block service account key creation even when you have Owner access to the project.
