@@ -367,14 +367,67 @@ class VideoWorkerOrchestrator:
         if not output.success:
             raise Exception(f"Encoding failed: {output.error_message}")
 
-        # Store results
+        # Store results - for GCE backend, these are GCS blob paths that need to be downloaded
         self.result.final_video = output.lossless_4k_mp4_path
         self.result.final_video_mkv = output.lossless_mkv_path
         self.result.final_video_lossy = output.lossy_4k_mp4_path
         self.result.final_video_720p = output.lossy_720p_mp4_path
         self.result.encoding_time_seconds = output.encoding_time_seconds
 
+        # For GCE encoding, download the encoded files from GCS to local directory
+        # This is required for YouTube upload and other local file operations
+        if encoding_backend.name == "gce" and self.storage:
+            await self._download_gce_encoded_files(output)
+
         self.job_log.info(f"Encoding complete ({encoding_backend.name}) in {output.encoding_time_seconds:.1f}s")
+
+    async def _download_gce_encoded_files(self, output):
+        """
+        Download GCE-encoded files from GCS to the local output directory.
+
+        GCE encoding stores files in GCS and returns blob paths like:
+        'jobs/{job_id}/finals/output_4k_lossless.mp4'
+
+        This method downloads those files locally so that subsequent stages
+        (YouTube upload, etc.) can access them as local files.
+
+        Args:
+            output: EncodingOutput from the GCE backend with GCS blob paths
+        """
+        self.job_log.info("Downloading GCE-encoded files from GCS")
+
+        # Map of result attributes to download
+        file_mappings = [
+            ('lossless_4k_mp4_path', 'final_video'),
+            ('lossless_mkv_path', 'final_video_mkv'),
+            ('lossy_4k_mp4_path', 'final_video_lossy'),
+            ('lossy_720p_mp4_path', 'final_video_720p'),
+        ]
+
+        downloaded_count = 0
+        for output_attr, result_attr in file_mappings:
+            gcs_path = getattr(output, output_attr, None)
+            if not gcs_path:
+                continue
+
+            # Extract filename from GCS path
+            filename = os.path.basename(gcs_path)
+            local_path = os.path.join(self.config.output_dir, filename)
+
+            try:
+                self.job_log.info(f"Downloading {filename} from GCS")
+                self.storage.download_file(gcs_path, local_path)
+
+                # Update the result to point to local file
+                setattr(self.result, result_attr, local_path)
+                downloaded_count += 1
+                self.job_log.info(f"Downloaded {filename} to {local_path}")
+
+            except Exception as e:
+                self.job_log.error(f"Failed to download {filename}: {e}")
+                # Don't fail - some formats might not be generated
+
+        self.job_log.info(f"Downloaded {downloaded_count} encoded files from GCS")
 
     async def _run_organization(self):
         """Run the organization stage (brand code generation)."""
