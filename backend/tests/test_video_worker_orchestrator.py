@@ -425,6 +425,111 @@ class TestVideoWorkerOrchestratorEncoding:
 
             assert "Encoding failed" in str(exc_info.value)
 
+    @pytest.mark.asyncio
+    async def test_run_encoding_gce_downloads_files(self):
+        """Test that GCE encoding downloads files from GCS to local directory.
+
+        This test verifies the fix for YouTube upload failure when using GCE encoding.
+        GCE encoding returns GCS blob paths, which need to be downloaded locally
+        before YouTube upload can access them.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = OrchestratorConfig(
+                job_id="test-job",
+                artist="Test Artist",
+                title="Test Title",
+                title_video_path=os.path.join(temp_dir, "title.mov"),
+                karaoke_video_path=os.path.join(temp_dir, "karaoke.mov"),
+                instrumental_audio_path=os.path.join(temp_dir, "audio.flac"),
+                output_dir=temp_dir,
+            )
+
+            # Mock storage service
+            mock_storage = MagicMock()
+            mock_storage.download_file = MagicMock()
+
+            orchestrator = VideoWorkerOrchestrator(
+                config,
+                storage=mock_storage,
+            )
+
+            with patch.object(orchestrator, "_get_encoding_backend") as mock_get:
+                from backend.services.encoding_interface import EncodingOutput
+
+                # GCE backend returns GCS blob paths (not local paths)
+                mock_backend = MagicMock()
+                mock_backend.name = "gce"  # Important: must be "gce" to trigger download
+                mock_backend.encode = AsyncMock(return_value=EncodingOutput(
+                    success=True,
+                    lossless_4k_mp4_path="jobs/test-job/finals/output_4k_lossless.mp4",
+                    lossy_4k_mp4_path="jobs/test-job/finals/output_4k_lossy.mp4",
+                    lossy_720p_mp4_path="jobs/test-job/finals/output_720p.mp4",
+                    lossless_mkv_path="jobs/test-job/finals/output_4k.mkv",
+                    encoding_time_seconds=60.0,
+                    encoding_backend="gce",
+                ))
+                mock_get.return_value = mock_backend
+
+                await orchestrator._run_encoding()
+
+                # Verify download_file was called for each output file
+                assert mock_storage.download_file.call_count == 4
+
+                # Verify the result paths were updated to local paths
+                assert orchestrator.result.final_video.startswith(temp_dir)
+                assert orchestrator.result.final_video_mkv.startswith(temp_dir)
+                assert orchestrator.result.final_video_lossy.startswith(temp_dir)
+                assert orchestrator.result.final_video_720p.startswith(temp_dir)
+
+    @pytest.mark.asyncio
+    async def test_run_encoding_local_does_not_download(self):
+        """Test that local encoding does NOT trigger GCS download.
+
+        Local encoding produces files directly in the output directory,
+        so no download is needed.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = OrchestratorConfig(
+                job_id="test-job",
+                artist="Test Artist",
+                title="Test Title",
+                title_video_path=os.path.join(temp_dir, "title.mov"),
+                karaoke_video_path=os.path.join(temp_dir, "karaoke.mov"),
+                instrumental_audio_path=os.path.join(temp_dir, "audio.flac"),
+                output_dir=temp_dir,
+            )
+
+            # Mock storage service
+            mock_storage = MagicMock()
+            mock_storage.download_file = MagicMock()
+
+            orchestrator = VideoWorkerOrchestrator(
+                config,
+                storage=mock_storage,
+            )
+
+            with patch.object(orchestrator, "_get_encoding_backend") as mock_get:
+                from backend.services.encoding_interface import EncodingOutput
+
+                # Local backend returns local paths directly
+                mock_backend = MagicMock()
+                mock_backend.name = "local"  # Local backend
+                mock_backend.encode = AsyncMock(return_value=EncodingOutput(
+                    success=True,
+                    lossless_4k_mp4_path=os.path.join(temp_dir, "lossless.mp4"),
+                    lossy_4k_mp4_path=os.path.join(temp_dir, "lossy.mp4"),
+                    lossy_720p_mp4_path=os.path.join(temp_dir, "720p.mp4"),
+                    lossless_mkv_path=os.path.join(temp_dir, "lossless.mkv"),
+                    encoding_time_seconds=120.0,
+                    encoding_backend="local",
+                ))
+                mock_get.return_value = mock_backend
+
+                await orchestrator._run_encoding()
+
+                # Verify download_file was NOT called for local encoding
+                mock_storage.download_file.assert_not_called()
+
 
 class TestVideoWorkerOrchestratorOrganization:
     """Test organization stage."""
