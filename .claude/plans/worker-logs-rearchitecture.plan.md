@@ -1,8 +1,8 @@
 # Plan: Worker Logs Rearchitecture
 
 **Created:** 2026-01-04
-**Branch:** TBD (use `/new-worktree worker-logs-subcollection`)
-**Status:** Draft
+**Branch:** `feat/sess-20260104-1931-logs-research`
+**Status:** Implementation Complete - Pending PR Merge & Deployment
 
 ## Overview
 
@@ -17,12 +17,12 @@ Move `worker_logs` from embedded array in job documents to a Firestore subcollec
 
 ## Requirements
 
-- [ ] Logs must remain associated with their job
-- [ ] Logs should be queryable by job_id, worker type, timestamp
-- [ ] Old logs should auto-cleanup (TTL: 30 days)
-- [ ] Existing API endpoint (`GET /api/jobs/{id}/logs`) must continue to work
-- [ ] Frontend must continue to display logs without changes
-- [ ] Migration path for existing jobs (optional - can just start fresh)
+- [x] Logs must remain associated with their job
+- [x] Logs should be queryable by job_id, worker type, timestamp
+- [x] Old logs should auto-cleanup (TTL: 30 days)
+- [x] Existing API endpoint (`GET /api/jobs/{id}/logs`) must continue to work
+- [x] Frontend must continue to display logs without changes
+- [x] Migration path for existing jobs (optional - can just start fresh)
 
 ## Technical Approach
 
@@ -56,87 +56,107 @@ Store logs in `job_logs` collection with `job_id` field.
 
 ### Phase 1: Backend Changes
 
-1. [ ] **Create log entry model** - `backend/models/log.py`
-   - `LogEntry` dataclass with: id, job_id, timestamp, level, worker, message, metadata
-   - Keep backward compatible with existing log format
+1. [x] **Create log entry model** - `backend/models/worker_log.py`
+   - `WorkerLogEntry` dataclass with: id, job_id, timestamp, level, worker, message, metadata, ttl_expiry
+   - Factory method `create()` for easy instantiation
+   - `to_dict()` for Firestore storage
+   - `to_legacy_dict()` for API compatibility
+   - `from_dict()` for Firestore retrieval
 
-2. [ ] **Update FirestoreService** - `backend/services/firestore_service.py`
-   - Add `append_log_to_subcollection(job_id, log_entry)` method
-   - Add `get_logs_from_subcollection(job_id, limit, since_timestamp, worker)` method
-   - Keep old `append_worker_log` temporarily for migration period
+2. [x] **Update FirestoreService** - `backend/services/firestore_service.py`
+   - Added `append_log_to_subcollection(job_id, log_entry)` method
+   - Added `get_logs_from_subcollection(job_id, limit, since_timestamp, worker, offset)` method
+   - Added `get_logs_count_from_subcollection(job_id)` method
+   - Added `delete_logs_subcollection(job_id, batch_size)` method
+   - Old `append_worker_log` marked as deprecated
 
-3. [ ] **Update JobManager** - `backend/services/job_manager.py`
-   - Modify `add_worker_log()` to write to subcollection instead of array
-   - Modify `get_worker_logs()` to read from subcollection
-   - Add migration flag/env var to switch between old and new
+3. [x] **Update JobManager** - `backend/services/job_manager.py`
+   - Modified `append_worker_log()` to use subcollection when `USE_LOG_SUBCOLLECTION=true`
+   - Modified `get_worker_logs()` to read from subcollection with fallback to embedded array
+   - Added `get_worker_logs_count()` for total count
+   - Updated `delete_job()` to clean up logs subcollection
 
-4. [ ] **Update jobs API** - `backend/api/routes/jobs.py`
-   - `GET /api/jobs/{id}/logs` - Update to read from subcollection
+4. [x] **Update jobs API** - `backend/api/routes/jobs.py`
+   - `GET /api/jobs/{id}/logs` - Updated to use new methods
    - Response format stays the same (backward compatible)
+   - Fixed `next_index` calculation
 
-5. [ ] **Add TTL configuration** - `infrastructure/__main__.py`
-   - Configure Firestore TTL policy for logs subcollection (30 days)
+5. [x] **Add feature flag** - `backend/config.py`
+   - Added `USE_LOG_SUBCOLLECTION` environment variable (default: true)
+
+6. [x] **Add TTL configuration** - `infrastructure/__main__.py`
+   - Added Firestore TTL policy for logs subcollection (30 days)
+   - Added composite index for worker + timestamp queries
 
 ### Phase 2: Testing
 
-6. [ ] **Unit tests** - `backend/tests/unit/test_log_subcollection.py`
-   - Test write to subcollection
-   - Test read with pagination
-   - Test filtering by worker type
-   - Test TTL field is set correctly
+7. [x] **Unit tests** - `backend/tests/test_worker_log_subcollection.py`
+   - 24 tests covering:
+     - WorkerLogEntry model creation and conversion
+     - FirestoreService subcollection methods
+     - JobManager logging with feature flag
+     - Edge cases (unicode, long messages, empty messages)
 
-7. [ ] **Integration tests** - `backend/tests/emulator/test_worker_logs_subcollection.py`
-   - Test concurrent log writes from multiple workers
-   - Test large log volumes (1000+ entries)
-   - Test log retrieval performance
+8. [x] **Integration tests** - `backend/tests/emulator/test_worker_logs_subcollection.py`
+   - 11 tests using real Firestore emulator:
+     - Single and sequential writes
+     - TTL field verification
+     - Concurrent writes (no race conditions)
+     - Large volume (500 logs)
+     - Worker filtering
+     - Timestamp ordering
+     - Subcollection deletion
+     - Concurrent workers interleaved
+     - Job deletion cleanup
+     - Comparison with embedded array
 
 ### Phase 3: Deployment & Migration
 
-8. [ ] **Deploy with feature flag**
-   - Add `USE_LOG_SUBCOLLECTION=true` env var
-   - Deploy to production with flag OFF initially
+9. [ ] **Deploy with feature flag**
+   - Add `USE_LOG_SUBCOLLECTION=true` env var (default is true)
+   - Deploy to production
 
-9. [ ] **Enable for new jobs**
-   - Turn on flag for new jobs
-   - Monitor for issues
+10. [ ] **Monitor**
+    - Watch for errors in Cloud Logging
+    - Verify logs appear in frontend
 
-10. [ ] **Optional: Migrate existing jobs**
-    - Script to move existing `worker_logs` arrays to subcollections
-    - Can skip this - old jobs will use old format, new jobs use new
+11. [x] **Backward compatibility**
+    - Old jobs with embedded arrays still work (fallback in get_worker_logs)
+    - No migration needed - new jobs use subcollection, old jobs use array
 
-### Phase 4: Cleanup
+### Phase 4: Cleanup (Future)
 
-11. [ ] **Remove old code path**
+12. [ ] **Remove old code path** (after confidence period)
     - Remove `worker_logs` field from job model
     - Remove old `append_worker_log` method
     - Remove feature flag
 
-## Files to Create/Modify
+## Files Created/Modified
 
 | File | Action | Description |
 |------|--------|-------------|
-| `backend/models/log.py` | Create | LogEntry dataclass |
-| `backend/services/firestore_service.py` | Modify | Add subcollection methods |
-| `backend/services/job_manager.py` | Modify | Switch to subcollection |
-| `backend/api/routes/jobs.py` | Modify | Update logs endpoint |
-| `backend/models/job.py` | Modify | Make worker_logs optional/deprecated |
-| `backend/tests/unit/test_log_subcollection.py` | Create | Unit tests |
-| `backend/tests/emulator/test_worker_logs_subcollection.py` | Create | Integration tests |
-| `infrastructure/__main__.py` | Modify | Add TTL policy (if supported) |
+| `backend/models/worker_log.py` | Created | WorkerLogEntry dataclass |
+| `backend/services/firestore_service.py` | Modified | Added subcollection methods |
+| `backend/services/job_manager.py` | Modified | Switch to subcollection with fallback |
+| `backend/api/routes/jobs.py` | Modified | Updated logs endpoint |
+| `backend/config.py` | Modified | Added USE_LOG_SUBCOLLECTION setting |
+| `backend/tests/test_worker_log_subcollection.py` | Created | Unit tests (24 tests) |
+| `backend/tests/emulator/test_worker_logs_subcollection.py` | Created | Integration tests (11 tests) |
+| `infrastructure/__main__.py` | Modified | Added TTL policy and index |
 
 ## Log Entry Schema
 
 ```python
 @dataclass
-class LogEntry:
+class WorkerLogEntry:
+    timestamp: datetime
+    level: str  # "DEBUG", "INFO", "WARNING", "ERROR"
+    worker: str  # "audio", "lyrics", "video", "render", "screens", "distribution"
+    message: str
     id: str  # Auto-generated UUID
     job_id: str
-    timestamp: datetime
-    level: str  # "info", "warning", "error", "debug"
-    worker: str  # "audio", "lyrics", "video", "render", "screens"
-    message: str
+    ttl_expiry: datetime  # timestamp + 30 days
     metadata: Optional[Dict[str, Any]] = None
-    ttl_expiry: datetime  # For Firestore TTL (timestamp + 30 days)
 ```
 
 ## Firestore Structure
@@ -144,9 +164,11 @@ class LogEntry:
 ```
 jobs/
   {job_id}/
-    ... (job fields, no more worker_logs array)
-    logs/  # subcollection
+    ... (job fields, worker_logs still present for old jobs)
+    logs/  # subcollection for new jobs
       {log_id}/
+        id: string
+        job_id: string
         timestamp: datetime
         level: string
         worker: string
@@ -162,22 +184,22 @@ jobs/
   "logs": [
     {
       "timestamp": "2026-01-04T12:00:00Z",
-      "level": "info",
+      "level": "INFO",
       "worker": "video",
       "message": "Starting video generation"
     }
   ],
-  "total": 150,
-  "has_more": true
+  "next_index": 42,
+  "total_logs": 150
 }
 ```
 
-## Testing Strategy
+## Testing Results
 
-- **Unit tests**: Mock Firestore, test business logic
-- **Emulator tests**: Use Firestore emulator for integration tests
-- **Load test**: Generate 5000+ logs for a single job, verify no size issues
-- **Manual test**: Run a full job through the pipeline, verify logs appear
+All tests pass:
+- 24 unit tests in `test_worker_log_subcollection.py`
+- 11 emulator integration tests in `test_worker_logs_subcollection.py`
+- 68 total tests in emulator suite pass
 
 ## Rollback Plan
 
@@ -186,21 +208,15 @@ jobs/
 3. New logs will go back to embedded array
 4. Subcollection logs will remain but won't be read
 
-## Open Questions
+## Answers to Open Questions
 
-- [ ] Should we paginate logs in the API? (Currently returns all)
-- [ ] What's the optimal TTL period? (30 days proposed)
-- [ ] Should we index by timestamp for efficient range queries?
-
-## Performance Considerations
-
-- Reading logs: One query vs reading embedded array (slightly slower)
-- Writing logs: Similar cost (one document write either way)
-- Storage: Similar (array elements vs subcollection documents)
-- Deletion: Subcollection deletes require batch delete or callable
+- [x] **Should we paginate logs in the API?** - Yes, added `offset` parameter support
+- [x] **What's the optimal TTL period?** - 30 days (configurable via DEFAULT_LOG_TTL_DAYS)
+- [x] **Should we index by timestamp for efficient range queries?** - Yes, added composite index (worker + timestamp)
 
 ## References
 
 - [Firestore TTL](https://cloud.google.com/firestore/docs/ttl)
 - [Firestore Subcollections](https://firebase.google.com/docs/firestore/data-model#subcollections)
 - [Firestore Limits](https://firebase.google.com/docs/firestore/quotas#limits)
+- [Pulumi Firestore Field](https://www.pulumi.com/registry/packages/gcp/api-docs/firestore/field/)

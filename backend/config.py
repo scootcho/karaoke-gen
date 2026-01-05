@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     
     # Storage paths
     temp_dir: str = os.getenv("TEMP_DIR", "/tmp/karaoke-gen")
+
+    # Worker logs storage mode
+    # When enabled, worker logs are stored in a Firestore subcollection (jobs/{job_id}/logs)
+    # instead of an embedded array. This avoids the 1MB document size limit.
+    # Default is true for new deployments.
+    use_log_subcollection: bool = os.getenv("USE_LOG_SUBCOLLECTION", "true").lower() in ("true", "1", "yes")
     
     # Flacfetch remote service (for torrent downloads)
     # When configured, audio search uses the remote flacfetch HTTP API instead of local flacfetch.

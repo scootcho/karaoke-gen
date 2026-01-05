@@ -163,11 +163,14 @@ karaoke-gen shares a GCP project (`nomadkaraoke`) with karaoke-decide, but uses 
 |------------|---------|------------|
 | `gen_users` | karaoke-gen user accounts | email, credits, role, is_active |
 | `jobs` | Karaoke generation jobs | job_id, user_email, status, state_data |
+| `jobs/{job_id}/logs` | Worker log entries (subcollection) | timestamp, level, worker, message, ttl_expiry |
 | `sessions` | Magic link auth sessions | user_email, token, expires_at |
 | `magic_links` | Passwordless auth tokens | email, token, expires_at, used |
 | `beta_feedback` | Beta program feedback | user_email, ratings, comments |
 
 **Note**: The `users` collection in the same Firestore instance belongs to karaoke-decide (different schema: user_id, is_guest, quiz_* fields). Don't use it for karaoke-gen.
+
+**Worker Logs**: Stored in subcollection (`jobs/{job_id}/logs`) instead of embedded array to avoid Firestore's 1MB document size limit. TTL policy auto-deletes logs after 30 days. Feature flag: `USE_LOG_SUBCOLLECTION` (default: true). See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#firestore-document-1mb-limit-with-embedded-arrays).
 
 ## Video Worker Orchestrator
 

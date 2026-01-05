@@ -1452,10 +1452,14 @@ async def get_worker_logs(
     This endpoint returns worker logs stored in Firestore.
     Use `since_index` for efficient polling (returns only new logs).
 
+    Logs are stored in a subcollection (jobs/{job_id}/logs) to avoid
+    the 1MB document size limit. Older jobs may have logs in an embedded
+    array (worker_logs field) - this endpoint handles both transparently.
+
     Args:
         job_id: Job ID
         since_index: Return only logs after this index (for pagination/polling)
-        worker: Filter by worker name (audio, lyrics, screens, video, render)
+        worker: Filter by worker name (audio, lyrics, screens, video, render, distribution)
 
     Returns:
         {
@@ -1473,11 +1477,11 @@ async def get_worker_logs(
         raise HTTPException(status_code=403, detail="You don't have permission to access logs for this job")
 
     logs = job_manager.get_worker_logs(job_id, since_index=since_index, worker=worker)
-    total = len(job.worker_logs) if job.worker_logs else 0
+    total = job_manager.get_worker_logs_count(job_id)
 
     return {
         "logs": logs,
-        "next_index": total,
+        "next_index": since_index + len(logs),
         "total_logs": total
     }
 

@@ -9,6 +9,7 @@ from google.cloud.firestore_v1 import FieldFilter
 
 from backend.config import settings
 from backend.models.job import Job, JobStatus, TimelineEvent
+from backend.models.worker_log import WorkerLogEntry
 
 
 logger = logging.getLogger(__name__)
@@ -245,10 +246,13 @@ class FirestoreService:
     def append_worker_log(self, job_id: str, log_entry: Dict[str, Any]) -> None:
         """
         Atomically append a log entry to worker_logs using ArrayUnion.
-        
+
         This avoids the race condition of read-modify-write when multiple
         workers are logging concurrently.
-        
+
+        DEPRECATED: Use append_log_to_subcollection() instead to avoid
+        the 1MB document size limit.
+
         Args:
             job_id: Job ID
             log_entry: Log entry dict with timestamp, level, worker, message
@@ -263,6 +267,165 @@ class FirestoreService:
         except Exception as e:
             # Log but don't raise - logging shouldn't break workers
             logger.debug(f"Error appending worker log for job {job_id}: {e}")
+
+    # ============================================
+    # Worker Log Subcollection Methods
+    # ============================================
+    # These methods store logs in a subcollection (jobs/{job_id}/logs)
+    # instead of an embedded array to avoid the 1MB document size limit.
+
+    def append_log_to_subcollection(self, job_id: str, log_entry: WorkerLogEntry) -> None:
+        """
+        Append a log entry to the logs subcollection.
+
+        Stores logs at: jobs/{job_id}/logs/{log_id}
+
+        This approach avoids the 1MB document size limit by storing each
+        log entry as a separate document in a subcollection.
+
+        Args:
+            job_id: Job ID
+            log_entry: WorkerLogEntry instance
+        """
+        try:
+            # Ensure job_id is set on the log entry
+            log_entry.job_id = job_id
+
+            # Get subcollection reference
+            logs_ref = self.db.collection(self.collection).document(job_id).collection("logs")
+
+            # Add document with auto-generated ID or use log_entry.id
+            doc_ref = logs_ref.document(log_entry.id)
+            doc_ref.set(log_entry.to_dict())
+
+            # Don't log every append - too spammy
+        except Exception as e:
+            # Log but don't raise - logging shouldn't break workers
+            logger.debug(f"Error appending log to subcollection for job {job_id}: {e}")
+
+    def get_logs_from_subcollection(
+        self,
+        job_id: str,
+        limit: int = 500,
+        since_timestamp: Optional[datetime] = None,
+        worker: Optional[str] = None,
+        offset: int = 0
+    ) -> List[WorkerLogEntry]:
+        """
+        Get log entries from the logs subcollection.
+
+        Args:
+            job_id: Job ID
+            limit: Maximum number of logs to return (default 500)
+            since_timestamp: Return only logs after this timestamp
+            worker: Filter by worker name (optional)
+            offset: Number of logs to skip (for pagination)
+
+        Returns:
+            List of WorkerLogEntry instances, ordered by timestamp ascending
+        """
+        try:
+            # Get subcollection reference
+            logs_ref = self.db.collection(self.collection).document(job_id).collection("logs")
+
+            # Build query
+            query = logs_ref.order_by("timestamp", direction=firestore.Query.ASCENDING)
+
+            if since_timestamp:
+                query = query.where(filter=FieldFilter("timestamp", ">", since_timestamp))
+
+            if worker:
+                query = query.where(filter=FieldFilter("worker", "==", worker))
+
+            # Apply offset and limit
+            if offset > 0:
+                query = query.offset(offset)
+
+            query = query.limit(limit)
+
+            # Execute query
+            docs = query.stream()
+            logs = [WorkerLogEntry.from_dict(doc.to_dict()) for doc in docs]
+
+            return logs
+
+        except Exception as e:
+            logger.error(f"Error getting logs from subcollection for job {job_id}: {e}")
+            return []
+
+    def get_logs_count_from_subcollection(self, job_id: str) -> int:
+        """
+        Get the total count of log entries in the subcollection.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Total count of log entries
+        """
+        try:
+            # Get subcollection reference
+            logs_ref = self.db.collection(self.collection).document(job_id).collection("logs")
+
+            # Use aggregation query for efficient counting
+            count_query = logs_ref.count()
+            result = count_query.get()
+
+            # Result is a list of AggregationResult, we want the first one's count
+            if result and len(result) > 0:
+                return result[0][0].value
+            return 0
+
+        except Exception as e:
+            logger.error(f"Error counting logs for job {job_id}: {e}")
+            return 0
+
+    def delete_logs_subcollection(self, job_id: str, batch_size: int = 500) -> int:
+        """
+        Delete all log entries in the logs subcollection.
+
+        This is used when deleting a job to clean up its logs.
+
+        Args:
+            job_id: Job ID
+            batch_size: Number of documents to delete per batch
+
+        Returns:
+            Number of logs deleted
+        """
+        try:
+            logs_ref = self.db.collection(self.collection).document(job_id).collection("logs")
+            deleted_count = 0
+
+            while True:
+                # Get a batch of documents
+                docs = logs_ref.limit(batch_size).stream()
+                deleted_in_batch = 0
+
+                # Delete in a batch
+                batch = self.db.batch()
+                for doc in docs:
+                    batch.delete(doc.reference)
+                    deleted_in_batch += 1
+
+                if deleted_in_batch == 0:
+                    break
+
+                batch.commit()
+                deleted_count += deleted_in_batch
+
+                # If we deleted less than batch_size, we're done
+                if deleted_in_batch < batch_size:
+                    break
+
+            if deleted_count > 0:
+                logger.info(f"Deleted {deleted_count} logs for job {job_id}")
+
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"Error deleting logs subcollection for job {job_id}: {e}")
+            return 0
     
     # ============================================
     # Token Management Methods

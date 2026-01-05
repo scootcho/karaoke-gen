@@ -144,6 +144,42 @@ firestore_index_gen_users_active_email = firestore.Index(
     opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
 )
 
+# =============================================================================
+# Firestore TTL Field Configuration
+# TTL (Time-to-Live) policies automatically delete documents after expiration.
+# =============================================================================
+
+# Worker logs TTL: logs subcollection documents expire after 30 days
+# Collection path for subcollections: "jobs/{job_id}/logs"
+# When using subcollection groups, use just the subcollection name "logs"
+firestore_field_logs_ttl = firestore.Field(
+    "firestore-field-logs-ttl",
+    project=project_id,
+    database=firestore_db.name,
+    collection="logs",  # Subcollection name (applies to all jobs/{job_id}/logs)
+    field="ttl_expiry",
+    ttl_config={},  # Empty block enables TTL based on ttl_expiry field
+    index_config={},  # Disable indexing on TTL field
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
+# =============================================================================
+# Firestore Composite Indexes for Logs Subcollection
+# =============================================================================
+
+# Logs: query by worker, order by timestamp (for filtering logs by worker type)
+firestore_index_logs_worker_timestamp = firestore.Index(
+    "firestore-index-logs-worker-timestamp",
+    project=project_id,
+    database=firestore_db.name,
+    collection="logs",  # Subcollection name
+    fields=[
+        firestore.IndexFieldArgs(field_path="worker", order="ASCENDING"),
+        firestore.IndexFieldArgs(field_path="timestamp", order="ASCENDING"),
+    ],
+    opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+)
+
 # Create Cloud Storage Bucket
 bucket = storage.Bucket(
     "karaoke-storage",
@@ -811,6 +847,8 @@ pulumi.export("firestore_index_gen_users_active_created", firestore_index_gen_us
 pulumi.export("firestore_index_gen_users_active_login", firestore_index_gen_users_active_login.name)
 pulumi.export("firestore_index_gen_users_active_credits", firestore_index_gen_users_active_credits.name)
 pulumi.export("firestore_index_gen_users_active_email", firestore_index_gen_users_active_email.name)
+pulumi.export("firestore_field_logs_ttl", firestore_field_logs_ttl.name)
+pulumi.export("firestore_index_logs_worker_timestamp", firestore_index_logs_worker_timestamp.name)
 pulumi.export("service_account_email", service_account.email)
 pulumi.export("artifact_repo_url", artifact_repo.name.apply(
     lambda name: f"us-central1-docker.pkg.dev/{project_id}/karaoke-repo"

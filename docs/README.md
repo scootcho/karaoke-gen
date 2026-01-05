@@ -36,7 +36,9 @@
 
 ## Recent Changes
 
-- **GCE Encoding Response Fixes** (2026-01-04): Fixed multiple response format mismatches with GCE encoding worker. The worker returns `output_files` as a list of paths, not a dict with format keys - added conversion logic. Also added defensive type checking for status responses that could be lists. Created worker logs rearchitecture plan to address Firestore 1MB document limit (logs will move to subcollection). See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#external-service-response-format-mismatches).
+- **Worker Logs Subcollection** (2026-01-04): Moved `worker_logs` from embedded array in job documents to Firestore subcollection (`jobs/{job_id}/logs`). Fixes job failures when logs exceed 1MB (job 501258e1 had 1.26MB of logs). New logs stored with 30-day TTL via Firestore TTL policy. Feature flag `USE_LOG_SUBCOLLECTION=true` (default). See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#firestore-document-1mb-limit-with-embedded-arrays).
+
+- **GCE Encoding Response Fixes** (2026-01-04): Fixed multiple response format mismatches with GCE encoding worker. The worker returns `output_files` as a list of paths, not a dict with format keys - added conversion logic. Also added defensive type checking for status responses that could be lists. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#external-service-response-format-mismatches).
 
 - **Video Worker Orchestrator** (2026-01-04): Major refactor to unify video generation pipeline. Created VideoWorkerOrchestrator that coordinates all stages (packaging, encoding, distribution, notifications) regardless of encoding backend (GCE or local). Fixes issue where GCE encoding path bypassed YouTube upload, Discord notifications, and CDG/TXT packaging. Feature flag `USE_NEW_ORCHESTRATOR` (default: true) enables rollback. 139 new tests across 6 new service modules. See [ARCHITECTURE.md](ARCHITECTURE.md#video-worker-orchestrator) and [archive/2026-01-04-video-worker-orchestrator-refactor.md](archive/2026-01-04-video-worker-orchestrator-refactor.md).
 
