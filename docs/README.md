@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **GCE Encoding Unified with LocalEncodingService** (2026-01-06): GCE encoding worker now uses the same `LocalEncodingService` as the local CLI, eliminating duplicated encoding logic. Output files now have proper names (`Artist - Title (Final Karaoke Lossless 4k).mp4` instead of `output_4k_lossless.mp4`) and include title/end screen concatenation. Wheel deployed to GCS; worker installs at job start for hot updates without VM restart. Removed all fallback logic - single code path for consistent output across CLI, Cloud Run, and GCE. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#unify-encoding-logic-with-gcs-wheel-deployment).
+
 - **Agentic Correction Performance** (2026-01-05): Optimized agentic AI correction from ~5 minutes to ~55 seconds for 20 gaps (~5-6x speedup). Fixed anti-pattern of creating new model instance per gap (caused repeated 2s warm-up overhead). Now creates model once and processes gaps in parallel using ThreadPoolExecutor (default 5 workers). Configure via `AGENTIC_MAX_PARALLEL_GAPS` env var. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#reuse-llm-model-instances-across-operations).
 
 - **Worker Logs Subcollection** (2026-01-04): Moved `worker_logs` from embedded array in job documents to Firestore subcollection (`jobs/{job_id}/logs`). Fixes job failures when logs exceed 1MB (job 501258e1 had 1.26MB of logs). New logs stored with 30-day TTL via Firestore TTL policy. Feature flag `USE_LOG_SUBCOLLECTION=true` (default). See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#firestore-document-1mb-limit-with-embedded-arrays).
