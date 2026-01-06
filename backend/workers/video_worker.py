@@ -160,14 +160,17 @@ async def _encode_via_gce(
             storage.download_file(gcs_path, local_path)
 
             # Map to result keys expected by _upload_results
-            if "4K Lossless" in filename or "4k_lossless" in filename.lower():
-                local_files["final_video"] = local_path
-            elif "4K Lossy" in filename or "4k_lossy" in filename.lower():
+            # Files are named like "Artist - Title (Final Karaoke Lossless 4k).mp4"
+            filename_lower = filename.lower()
+            if "lossless 4k" in filename_lower:
+                if filename.endswith(".mkv"):
+                    local_files["final_video_mkv"] = local_path
+                else:
+                    local_files["final_video"] = local_path
+            elif "lossy 4k" in filename_lower:
                 local_files["final_video_lossy"] = local_path
-            elif "720p" in filename:
+            elif "720p" in filename_lower:
                 local_files["final_video_720p"] = local_path
-            elif filename.endswith(".mkv"):
-                local_files["final_video_mkv"] = local_path
 
         job_log.info(f"Downloaded {len(local_files)} encoded files")
 

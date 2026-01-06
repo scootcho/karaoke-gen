@@ -1259,10 +1259,12 @@ fi
 # Create the encoding worker service
 cat > /opt/encoding-worker/main.py << 'PYTHON_CODE'
 import asyncio
+import glob as glob_module
 import json
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -1495,121 +1497,176 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
         raise
 
 
+def ensure_latest_wheel():
+    """Download and install latest karaoke-gen wheel from GCS.
+
+    Called at the start of each job to enable hot code updates without restart.
+    In-progress jobs continue with their version, new jobs get latest code.
+    """
+    try:
+        logger.info("Checking for latest karaoke-gen wheel in GCS...")
+
+        # Download latest wheel
+        result = subprocess.run(
+            ["gsutil", "cp", "gs://karaoke-gen-storage-nomadkaraoke/wheels/karaoke_gen-*.whl", "/tmp/"],
+            capture_output=True, text=True, timeout=60
+        )
+
+        # Find the downloaded wheel (get the latest by version sorting)
+        wheels = glob_module.glob("/tmp/karaoke_gen-*.whl")
+        if not wheels:
+            logger.warning("No wheel found in GCS, using fallback encoding logic")
+            return False
+
+        # Sort to get latest version
+        wheel_path = sorted(wheels)[-1]
+        logger.info(f"Installing wheel: {wheel_path}")
+
+        # Install (or upgrade) the wheel
+        install_result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--quiet", wheel_path],
+            capture_output=True, text=True, timeout=120
+        )
+
+        if install_result.returncode != 0:
+            logger.warning(f"Wheel installation failed: {install_result.stderr}")
+            return False
+
+        logger.info(f"Successfully installed wheel: {wheel_path}")
+        return True
+
+    except subprocess.TimeoutExpired:
+        logger.warning("Wheel download/install timed out, using fallback")
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to ensure latest wheel: {e}")
+        return False
+
+
+def find_file(work_dir: Path, *patterns):
+    """Find a file matching any of the given glob patterns."""
+    for pattern in patterns:
+        matches = list(work_dir.glob(f"**/{pattern}"))
+        if matches:
+            return matches[0]
+    return None
+
+
 def run_encoding(job_id: str, work_dir: Path, config: dict):
-    # Run FFmpeg encoding for all video formats
+    """Run encoding using LocalEncodingService (single source of truth).
+
+    Uses LocalEncodingService from the installed karaoke-gen wheel to ensure
+    output files match local CLI exactly:
+    - Proper names like "Artist - Title (Final Karaoke Lossless 4k).mp4"
+    - Concatenated title + karaoke + end screens
+    - All formats: lossless 4K MP4, lossy 4K MP4, lossless MKV, 720p MP4
+
+    Requires the karaoke-gen wheel to be installed (done by ensure_latest_wheel).
+    """
     jobs[job_id]["status"] = "running"
     jobs[job_id]["progress"] = 10
 
     try:
-        # Find input files (search recursively since GCS downloads preserve directory structure)
-        input_files = list(work_dir.glob("**/*.mkv")) + list(work_dir.glob("**/*.mp4")) + list(work_dir.glob("**/*.mov"))
-        # Exclude files in the outputs directory to avoid re-encoding previous outputs
-        input_files = [f for f in input_files if "outputs" not in str(f)]
-        if not input_files:
-            raise ValueError(f"No video files found in {work_dir}")
+        # Import LocalEncodingService from installed wheel (required, no fallback)
+        from backend.services.local_encoding_service import LocalEncodingService, EncodingConfig
+        logger.info("Using LocalEncodingService from installed wheel")
 
-        # Use first video file as input (With Vocals or Karaoke)
-        input_video = input_files[0]
-        logger.info(f"Using input video: {input_video}")
+        # Get artist/title from config for proper naming
+        artist = config.get("artist", "Unknown Artist")
+        title = config.get("title", "Unknown Title")
+        base_name = f"{artist} - {title}"
+        logger.info(f"Encoding for: {base_name}")
 
-        # Find instrumental audio (search recursively, case-insensitive patterns)
-        # GCS stores as: instrumental_clean.flac, instrumental_with_backing.flac
-        instrumental_files = (
-            list(work_dir.glob("**/*instrumental*.flac")) +
-            list(work_dir.glob("**/*instrumental*.wav")) +
-            list(work_dir.glob("**/*Instrumental*.flac")) +
-            list(work_dir.glob("**/*Instrumental*.wav"))
+        # Find input files in work_dir
+        # Title/end screens are in screens/ subdirectory
+        title_video = find_file(work_dir, "screens/title.mov", "*Title*.mov", "*title*.mov")
+        end_video = find_file(work_dir, "screens/end.mov", "*End*.mov", "*end*.mov")
+
+        # Karaoke video - search for With Vocals or main karaoke video
+        karaoke_video = find_file(
+            work_dir,
+            "*With Vocals*.mov", "*With Vocals*.mkv",
+            "*Vocals*.mov", "*Vocals*.mkv",
+            "*.mkv", "*.mov"
         )
-        instrumental = instrumental_files[0] if instrumental_files else None
+        # Exclude title/end/output videos
+        if karaoke_video:
+            name_lower = karaoke_video.name.lower()
+            if "title" in name_lower or "end" in name_lower or "outputs" in str(karaoke_video):
+                # Search more specifically for karaoke video
+                karaoke_video = find_file(work_dir, "*Karaoke*.mkv", "*Karaoke*.mov", "*vocals*.mkv")
+
+        # Instrumental audio
+        instrumental = find_file(
+            work_dir,
+            "*instrumental_clean*.flac", "*Instrumental Clean*.flac",
+            "*instrumental*.flac", "*Instrumental*.flac",
+            "*instrumental*.wav"
+        )
+
+        logger.info(f"Found files:")
+        logger.info(f"  Title video: {title_video}")
+        logger.info(f"  Karaoke video: {karaoke_video}")
+        logger.info(f"  End video: {end_video}")
+        logger.info(f"  Instrumental: {instrumental}")
+
+        # Validate required files
+        if not title_video:
+            raise ValueError(f"No title video found in {work_dir}. Check screens/ subdirectory.")
+        if not karaoke_video:
+            raise ValueError(f"No karaoke video found in {work_dir}")
+        if not instrumental:
+            raise ValueError(f"No instrumental audio found in {work_dir}")
 
         output_dir = work_dir / "outputs"
         output_dir.mkdir(exist_ok=True)
 
-        output_files = []
-        formats = config.get("formats", ["mp4_4k", "mp4_720p"])
-        total_formats = len(formats)
+        jobs[job_id]["progress"] = 20
 
-        for i, fmt in enumerate(formats):
-            progress = 10 + int((i / total_formats) * 80)
-            jobs[job_id]["progress"] = progress
+        # Build encoding config with proper file names
+        encoding_config = EncodingConfig(
+            title_video=str(title_video),
+            karaoke_video=str(karaoke_video),
+            instrumental_audio=str(instrumental),
+            end_video=str(end_video) if end_video else None,
+            output_karaoke_mp4=str(output_dir / f"{base_name} (Karaoke).mp4"),
+            output_lossless_4k_mp4=str(output_dir / f"{base_name} (Final Karaoke Lossless 4k).mp4"),
+            output_lossy_4k_mp4=str(output_dir / f"{base_name} (Final Karaoke Lossy 4k).mp4"),
+            output_lossless_mkv=str(output_dir / f"{base_name} (Final Karaoke Lossless 4k).mkv"),
+            output_720p_mp4=str(output_dir / f"{base_name} (Final Karaoke Lossy 720p).mp4"),
+        )
 
-            if fmt == "mp4_4k_lossless" or fmt == "mp4_4k":
-                # High quality 4K - CRF 18 (visually lossless)
-                output_file = output_dir / "output_4k_lossless.mp4"
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(input_video),
-                ]
-                if instrumental:
-                    cmd.extend(["-i", str(instrumental)])
-                cmd.extend([
-                    "-map", "0:v",
-                    "-map", "1:a" if instrumental else "0:a",
-                    "-c:v", "libx264",
-                    "-preset", "medium",
-                    "-crf", "18",
-                    "-c:a", "aac",
-                    "-b:a", "256k",
-                    "-threads", "24",
-                    str(output_file)
-                ])
-            elif fmt == "mp4_4k_lossy":
-                # Smaller 4K file - CRF 23 (good quality, smaller size)
-                output_file = output_dir / "output_4k_lossy.mp4"
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(input_video),
-                ]
-                if instrumental:
-                    cmd.extend(["-i", str(instrumental)])
-                cmd.extend([
-                    "-map", "0:v",
-                    "-map", "1:a" if instrumental else "0:a",
-                    "-c:v", "libx264",
-                    "-preset", "medium",
-                    "-crf", "23",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    "-threads", "24",
-                    str(output_file)
-                ])
-            elif fmt == "mp4_720p":
-                output_file = output_dir / "output_720p.mp4"
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(input_video),
-                ]
-                if instrumental:
-                    cmd.extend(["-i", str(instrumental)])
-                cmd.extend([
-                    "-map", "0:v",
-                    "-map", "1:a" if instrumental else "0:a",
-                    "-vf", "scale=-1:720",
-                    "-c:v", "libx264",
-                    "-preset", "medium",
-                    "-crf", "20",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
-                    "-threads", "24",
-                    str(output_file)
-                ])
-            else:
-                logger.warning(f"Unknown format: {fmt}")
-                continue
+        # Create service and run encoding
+        service = LocalEncodingService(logger=logger)
 
-            logger.info(f"Running: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+        jobs[job_id]["progress"] = 30
+        logger.info("Starting LocalEncodingService.encode_all_formats()")
 
-            if result.returncode != 0:
-                logger.error(f"FFmpeg failed: {result.stderr}")
-                raise RuntimeError(f"FFmpeg encoding failed: {result.stderr[-500:]}")
+        result = service.encode_all_formats(encoding_config)
 
-            output_files.append(str(output_file))
-            logger.info(f"Encoded: {output_file}")
+        if not result.success:
+            raise RuntimeError(f"Encoding failed: {result.error}")
 
-        jobs[job_id]["output_files"] = output_files
         jobs[job_id]["progress"] = 90
+
+        # Collect output files
+        output_files = [str(f) for f in output_dir.glob("*") if f.is_file()]
+        jobs[job_id]["output_files"] = output_files
+
+        logger.info(f"Encoding complete. Output files: {output_files}")
         return output_dir
+
+    except ImportError as e:
+        # No fallback - wheel must be installed
+        error_msg = (
+            f"LocalEncodingService not available: {e}. "
+            "The karaoke-gen wheel must be installed. "
+            "Check that ensure_latest_wheel() succeeded and wheel exists in GCS."
+        )
+        logger.error(error_msg)
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = error_msg
+        raise RuntimeError(error_msg) from e
 
     except Exception as e:
         logger.error(f"Encoding failed: {e}")
@@ -1621,6 +1678,10 @@ def run_encoding(job_id: str, work_dir: Path, config: dict):
 async def process_job(job_id: str, request: EncodeRequest):
     # Process an encoding job asynchronously
     try:
+        # Download and install latest wheel at job start (allows hot updates without restart)
+        # This means in-progress jobs continue with their version, new jobs get latest code
+        ensure_latest_wheel()
+
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir) / "work"
             work_dir.mkdir()
@@ -1647,7 +1708,7 @@ async def process_job(job_id: str, request: EncodeRequest):
 
             # Convert local paths to blob paths (backend expects blob paths, not full gs:// URIs)
             # output_gcs_path is like "gs://bucket/jobs/id/encoded/"
-            # We need paths like "jobs/id/encoded/output_4k_lossless.mp4"
+            # We need paths like "jobs/id/encoded/Artist - Title (Final Karaoke Lossless 4k).mp4"
             gcs_path = request.output_gcs_path.replace("gs://", "")
             parts = gcs_path.split("/", 1)
             prefix = parts[1].rstrip("/") if len(parts) > 1 else ""
