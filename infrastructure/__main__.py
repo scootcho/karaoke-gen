@@ -1630,6 +1630,7 @@ def run_encoding(job_id: str, work_dir: Path, config: dict):
             instrumental_audio=str(instrumental),
             end_video=str(end_video) if end_video else None,
             output_karaoke_mp4=str(output_dir / f"{base_name} (Karaoke).mp4"),
+            output_with_vocals_mp4=str(output_dir / f"{base_name} (With Vocals).mp4"),
             output_lossless_4k_mp4=str(output_dir / f"{base_name} (Final Karaoke Lossless 4k).mp4"),
             output_lossy_4k_mp4=str(output_dir / f"{base_name} (Final Karaoke Lossy 4k).mp4"),
             output_lossless_mkv=str(output_dir / f"{base_name} (Final Karaoke Lossless 4k).mkv"),
