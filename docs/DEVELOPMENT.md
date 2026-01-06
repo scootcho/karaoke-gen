@@ -110,16 +110,36 @@ Push to `main` triggers GitHub Actions:
 3. Deploy to Cloud Run
 4. Deploy frontend to Cloudflare Pages
 
-### Manual Backend Deploy
+### Infrastructure Changes (Pulumi)
+
+**All infrastructure changes must go through PRs.** The CI pipeline automatically deploys Pulumi changes when PRs merge to main.
 
 ```bash
-# Preview infrastructure changes
+# Preview changes locally (requires GCP auth)
 cd infrastructure
-pulumi preview
+pulumi preview --stack nomadkaraoke/karaoke-gen-infrastructure/prod
 
-# Apply changes
-pulumi up
+# DO NOT run `pulumi up` locally - let CI handle deployment
+# CI uses --skip-preview due to limited service account permissions
 ```
+
+**What's managed by Pulumi:**
+- Firestore database and indexes
+- GCS buckets
+- Cloud Run service configuration
+- Cloud Tasks queues
+- Secret Manager secrets
+- Service accounts and IAM bindings
+- Workload Identity Federation
+- GCE instances (GitHub runners, encoding worker)
+
+**Workflow:**
+1. Make changes in `infrastructure/__main__.py`
+2. Run `pulumi preview` locally to verify
+3. Create PR and merge
+4. CI deploys automatically
+
+See `docs/LESSONS-LEARNED.md` for Pulumi CI gotchas.
 
 ### Manual Frontend Deploy
 
