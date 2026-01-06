@@ -249,6 +249,9 @@ class VideoGenerator:
     def generate_preview_video(self, ass_path: str, audio_path: str, output_prefix: str) -> str:
         """Generate lower resolution MP4 preview video with lyrics overlay.
 
+        Delegates to LocalPreviewEncodingService for the actual encoding to ensure
+        consistent preview generation across local CLI, Cloud Run, and GCE worker.
+
         Args:
             ass_path: Path to ASS subtitles file
             audio_path: Path to audio file
@@ -257,6 +260,11 @@ class VideoGenerator:
         Returns:
             Path to generated preview video file
         """
+        from backend.services.local_preview_encoding_service import (
+            LocalPreviewEncodingService,
+            PreviewEncodingConfig,
+        )
+
         self.logger.info("Generating preview video with lyrics overlay")
         output_path = os.path.join(self.cache_dir, f"{output_prefix}_preview.mp4")
 
@@ -269,17 +277,36 @@ class VideoGenerator:
         try:
             # Create a temporary copy of the ASS file with a unique filename
             import time
+            import shutil
 
             safe_prefix = "".join(c if c.isalnum() else "_" for c in output_prefix)
             timestamp = int(time.time() * 1000)
             temp_ass_path = os.path.join(self.cache_dir, f"temp_preview_subtitles_{safe_prefix}_{timestamp}.ass")
-            import shutil
 
             shutil.copy2(ass_path, temp_ass_path)
             self.logger.debug(f"Created temporary ASS file: {temp_ass_path}")
 
-            cmd = self._build_preview_ffmpeg_command(temp_ass_path, audio_path, output_path)
-            self._run_ffmpeg_command(cmd)
+            # Get font path from styles configuration
+            karaoke_styles = self.styles.get("karaoke", {})
+            font_path = karaoke_styles.get("font_path")
+
+            # Build config for LocalPreviewEncodingService
+            config = PreviewEncodingConfig(
+                ass_path=temp_ass_path,
+                audio_path=audio_path,
+                output_path=output_path,
+                background_image_path=self.background_image,
+                background_color=self.background_color,
+                font_path=font_path if font_path and os.path.isfile(font_path) else None,
+            )
+
+            # Use LocalPreviewEncodingService for consistent encoding
+            service = LocalPreviewEncodingService(logger=self.logger)
+            result = service.encode_preview(config)
+
+            if not result.success:
+                raise RuntimeError(f"Preview encoding failed: {result.error}")
+
             self.logger.info(f"Preview video generated: {output_path}")
 
             # Clean up temporary file
@@ -457,93 +484,6 @@ class VideoGenerator:
         cmd.extend([
             "-shortest",  # End encoding after shortest stream
             "-y",         # Overwrite output without asking
-        ])
-
-        # Add output path
-        cmd.append(output_path)
-
-        return cmd
-
-    def _build_preview_ffmpeg_command(self, ass_path: str, audio_path: str, output_path: str) -> List[str]:
-        """Build FFmpeg command for preview video generation with hardware acceleration when available."""
-        # Use even lower resolution for preview (480x270 instead of 640x360 for faster encoding)
-        width, height = 480, 270
-
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-loglevel", "error",
-            "-r", "24",  # Reduced frame rate to 24 fps for faster encoding
-        ]
-
-        # Add hardware acceleration flags if available
-        cmd.extend(self.hwaccel_flags)
-
-        # Input source (background) - simplified for preview
-        if self.background_image:
-            # For preview, use the original image without resizing to save time
-            self.logger.debug(f"Using original background image for preview: {self.background_image}")
-            cmd.extend([
-                "-loop", "1",  # Loop the image
-                "-i", self.background_image,
-            ])
-            # Build video filter with scaling and ASS subtitles
-            video_filter = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,{self._build_ass_filter(ass_path)}"
-        else:
-            self.logger.debug(
-                f"Using solid {self.background_color} background "
-                f"with resolution: {width}x{height}"
-            )
-            cmd.extend([
-                "-f", "lavfi",
-                "-i", f"color=c={self.background_color}:s={width}x{height}:r=24",
-            ])
-            # Build video filter with just ASS subtitles (no scaling needed)
-            video_filter = self._build_ass_filter(ass_path)
-
-        cmd.extend([
-            "-i", audio_path,
-            "-vf", video_filter,    # Apply the video filter
-            "-c:a", "aac",          # Use AAC for audio compatibility
-            "-b:a", "96k",          # Reduced audio bitrate for faster encoding
-            "-c:v", self.video_encoder,
-        ])
-
-        # Add encoder-specific settings for preview with maximum speed priority
-        if self.nvenc_available:
-            # NVENC settings optimized for maximum speed
-            cmd.extend([
-                "-preset", "p1",       # Fastest NVENC preset
-                "-tune", "ll",         # Low latency
-                "-rc", "cbr",          # Constant bitrate for speed
-                "-b:v", "800k",        # Lower bitrate for speed
-                "-profile:v", "baseline", # Most compatible profile
-                "-level", "3.1",       # Lower level for speed
-            ])
-            self.logger.debug("Using NVENC encoding with maximum speed settings for preview video generation")
-        else:
-            # Software encoding with maximum speed priority
-            cmd.extend([
-                "-profile:v", "baseline",  # Most compatible H.264 profile
-                "-level", "3.0",           # Compatibility level
-                "-preset", "superfast",    # Even faster than ultrafast for preview
-                "-tune", "fastdecode",     # Optimize for fast decoding
-                "-b:v", "600k",            # Lower base bitrate for speed
-                "-maxrate", "800k",        # Lower max bitrate
-                "-bufsize", "1200k",       # Smaller buffer size
-                "-crf", "28",              # Higher CRF for faster encoding (lower quality but faster)
-            ])
-            self.logger.debug("Using software encoding with maximum speed settings for preview video generation")
-
-        cmd.extend([
-            "-pix_fmt", "yuv420p",  # Required for browser compatibility
-            "-movflags", "+faststart+frag_keyframe+empty_moov+dash",  # Enhanced streaming with dash for faster start
-            "-g", "48",             # Keyframe every 48 frames (2 seconds at 24fps) - fewer keyframes for speed
-            "-keyint_min", "48",    # Minimum keyframe interval
-            "-sc_threshold", "0",   # Disable scene change detection for speed
-            "-threads", "0",        # Use all available CPU threads
-            "-shortest",            # End encoding after shortest stream
-            "-y"                    # Overwrite output without asking
         ])
 
         # Add output path
