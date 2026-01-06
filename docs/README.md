@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **GCE Encoding Worker Python 3.13** (2026-01-06): Upgraded GCE encoding worker from Debian's Python 3.11 to Python 3.13 built from source. Uses dedicated virtual environment at `/opt/encoding-worker/venv`, removing the need for `--break-system-packages`. Aligns the encoding worker with CI/Cloud Run Python version.
+
 - **GCE Encoding Unified with LocalEncodingService** (2026-01-06): GCE encoding worker now uses the same `LocalEncodingService` as the local CLI, eliminating duplicated encoding logic. Output files now have proper names (`Artist - Title (Final Karaoke Lossless 4k).mp4` instead of `output_4k_lossless.mp4`) and include title/end screen concatenation. Wheel deployed to GCS; worker installs at job start for hot updates without VM restart. Removed all fallback logic - single code path for consistent output across CLI, Cloud Run, and GCE. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#unify-encoding-logic-with-gcs-wheel-deployment).
 
 - **Cloud Distribution Matches Local CLI** (2026-01-06): Fixed cloud distribution (Dropbox uploads) to match local CLI output structure. The `lyrics/` folder now includes: proper filenames (`(Lyrics Corrections).json` instead of `(Karaoke).json`), all reference lyrics files (`(Lyrics Genius).txt`, `(Lyrics Spotify).txt`, etc.), `(With Vocals).mkv`, and `previews/` subfolder with preview ASS files. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#cloud-distribution-must-match-local-cli-output-structure).
