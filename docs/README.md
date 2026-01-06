@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **Email Notification System** (2026-01-06): Added automated email notifications for job completion and user action reminders. Features: GCS-backed HTML email templates with fallback defaults, SendGrid with CC support, auto-completion emails on job finish, idle reminder emails via Cloud Tasks (5-min delay for blocking states), admin UI buttons to copy message or send email manually. Endpoints: `GET /api/admin/jobs/{id}/completion-message`, `POST /api/admin/jobs/{id}/send-completion-email`. Feature flag `ENABLE_AUTO_EMAILS` (default: false). See [API.md](API.md#email-notifications-admin) and [ARCHITECTURE.md](ARCHITECTURE.md#video-worker-orchestrator).
+
 - **GCE Encoding Worker Python 3.13** (2026-01-06): Upgraded GCE encoding worker from Debian's Python 3.11 to Python 3.13 built from source. Uses dedicated virtual environment at `/opt/encoding-worker/venv`, removing the need for `--break-system-packages`. Aligns the encoding worker with CI/Cloud Run Python version.
 
 - **GCE Encoding Unified with LocalEncodingService** (2026-01-06): GCE encoding worker now uses the same `LocalEncodingService` as the local CLI, eliminating duplicated encoding logic. Output files now have proper names (`Artist - Title (Final Karaoke Lossless 4k).mp4` instead of `output_4k_lossless.mp4`) and include title/end screen concatenation. Wheel deployed to GCS; worker installs at job start for hot updates without VM restart. Removed all fallback logic - single code path for consistent output across CLI, Cloud Run, and GCE. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#unify-encoding-logic-with-gcs-wheel-deployment).
