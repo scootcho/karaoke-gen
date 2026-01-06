@@ -1209,9 +1209,12 @@ set -e
 exec > >(tee /var/log/encoding-worker-startup.log) 2>&1
 echo "Starting encoding worker setup at $(date)"
 
-# Install dependencies
+# Install dependencies (including Python build dependencies)
 apt-get update
-apt-get install -y python3-pip python3-venv docker.io curl git xz-utils
+apt-get install -y docker.io curl git xz-utils \\
+    build-essential libssl-dev zlib1g-dev libbz2-dev \\
+    libreadline-dev libsqlite3-dev libncursesw5-dev \\
+    tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
 
 # Install fonts for ASS subtitle rendering (libass uses fontconfig)
 # - fonts-noto: Noto Sans (default karaoke font)
@@ -1234,12 +1237,26 @@ chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
 rm -rf /tmp/ffmpeg*
 ffmpeg -version
 
+# Build and install Python 3.13 from source
+echo "Building Python 3.13 from source..."
+PYTHON_VERSION="3.13.1"
+cd /tmp
+curl -L "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tar.xz" -o python.tar.xz
+tar -xf python.tar.xz
+cd "Python-${PYTHON_VERSION}"
+./configure --prefix=/opt/python313 --enable-optimizations --with-lto
+make -j$(nproc)
+make install
+rm -rf /tmp/python.tar.xz /tmp/Python-${PYTHON_VERSION}
+/opt/python313/bin/python3.13 --version
+echo "Python 3.13 installed at /opt/python313"
+
 # Create working directory
 mkdir -p /opt/encoding-worker
 cd /opt/encoding-worker
 
-# Create Python virtual environment
-python3 -m venv venv
+# Create Python virtual environment using Python 3.13
+/opt/python313/bin/python3.13 -m venv venv
 source venv/bin/activate
 
 # Install Python dependencies
