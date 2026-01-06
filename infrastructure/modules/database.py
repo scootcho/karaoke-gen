@@ -1,0 +1,173 @@
+"""
+Firestore database resources.
+
+Manages the Firestore database, composite indexes, and TTL configuration.
+"""
+
+import pulumi
+import pulumi_gcp as gcp
+from pulumi_gcp import firestore
+
+from config import PROJECT_ID
+
+
+def create_database() -> dict:
+    """
+    Create Firestore database and all composite indexes.
+
+    Returns:
+        dict: Dictionary containing all created resources for export.
+    """
+    resources = {}
+
+    # ==================== Firestore Database ====================
+    firestore_db = firestore.Database(
+        "karaoke-firestore",
+        project=PROJECT_ID,
+        name="(default)",
+        location_id="us-central1",
+        type="FIRESTORE_NATIVE",
+        concurrency_mode="PESSIMISTIC",
+        app_engine_integration_mode="DISABLED",
+    )
+    resources["firestore_db"] = firestore_db
+
+    # ==================== Firestore Composite Indexes ====================
+    # These are required for queries that filter/sort on multiple fields.
+
+    # Jobs: query by user_email, order by created_at (for user job lists)
+    resources["firestore_index_jobs_user_email"] = firestore.Index(
+        "firestore-index-jobs-user-email",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="jobs",
+        fields=[
+            firestore.IndexFieldArgs(field_path="user_email", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Jobs: query by status, order by created_at (for admin/system job lists)
+    resources["firestore_index_jobs_status"] = firestore.Index(
+        "firestore-index-jobs-status",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="jobs",
+        fields=[
+            firestore.IndexFieldArgs(field_path="status", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Sessions: query by user_email + is_active, order by created_at
+    resources["firestore_index_sessions_active"] = firestore.Index(
+        "firestore-index-sessions-active",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="sessions",
+        fields=[
+            firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="user_email", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Magic links: query by email, order by created_at
+    resources["firestore_index_magic_links"] = firestore.Index(
+        "firestore-index-magic-links",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="magic_links",
+        fields=[
+            firestore.IndexFieldArgs(field_path="email", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Gen Users: query by is_active, order by created_at
+    resources["firestore_index_gen_users_active_created"] = firestore.Index(
+        "firestore-index-gen-users-active-created",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="gen_users",
+        fields=[
+            firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Gen Users: query by is_active, order by last_login_at
+    resources["firestore_index_gen_users_active_login"] = firestore.Index(
+        "firestore-index-gen-users-active-login",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="gen_users",
+        fields=[
+            firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="last_login_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Gen Users: query by is_active, order by credits
+    resources["firestore_index_gen_users_active_credits"] = firestore.Index(
+        "firestore-index-gen-users-active-credits",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="gen_users",
+        fields=[
+            firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="credits", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # Gen Users: query by is_active, order by email
+    resources["firestore_index_gen_users_active_email"] = firestore.Index(
+        "firestore-index-gen-users-active-email",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="gen_users",
+        fields=[
+            firestore.IndexFieldArgs(field_path="is_active", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="email", order="ASCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # ==================== Firestore TTL Field Configuration ====================
+    # TTL policies automatically delete documents after expiration.
+
+    # Worker logs TTL: logs subcollection documents expire after 30 days
+    resources["firestore_field_logs_ttl"] = firestore.Field(
+        "firestore-field-logs-ttl",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="logs",  # Subcollection name (applies to all jobs/{job_id}/logs)
+        field="ttl_expiry",
+        ttl_config={},  # Empty block enables TTL based on ttl_expiry field
+        index_config={},  # Disable indexing on TTL field
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    # ==================== Firestore Indexes for Logs Subcollection ====================
+
+    # Logs: query by worker, order by timestamp
+    resources["firestore_index_logs_worker_timestamp"] = firestore.Index(
+        "firestore-index-logs-worker-timestamp",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="logs",  # Subcollection name
+        fields=[
+            firestore.IndexFieldArgs(field_path="worker", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="timestamp", order="ASCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
+    return resources
