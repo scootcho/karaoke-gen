@@ -1,0 +1,197 @@
+"""
+Worker service accounts for VM-based services.
+
+Manages service accounts for:
+- Flacfetch torrent/download VM
+- Encoding worker VM
+- GDrive validator Cloud Function
+- GitHub Actions self-hosted runners
+"""
+
+import pulumi
+import pulumi_gcp as gcp
+from pulumi_gcp import serviceaccount, storage
+
+from config import PROJECT_ID
+
+
+# ==================== Flacfetch Service Account ====================
+
+def create_flacfetch_service_account() -> serviceaccount.Account:
+    """Create the flacfetch service account for torrent downloads."""
+    return serviceaccount.Account(
+        "flacfetch-sa",
+        account_id="flacfetch-service",
+        display_name="Flacfetch Service Account",
+        description="Service account for flacfetch torrent/audio download VM",
+    )
+
+
+def grant_flacfetch_permissions(
+    service_account: serviceaccount.Account,
+    bucket: storage.Bucket,
+) -> dict:
+    """Grant permissions to the flacfetch service account."""
+    bindings = {}
+
+    # Storage Object Creator - write downloaded files to GCS
+    bindings["storage_writer"] = storage.BucketIAMMember(
+        "flacfetch-storage-writer",
+        bucket=bucket.name,
+        role="roles/storage.objectCreator",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Storage Object Viewer - read uploads folder
+    bindings["storage_reader"] = storage.BucketIAMMember(
+        "flacfetch-storage-reader",
+        bucket=bucket.name,
+        role="roles/storage.objectViewer",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Secret Manager Accessor - read API keys
+    bindings["secrets_access"] = gcp.projects.IAMMember(
+        "flacfetch-secrets-access",
+        project=PROJECT_ID,
+        role="roles/secretmanager.secretAccessor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    return bindings
+
+
+# ==================== Encoding Worker Service Account ====================
+
+def create_encoding_worker_service_account() -> serviceaccount.Account:
+    """Create the encoding worker service account for video encoding."""
+    return serviceaccount.Account(
+        "encoding-worker-sa",
+        account_id="encoding-worker",
+        display_name="Encoding Worker Service Account",
+        description="Service account for high-performance video encoding VM",
+    )
+
+
+def grant_encoding_worker_permissions(
+    service_account: serviceaccount.Account,
+    bucket: storage.Bucket,
+) -> dict:
+    """Grant permissions to the encoding worker service account."""
+    bindings = {}
+
+    # Storage Object Admin - read/write video files
+    bindings["storage_admin"] = storage.BucketIAMMember(
+        "encoding-worker-storage-admin",
+        bucket=bucket.name,
+        role="roles/storage.objectAdmin",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Secret Manager Accessor - read API key
+    bindings["secrets_access"] = gcp.projects.IAMMember(
+        "encoding-worker-secrets-access",
+        project=PROJECT_ID,
+        role="roles/secretmanager.secretAccessor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Logging Writer - write structured logs
+    bindings["logging_access"] = gcp.projects.IAMMember(
+        "encoding-worker-logging-access",
+        project=PROJECT_ID,
+        role="roles/logging.logWriter",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Monitoring Metric Writer - write metrics for Ops Agent
+    bindings["monitoring_access"] = gcp.projects.IAMMember(
+        "encoding-worker-monitoring-access",
+        project=PROJECT_ID,
+        role="roles/monitoring.metricWriter",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    return bindings
+
+
+# ==================== GDrive Validator Service Account ====================
+
+def create_gdrive_validator_service_account() -> serviceaccount.Account:
+    """Create the GDrive validator service account for Cloud Function."""
+    return serviceaccount.Account(
+        "gdrive-validator-sa",
+        account_id="gdrive-validator",
+        display_name="Google Drive Validator Function",
+        description="Service account for the GDrive validation Cloud Function",
+    )
+
+
+def grant_gdrive_validator_permissions(
+    service_account: serviceaccount.Account,
+) -> dict:
+    """Grant permissions to the GDrive validator service account."""
+    bindings = {}
+
+    # Secret Manager Accessor - read Pushbullet API key
+    bindings["secrets_access"] = gcp.projects.IAMMember(
+        "gdrive-validator-secrets-access",
+        project=PROJECT_ID,
+        role="roles/secretmanager.secretAccessor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    return bindings
+
+
+# ==================== GitHub Runner Service Account ====================
+
+def create_github_runner_service_account() -> serviceaccount.Account:
+    """Create the GitHub runner service account for self-hosted runners."""
+    return serviceaccount.Account(
+        "github-runner-sa",
+        account_id="github-runner",
+        display_name="GitHub Actions Runner",
+        description="Service account for self-hosted GitHub Actions runner VM",
+    )
+
+
+def grant_github_runner_permissions(
+    service_account: serviceaccount.Account,
+) -> dict:
+    """Grant permissions to the GitHub runner service account."""
+    bindings = {}
+
+    # Artifact Registry Reader - pull base images
+    bindings["artifact_reader"] = gcp.projects.IAMMember(
+        "github-runner-artifact-reader",
+        project=PROJECT_ID,
+        role="roles/artifactregistry.reader",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Secret Manager Accessor - read GitHub PAT
+    bindings["secrets_access"] = gcp.projects.IAMMember(
+        "github-runner-secrets-access",
+        project=PROJECT_ID,
+        role="roles/secretmanager.secretAccessor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Logging Writer - write logs
+    bindings["logging_access"] = gcp.projects.IAMMember(
+        "github-runner-logging-access",
+        project=PROJECT_ID,
+        role="roles/logging.logWriter",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    # Storage Object Admin - upload/overwrite wheels in GCS
+    bindings["storage_access"] = gcp.projects.IAMMember(
+        "github-runner-storage-write",
+        project=PROJECT_ID,
+        role="roles/storage.objectAdmin",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
+    return bindings

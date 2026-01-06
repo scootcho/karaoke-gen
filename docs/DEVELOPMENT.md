@@ -134,7 +134,11 @@ pulumi preview --stack nomadkaraoke/karaoke-gen-infrastructure/prod
 - GCE instances (GitHub runners, encoding worker)
 
 **Workflow:**
-1. Make changes in `infrastructure/__main__.py`
+1. Make changes in the appropriate module under `infrastructure/`
+   - `modules/` - Core GCP resources (database, storage, secrets, IAM, etc.)
+   - `compute/` - VM definitions and startup scripts
+   - `config.py` - Shared configuration constants
+   - `__main__.py` - Entry point that wires modules together
 2. Run `pulumi preview` locally to verify
 3. Create PR and merge
 4. CI deploys automatically
