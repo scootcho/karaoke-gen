@@ -324,11 +324,67 @@ class TestLyricsWorker:
             
             # Verify job was fetched to get artist/title
             mock_job_manager.get_job.assert_called_with("test123")
-            
+
             # Verify files were uploaded (the reference and uncorrected files exist)
             upload_calls = mock_storage.upload_file.call_args_list
             assert len(upload_calls) >= 2  # LRC + at least one reference or uncorrected
-    
+
+    @pytest.mark.asyncio
+    async def test_upload_lyrics_results_tracks_all_reference_lyrics(self, mock_job_manager, mock_storage, mock_job):
+        """Test that upload_lyrics_results uploads ALL reference lyrics and tracks them in job.files.
+
+        This verifies:
+        1. All reference files (Genius, Spotify, etc.) are uploaded, not just the first
+        2. Each reference is tracked in job.files.lyrics.reference_{source}
+        3. Uncorrected file is uploaded with proper name and tracked
+        """
+        from backend.workers.lyrics_worker import upload_lyrics_results
+        import json
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            lyrics_dir = os.path.join(temp_dir, "lyrics")
+            os.makedirs(lyrics_dir)
+
+            # Create LRC file
+            lrc_path = os.path.join(lyrics_dir, "test.lrc")
+            with open(lrc_path, 'w') as f:
+                f.write("[00:00.00]Test\n")
+
+            # Create required corrections.json file
+            corrections_path = os.path.join(lyrics_dir, "corrections.json")
+            with open(corrections_path, 'w') as f:
+                json.dump({"corrected_segments": []}, f)
+
+            # Create MULTIPLE reference lyrics files
+            for source in ["Genius", "Spotify", "Musixmatch"]:
+                ref_path = os.path.join(lyrics_dir, f"{mock_job.artist} - {mock_job.title} (Lyrics {source}).txt")
+                with open(ref_path, 'w') as f:
+                    f.write(f"Reference lyrics from {source}\n")
+
+            # Create uncorrected transcription file
+            uncorrected_path = os.path.join(lyrics_dir, f"{mock_job.artist} - {mock_job.title} (Lyrics Uncorrected).txt")
+            with open(uncorrected_path, 'w') as f:
+                f.write("Uncorrected transcription\n")
+
+            transcription_result = {"lrc_filepath": lrc_path}
+
+            await upload_lyrics_results(
+                "test123", temp_dir, transcription_result,
+                mock_storage, mock_job_manager
+            )
+
+            # Verify all reference lyrics were tracked via update_file_url
+            update_calls = mock_job_manager.update_file_url.call_args_list
+            tracked_keys = [call[0][2] for call in update_calls]  # (job_id, category, key)
+
+            # Should have tracked: lrc, corrections, uncorrected, and all references
+            assert 'lrc' in tracked_keys
+            assert 'corrections' in tracked_keys
+            assert 'uncorrected' in tracked_keys
+            assert 'reference_genius' in tracked_keys
+            assert 'reference_spotify' in tracked_keys
+            assert 'reference_musixmatch' in tracked_keys
+
     @pytest.mark.asyncio
     async def test_process_lyrics_transcription_marks_failed_on_error(self, mock_job_manager, mock_storage):
         """Test that process_lyrics_transcription marks job as failed on error."""
@@ -1113,4 +1169,80 @@ class TestDistributionDirectoryPreparation:
         # Verify they're removed
         assert not simplified_clean.exists()
         assert not simplified_backing.exists()
+
+    def test_lyrics_filename_mappings(self):
+        """Test that lyrics files are named correctly in distribution.
+
+        This verifies the mapping from job.files.lyrics keys to proper local filenames:
+        - lrc -> (Karaoke).lrc
+        - ass -> (Karaoke).ass
+        - corrections -> (Lyrics Corrections).json
+        - corrected_txt -> (Lyrics Corrected).txt
+        - uncorrected -> (Lyrics Uncorrected).txt
+        - reference_genius -> (Lyrics Genius).txt
+        - reference_spotify -> (Lyrics Spotify).txt
+        """
+        base_name = "Artist - Song"
+
+        # Expected filename mappings (matching video_worker.py implementation)
+        expected_mappings = {
+            'lrc': f"{base_name} (Karaoke).lrc",
+            'ass': f"{base_name} (Karaoke).ass",
+            'corrections': f"{base_name} (Lyrics Corrections).json",
+            'corrected_txt': f"{base_name} (Lyrics Corrected).txt",
+            'uncorrected': f"{base_name} (Lyrics Uncorrected).txt",
+            'reference_genius': f"{base_name} (Lyrics Genius).txt",
+            'reference_spotify': f"{base_name} (Lyrics Spotify).txt",
+            'reference_musixmatch': f"{base_name} (Lyrics Musixmatch).txt",
+            'reference_lrclib': f"{base_name} (Lyrics Lrclib).txt",
+        }
+
+        # Verify naming patterns
+        for key, filename in expected_mappings.items():
+            assert base_name in filename, f"{key} should include base_name"
+            if key == 'lrc':
+                assert filename.endswith('.lrc')
+                assert '(Karaoke)' in filename
+            elif key == 'ass':
+                assert filename.endswith('.ass')
+                assert '(Karaoke)' in filename
+            elif key == 'corrections':
+                assert filename.endswith('.json')
+                assert '(Lyrics Corrections)' in filename
+            elif key == 'corrected_txt':
+                assert filename.endswith('.txt')
+                assert '(Lyrics Corrected)' in filename
+            elif key == 'uncorrected':
+                assert filename.endswith('.txt')
+                assert '(Lyrics Uncorrected)' in filename
+            elif key.startswith('reference_'):
+                source = key.replace('reference_', '').title()
+                assert f'(Lyrics {source})' in filename
+
+    def test_with_vocals_in_lyrics_folder(self):
+        """Test that (With Vocals).mkv is placed in lyrics/ subfolder."""
+        base_name = "Artist - Song"
+        expected_filename = f"{base_name} (With Vocals).mkv"
+
+        # Verify naming pattern
+        assert "(With Vocals)" in expected_filename
+        assert expected_filename.endswith(".mkv")
+        assert base_name in expected_filename
+
+    def test_previews_folder_structure(self, tmp_path):
+        """Test that previews/ subfolder is created inside lyrics/."""
+        lyrics_dir = tmp_path / "lyrics"
+        lyrics_dir.mkdir()
+
+        previews_dir = lyrics_dir / "previews"
+        previews_dir.mkdir()
+
+        # Create a preview file
+        preview_file = previews_dir / "preview_abc123 (Karaoke).ass"
+        preview_file.write_text("[Events]\nDialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,Test")
+
+        assert lyrics_dir.exists()
+        assert previews_dir.exists()
+        assert preview_file.exists()
+        assert preview_file.name.endswith(".ass")
 

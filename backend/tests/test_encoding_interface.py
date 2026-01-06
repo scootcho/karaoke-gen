@@ -347,6 +347,54 @@ class TestGCEEncodingBackend:
         assert output.success is True
         assert output.lossless_4k_mp4_path == "gs://bucket/output/lossless.mp4"
 
+    @patch.object(GCEEncodingBackend, "_get_service")
+    @pytest.mark.asyncio
+    async def test_encode_handles_proper_filename_patterns(self, mock_get_service):
+        """Test GCE encoding correctly parses proper output filenames.
+
+        GCE worker now uses LocalEncodingService which produces files like:
+        - "Artist - Title (Final Karaoke Lossless 4k).mp4"
+        - "Artist - Title (Final Karaoke Lossy 4k).mp4"
+        - "Artist - Title (Final Karaoke Lossless 4k).mkv"
+        - "Artist - Title (Final Karaoke Lossy 720p).mp4"
+
+        These should be correctly mapped to the output format keys.
+        """
+        mock_service = MagicMock()
+        # Simulate GCE worker returning proper filenames (from LocalEncodingService)
+        mock_service.encode_videos = AsyncMock(return_value={
+            "status": "complete",
+            "output_files": [
+                "gs://bucket/output/Artist - Title (Final Karaoke Lossless 4k).mp4",
+                "gs://bucket/output/Artist - Title (Final Karaoke Lossy 4k).mp4",
+                "gs://bucket/output/Artist - Title (Final Karaoke Lossless 4k).mkv",
+                "gs://bucket/output/Artist - Title (Final Karaoke Lossy 720p).mp4",
+            ]
+        })
+        mock_get_service.return_value = mock_service
+
+        backend = GCEEncodingBackend()
+        input_config = EncodingInput(
+            title_video_path="/input/title.mov",
+            karaoke_video_path="/input/karaoke.mov",
+            instrumental_audio_path="/input/audio.flac",
+            artist="Artist",
+            title="Title",
+            options={
+                "job_id": "test-job",
+                "input_gcs_path": "gs://bucket/input/",
+                "output_gcs_path": "gs://bucket/output/",
+            }
+        )
+
+        output = await backend.encode(input_config)
+
+        assert output.success is True
+        assert output.lossless_4k_mp4_path == "gs://bucket/output/Artist - Title (Final Karaoke Lossless 4k).mp4"
+        assert output.lossy_4k_mp4_path == "gs://bucket/output/Artist - Title (Final Karaoke Lossy 4k).mp4"
+        assert output.lossless_mkv_path == "gs://bucket/output/Artist - Title (Final Karaoke Lossless 4k).mkv"
+        assert output.lossy_720p_mp4_path == "gs://bucket/output/Artist - Title (Final Karaoke Lossy 720p).mp4"
+
 
 class TestGetEncodingBackend:
     """Test encoding backend factory function."""
