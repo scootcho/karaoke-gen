@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **Infrastructure Modularization** (2026-01-06): Refactored `infrastructure/__main__.py` from 2,602 lines to 339 lines (87% reduction). Split into organized modules: `modules/` for core GCP resources, `compute/` for VMs and startup scripts, `config.py` for shared constants. Extracted embedded encoding worker Python app to `backend/services/gce_encoding/`. See `infrastructure/README.md` for new structure and `infrastructure/docs/PHASE5-PACKER-IMAGE-PLAN.md` for planned Packer image optimization.
+
 - **GCE Encoding Worker Python 3.13** (2026-01-06): Upgraded GCE encoding worker from Debian's Python 3.11 to Python 3.13 built from source. Uses dedicated virtual environment at `/opt/encoding-worker/venv`, removing the need for `--break-system-packages`. Aligns the encoding worker with CI/Cloud Run Python version.
 
 - **GCE Encoding Unified with LocalEncodingService** (2026-01-06): GCE encoding worker now uses the same `LocalEncodingService` as the local CLI, eliminating duplicated encoding logic. Output files now have proper names (`Artist - Title (Final Karaoke Lossless 4k).mp4` instead of `output_4k_lossless.mp4`) and include title/end screen concatenation. Wheel deployed to GCS; worker installs at job start for hot updates without VM restart. Removed all fallback logic - single code path for consistent output across CLI, Cloud Run, and GCE. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#unify-encoding-logic-with-gcs-wheel-deployment).
