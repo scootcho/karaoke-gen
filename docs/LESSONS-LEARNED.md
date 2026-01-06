@@ -222,9 +222,9 @@ escaped = filename.replace("'", "\\'")
 query = f"name='{escaped}' and '{parent_id}' in parents"
 ```
 
-### FFmpeg Filter Path Escaping
+### FFmpeg Filter Path Escaping (subprocess without shell)
 
-**Problem**: Song titles with apostrophes (e.g., "I'm With You") cause FFmpeg's ASS subtitle filter to fail because paths aren't escaped.
+**Problem**: Song titles with apostrophes (e.g., "I'm With You") cause FFmpeg's ASS subtitle filter to fail because paths aren't escaped correctly.
 
 ```python
 # BAD - FFmpeg strips the apostrophe, looks for wrong path
@@ -232,20 +232,31 @@ ass_filter = f"ass=./Avril Lavigne - I'm With You/cache/temp.ass"
 # FFmpeg error: Could not create a libass track when reading file './Avril Lavigne - Im With You/cache/temp.ass'
 ```
 
-FFmpeg filter syntax interprets `'`, `:`, and `\` as special characters. The path appears correct in logs but FFmpeg silently mangles it.
+**Wrong approach #1**: Simple backslash escaping like `\'` doesn't work because FFmpeg's filter parser requires more escaping.
 
-**Wrong approach** (doesn't work): Simple backslash escaping like `\'` doesn't work because FFmpeg's filter parser consumes the backslash.
+**Wrong approach #2**: Shell-style escaping `'\''` (end quote, escaped quote, start quote) only works when passing through a shell. When using Python `subprocess` with a command list, there's no shell - arguments go directly to FFmpeg, so shell escaping patterns don't work.
 
-**Solution**: Wrap paths in single quotes and escape embedded quotes using `'\''`:
+**Solution**: Use FFmpeg filter escaping (for subprocess without shell):
 ```python
 def _escape_ffmpeg_filter_path(path: str) -> str:
-    # Escape single quotes: ' becomes '\'' (end quote, \', start quote)
-    escaped = path.replace("'", "'\\''")
-    # Wrap entire path in single quotes
-    return f"'{escaped}'"
+    """Escape a path for FFmpeg filter expressions (for subprocess without shell).
 
-# Result: "I'm With You" becomes "'I'\\''m With You'"
-# FFmpeg sees: 'I' + literal ' + 'm With You'
+    FFmpeg filter escaping rules:
+    - Backslashes: double them (\ -> \\)
+    - Single quotes/apostrophes: escape with three backslashes (' -> \\\')
+    - Spaces: escape with backslash ( -> \ )
+    """
+    # First escape existing backslashes (\ -> \\)
+    escaped = path.replace("\\", "\\\\")
+    # Escape single quotes (' -> \\\')
+    # In Python source: 6 backslashes + apostrophe = 3 backslashes + apostrophe in string
+    escaped = escaped.replace("'", "\\\\\\'")
+    # Escape spaces
+    escaped = escaped.replace(" ", "\\ ")
+    return escaped
+
+# Result: "I'm With You" becomes "I\\\'m\ With\ You"
+# FFmpeg correctly interprets this as: I'm With You
 ```
 
 **Symptoms**:
@@ -253,7 +264,9 @@ def _escape_ffmpeg_filter_path(path: str) -> str:
 - Error path is subtly different from the path in your code (missing apostrophe)
 - Works fine for songs without special characters
 
-**Lesson**: Any path passed to FFmpeg filter expressions (`-vf`, `-af`) needs single-quote wrapping. The `'\''` pattern (end quote, escaped quote, start quote) handles embedded quotes correctly.
+**Key insight**: FFmpeg filter escaping is different from shell escaping. When using `subprocess.run(cmd_list)` (no `shell=True`), there's no shell to interpret the arguments. FFmpeg receives the strings directly and applies its own filter expression parsing rules. The `'\''` shell idiom does NOT work in this context.
+
+**Lesson**: When debugging FFmpeg filter path issues, check whether you're using shell or subprocess. For subprocess without shell, escape spaces with `\ ` and apostrophes with `\\\'` (3 backslashes + quote in the actual string).
 
 ### Duplicate Code Leads to Inconsistent Behavior
 
