@@ -48,8 +48,10 @@ cd frontend && npm run test:all 2>&1 | tail -n 200
 - Skip for docs-only changes
 
 ### Infrastructure
-- All GCP changes via Pulumi in `infrastructure/`
-- `gcloud` CLI for reading/debugging only
+- **All GCP changes via Pulumi PRs** - changes in `infrastructure/` deploy automatically on merge to main
+- Never modify GCP resources directly via console or `gcloud` CLI
+- `gcloud` CLI for reading/debugging only (e.g., checking logs, SSH to VMs)
+- Local `pulumi preview` works but `pulumi up` requires broader permissions than CI
 - Stop and notify user on auth issues
 
 ## API Authentication (for Agents)
