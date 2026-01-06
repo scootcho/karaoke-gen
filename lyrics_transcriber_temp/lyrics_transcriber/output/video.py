@@ -353,18 +353,27 @@ class VideoGenerator:
             raise
 
     def _escape_ffmpeg_filter_path(self, path: str) -> str:
-        """Escape a path for FFmpeg filter expressions using single-quote wrapping.
+        """Escape a path for FFmpeg filter expressions (for subprocess without shell).
 
-        FFmpeg filter syntax uses single quotes to protect special characters
-        like spaces, colons, and semicolons. Single quotes within the path
-        are escaped using the '\'' pattern (end quote, literal quote, start quote).
+        When using subprocess with a command list (no shell), FFmpeg receives the
+        filter string directly. FFmpeg's filter parser requires escaping:
+        - Backslashes: double them (\ -> \\)
+        - Single quotes/apostrophes: escape with three backslashes (' -> \\')
+        - Spaces: escape with backslash ( -> \ )
 
-        Example: "I'm With You" becomes "'I'\\''m With You'"
+        Note: This is different from shell escaping. The '\\'\\''' pattern used for
+        shell escaping does NOT work when subprocess passes args directly to FFmpeg.
+
+        Example: "I'm With You" becomes "I\\\\'m\\ With\\ You"
         """
-        # Escape single quotes: ' becomes '\'' (end quote, \', start quote)
-        escaped = path.replace("'", "'\\''")
-        # Wrap entire path in single quotes
-        return f"'{escaped}'"
+        # First escape existing backslashes (\ -> \\)
+        escaped = path.replace("\\", "\\\\")
+        # Escape single quotes (' -> \\')
+        # In the actual string we need 3 backslashes before the quote
+        escaped = escaped.replace("'", "\\\\\\'")
+        # Escape spaces
+        escaped = escaped.replace(" ", "\\ ")
+        return escaped
 
     def _build_ass_filter(self, ass_path: str) -> str:
         """Build ASS filter with font directory support."""
