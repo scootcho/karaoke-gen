@@ -222,6 +222,39 @@ escaped = filename.replace("'", "\\'")
 query = f"name='{escaped}' and '{parent_id}' in parents"
 ```
 
+### FFmpeg Filter Path Escaping
+
+**Problem**: Song titles with apostrophes (e.g., "I'm With You") cause FFmpeg's ASS subtitle filter to fail because paths aren't escaped.
+
+```python
+# BAD - FFmpeg strips the apostrophe, looks for wrong path
+ass_filter = f"ass=./Avril Lavigne - I'm With You/cache/temp.ass"
+# FFmpeg error: Could not create a libass track when reading file './Avril Lavigne - Im With You/cache/temp.ass'
+```
+
+FFmpeg filter syntax interprets `'`, `:`, and `\` as special characters. The path appears correct in logs but FFmpeg silently mangles it.
+
+**Wrong approach** (doesn't work): Simple backslash escaping like `\'` doesn't work because FFmpeg's filter parser consumes the backslash.
+
+**Solution**: Wrap paths in single quotes and escape embedded quotes using `'\''`:
+```python
+def _escape_ffmpeg_filter_path(path: str) -> str:
+    # Escape single quotes: ' becomes '\'' (end quote, \', start quote)
+    escaped = path.replace("'", "'\\''")
+    # Wrap entire path in single quotes
+    return f"'{escaped}'"
+
+# Result: "I'm With You" becomes "'I'\\''m With You'"
+# FFmpeg sees: 'I' + literal ' + 'm With You'
+```
+
+**Symptoms**:
+- Video generation fails with "Could not create a libass track"
+- Error path is subtly different from the path in your code (missing apostrophe)
+- Works fine for songs without special characters
+
+**Lesson**: Any path passed to FFmpeg filter expressions (`-vf`, `-af`) needs single-quote wrapping. The `'\''` pattern (end quote, escaped quote, start quote) handles embedded quotes correctly.
+
 ### Duplicate Code Leads to Inconsistent Behavior
 
 **Problem**: Multiple endpoints computing the same defaults independently. `audio_search.py` had `effective_brand_prefix = body.brand_prefix or settings.default_brand_prefix` but `file_upload.py` was missing it for some endpoints.

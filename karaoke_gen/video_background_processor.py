@@ -156,15 +156,20 @@ class VideoBackgroundProcessor:
         """
         Escape a file path for use in ffmpeg filter expressions.
 
+        FFmpeg filter syntax uses single quotes to protect special characters
+        like spaces, colons, and semicolons. Single quotes within the path
+        are escaped using the '\\'' pattern (end quote, literal quote, start quote).
+
         Args:
             path: File path to escape
 
         Returns:
-            str: Escaped path
+            str: Escaped path (wrapped in single quotes)
         """
-        # Escape backslashes and colons for ffmpeg filter syntax
-        escaped = path.replace("\\", "\\\\").replace(":", "\\:")
-        return escaped
+        # Escape single quotes: ' becomes '\'' (end quote, \', start quote)
+        escaped = path.replace("'", "'\\''")
+        # Wrap entire path in single quotes
+        return f"'{escaped}'"
 
     def build_video_filter(self, ass_subtitles_path, darkness_percent, fonts_dir=None):
         """
