@@ -212,4 +212,12 @@ def grant_github_actions_permissions(
         member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
     )
 
+    # Grant broad Editor access to avoid permission issues when adding new resources
+    bindings["editor"] = gcp.projects.IAMMember(
+        "github-actions-editor",
+        project=PROJECT_ID,
+        role="roles/editor",
+        member=service_account.email.apply(lambda email: f"serviceAccount:{email}"),
+    )
+
     return bindings
