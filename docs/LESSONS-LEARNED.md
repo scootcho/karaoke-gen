@@ -625,6 +625,43 @@ GitHub-hosted runners have ~14GB disk, which caused failures during Docker build
 
 See `docs/archive/2025-12-28-self-hosted-github-runner.md` for full details.
 
+### Pulumi CI Deployments Need Skip-Preview for Limited Service Accounts
+
+**Problem**: Running `pulumi up --refresh` in CI requires the service account to have read permissions on ALL managed GCP resources. Pulumi refreshes state by querying each resource, and permission errors cause the deployment to fail before any changes are applied.
+
+**Symptoms**:
+```
+Error when reading or editing Resource "project" with IAM Member: Role "roles/...":
+Error retrieving IAM policy for project "...": googleapi: Error 403: The caller does not have permission
+```
+
+**Root cause**: `--refresh` (default behavior) makes read API calls to verify current state matches Pulumi's state. This requires permissions like:
+- `resourcemanager.projects.getIamPolicy` (for IAM bindings)
+- `secretmanager.secrets.get` (for secrets)
+- `cloudtasks.queues.get` (for Cloud Tasks)
+- `iam.workloadIdentityPools.get` (for Workload Identity)
+- And many more for each resource type managed
+
+**Solution**: Use `--skip-preview` for CI deployments where Pulumi state is authoritative:
+
+```yaml
+# In CI workflow
+pulumi up --yes --skip-preview --stack org/project/stack
+```
+
+**Why this is safe**:
+- Infrastructure is only modified through Pulumi (single source of truth)
+- Preview/refresh is still useful during local development with broader permissions
+- Reduces permissions surface for CI service account (principle of least privilege)
+
+**Alternative** (if refresh is required): Grant the service account `roles/editor` or individual read roles for each resource type. This is less secure but allows drift detection.
+
+**Lesson**: When setting up Pulumi in CI, either:
+1. Grant broad read permissions and keep `--refresh` (detects drift)
+2. Use minimal permissions and `--skip-preview` (trusts Pulumi state)
+
+Choose based on your threat model. For most projects, trusting Pulumi state is acceptable since manual console changes are rare.
+
 ### Docker Disk Space Management on Self-Hosted Runners
 
 **Problem**: Even with 200GB SSDs, self-hosted runners can fill up with Docker images. Each CI build creates new dangling images (~15GB each), and without aggressive cleanup, disk fills in days.
