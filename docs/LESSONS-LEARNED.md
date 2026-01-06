@@ -1460,6 +1460,57 @@ This caused cloud-generated videos to be incomplete (no title/end screens) and h
 
 **Lesson**: When multiple deployment targets (CLI, Cloud Run, GCE) need the same complex logic, package it as a library and deploy via a shared mechanism (GCS wheel). Duplicating logic leads to feature drift and inconsistent behavior.
 
+### Unify Preview Encoding with LocalPreviewEncodingService
+
+**Problem**: Following the pattern of final encoding, the GCE preview encoding also had divergent code. The `run_preview_encoding` function in `infrastructure/__main__.py` was a 100-line "simplified" reimplementation that:
+- Hardcoded resolution (480x270) instead of using constants
+- Had its own FFmpeg filter path escaping function with different logic
+- Didn't support hardware acceleration (NVENC)
+- Lacked font directory support for custom fonts
+- Had different movflags and encoding settings
+
+While the final encoding was unified earlier, preview encoding was overlooked, creating a potential source of inconsistent preview videos between local development and cloud jobs.
+
+**Solution**: Created `LocalPreviewEncodingService` in `backend/services/local_preview_encoding_service.py`:
+
+1. **Extracted preview logic from VideoGenerator**: The service encapsulates the same FFmpeg command building from `VideoGenerator._build_preview_ffmpeg_command`
+
+2. **Single source of truth for preview settings**:
+   ```python
+   class LocalPreviewEncodingService:
+       PREVIEW_WIDTH = 480
+       PREVIEW_HEIGHT = 270
+       PREVIEW_FPS = 24
+       PREVIEW_AUDIO_BITRATE = "96k"
+   ```
+
+3. **GCE worker imports from installed wheel**:
+   ```python
+   from backend.services.local_preview_encoding_service import (
+       LocalPreviewEncodingService,
+       PreviewEncodingConfig,
+   )
+
+   service = LocalPreviewEncodingService(logger=logger)
+   result = service.encode_preview(config)
+   ```
+
+4. **Process preview jobs call ensure_latest_wheel()**:
+   ```python
+   async def process_preview_job(job_id, request):
+       ensure_latest_wheel()  # Get latest code at job start
+       # ... rest of processing
+   ```
+
+**Benefits**:
+- Consistent preview encoding across CLI, Cloud Run, and GCE
+- Hardware acceleration (NVENC) when available
+- Proper FFmpeg filter escaping for special characters in paths
+- Custom font support via fontsdir filter
+- Single place to modify preview settings
+
+**Lesson**: After unifying a major component (final encoding), audit related features (preview encoding) that may have similar duplication. It's easy to overlook "simpler" variations when focusing on the main feature.
+
 ### Cloud Distribution Must Match Local CLI Output Structure
 
 **Problem**: Cloud-generated karaoke outputs had different file organization than local CLI, causing confusion and missing files in Dropbox uploads:

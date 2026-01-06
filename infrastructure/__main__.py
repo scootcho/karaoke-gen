@@ -1406,11 +1406,28 @@ def upload_single_file_to_gcs(local_path: Path, gcs_uri: str):
 
 
 def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewRequest"):
-    # Run FFmpeg encoding for preview video (480x270, fast settings)
+    '''Run preview encoding using LocalPreviewEncodingService (single source of truth).
+
+    Uses LocalPreviewEncodingService from the installed karaoke-gen wheel to ensure
+    preview videos are identical across local CLI, Cloud Run, and GCE worker:
+    - Same resolution (480x270)
+    - Same encoding settings (optimized for speed)
+    - Same FFmpeg filter escaping
+    - Hardware acceleration when available
+
+    Requires the karaoke-gen wheel to be installed (done by ensure_latest_wheel).
+    '''
     jobs[job_id]["status"] = "running"
     jobs[job_id]["progress"] = 10
 
     try:
+        # Import LocalPreviewEncodingService from installed wheel (required, no fallback)
+        from backend.services.local_preview_encoding_service import (
+            LocalPreviewEncodingService,
+            PreviewEncodingConfig,
+        )
+        logger.info("Using LocalPreviewEncodingService from installed wheel")
+
         # Download input files
         ass_path = work_dir / "subtitles.ass"
         audio_path = work_dir / "audio.flac"
@@ -1428,6 +1445,7 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
             download_single_file_from_gcs(request.background_image_gcs_path, bg_image_path)
 
         # Download custom font if provided and register with fontconfig
+        font_path = None
         if request.font_gcs_path:
             # Use standard fontconfig location that's already in the search path
             fonts_dir = Path("/usr/local/share/fonts/custom")
@@ -1440,56 +1458,27 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
             subprocess.run(["fc-cache", "-fv"], capture_output=True)
             logger.info(f"Updated fontconfig cache with custom font: {font_filename}")
 
-        # Build FFmpeg command
-        output_path = work_dir / "preview.mp4"
-
-        # Escape special characters in path for FFmpeg filter syntax
-        # FFmpeg filter parsing requires escaping: \\ : , [ ] ;
-        def escape_ffmpeg_filter_path(path: str) -> str:
-            # Note: Extra escaping needed since this is inside a triple-quoted string in Pulumi
-            return path.replace("\\\\", "\\\\\\\\").replace(":", "\\\\:").replace(",", "\\\\,").replace("[", "\\\\[").replace("]", "\\\\]").replace(";", "\\\\;")
-
-        escaped_ass_path = escape_ffmpeg_filter_path(str(ass_path))
-
-        # Base command with frame rate
-        cmd = ["ffmpeg", "-y", "-r", "24"]
-
-        # Video input: background image or solid color
-        if bg_image_path and bg_image_path.exists():
-            cmd.extend(["-loop", "1", "-i", str(bg_image_path)])
-            # Scale and pad background to 480x270
-            vf = f"scale=480:270:force_original_aspect_ratio=decrease,pad=480:270:(ow-iw)/2:(oh-ih)/2,ass={escaped_ass_path}"
-        else:
-            # Solid color background
-            color = request.background_color or "black"
-            cmd.extend(["-f", "lavfi", "-i", f"color=c={color}:s=480x270:r=24"])
-            vf = f"ass={escaped_ass_path}"
-
-        # Audio input
-        cmd.extend(["-i", str(audio_path)])
-
-        # Video filter and encoding settings
-        cmd.extend([
-            "-vf", vf,
-            "-c:a", "aac", "-b:a", "96k",
-            "-c:v", "libx264",
-            "-preset", "superfast",
-            "-crf", "28",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-threads", "8",
-            "-shortest",
-            str(output_path)
-        ])
-
         jobs[job_id]["progress"] = 40
-        logger.info(f"Running preview encoding: {' '.join(cmd)}")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Build encoding config
+        output_path = work_dir / "preview.mp4"
+        config = PreviewEncodingConfig(
+            ass_path=str(ass_path),
+            audio_path=str(audio_path),
+            output_path=str(output_path),
+            background_image_path=str(bg_image_path) if bg_image_path else None,
+            background_color=request.background_color or "black",
+            font_path=str(font_path) if font_path else None,
+        )
 
-        if result.returncode != 0:
-            logger.error(f"FFmpeg failed: {result.stderr}")
-            raise RuntimeError(f"FFmpeg preview encoding failed: {result.stderr[-500:]}")
+        # Create service and run encoding
+        service = LocalPreviewEncodingService(logger=logger)
+        logger.info("Starting LocalPreviewEncodingService.encode_preview()")
+
+        result = service.encode_preview(config)
+
+        if not result.success:
+            raise RuntimeError(f"Preview encoding failed: {result.error}")
 
         jobs[job_id]["progress"] = 80
         logger.info(f"Preview encoded: {output_path}")
@@ -1500,6 +1489,18 @@ def run_preview_encoding(job_id: str, work_dir: Path, request: "EncodePreviewReq
 
         jobs[job_id]["output_files"] = [request.output_gcs_path]
         return output_path
+
+    except ImportError as e:
+        # No fallback - wheel must be installed
+        error_msg = (
+            f"LocalPreviewEncodingService not available: {e}. "
+            "The karaoke-gen wheel must be installed. "
+            "Check that ensure_latest_wheel() succeeded and wheel exists in GCS."
+        )
+        logger.error(error_msg)
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["error"] = error_msg
+        raise RuntimeError(error_msg) from e
 
     except Exception as e:
         logger.error(f"Preview encoding failed: {e}")
@@ -1748,12 +1749,16 @@ async def process_job(job_id: str, request: EncodeRequest):
 async def process_preview_job(job_id: str, request: EncodePreviewRequest):
     # Process a preview encoding job asynchronously
     try:
+        # Download and install latest wheel at job start (allows hot updates without restart)
+        # This means in-progress jobs continue with their version, new jobs get latest code
+        ensure_latest_wheel()
+
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir) / "work"
             work_dir.mkdir()
 
             # Run preview encoding in thread pool (CPU-bound)
-            # Note: run_preview_encoding handles download/upload internally
+            # Uses LocalPreviewEncodingService from the installed wheel
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 executor,
