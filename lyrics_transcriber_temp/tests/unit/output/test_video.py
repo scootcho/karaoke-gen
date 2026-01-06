@@ -210,7 +210,7 @@ def test_build_ass_filter_no_font_path(video_generator):
     """Test _build_ass_filter with no font path configured."""
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    assert result == "ass=test.ass"
+    assert result == "ass='test.ass'"
 
 
 def test_build_ass_filter_with_valid_font_path(video_generator, tmp_path):
@@ -220,13 +220,14 @@ def test_build_ass_filter_with_valid_font_path(video_generator, tmp_path):
     font_dir.mkdir()
     font_file = font_dir / "test.ttf"
     font_file.touch()
-    
+
     # Update styles to include font path
     video_generator.styles["karaoke"]["font_path"] = str(font_file)
-    
+
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    expected = f"ass=test.ass:fontsdir={str(font_dir)}"
+    # Both paths should be wrapped in single quotes
+    expected = f"ass='test.ass':fontsdir='{str(font_dir)}'"
     assert result == expected
 
 
@@ -234,30 +235,30 @@ def test_build_ass_filter_with_invalid_font_path(video_generator):
     """Test _build_ass_filter with invalid font path (file doesn't exist)."""
     # Set non-existent font path
     video_generator.styles["karaoke"]["font_path"] = "/nonexistent/font.ttf"
-    
+
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    assert result == "ass=test.ass"
+    assert result == "ass='test.ass'"
 
 
 def test_build_ass_filter_with_empty_font_path(video_generator):
     """Test _build_ass_filter with empty font path."""
     # Set empty font path
     video_generator.styles["karaoke"]["font_path"] = ""
-    
+
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    assert result == "ass=test.ass"
+    assert result == "ass='test.ass'"
 
 
 def test_build_ass_filter_with_none_font_path(video_generator):
     """Test _build_ass_filter with None font path."""
     # Set None font path
     video_generator.styles["karaoke"]["font_path"] = None
-    
+
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    assert result == "ass=test.ass"
+    assert result == "ass='test.ass'"
 
 
 def test_build_ass_filter_no_karaoke_section(tmp_path):
@@ -269,29 +270,75 @@ def test_build_ass_filter_no_karaoke_section(tmp_path):
         video_resolution=(1920, 1080),
         styles=styles,
     )
-    
+
     ass_path = "test.ass"
     result = generator._build_ass_filter(ass_path)
-    assert result == "ass=test.ass"
+    assert result == "ass='test.ass'"
 
 
 def test_build_ass_filter_logging(video_generator, tmp_path, caplog):
     """Test _build_ass_filter logging behavior."""
     # Set log level to INFO to capture the logs
     caplog.set_level(logging.INFO)
-    
+
     # Create a test font file
     font_dir = tmp_path / "fonts"
     font_dir.mkdir()
     font_file = font_dir / "test.ttf"
     font_file.touch()
-    
+
     # Update styles to include font path
     video_generator.styles["karaoke"]["font_path"] = str(font_file)
-    
+
     ass_path = "test.ass"
     result = video_generator._build_ass_filter(ass_path)
-    
+
     # Check that info log was generated
     assert "Returning ASS filter with fonts dir:" in caplog.text
     assert str(font_dir) in caplog.text
+
+
+def test_escape_ffmpeg_filter_path(video_generator):
+    """Test _escape_ffmpeg_filter_path uses single-quote wrapping correctly."""
+    # Test simple path (wrapped in single quotes)
+    assert video_generator._escape_ffmpeg_filter_path("/path/to/file.ass") == "'/path/to/file.ass'"
+
+    # Test apostrophe escaping (fixes paths like "I'm With You")
+    # Single quote becomes '\'' (end quote, escaped quote, start quote)
+    assert video_generator._escape_ffmpeg_filter_path("./Avril Lavigne - I'm With You/file.ass") == "'./Avril Lavigne - I'\\''m With You/file.ass'"
+
+    # Test path with spaces (protected by single quotes)
+    assert video_generator._escape_ffmpeg_filter_path("/path/with spaces/file.ass") == "'/path/with spaces/file.ass'"
+
+    # Test path with colons (protected by single quotes)
+    assert video_generator._escape_ffmpeg_filter_path("C:/path/file.ass") == "'C:/path/file.ass'"
+
+    # Test multiple apostrophes
+    assert video_generator._escape_ffmpeg_filter_path("It's Bob's file.ass") == "'It'\\''s Bob'\\''s file.ass'"
+
+
+def test_build_ass_filter_escapes_path_with_apostrophe(video_generator):
+    """Test _build_ass_filter properly escapes paths containing apostrophes."""
+    ass_path = "./Avril Lavigne - I'm With You/cache/temp.ass"
+    result = video_generator._build_ass_filter(ass_path)
+    # Should wrap in single quotes and escape the apostrophe
+    assert result == "ass='./Avril Lavigne - I'\\''m With You/cache/temp.ass'"
+
+
+def test_build_ass_filter_escapes_font_dir_with_special_chars(video_generator, tmp_path):
+    """Test _build_ass_filter properly escapes font directory with special characters."""
+    # Create a font directory with special characters
+    font_dir = tmp_path / "It's a Font Dir"
+    font_dir.mkdir()
+    font_file = font_dir / "test.ttf"
+    font_file.touch()
+
+    # Update styles to include font path
+    video_generator.styles["karaoke"]["font_path"] = str(font_file)
+
+    ass_path = "test.ass"
+    result = video_generator._build_ass_filter(ass_path)
+    # Should have fontsdir with escaped path
+    assert "fontsdir=" in result
+    # Apostrophe should be escaped using '\'' pattern
+    assert "'\\''s" in result

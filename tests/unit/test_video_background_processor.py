@@ -121,16 +121,25 @@ class TestVideoBackgroundProcessor:
             processor.get_audio_duration("/path/to/audio.wav")
 
     def test_escape_filter_path(self, processor):
-        """Test path escaping for ffmpeg filters."""
-        # Test backslash escaping
-        assert processor.escape_filter_path("C:\\Users\\test\\file.ass") == "C\\:\\\\Users\\\\test\\\\file.ass"
-        
-        # Test colon escaping
-        assert processor.escape_filter_path("/path/to/file.ass") == "/path/to/file.ass"
-        assert processor.escape_filter_path("C:/path/file.ass") == "C\\:/path/file.ass"
-        
-        # Test combined escaping
-        assert processor.escape_filter_path("C:\\path:with:colons\\file.ass") == "C\\:\\\\path\\:with\\:colons\\\\file.ass"
+        """Test path escaping for ffmpeg filters using single-quote wrapping."""
+        # Test simple path (wrapped in single quotes)
+        assert processor.escape_filter_path("/path/to/file.ass") == "'/path/to/file.ass'"
+
+        # Test path with spaces (protected by single quotes)
+        assert processor.escape_filter_path("/path/with spaces/file.ass") == "'/path/with spaces/file.ass'"
+
+        # Test apostrophe escaping (fixes paths like "I'm With You")
+        # Single quote becomes '\'' (end quote, escaped quote, start quote)
+        assert processor.escape_filter_path("./Avril Lavigne - I'm With You/file.ass") == "'./Avril Lavigne - I'\\''m With You/file.ass'"
+
+        # Test path with colons (protected by single quotes)
+        assert processor.escape_filter_path("C:/path/file.ass") == "'C:/path/file.ass'"
+
+        # Test Windows-style path (backslashes preserved, wrapped in quotes)
+        assert processor.escape_filter_path("C:\\Users\\test\\file.ass") == "'C:\\Users\\test\\file.ass'"
+
+        # Test multiple apostrophes
+        assert processor.escape_filter_path("It's Bob's file.ass") == "'It'\\''s Bob'\\''s file.ass'"
 
     def test_build_video_filter_no_darkness(self, processor):
         """Test video filter building without darkness overlay."""
@@ -139,13 +148,13 @@ class TestVideoBackgroundProcessor:
             darkness_percent=0,
             fonts_dir=None
         )
-        
+
         # Should contain scale and crop
         assert "scale=w=3840:h=2160:force_original_aspect_ratio=increase,crop=3840:2160" in vf_filter
-        
-        # Should contain ASS filter
-        assert "ass=/path/to/subs.ass" in vf_filter
-        
+
+        # Should contain ASS filter with single-quoted path
+        assert "ass='/path/to/subs.ass'" in vf_filter
+
         # Should NOT contain darkening
         assert "drawbox" not in vf_filter
 
@@ -156,10 +165,10 @@ class TestVideoBackgroundProcessor:
             darkness_percent=50,
             fonts_dir=None
         )
-        
+
         # Should contain darkening with correct alpha
         assert "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.50:t=fill" in vf_filter
-        
+
         # Should contain ASS filter after darkening
         assert vf_filter.index("drawbox") < vf_filter.index("ass=")
 
@@ -171,20 +180,21 @@ class TestVideoBackgroundProcessor:
                 darkness_percent=0,
                 fonts_dir="/path/to/fonts"
             )
-        
-        # Should contain fonts directory in ASS filter
-        assert "fontsdir=/path/to/fonts" in vf_filter
+
+        # Should contain fonts directory in ASS filter (single-quoted)
+        assert "fontsdir='/path/to/fonts'" in vf_filter
 
     def test_build_video_filter_path_escaping(self, processor):
         """Test video filter building with special characters in paths."""
+        # Test with apostrophe in path
         vf_filter = processor.build_video_filter(
-            ass_subtitles_path="C:\\Users\\test\\subs.ass",
+            ass_subtitles_path="./Avril Lavigne - I'm With You/subs.ass",
             darkness_percent=0,
             fonts_dir=None
         )
-        
-        # Paths should be escaped
-        assert "C\\:\\\\Users\\\\test\\\\subs.ass" in vf_filter
+
+        # Paths should be single-quoted with apostrophes escaped as '\''
+        assert "'./Avril Lavigne - I'\\''m With You/subs.ass'" in vf_filter
 
     @patch('subprocess.run')
     def test_execute_command_with_fallback_gpu_success(self, mock_run, processor_with_nvenc, mock_logger):

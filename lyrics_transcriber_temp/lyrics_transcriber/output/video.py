@@ -352,19 +352,35 @@ class VideoGenerator:
             self.logger.error(f"Failed to resize background image: {e.output}")
             raise
 
+    def _escape_ffmpeg_filter_path(self, path: str) -> str:
+        """Escape a path for FFmpeg filter expressions using single-quote wrapping.
+
+        FFmpeg filter syntax uses single quotes to protect special characters
+        like spaces, colons, and semicolons. Single quotes within the path
+        are escaped using the '\'' pattern (end quote, literal quote, start quote).
+
+        Example: "I'm With You" becomes "'I'\\''m With You'"
+        """
+        # Escape single quotes: ' becomes '\'' (end quote, \', start quote)
+        escaped = path.replace("'", "'\\''")
+        # Wrap entire path in single quotes
+        return f"'{escaped}'"
+
     def _build_ass_filter(self, ass_path: str) -> str:
         """Build ASS filter with font directory support."""
-        ass_filter = f"ass={ass_path}"
-        
+        escaped_ass_path = self._escape_ffmpeg_filter_path(ass_path)
+        ass_filter = f"ass={escaped_ass_path}"
+
         # Get font path from styles configuration
         karaoke_styles = self.styles.get("karaoke", {})
         font_path = karaoke_styles.get("font_path")
-        
+
         if font_path and os.path.isfile(font_path):
             font_dir = os.path.dirname(font_path)
-            ass_filter += f":fontsdir={font_dir}"
+            escaped_font_dir = self._escape_ffmpeg_filter_path(font_dir)
+            ass_filter += f":fontsdir={escaped_font_dir}"
             self.logger.info(f"Returning ASS filter with fonts dir: {ass_filter}")
-        
+
         return ass_filter
 
     def _build_ffmpeg_command(self, ass_path: str, audio_path: str, output_path: str) -> List[str]:
