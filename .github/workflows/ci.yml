@@ -990,32 +990,32 @@ jobs:
         run: |
           BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
 
-          # Try to get the existing base image's hash label
-          # First check if image exists locally (fast, no network call)
-          # Only pull from registry if not cached locally
+          # Fetch hash label directly from registry (10KB config blob, not full image)
+          # This avoids issues with stale local Docker cache on GitHub runners
           EXISTING_HASH=""
-          if docker image inspect $BASE_IMAGE >/dev/null 2>&1; then
-            echo "✅ Base image found in local cache (skipping slow registry pull)"
-            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
-            # Fallback to old label name for backwards compatibility
-            if [ -z "$EXISTING_HASH" ]; then
-              EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
-            fi
-            echo "Existing base image hash: $EXISTING_HASH"
-          elif docker pull $BASE_IMAGE 2>/dev/null; then
-            echo "📥 Base image pulled from registry"
-            EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "base.content.hash"}}' 2>/dev/null || echo "")
-            # Fallback to old label name for backwards compatibility
-            if [ -z "$EXISTING_HASH" ]; then
-              EXISTING_HASH=$(docker inspect $BASE_IMAGE --format='{{index .Config.Labels "poetry.lock.hash"}}' 2>/dev/null || echo "")
-            fi
-            echo "Existing base image hash: $EXISTING_HASH"
+
+          # Get the manifest (small JSON, ~1KB) - includes config digest
+          MANIFEST=$(docker manifest inspect $BASE_IMAGE 2>/dev/null || echo "")
+          CONFIG_DIGEST=$(echo "$MANIFEST" | jq -r '.config.digest // ""' 2>/dev/null || echo "")
+
+          if [ -n "$CONFIG_DIGEST" ] && [ "$CONFIG_DIGEST" != "null" ] && [ "$CONFIG_DIGEST" != "" ]; then
+            echo "📋 Found manifest, config digest: $CONFIG_DIGEST"
+
+            # Fetch just the config blob (~10KB) to get labels - much faster than pulling full image
+            TOKEN=$(gcloud auth print-access-token)
+            CONFIG_JSON=$(curl -sL -H "Authorization: Bearer $TOKEN" \
+              "https://${{ env.REGISTRY }}/v2/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}/blobs/$CONFIG_DIGEST" 2>/dev/null)
+
+            EXISTING_HASH=$(echo "$CONFIG_JSON" | jq -r '.config.Labels["base.content.hash"] // .config.Labels["poetry.lock.hash"] // ""' 2>/dev/null || echo "")
+            echo "📋 Registry base image hash: $EXISTING_HASH"
           else
-            echo "⚠️ No existing base image found - will build"
+            echo "⚠️ No existing base image found in registry - will build"
           fi
 
           if [ "${{ steps.base-hash.outputs.hash }}" != "$EXISTING_HASH" ]; then
             echo "🔄 Base image needs rebuild (poetry.lock or Dockerfile.base changed)"
+            echo "   Current: ${{ steps.base-hash.outputs.hash }}"
+            echo "   Registry: $EXISTING_HASH"
             echo "needs_rebuild=true" >> $GITHUB_OUTPUT
           else
             echo "✅ Base image is up to date"
@@ -1042,6 +1042,31 @@ jobs:
             BASE_CONTENT_HASH=${{ steps.base-hash.outputs.hash }}
           # Provenance disabled for smaller image and faster push
           provenance: false
+
+      - name: Ensure local base image is current (if not rebuilt)
+        if: steps.check-base.outputs.needs_rebuild == 'false'
+        run: |
+          BASE_IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.BASE_IMAGE_NAME }}:latest"
+
+          # Get the config digest from registry manifest (identifies the image content)
+          # This is the same value as Docker's Image ID for the same image
+          REGISTRY_CONFIG_DIGEST=$(docker manifest inspect $BASE_IMAGE 2>/dev/null | jq -r '.config.digest' || echo "")
+
+          # Get local image's ID (which is the config digest)
+          LOCAL_IMAGE_ID=$(docker image inspect $BASE_IMAGE --format='{{.Id}}' 2>/dev/null || echo "")
+
+          echo "Registry config digest: $REGISTRY_CONFIG_DIGEST"
+          echo "Local image ID:         $LOCAL_IMAGE_ID"
+
+          if [ -z "$LOCAL_IMAGE_ID" ]; then
+            echo "📥 Base image not in local cache - pulling from registry"
+            docker pull $BASE_IMAGE
+          elif [ "$LOCAL_IMAGE_ID" != "$REGISTRY_CONFIG_DIGEST" ]; then
+            echo "🔄 Local cache has different image - pulling latest"
+            docker pull $BASE_IMAGE
+          else
+            echo "✅ Local cache matches registry - skipping pull"
+          fi
 
       - name: Build and push app image
         uses: docker/build-push-action@v6
