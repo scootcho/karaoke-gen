@@ -218,16 +218,14 @@ const WordItem = memo(function WordItem({
                     }
                     canMerge={index < wordsLength - 1}
                     isLast={index === wordsLength - 1}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             {isGlobal && (
                 <WordDivider
                     onAddWord={() => onAddWord(index)}
                     onMergeWords={index < wordsLength - 1 ? () => onMergeWords(index) : undefined}
                     canMerge={index < wordsLength - 1}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
         </Box>
     );
@@ -342,14 +340,12 @@ export default function EditWordList({
                     onAddSegmentBefore={() => onAddSegment?.(0)}
                     onMergeSegment={() => onMergeSegment?.(false)}
                     isFirst={true}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             {isGlobal && (
                 <WordDivider
                     onAddWord={() => onAddWord(-1)}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             
             {/* Word list with scrolling */}
