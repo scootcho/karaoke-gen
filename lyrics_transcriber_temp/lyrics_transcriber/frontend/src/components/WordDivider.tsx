@@ -54,12 +54,13 @@ export default function WordDivider({
             sx={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'flex-end',
+                justifyContent: 'center',
                 height: 'auto',
                 minHeight: '20px',
                 my: 0,
                 width: '100%',
                 bgcolor: 'background.paper',
+                overflow: 'hidden',
                 ...sx
             }}
         >
@@ -68,7 +69,7 @@ export default function WordDivider({
                 alignItems: 'center',
                 gap: 1,
                 flexWrap: 'wrap',
-                justifyContent: 'flex-end',
+                justifyContent: 'center',
                 bgcolor: 'background.paper',
                 padding: '0 8px',
                 zIndex: 1
