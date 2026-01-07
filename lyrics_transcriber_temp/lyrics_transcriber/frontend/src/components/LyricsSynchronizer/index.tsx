@@ -40,7 +40,7 @@ interface LyricsSynchronizerProps {
 }
 
 // Constants for zoom
-const MIN_ZOOM_SECONDS = 4.5   // Most zoomed in - 4.5 seconds visible
+const MIN_ZOOM_SECONDS = 2     // Most zoomed in - 2 seconds visible
 const MAX_ZOOM_SECONDS = 24    // Most zoomed out - 24 seconds visible
 const ZOOM_STEPS = 50          // Number of zoom levels
 
