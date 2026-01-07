@@ -27,6 +27,7 @@ from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.tracing import job_span, add_span_event
+from karaoke_gen.utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -538,7 +539,10 @@ class VideoWorkerOrchestrator:
                 self.job_log.warning("Dropbox not configured, skipping upload")
                 return
 
-            base_name = f"{self.config.artist} - {self.config.title}"
+            # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+            safe_artist = sanitize_filename(self.config.artist) if self.config.artist else "Unknown"
+            safe_title = sanitize_filename(self.config.title) if self.config.title else "Unknown"
+            base_name = f"{safe_artist} - {safe_title}"
             folder_name = f"{self.result.brand_code or 'TRACK-0000'} - {base_name}"
             remote_folder = f"{self.config.dropbox_path}/{folder_name}"
 
@@ -637,7 +641,10 @@ def create_orchestrator_config_from_job(
     Returns:
         OrchestratorConfig for the orchestrator
     """
-    base_name = f"{job.artist} - {job.title}"
+    # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+    safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+    safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+    base_name = f"{safe_artist} - {safe_title}"
 
     # Determine instrumental file path
     instrumental_selection = job.state_data.get('instrumental_selection', 'clean')

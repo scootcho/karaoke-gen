@@ -20,6 +20,7 @@ from backend.services.user_service import get_user_service, UserService, USERS_C
 from backend.services.job_manager import JobManager
 from backend.services.flacfetch_client import get_flacfetch_client, FlacfetchServiceError
 from backend.models.job import JobStatus
+from karaoke_gen.utils import sanitize_filename
 
 
 logger = logging.getLogger(__name__)
@@ -651,10 +652,14 @@ async def get_job_completion_message(
     )
 
     # Build subject: "NOMAD-1178: Artist - Title (Your karaoke video is ready!)"
-    if brand_code and job.artist and job.title:
-        subject = f"{brand_code}: {job.artist} - {job.title} (Your karaoke video is ready!)"
-    elif job.artist and job.title:
-        subject = f"{job.artist} - {job.title} (Your karaoke video is ready!)"
+    # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+    # that cause email header encoding issues (MIME headers use latin-1)
+    safe_artist = sanitize_filename(job.artist) if job.artist else None
+    safe_title = sanitize_filename(job.title) if job.title else None
+    if brand_code and safe_artist and safe_title:
+        subject = f"{brand_code}: {safe_artist} - {safe_title} (Your karaoke video is ready!)"
+    elif safe_artist and safe_title:
+        subject = f"{safe_artist} - {safe_title} (Your karaoke video is ready!)"
     else:
         subject = "Your karaoke video is ready!"
 

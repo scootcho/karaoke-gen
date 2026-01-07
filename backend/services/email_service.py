@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 
 from backend.config import get_settings
+from karaoke_gen.utils import sanitize_filename
 
 
 logger = logging.getLogger(__name__)
@@ -1093,10 +1094,14 @@ Thanks for being part of making Nomad Karaoke better!
             True if email was sent successfully
         """
         # Build subject: "NOMAD-1178: Artist - Title (Your karaoke video is ready!)"
-        if brand_code and artist and title:
-            subject = f"{brand_code}: {artist} - {title} (Your karaoke video is ready!)"
-        elif artist and title:
-            subject = f"{artist} - {title} (Your karaoke video is ready!)"
+        # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+        # that cause email header encoding issues (MIME headers use latin-1)
+        safe_artist = sanitize_filename(artist) if artist else None
+        safe_title = sanitize_filename(title) if title else None
+        if brand_code and safe_artist and safe_title:
+            subject = f"{brand_code}: {safe_artist} - {safe_title} (Your karaoke video is ready!)"
+        elif safe_artist and safe_title:
+            subject = f"{safe_artist} - {safe_title} (Your karaoke video is ready!)"
         else:
             subject = "Your karaoke video is ready!"
 

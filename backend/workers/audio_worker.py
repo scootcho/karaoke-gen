@@ -344,7 +344,12 @@ async def process_audio_separation(job_id: str) -> bool:
                 job_log.info(f"Stored effective model names: clean={effective_model_names['clean_instrumental_model']}")
 
                 # Format artist-title for file naming (matches CLI behavior)
-                artist_title = f"{job.artist} - {job.title}"
+                # Sanitize to handle Unicode characters (curly quotes, em dashes, etc.)
+                # that cause HTTP header encoding issues with the remote API
+                from karaoke_gen.utils import sanitize_filename
+                safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+                safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+                artist_title = f"{safe_artist} - {safe_title}"
                 
                 # Run audio separation (calls Modal API internally)
                 # This returns a dict with paths to all separated stems
