@@ -375,6 +375,20 @@ export default function Header({
                             effectiveMode={effectiveMode}
                             onChange={onModeChange}
                         />
+                        {!isReadOnly && onResetCorrections && (
+                            <Tooltip title="Undo all your changes">
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    color="warning"
+                                    onClick={onResetCorrections}
+                                    startIcon={<UndoIcon />}
+                                    sx={{ minWidth: 'fit-content', height: '32px' }}
+                                >
+                                    Undo All
+                                </Button>
+                            </Tooltip>
+                        )}
                         {!isReadOnly && (
                             <Box sx={{ display: 'flex', height: '32px' }}>
                                 <Tooltip title="Undo">
@@ -446,18 +460,6 @@ export default function Header({
                                 sx={{ minWidth: 'fit-content', height: '32px' }}
                             >
                                 Undo Auto Corrections
-                            </Button>
-                        )}
-                        {!isReadOnly && onResetCorrections && (
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                color="warning"
-                                onClick={onResetCorrections}
-                                startIcon={<RestoreIcon />}
-                                sx={{ minWidth: 'fit-content', height: '32px' }}
-                            >
-                                Undo Your Changes
                             </Button>
                         )}
                         {!isReadOnly && onTimingOffset && (
