@@ -227,6 +227,7 @@ async def check_encoding_worker_status() -> Dict[str, Any]:
             "active_jobs": health.get("active_jobs", 0),
             "queue_length": health.get("queue_length", 0),
             "ffmpeg_version": health.get("ffmpeg_version"),
+            "wheel_version": health.get("wheel_version"),
         }
     except Exception as e:
         return {
@@ -235,6 +236,39 @@ async def check_encoding_worker_status() -> Dict[str, Any]:
             "available": False,
             "error": str(e),
         }
+
+
+@router.get("/health/encoding-worker")
+async def encoding_worker_health() -> Dict[str, Any]:
+    """
+    Lightweight endpoint to check encoding worker status.
+
+    Returns minimal info for frontend footer display.
+    No authentication required.
+    """
+    status = await check_encoding_worker_status()
+
+    # Return simplified response for frontend
+    if not status.get("configured"):
+        return {
+            "available": False,
+            "status": "not_configured",
+        }
+
+    if not status.get("available"):
+        return {
+            "available": False,
+            "status": "offline",
+            "error": status.get("error"),
+        }
+
+    return {
+        "available": True,
+        "status": "ok",
+        "version": status.get("wheel_version"),
+        "active_jobs": status.get("active_jobs", 0),
+        "queue_length": status.get("queue_length", 0),
+    }
 
 
 @router.get("/health/detailed")

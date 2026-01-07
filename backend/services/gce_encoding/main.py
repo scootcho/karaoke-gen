@@ -566,11 +566,21 @@ async def get_job_status(job_id: str, _auth: bool = Depends(verify_api_key)) -> 
 async def health_check():
     # Health check endpoint
     active_jobs = sum(1 for j in jobs.values() if j["status"] == "running")
+
+    # Get karaoke-gen wheel version if installed
+    wheel_version = None
+    try:
+        from importlib.metadata import version as get_version
+        wheel_version = get_version("karaoke-gen")
+    except Exception:
+        pass
+
     return {
         "status": "ok",
         "active_jobs": active_jobs,
         "queue_length": sum(1 for j in jobs.values() if j["status"] == "pending"),
         "ffmpeg_version": subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout.split("\n")[0],
+        "wheel_version": wheel_version,
     }
 
 

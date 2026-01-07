@@ -20,6 +20,30 @@ GET /health
 
 No auth required. Returns service status.
 
+#### Encoding Worker Health
+
+```http
+GET /health/encoding-worker
+```
+
+No auth required. Returns GCE encoding worker status for frontend display.
+
+Response:
+```json
+{
+  "available": true,
+  "status": "ok",
+  "version": "0.95.1",
+  "active_jobs": 0,
+  "queue_length": 0
+}
+```
+
+Status values:
+- `ok` - Worker is healthy and available
+- `offline` - Worker is unavailable (includes `error` field)
+- `not_configured` - Encoding worker not configured on backend
+
 ### Jobs
 
 #### Create Job with Upload
