@@ -836,6 +836,239 @@ Thanks for being part of making Nomad Karaoke better!
         from datetime import datetime
         return datetime.now().year
 
+    def _get_email_signature(self) -> str:
+        """Get the HTML email signature for Nomad Karaoke."""
+        return """
+<table cellpadding="0" cellspacing="0" border="0" style="font-size: medium; font-family: Trebuchet MS;">
+    <tbody>
+        <tr>
+            <td>
+                <table cellpadding="0" cellspacing="0" border="0" style="font-size: medium; font-family: Trebuchet MS;">
+                    <tbody>
+                        <tr>
+                            <td style="vertical-align: top;">
+                                <table cellpadding="0" cellspacing="0" border="0"
+                                    style="font-size: medium; font-family: Trebuchet MS;">
+                                    <tbody>
+                                        <tr>
+                                            <td style="text-align: center;"><a
+                                                    href="https://www.linkedin.com/in/andrewbeveridge"
+                                                    target="_blank"><img
+                                                        src="https://beveradb.github.io/public-images/andrew-buildspace-circle-150px.png"
+                                                        role="presentation" style="display: block; max-width: 128px;"
+                                                        width="130"></a></td>
+                                        </tr>
+                                        <tr>
+                                            <td height="5"></td>
+                                        </tr>
+                                        <tr>
+                                            <td style="text-align: center;"><a href="https://nomadkaraoke.com"
+                                                    target="_blank"><img role="presentation" width="130"
+                                                        style="display: block; max-width: 130px; border-radius: 7px;"
+                                                        src="https://beveradb.github.io/public-images/Nomad-Karaoke-Logo-small-indexed-websafe-rectangle.gif"></a>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                            <td width="10">
+                                <div></div>
+                            </td>
+                            <td style="padding: 0px; vertical-align: middle;">
+                                <h2 color="#000000"
+                                    style="margin: 0px; font-size: 18px; color: rgb(0, 0, 0); font-weight: 600;">
+                                    <span>Andrew</span><span>&nbsp;</span><span>Beveridge</span>
+                                </h2>
+                                <p color="#000000" font-size="medium"
+                                    style="margin: 0px; color: rgb(0, 0, 0); font-size: 14px; line-height: 22px;">
+                                    <span>Founder</span>
+                                </p>
+                                <p color="#000000" font-size="medium"
+                                    style="margin: 0px; font-weight: 500; color: rgb(0, 0, 0); font-size: 14px; line-height: 22px;">
+                                    <span>Nomad Karaoke
+                                        LLC</span>
+                                </p>
+                                <table cellpadding="0" cellspacing="0" border="0"
+                                    style="width: 100%; font-size: medium; font-family: Trebuchet MS; margin-top: 3px; margin-bottom: 3px;">
+                                    <tbody>
+                                        <tr>
+                                            <td color="#ff7acc" direction="horizontal" width="auto" height="15"
+                                                style="width: 100%; display: block; line-height:0; font-size:0;">
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td color="#ff7acc" direction="horizontal" width="auto" height="1"
+                                                style="width: 100%; border-bottom: 1px solid rgb(255, 122, 204); border-left: medium; display: block; line-height:0; font-size:0;">
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <table cellpadding="0" cellspacing="0" border="0"
+                                    style="width: 100%; font-size: medium; font-family: Trebuchet MS; margin-top: 3px; margin-bottom: 3px;">
+                                    <tbody>
+                                        <tr>
+                                            <td style="text-align: center; line-height:0; font-size:0;">
+                                                <table cellpadding="0" cellspacing="0" border="0"
+                                                    style="display: inline-block; font-size: medium; font-family: Trebuchet MS;">
+                                                    <tbody>
+                                                        <tr style="text-align: center;">
+                                                            <td><a href="https://www.youtube.com/@nomadkaraoke"
+                                                                    color="#230a89"
+                                                                    style="display: inline-block; padding: 0px; background-color: rgb(35, 10, 137);"
+                                                                    target="_blank"><img
+                                                                        src="https://beveradb.github.io/public-images/youtube-icon-2x.png"
+                                                                        alt="youtube" color="#230a89" width="24"
+                                                                        style="background-color: rgb(35, 10, 137); max-width: 135px; display: block;"></a>
+                                                            </td>
+                                                            <td width="5">
+                                                                <div></div>
+                                                            </td>
+                                                            <td><a href="https://github.com/nomadkaraoke"
+                                                                    color="#230a89"
+                                                                    style="display: inline-block; padding: 0px; background-color: rgb(35, 10, 137);"
+                                                                    target="_blank"><img
+                                                                        src="https://beveradb.github.io/public-images/github-icon-2x.png"
+                                                                        alt="github" color="#230a89" width="24"
+                                                                        style="background-color: rgb(35, 10, 137); max-width: 135px; display: block;"></a>
+                                                            </td>
+                                                            <td width="5">
+                                                                <div></div>
+                                                            </td>
+                                                            <td><a href="https://www.linkedin.com/in/andrewbeveridge"
+                                                                    color="#230a89"
+                                                                    style="display: inline-block; padding: 0px; background-color: rgb(35, 10, 137);"
+                                                                    target="_blank"><img
+                                                                        src="https://beveradb.github.io/public-images/linkedin-icon-2x.png"
+                                                                        alt="linkedin" color="#230a89" width="24"
+                                                                        style="background-color: rgb(35, 10, 137); max-width: 135px; display: block;"></a>
+                                                            </td>
+                                                            <td width="5">
+                                                                <div></div>
+                                                            </td>
+                                                            <td><a href="https://twitter.com/beveradb" color="#230a89"
+                                                                    style="display: inline-block; padding: 0px; background-color: rgb(35, 10, 137);"><img
+                                                                        src="https://beveradb.github.io/public-images/twitter-icon-2x.png"
+                                                                        alt="twitter" color="#230a89" width="24"
+                                                                        style="background-color: rgb(35, 10, 137); max-width: 135px; display: block;"></a>
+                                                            </td>
+                                                            <td width="5">
+                                                                <div></div>
+                                                            </td>
+                                                            <td><a href="https://www.instagram.com/beveradb/"
+                                                                    color="#230a89"
+                                                                    style="display: inline-block; padding: 0px; background-color: rgb(35, 10, 137);"><img
+                                                                        src="https://beveradb.github.io/public-images/instagram-icon-2x.png"
+                                                                        alt="instagram" color="#230a89" width="24"
+                                                                        style="background-color: rgb(35, 10, 137); max-width: 135px; display: block;"></a>
+                                                            </td>
+                                                            <td width="5">
+                                                                <div></div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <table cellpadding="0" cellspacing="0" border="0"
+                                    style="width: 100%; font-size: medium; font-family: Trebuchet MS; margin-top: 3px; margin-bottom: 3px;">
+                                    <tbody>
+                                        <tr>
+                                            <td color="#ff7acc" direction="horizontal" width="auto" height="1"
+                                                style="width: 100%; border-bottom: 1px solid rgb(255, 122, 204); border-left: medium; display: block; line-height:0; font-size:0;">
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td color="#ff7acc" direction="horizontal" width="auto" height="15"
+                                                style="width: 100%; display: block;">
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <table cellpadding="0" cellspacing="0" border="0"
+                                    style="font-size: medium; font-family: Trebuchet MS;">
+                                    <tbody>
+                                        <tr style="vertical-align: middle;" height="20">
+                                            <td width="30" style="vertical-align: middle;">
+                                                <table cellpadding="0" cellspacing="0" border="0"
+                                                    style="font-size: medium; font-family: Trebuchet MS;">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td style="vertical-align: bottom;"><span color="#ff7acc"
+                                                                    width="11"
+                                                                    style="display: inline-block; background-color: rgb(255, 122, 204);"><img
+                                                                        src="https://beveradb.github.io/public-images/phone-icon-2x.png"
+                                                                        color="#ff7acc" alt="mobilePhone" width="13"
+                                                                        style="display: block; background-color: rgb(255, 122, 204);"></span>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                            <td style="padding: 0px; color: rgb(0, 0, 0);"><a href="tel:8036363267"
+                                                color="#000000"
+                                                style="text-decoration: none; color: rgb(0, 0, 0); font-size: 12px;"><span>+1 (803) 636-3267</span></a> | <a href="tel:07835171222"
+                                                color="#000000"
+                                                style="text-decoration: none; color: rgb(0, 0, 0); font-size: 12px;"><span>+44 07835171222</span></a></td>
+                                        </tr>
+                                        <tr style="vertical-align: middle;" height="20">
+                                            <td width="30" style="vertical-align: middle;">
+                                                <table cellpadding="0" cellspacing="0" border="0"
+                                                    style="font-size: medium; font-family: Trebuchet MS;">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td style="vertical-align: bottom;"><span color="#ff7acc"
+                                                                    width="11"
+                                                                    style="display: inline-block; background-color: rgb(255, 122, 204);"><img
+                                                                        src="https://beveradb.github.io/public-images/email-icon-2x.png"
+                                                                        color="#ff7acc" alt="emailAddress" width="13"
+                                                                        style="display: block; background-color: rgb(255, 122, 204);"></span>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                            <td style="padding: 0px;"><a href="mailto:andrew@nomadkaraoke.com"
+                                                    color="#000000"
+                                                    style="text-decoration: none; color: rgb(0, 0, 0); font-size: 12px;"><span>andrew@nomadkaraoke.com</span></a>
+                                            </td>
+                                        </tr>
+                                        <tr style="vertical-align: middle;" height="20">
+                                            <td width="30" style="vertical-align: middle;">
+                                                <table cellpadding="0" cellspacing="0" border="0"
+                                                    style="font-size: medium; font-family: Trebuchet MS;">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td style="vertical-align: bottom;"><span color="#ff7acc"
+                                                                    width="11"
+                                                                    style="display: inline-block; background-color: rgb(255, 122, 204);"><img
+                                                                        src="https://beveradb.github.io/public-images/link-icon-2x.png"
+                                                                        color="#ff7acc" alt="website" width="13"
+                                                                        style="display: block; background-color: rgb(255, 122, 204);"></span>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                            <td style="padding: 0px;"><a href="https://nomadkaraoke.com" target="_blank"
+                                                    color="#000000"
+                                                    style="text-decoration: none; color: rgb(0, 0, 0); font-size: 12px;"><span>nomadkaraoke.com</span></a>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </td>
+        </tr>
+    </tbody>
+</table>
+"""
+
     def send_job_completion(
         self,
         to_email: str,
@@ -882,37 +1115,21 @@ Thanks for being part of making Nomad Karaoke better!
             padding: 20px;
             white-space: pre-wrap;
         }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #3b82f6;
-        }}
         .content {{
             white-space: pre-wrap;
             font-size: 14px;
         }}
-        .footer {{
+        .signature {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
-            font-size: 12px;
-            color: #666;
         }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
-
     <div class="content">{html.escape(message_content)}</div>
 
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
+    <div class="signature">
+        {self._get_email_signature()}
     </div>
 </body>
 </html>
@@ -972,15 +1189,6 @@ Thanks for being part of making Nomad Karaoke better!
             margin: 0 auto;
             padding: 20px;
         }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #3b82f6;
-        }}
         .alert {{
             background-color: #fef3c7;
             border: 1px solid #fcd34d;
@@ -993,28 +1201,21 @@ Thanks for being part of making Nomad Karaoke better!
             white-space: pre-wrap;
             font-size: 14px;
         }}
-        .footer {{
+        .signature {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
-            font-size: 12px;
-            color: #666;
         }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
-
     <div class="alert">
         ⏰ Your karaoke video is waiting for you!
     </div>
 
     <div class="content">{html.escape(message_content)}</div>
 
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
+    <div class="signature">
+        {self._get_email_signature()}
     </div>
 </body>
 </html>
