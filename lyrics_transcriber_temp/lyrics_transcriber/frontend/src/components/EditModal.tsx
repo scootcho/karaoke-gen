@@ -35,6 +35,8 @@ interface TimelineSectionProps {
     onPlaySegment?: (startTime: number) => void
     startManualSync: () => void
     isGlobal: boolean
+    onTapStart?: () => void
+    onTapEnd?: () => void
 }
 
 const MemoizedTimelineSection = memo(function TimelineSection({
@@ -49,7 +51,9 @@ const MemoizedTimelineSection = memo(function TimelineSection({
     onWordUpdate,
     onPlaySegment,
     startManualSync,
-    isGlobal
+    isGlobal,
+    onTapStart,
+    onTapEnd
 }: TimelineSectionProps) {
     return (
         <EditTimelineSection
@@ -68,6 +72,8 @@ const MemoizedTimelineSection = memo(function TimelineSection({
             onPlaySegment={onPlaySegment}
             startManualSync={startManualSync}
             isGlobal={isGlobal}
+            onTapStart={onTapStart}
+            onTapEnd={onTapEnd}
         />
     )
 })
@@ -229,7 +235,9 @@ export default function EditModal({
         startManualSync,
         cleanupManualSync,
         handleSpacebar,
-        isSpacebarPressed
+        isSpacebarPressed,
+        handleTapStart,
+        handleTapEnd
     } = useManualSync({
         editedSegment,
         currentTime,
@@ -660,6 +668,8 @@ export default function EditModal({
                             onPlaySegment={onPlaySegment}
                             startManualSync={startManualSync}
                             isGlobal={isGlobal}
+                            onTapStart={handleTapStart}
+                            onTapEnd={handleTapEnd}
                         />
 
                         <MemoizedWordList

@@ -1,4 +1,4 @@
-import { Box, Button, IconButton, Tooltip, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Button, Typography, useMediaQuery, useTheme } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import MergeIcon from '@mui/icons-material/CallMerge'
 import CallSplitIcon from '@mui/icons-material/CallSplit'
@@ -26,6 +26,11 @@ const buttonTextStyle = {
     textTransform: 'none'
 }
 
+const mobileButtonTextStyle = {
+    ...buttonTextStyle,
+    fontSize: '0.6rem'
+}
+
 const buttonBaseStyle = {
     minHeight: 0,
     padding: '2px 8px',
@@ -34,6 +39,17 @@ const buttonBaseStyle = {
     },
     '& .MuiSvgIcon-root': {
         fontSize: '1.2rem'
+    }
+}
+
+const mobileButtonBaseStyle = {
+    ...buttonBaseStyle,
+    padding: '2px 4px',
+    '& .MuiButton-startIcon': {
+        marginRight: 0.25
+    },
+    '& .MuiSvgIcon-root': {
+        fontSize: '1rem'
     }
 }
 
@@ -52,105 +68,31 @@ export default function WordDivider({
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-    // On mobile, use icon-only buttons to save space
-    if (isMobile) {
-        return (
-            <Box
-                sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: 'auto',
-                    minHeight: '28px',
-                    my: 0.5,
-                    width: '100%',
-                    bgcolor: 'background.paper',
-                    ...sx
-                }}
-            >
-                <Box sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    flexWrap: 'wrap',
-                    justifyContent: 'center',
-                    bgcolor: 'background.paper',
-                    padding: '2px 4px',
-                    zIndex: 1
-                }}>
-                    <Tooltip title="Add Word">
-                        <IconButton onClick={onAddWord} size="small" sx={{ color: 'primary.main', padding: '4px' }}>
-                            <AddIcon fontSize="small" />
-                        </IconButton>
-                    </Tooltip>
-                    {isFirst && onAddSegmentBefore && onMergeSegment && (
-                        <>
-                            <Tooltip title="Add Segment">
-                                <IconButton onClick={onAddSegmentBefore} size="small" sx={{ color: 'success.main', padding: '4px' }}>
-                                    <AddIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                                </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Merge with Previous Segment">
-                                <IconButton onClick={onMergeSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
-                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                                </IconButton>
-                            </Tooltip>
-                        </>
-                    )}
-                    {onMergeWords && !isLast && (
-                        <Tooltip title="Merge Words">
-                            <span>
-                                <IconButton onClick={onMergeWords} size="small" disabled={!canMerge} sx={{ color: 'primary.main', padding: '4px' }}>
-                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                                </IconButton>
-                            </span>
-                        </Tooltip>
-                    )}
-                    {onSplitSegment && !isLast && (
-                        <Tooltip title="Split Segment">
-                            <IconButton onClick={onSplitSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
-                                <CallSplitIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                            </IconButton>
-                        </Tooltip>
-                    )}
-                    {isLast && onAddSegmentAfter && onMergeSegment && (
-                        <>
-                            <Tooltip title="Add Segment">
-                                <IconButton onClick={onAddSegmentAfter} size="small" sx={{ color: 'success.main', padding: '4px' }}>
-                                    <AddIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                                </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Merge with Next Segment">
-                                <IconButton onClick={onMergeSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
-                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
-                                </IconButton>
-                            </Tooltip>
-                        </>
-                    )}
-                </Box>
-            </Box>
-        )
-    }
+    const activeButtonStyle = isMobile ? mobileButtonBaseStyle : buttonBaseStyle
+    const activeTextStyle = isMobile ? mobileButtonTextStyle : buttonTextStyle
 
     return (
         <Box
             sx={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                height: '20px',
-                my: -0.5,
-                width: '50%',
-                bgcolor: 'background.paper', // Theme-aware background
+                justifyContent: isMobile ? 'flex-end' : 'center',
+                height: 'auto',
+                minHeight: '20px',
+                my: isMobile ? 0 : -0.5,
+                width: isMobile ? '100%' : '50%',
+                bgcolor: 'background.paper',
                 ...sx
             }}
         >
             <Box sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 1,
-                bgcolor: 'background.paper', // Theme-aware background
-                padding: '0 8px',
+                gap: isMobile ? 0.5 : 1,
+                flexWrap: 'wrap',
+                justifyContent: isMobile ? 'flex-end' : 'center',
+                bgcolor: 'background.paper',
+                padding: isMobile ? '0 4px' : '0 8px',
                 zIndex: 1
             }}>
                 <Button
@@ -159,12 +101,12 @@ export default function WordDivider({
                     size="small"
                     startIcon={<AddIcon />}
                     sx={{
-                        ...buttonBaseStyle,
+                        ...activeButtonStyle,
                         color: 'primary.main',
                     }}
                 >
-                    <Typography sx={buttonTextStyle}>
-                        Add Word
+                    <Typography sx={activeTextStyle}>
+                        {isMobile ? '+Word' : 'Add Word'}
                     </Typography>
                 </Button>
                 {isFirst && onAddSegmentBefore && onMergeSegment && (
@@ -175,12 +117,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<AddIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...buttonBaseStyle,
+                                ...activeButtonStyle,
                                 color: 'success.main',
                             }}
                         >
-                            <Typography sx={buttonTextStyle}>
-                                Add Segment
+                            <Typography sx={activeTextStyle}>
+                                {isMobile ? '+Seg' : 'Add Segment'}
                             </Typography>
                         </Button>
                         <Button
@@ -189,12 +131,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...buttonBaseStyle,
+                                ...activeButtonStyle,
                                 color: 'warning.main',
                             }}
                         >
-                            <Typography sx={buttonTextStyle}>
-                                Merge Segment
+                            <Typography sx={activeTextStyle}>
+                                {isMobile ? 'Merge' : 'Merge Segment'}
                             </Typography>
                         </Button>
                     </>
@@ -207,12 +149,12 @@ export default function WordDivider({
                         startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                         disabled={!canMerge}
                         sx={{
-                            ...buttonBaseStyle,
+                            ...activeButtonStyle,
                             color: 'primary.main',
                         }}
                     >
-                        <Typography sx={buttonTextStyle}>
-                            Merge Words
+                        <Typography sx={activeTextStyle}>
+                            {isMobile ? 'Merge' : 'Merge Words'}
                         </Typography>
                     </Button>
                 )}
@@ -223,12 +165,12 @@ export default function WordDivider({
                         size="small"
                         startIcon={<CallSplitIcon sx={{ transform: 'rotate(90deg)' }} />}
                         sx={{
-                            ...buttonBaseStyle,
+                            ...activeButtonStyle,
                             color: 'warning.main',
                         }}
                     >
-                        <Typography sx={buttonTextStyle}>
-                            Split Segment
+                        <Typography sx={activeTextStyle}>
+                            {isMobile ? 'Split' : 'Split Segment'}
                         </Typography>
                     </Button>
                 )}
@@ -240,12 +182,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<AddIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...buttonBaseStyle,
+                                ...activeButtonStyle,
                                 color: 'success.main',
                             }}
                         >
-                            <Typography sx={buttonTextStyle}>
-                                Add Segment
+                            <Typography sx={activeTextStyle}>
+                                {isMobile ? '+Seg' : 'Add Segment'}
                             </Typography>
                         </Button>
                         <Button
@@ -254,12 +196,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...buttonBaseStyle,
+                                ...activeButtonStyle,
                                 color: 'warning.main',
                             }}
                         >
-                            <Typography sx={buttonTextStyle}>
-                                Merge Segment
+                            <Typography sx={activeTextStyle}>
+                                {isMobile ? 'Merge' : 'Merge Segment'}
                             </Typography>
                         </Button>
                     </>

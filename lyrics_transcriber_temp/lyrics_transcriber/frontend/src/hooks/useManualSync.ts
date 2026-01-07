@@ -353,6 +353,106 @@ export default function useManualSync({
         }
     }, [handleKeyDown, handleKeyUp])
 
+    // Touch-friendly handlers for mobile (simulates spacebar press/release)
+    const handleTapStart = useCallback(() => {
+        if (!isManualSyncing || !editedSegment || isSpacebarPressed || isPaused) return
+
+        console.log('useManualSync - Touch/tap started', {
+            syncWordIndex,
+            currentTime: currentTimeRef.current
+        })
+
+        setIsSpacebarPressed(true)
+
+        // Record the start time of the current word
+        wordStartTimeRef.current = currentTimeRef.current
+
+        // Record when the tap started (for tap detection)
+        spacebarPressTimeRef.current = Date.now()
+
+        // Update the word's start time immediately
+        if (syncWordIndex < editedSegment.words.length) {
+            const newWords = [...wordsRef.current]
+            const currentWord = newWords[syncWordIndex]
+            const currentStartTime = currentTimeRef.current
+
+            // Set the start time for the current word
+            currentWord.start_time = currentStartTime
+
+            // Handle the end time of the previous word (if it exists)
+            if (syncWordIndex > 0) {
+                const previousWord = newWords[syncWordIndex - 1]
+                if (previousWord.start_time !== null) {
+                    const timeSincePreviousStart = currentStartTime - previousWord.start_time
+
+                    const needsAdjustment = previousWord.end_time === null ||
+                                          (previousWord.end_time !== null && previousWord.end_time > currentStartTime)
+
+                    if (needsAdjustment) {
+                        if (timeSincePreviousStart > 1.0) {
+                            previousWord.end_time = previousWord.start_time + 0.5
+                        } else {
+                            previousWord.end_time = currentStartTime - 0.005
+                        }
+                    }
+                }
+            }
+
+            // Update our ref
+            wordsRef.current = newWords
+
+            // Mark that we need to update the segment
+            needsSegmentUpdateRef.current = true
+        }
+    }, [isManualSyncing, editedSegment, syncWordIndex, isSpacebarPressed, isPaused])
+
+    const handleTapEnd = useCallback(() => {
+        if (!isManualSyncing || !editedSegment || !isSpacebarPressed || isPaused) return
+
+        const pressDuration = spacebarPressTimeRef.current ? Date.now() - spacebarPressTimeRef.current : 0
+        const isTap = pressDuration < TAP_THRESHOLD_MS
+
+        console.log('useManualSync - Touch/tap ended', {
+            syncWordIndex,
+            pressDuration: `${pressDuration}ms`,
+            isTap
+        })
+
+        setIsSpacebarPressed(false)
+
+        if (syncWordIndex < editedSegment.words.length) {
+            const newWords = [...wordsRef.current]
+            const currentWord = newWords[syncWordIndex]
+
+            // Set the end time for the current word based on whether it was a tap or hold
+            if (isTap) {
+                const defaultEndTime = (wordStartTimeRef.current || currentTimeRef.current) + DEFAULT_WORD_DURATION
+                currentWord.end_time = defaultEndTime
+            } else {
+                currentWord.end_time = currentTimeRef.current
+            }
+
+            // Update our ref
+            wordsRef.current = newWords
+
+            // Move to the next word
+            if (syncWordIndex === editedSegment.words.length - 1) {
+                // If this was the last word, finish manual sync
+                console.log('useManualSync - Completed manual sync for all words')
+                setIsManualSyncing(false)
+                setSyncWordIndex(-1)
+                wordStartTimeRef.current = null
+                spacebarPressTimeRef.current = null
+            } else {
+                // Otherwise, move to the next word
+                setSyncWordIndex(syncWordIndex + 1)
+            }
+
+            // Mark that we need to update the segment
+            needsSegmentUpdateRef.current = true
+        }
+    }, [isManualSyncing, editedSegment, syncWordIndex, isSpacebarPressed, isPaused])
+
     const startManualSync = useCallback(() => {
         if (isManualSyncing) {
             cleanupManualSync()
@@ -430,6 +530,8 @@ export default function useManualSync({
         resumeManualSync,
         cleanupManualSync,
         handleSpacebar,
-        isSpacebarPressed
+        isSpacebarPressed,
+        handleTapStart,
+        handleTapEnd
     }
 } 

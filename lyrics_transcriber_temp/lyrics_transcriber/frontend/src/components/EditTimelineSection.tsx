@@ -19,6 +19,7 @@ import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'
+import TouchAppIcon from '@mui/icons-material/TouchApp'
 import TimelineEditor from './TimelineEditor'
 import { Word } from '../types'
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
@@ -46,6 +47,8 @@ interface EditTimelineSectionProps {
     isGlobal?: boolean
     defaultZoomLevel?: number
     isReplaceAllMode?: boolean
+    onTapStart?: () => void
+    onTapEnd?: () => void
 }
 
 // Memoized control buttons to prevent unnecessary re-renders
@@ -218,7 +221,9 @@ export default function EditTimelineSection({
     isPaused = false,
     isGlobal = false,
     defaultZoomLevel = 10,
-    isReplaceAllMode = false
+    isReplaceAllMode = false,
+    onTapStart,
+    onTapEnd
 }: EditTimelineSectionProps) {
     const theme = useTheme()
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -509,10 +514,43 @@ export default function EditTimelineSection({
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                                 {isSpacebarPressed ?
-                                    "Holding spacebar... Release when word ends" :
-                                    (isMobile ? "Tap spacebar at word start" : "Press spacebar when word starts (tap for short words, hold for long words)")}
+                                    "Holding... Release when word ends" :
+                                    (isMobile ? "Tap the button when word starts" : "Press spacebar when word starts (tap for short words, hold for long words)")}
                             </Typography>
                         </Box>
+                    )}
+                    {/* Mobile TAP button for manual sync */}
+                    {isMobile && isManualSyncing && onTapStart && onTapEnd && (
+                        <Button
+                            variant="contained"
+                            color={isSpacebarPressed ? "secondary" : "primary"}
+                            onTouchStart={(e) => {
+                                e.preventDefault()
+                                onTapStart()
+                            }}
+                            onTouchEnd={(e) => {
+                                e.preventDefault()
+                                onTapEnd()
+                            }}
+                            onMouseDown={onTapStart}
+                            onMouseUp={onTapEnd}
+                            onMouseLeave={() => {
+                                if (isSpacebarPressed) onTapEnd()
+                            }}
+                            startIcon={<TouchAppIcon />}
+                            sx={{
+                                py: 2,
+                                fontSize: '1.1rem',
+                                fontWeight: 'bold',
+                                width: '100%',
+                                minHeight: '56px',
+                                userSelect: 'none',
+                                WebkitUserSelect: 'none',
+                                touchAction: 'manipulation'
+                            }}
+                        >
+                            {isSpacebarPressed ? "HOLD..." : "TAP"}
+                        </Button>
                     )}
                 </Box>
             </Box>
