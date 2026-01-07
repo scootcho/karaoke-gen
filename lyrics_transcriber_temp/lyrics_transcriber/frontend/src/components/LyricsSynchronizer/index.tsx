@@ -837,8 +837,8 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                 </Paper>
             </Box>
 
-            {/* Controls - fixed height section */}
-            <Box sx={{ height: 88, flexShrink: 0 }}>
+            {/* Controls section */}
+            <Box sx={{ minHeight: 88, flexShrink: 0 }}>
                 <SyncControls
                     isManualSyncing={isManualSyncing}
                     isPaused={isPaused}
