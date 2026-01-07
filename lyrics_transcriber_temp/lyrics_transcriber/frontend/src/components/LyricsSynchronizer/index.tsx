@@ -813,7 +813,14 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                         boxSizing: 'border-box'
                     }}
                 >
-                    <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            fontWeight: 500,
+                            lineHeight: 1.3,
+                            color: isManualSyncing ? 'common.white' : 'text.primary'
+                        }}
+                    >
                         {instruction.primary}
                     </Typography>
                     <Typography
