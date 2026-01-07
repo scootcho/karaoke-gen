@@ -138,6 +138,15 @@ export interface JobLog {
   details?: Record<string, any>;
 }
 
+export interface EncodingWorkerHealth {
+  available: boolean;
+  status: string;  // 'ok' | 'offline' | 'not_configured'
+  version?: string | null;
+  active_jobs?: number;
+  queue_length?: number;
+  error?: string;
+}
+
 class ApiError extends Error {
   status: number;
   data?: any;
@@ -589,7 +598,7 @@ export const api = {
   },
 
   // ==========================================================================
-  // Version API endpoint
+  // Version & Health API endpoints
   // ==========================================================================
 
   /**
@@ -599,6 +608,14 @@ export const api = {
     const response = await fetch(`${API_BASE_URL}/`, {
       headers: getAuthHeaders()
     });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get encoding worker health status
+   */
+  async getEncodingWorkerHealth(): Promise<EncodingWorkerHealth> {
+    const response = await fetch(`${API_BASE_URL}/health/encoding-worker`);
     return handleResponse(response);
   },
 
