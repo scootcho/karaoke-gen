@@ -1,4 +1,4 @@
-import { Box, Button, Typography } from '@mui/material'
+import { Box, Button, IconButton, Tooltip, Typography, useMediaQuery, useTheme } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import MergeIcon from '@mui/icons-material/CallMerge'
 import CallSplitIcon from '@mui/icons-material/CallSplit'
@@ -49,6 +49,89 @@ export default function WordDivider({
     isLast = false,
     sx = {}
 }: WordDividerProps) {
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+    // On mobile, use icon-only buttons to save space
+    if (isMobile) {
+        return (
+            <Box
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: 'auto',
+                    minHeight: '28px',
+                    my: 0.5,
+                    width: '100%',
+                    bgcolor: 'background.paper',
+                    ...sx
+                }}
+            >
+                <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    bgcolor: 'background.paper',
+                    padding: '2px 4px',
+                    zIndex: 1
+                }}>
+                    <Tooltip title="Add Word">
+                        <IconButton onClick={onAddWord} size="small" sx={{ color: 'primary.main', padding: '4px' }}>
+                            <AddIcon fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                    {isFirst && onAddSegmentBefore && onMergeSegment && (
+                        <>
+                            <Tooltip title="Add Segment">
+                                <IconButton onClick={onAddSegmentBefore} size="small" sx={{ color: 'success.main', padding: '4px' }}>
+                                    <AddIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Merge with Previous Segment">
+                                <IconButton onClick={onMergeSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
+                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                </IconButton>
+                            </Tooltip>
+                        </>
+                    )}
+                    {onMergeWords && !isLast && (
+                        <Tooltip title="Merge Words">
+                            <span>
+                                <IconButton onClick={onMergeWords} size="small" disabled={!canMerge} sx={{ color: 'primary.main', padding: '4px' }}>
+                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
+                    )}
+                    {onSplitSegment && !isLast && (
+                        <Tooltip title="Split Segment">
+                            <IconButton onClick={onSplitSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
+                                <CallSplitIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                    {isLast && onAddSegmentAfter && onMergeSegment && (
+                        <>
+                            <Tooltip title="Add Segment">
+                                <IconButton onClick={onAddSegmentAfter} size="small" sx={{ color: 'success.main', padding: '4px' }}>
+                                    <AddIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Merge with Next Segment">
+                                <IconButton onClick={onMergeSegment} size="small" sx={{ color: 'warning.main', padding: '4px' }}>
+                                    <MergeIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} />
+                                </IconButton>
+                            </Tooltip>
+                        </>
+                    )}
+                </Box>
+            </Box>
+        )
+    }
+
     return (
         <Box
             sx={{

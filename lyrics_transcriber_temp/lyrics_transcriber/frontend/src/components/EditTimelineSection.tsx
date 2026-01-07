@@ -462,7 +462,8 @@ export default function EditTimelineSection({
                 flexDirection: isMobile ? 'column' : 'row',
                 alignItems: isMobile ? 'stretch' : 'center',
                 justifyContent: 'space-between',
-                gap: isMobile ? 1 : 0
+                gap: isMobile ? 1 : 0,
+                mb: isMobile ? 2 : 0
             }}>
                 {/* Time range info - hidden on mobile to save space */}
                 {!isMobile && (
