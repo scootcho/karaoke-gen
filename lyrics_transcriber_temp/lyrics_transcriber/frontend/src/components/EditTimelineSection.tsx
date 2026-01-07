@@ -540,7 +540,6 @@ export default function EditTimelineSection({
                             }}
                             startIcon={<TouchAppIcon />}
                             sx={{
-                                mt: 2,
                                 py: 2,
                                 fontSize: '1.1rem',
                                 fontWeight: 'bold',
