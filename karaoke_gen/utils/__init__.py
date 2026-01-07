@@ -109,10 +109,14 @@ def normalize_text(text: str) -> str:
     - Various whitespace characters -> regular space
     - Ellipsis character -> three dots
 
+    This function also:
+    - Collapses multiple spaces to a single space
+    - Strips leading/trailing whitespace
+
     Unlike sanitize_filename(), this does NOT:
-    - Remove filesystem-unsafe characters
-    - Strip leading/trailing characters
-    - Collapse multiple characters
+    - Remove filesystem-unsafe characters (/, \, :, *, ?, ", <, >, |)
+    - Collapse multiple underscores
+    - Strip leading/trailing periods
 
     This should be applied to user-facing text like artist names and song titles
     at input time to ensure data consistency.
