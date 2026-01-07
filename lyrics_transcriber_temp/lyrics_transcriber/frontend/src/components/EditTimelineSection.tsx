@@ -468,6 +468,7 @@ export default function EditTimelineSection({
                 alignItems: isMobile ? 'stretch' : 'center',
                 justifyContent: 'space-between',
                 gap: isMobile ? 1 : 0,
+                mt: isMobile ? 1.5 : 0,
                 mb: isMobile ? 2 : 0
             }}>
                 {/* Time range info - hidden on mobile to save space */}
@@ -539,6 +540,7 @@ export default function EditTimelineSection({
                             }}
                             startIcon={<TouchAppIcon />}
                             sx={{
+                                mt: 2,
                                 py: 2,
                                 fontSize: '1.1rem',
                                 fontWeight: 'bold',
