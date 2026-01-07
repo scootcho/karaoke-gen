@@ -802,13 +802,19 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     sx={{
                         p: 1.5,
                         height: '100%',
-                        bgcolor: isManualSyncing ? 'info.main' : (isDarkMode ? 'grey.800' : 'grey.100'),
-                        color: isManualSyncing ? 'common.white' : 'text.primary',
+                        bgcolor: isManualSyncing
+                            ? (isDarkMode ? 'success.dark' : 'success.light')
+                            : (isDarkMode ? 'grey.800' : 'grey.100'),
+                        color: isManualSyncing
+                            ? (isDarkMode ? 'success.contrastText' : 'success.dark')
+                            : 'text.primary',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center',
                         overflow: 'hidden',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        border: isManualSyncing ? 2 : 0,
+                        borderColor: 'success.main'
                     }}
                 >
                     <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
@@ -817,10 +823,12 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     <Typography
                         variant="caption"
                         sx={{
-                            opacity: isManualSyncing ? 0.9 : 0.85,
+                            opacity: 0.85,
                             display: 'block',
                             lineHeight: 1.3,
-                            color: isManualSyncing ? 'common.white' : 'text.secondary'
+                            color: isManualSyncing
+                                ? (isDarkMode ? 'success.contrastText' : 'success.dark')
+                                : 'text.secondary'
                         }}
                     >
                         {instruction.secondary}
