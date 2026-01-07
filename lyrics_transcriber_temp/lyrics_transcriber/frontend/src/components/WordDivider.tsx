@@ -1,4 +1,4 @@
-import { Box, Button, Typography, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Button, Typography } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import MergeIcon from '@mui/icons-material/CallMerge'
 import CallSplitIcon from '@mui/icons-material/CallSplit'
@@ -18,17 +18,12 @@ interface WordDividerProps {
 }
 
 const buttonTextStyle = {
-    color: 'text.secondary', // Use theme color for proper light/dark mode support
+    color: 'text.secondary',
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
     fontWeight: 400,
     fontSize: '0.7rem',
     lineHeight: '1.4375em',
     textTransform: 'none'
-}
-
-const mobileButtonTextStyle = {
-    ...buttonTextStyle,
-    fontSize: '0.6rem'
 }
 
 const buttonBaseStyle = {
@@ -39,17 +34,6 @@ const buttonBaseStyle = {
     },
     '& .MuiSvgIcon-root': {
         fontSize: '1.2rem'
-    }
-}
-
-const mobileButtonBaseStyle = {
-    ...buttonBaseStyle,
-    padding: '2px 4px',
-    '& .MuiButton-startIcon': {
-        marginRight: 0.25
-    },
-    '& .MuiSvgIcon-root': {
-        fontSize: '1rem'
     }
 }
 
@@ -65,22 +49,16 @@ export default function WordDivider({
     isLast = false,
     sx = {}
 }: WordDividerProps) {
-    const theme = useTheme()
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-
-    const activeButtonStyle = isMobile ? mobileButtonBaseStyle : buttonBaseStyle
-    const activeTextStyle = isMobile ? mobileButtonTextStyle : buttonTextStyle
-
     return (
         <Box
             sx={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: isMobile ? 'flex-end' : 'center',
+                justifyContent: 'flex-end',
                 height: 'auto',
                 minHeight: '20px',
-                my: isMobile ? 0 : -0.5,
-                width: isMobile ? '100%' : '50%',
+                my: 0,
+                width: '100%',
                 bgcolor: 'background.paper',
                 ...sx
             }}
@@ -88,11 +66,11 @@ export default function WordDivider({
             <Box sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: isMobile ? 0.5 : 1,
+                gap: 1,
                 flexWrap: 'wrap',
-                justifyContent: isMobile ? 'flex-end' : 'center',
+                justifyContent: 'flex-end',
                 bgcolor: 'background.paper',
-                padding: isMobile ? '0 4px' : '0 8px',
+                padding: '0 8px',
                 zIndex: 1
             }}>
                 <Button
@@ -101,12 +79,12 @@ export default function WordDivider({
                     size="small"
                     startIcon={<AddIcon />}
                     sx={{
-                        ...activeButtonStyle,
+                        ...buttonBaseStyle,
                         color: 'primary.main',
                     }}
                 >
-                    <Typography sx={activeTextStyle}>
-                        {isMobile ? '+Word' : 'Add Word'}
+                    <Typography sx={buttonTextStyle}>
+                        Add Word
                     </Typography>
                 </Button>
                 {isFirst && onAddSegmentBefore && onMergeSegment && (
@@ -117,12 +95,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<AddIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...activeButtonStyle,
+                                ...buttonBaseStyle,
                                 color: 'success.main',
                             }}
                         >
-                            <Typography sx={activeTextStyle}>
-                                {isMobile ? '+Seg' : 'Add Segment'}
+                            <Typography sx={buttonTextStyle}>
+                                Add Segment
                             </Typography>
                         </Button>
                         <Button
@@ -131,12 +109,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...activeButtonStyle,
+                                ...buttonBaseStyle,
                                 color: 'warning.main',
                             }}
                         >
-                            <Typography sx={activeTextStyle}>
-                                {isMobile ? 'Merge' : 'Merge Segment'}
+                            <Typography sx={buttonTextStyle}>
+                                Merge Segment
                             </Typography>
                         </Button>
                     </>
@@ -149,12 +127,12 @@ export default function WordDivider({
                         startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                         disabled={!canMerge}
                         sx={{
-                            ...activeButtonStyle,
+                            ...buttonBaseStyle,
                             color: 'primary.main',
                         }}
                     >
-                        <Typography sx={activeTextStyle}>
-                            {isMobile ? 'Merge' : 'Merge Words'}
+                        <Typography sx={buttonTextStyle}>
+                            Merge Words
                         </Typography>
                     </Button>
                 )}
@@ -165,12 +143,12 @@ export default function WordDivider({
                         size="small"
                         startIcon={<CallSplitIcon sx={{ transform: 'rotate(90deg)' }} />}
                         sx={{
-                            ...activeButtonStyle,
+                            ...buttonBaseStyle,
                             color: 'warning.main',
                         }}
                     >
-                        <Typography sx={activeTextStyle}>
-                            {isMobile ? 'Split' : 'Split Segment'}
+                        <Typography sx={buttonTextStyle}>
+                            Split Segment
                         </Typography>
                     </Button>
                 )}
@@ -182,12 +160,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<AddIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...activeButtonStyle,
+                                ...buttonBaseStyle,
                                 color: 'success.main',
                             }}
                         >
-                            <Typography sx={activeTextStyle}>
-                                {isMobile ? '+Seg' : 'Add Segment'}
+                            <Typography sx={buttonTextStyle}>
+                                Add Segment
                             </Typography>
                         </Button>
                         <Button
@@ -196,12 +174,12 @@ export default function WordDivider({
                             size="small"
                             startIcon={<MergeIcon sx={{ transform: 'rotate(90deg)' }} />}
                             sx={{
-                                ...activeButtonStyle,
+                                ...buttonBaseStyle,
                                 color: 'warning.main',
                             }}
                         >
-                            <Typography sx={activeTextStyle}>
-                                {isMobile ? 'Merge' : 'Merge Segment'}
+                            <Typography sx={buttonTextStyle}>
+                                Merge Segment
                             </Typography>
                         </Button>
                     </>
@@ -209,4 +187,4 @@ export default function WordDivider({
             </Box>
         </Box>
     )
-} 
+}
