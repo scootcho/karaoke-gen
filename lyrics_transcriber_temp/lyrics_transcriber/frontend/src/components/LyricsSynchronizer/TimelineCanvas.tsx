@@ -665,13 +665,15 @@ const TimelineCanvas = memo(function TimelineCanvas({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Tooltip title="Scroll Left">
-                    <IconButton 
-                        size="small" 
-                        onClick={handleScrollLeft}
-                        disabled={visibleStartTime <= 0}
-                    >
-                        <ArrowBackIcon fontSize="small" />
-                    </IconButton>
+                    <span>
+                        <IconButton
+                            size="small"
+                            onClick={handleScrollLeft}
+                            disabled={visibleStartTime <= 0}
+                        >
+                            <ArrowBackIcon fontSize="small" />
+                        </IconButton>
+                    </span>
                 </Tooltip>
                 
                 <Box 
@@ -701,13 +703,15 @@ const TimelineCanvas = memo(function TimelineCanvas({
                 </Box>
                 
                 <Tooltip title="Scroll Right">
-                    <IconButton 
-                        size="small" 
-                        onClick={handleScrollRight}
-                        disabled={visibleStartTime >= audioDuration - zoomSeconds}
-                    >
-                        <ArrowForwardIcon fontSize="small" />
-                    </IconButton>
+                    <span>
+                        <IconButton
+                            size="small"
+                            onClick={handleScrollRight}
+                            disabled={visibleStartTime >= audioDuration - zoomSeconds}
+                        >
+                            <ArrowForwardIcon fontSize="small" />
+                        </IconButton>
+                    </span>
                 </Tooltip>
             </Box>
         </Box>
