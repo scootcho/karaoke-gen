@@ -1349,7 +1349,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                         onClick={handleResetCorrections}
                         startIcon={<RestoreFromTrash />}
                     >
-                        Reset Corrections
+                        Undo All Changes
                     </Button>
                     <Button
                         variant="contained"
