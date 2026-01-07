@@ -10,7 +10,7 @@ import {
     WordCorrection,
     CorrectionAnnotation
 } from '../types'
-import { Box, Button, Grid, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Button, Grid, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { ApiClient } from '../api'
 import ReferenceView from './ReferenceView'
 import TranscriptionView from './TranscriptionView'
@@ -1338,20 +1338,53 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 </Grid>
             </Grid>
 
-            {/* Action buttons - appear at bottom on mobile, after Reference Lyrics */}
+            {/* Spacer for sticky footer */}
+            {!isReadOnly && apiClient && <Box sx={{ height: 80 }} />}
+
+            {/* Sticky footer bar with Preview Video button */}
             {!isReadOnly && apiClient && (
-                <Box sx={{
-                    mt: 2,
-                    mb: 3,
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    width: '100%'
-                }}>
+                <Box
+                    sx={{
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        bgcolor: 'background.paper',
+                        borderTop: 1,
+                        borderColor: 'divider',
+                        boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                        py: 1.5,
+                        px: 2,
+                        zIndex: 1100,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: 2
+                    }}
+                >
+                    <Typography
+                        variant="body2"
+                        sx={{
+                            color: 'text.secondary',
+                            display: { xs: 'none', sm: 'block' }
+                        }}
+                    >
+                        Lyrics look good?
+                    </Typography>
                     <Button
                         variant="contained"
+                        size="large"
                         onClick={handleFinishReview}
                         disabled={isReviewComplete}
                         endIcon={<OndemandVideo />}
+                        sx={{
+                            px: 4,
+                            py: 1.5,
+                            fontSize: '1.1rem',
+                            fontWeight: 600,
+                            minWidth: { xs: '100%', sm: 'auto' },
+                            maxWidth: { xs: '300px', sm: 'none' }
+                        }}
                     >
                         {isReviewComplete ? 'Review Complete' : 'Preview Video'}
                     </Button>
