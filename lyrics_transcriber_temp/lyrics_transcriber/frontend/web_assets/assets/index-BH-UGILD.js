@@ -36416,6 +36416,70 @@ function useManualSync({
       handleKeyUp(e);
     }
   }, [handleKeyDown, handleKeyUp]);
+  const handleTapStart = reactExports.useCallback(() => {
+    if (!isManualSyncing || !editedSegment || isSpacebarPressed || isPaused) return;
+    console.log("useManualSync - Touch/tap started", {
+      syncWordIndex,
+      currentTime: currentTimeRef.current
+    });
+    setIsSpacebarPressed(true);
+    wordStartTimeRef.current = currentTimeRef.current;
+    spacebarPressTimeRef.current = Date.now();
+    if (syncWordIndex < editedSegment.words.length) {
+      const newWords = [...wordsRef.current];
+      const currentWord = newWords[syncWordIndex];
+      const currentStartTime = currentTimeRef.current;
+      currentWord.start_time = currentStartTime;
+      if (syncWordIndex > 0) {
+        const previousWord = newWords[syncWordIndex - 1];
+        if (previousWord.start_time !== null) {
+          const timeSincePreviousStart = currentStartTime - previousWord.start_time;
+          const needsAdjustment = previousWord.end_time === null || previousWord.end_time !== null && previousWord.end_time > currentStartTime;
+          if (needsAdjustment) {
+            if (timeSincePreviousStart > 1) {
+              previousWord.end_time = previousWord.start_time + 0.5;
+            } else {
+              previousWord.end_time = currentStartTime - 5e-3;
+            }
+          }
+        }
+      }
+      wordsRef.current = newWords;
+      needsSegmentUpdateRef.current = true;
+    }
+  }, [isManualSyncing, editedSegment, syncWordIndex, isSpacebarPressed, isPaused]);
+  const handleTapEnd = reactExports.useCallback(() => {
+    if (!isManualSyncing || !editedSegment || !isSpacebarPressed || isPaused) return;
+    const pressDuration = spacebarPressTimeRef.current ? Date.now() - spacebarPressTimeRef.current : 0;
+    const isTap = pressDuration < TAP_THRESHOLD_MS;
+    console.log("useManualSync - Touch/tap ended", {
+      syncWordIndex,
+      pressDuration: `${pressDuration}ms`,
+      isTap
+    });
+    setIsSpacebarPressed(false);
+    if (syncWordIndex < editedSegment.words.length) {
+      const newWords = [...wordsRef.current];
+      const currentWord = newWords[syncWordIndex];
+      if (isTap) {
+        const defaultEndTime = (wordStartTimeRef.current || currentTimeRef.current) + DEFAULT_WORD_DURATION;
+        currentWord.end_time = defaultEndTime;
+      } else {
+        currentWord.end_time = currentTimeRef.current;
+      }
+      wordsRef.current = newWords;
+      if (syncWordIndex === editedSegment.words.length - 1) {
+        console.log("useManualSync - Completed manual sync for all words");
+        setIsManualSyncing(false);
+        setSyncWordIndex(-1);
+        wordStartTimeRef.current = null;
+        spacebarPressTimeRef.current = null;
+      } else {
+        setSyncWordIndex(syncWordIndex + 1);
+      }
+      needsSegmentUpdateRef.current = true;
+    }
+  }, [isManualSyncing, editedSegment, syncWordIndex, isSpacebarPressed, isPaused]);
   const startManualSync = reactExports.useCallback(() => {
     var _a;
     if (isManualSyncing) {
@@ -36475,7 +36539,9 @@ function useManualSync({
     resumeManualSync,
     cleanupManualSync,
     handleSpacebar,
-    isSpacebarPressed
+    isSpacebarPressed,
+    handleTapStart,
+    handleTapEnd
   };
 }
 const CancelIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
@@ -36507,6 +36573,9 @@ const PlayArrowIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path"
 const CenterFocusStrongIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4m-7 7H3v4c0 1.1.9 2 2 2h4v-2H5zM5 5h4V3H5c-1.1 0-2 .9-2 2v4h2zm14-2h-4v2h4v4h2V5c0-1.1-.9-2-2-2m0 16h-4v2h4c1.1 0 2-.9 2-2v-4h-2z"
 }), "CenterFocusStrong");
+const TouchAppIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+  d: "M9 11.24V7.5C9 6.12 10.12 5 11.5 5S14 6.12 14 7.5v3.74c1.21-.81 2-2.18 2-3.74C16 5.01 13.99 3 11.5 3S7 5.01 7 7.5c0 1.56.79 2.93 2 3.74m9.84 4.63-4.54-2.26c-.17-.07-.35-.11-.54-.11H13v-6c0-.83-.67-1.5-1.5-1.5S10 6.67 10 7.5v10.74c-3.6-.76-3.54-.75-3.67-.75-.31 0-.59.13-.79.33l-.79.8 4.94 4.94c.27.27.65.44 1.06.44h6.79c.75 0 1.33-.55 1.44-1.28l.75-5.27c.01-.07.02-.14.02-.2 0-.62-.38-1.16-.91-1.38"
+}), "TouchApp");
 const TimelineContainer = styled(Box)(({ theme }) => ({
   position: "relative",
   height: "75px",
@@ -36844,102 +36913,112 @@ const TimelineControls = reactExports.memo(({
   onPauseResume,
   onStopAudio
 }) => {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Stack, { direction: "row", spacing: 1, alignItems: "center", children: [
-    isGlobal && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Left", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        IconButton,
-        {
-          onClick: onScrollLeft,
-          disabled: visibleStartTime <= startTime,
-          size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, {})
-        }
-      ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Zoom Out (Show More Time)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        IconButton,
-        {
-          onClick: onZoomOut,
-          disabled: zoomLevel >= endTime - startTime || isReplaceAllMode && isManualSyncing && !isPaused,
-          size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomOutIcon, {})
-        }
-      ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Zoom In (Show Less Time)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        IconButton,
-        {
-          onClick: onZoomIn,
-          disabled: zoomLevel <= 2 || isReplaceAllMode && isManualSyncing && !isPaused,
-          size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomInIcon, {})
-        }
-      ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        IconButton,
-        {
-          onClick: onScrollRight,
-          disabled: visibleEndTime >= endTime,
-          size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowForwardIcon, {})
-        }
-      ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Tooltip,
-        {
-          title: autoScrollEnabled ? "Disable Auto-Page Turn During Playback" : "Enable Auto-Page Turn During Playback",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    Stack,
+    {
+      direction: "row",
+      spacing: 0.5,
+      alignItems: "center",
+      sx: { flexWrap: "wrap", justifyContent: "center", gap: 0.5 },
+      children: [
+        isGlobal && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Left", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             IconButton,
             {
-              onClick: onToggleAutoScroll,
-              color: autoScrollEnabled ? "primary" : "default",
+              onClick: onScrollLeft,
+              disabled: visibleStartTime <= startTime,
               size: "small",
-              children: autoScrollEnabled ? /* @__PURE__ */ jsxRuntimeExports.jsx(AutorenewIcon, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(PauseCircleOutlineIcon, {})
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, { fontSize: "small" })
             }
-          )
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Jump to Current Playback Position", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        IconButton,
-        {
-          onClick: onJumpToCurrentTime,
-          disabled: !currentTime,
-          size: "small",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(CenterFocusStrongIcon, {})
-        }
-      ) })
-    ] }),
-    isReplaceAllMode && onStopAudio && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Button,
-      {
-        variant: "outlined",
-        onClick: onStopAudio,
-        startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(StopIcon, {}),
-        color: "error",
-        size: "small",
-        children: "Stop Audio"
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Button,
-      {
-        variant: isManualSyncing ? "outlined" : "contained",
-        onClick: onStartManualSync,
-        startIcon: isManualSyncing ? /* @__PURE__ */ jsxRuntimeExports.jsx(CancelIcon, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(PlayCircleOutlineIcon, {}),
-        color: isManualSyncing ? "error" : "primary",
-        children: isManualSyncing ? "Cancel Sync" : "Manual Sync"
-      }
-    ),
-    isManualSyncing && isReplaceAllMode && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Button,
-      {
-        variant: "outlined",
-        onClick: onPauseResume,
-        startIcon: isPaused ? /* @__PURE__ */ jsxRuntimeExports.jsx(PlayArrowIcon, {}) : /* @__PURE__ */ jsxRuntimeExports.jsx(PauseCircleOutlineIcon, {}),
-        color: isPaused ? "success" : "warning",
-        size: "small",
-        children: isPaused ? "Resume" : "Pause"
-      }
-    )
-  ] });
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Zoom Out (Show More Time)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            IconButton,
+            {
+              onClick: onZoomOut,
+              disabled: zoomLevel >= endTime - startTime || isReplaceAllMode && isManualSyncing && !isPaused,
+              size: "small",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomOutIcon, { fontSize: "small" })
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Zoom In (Show Less Time)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            IconButton,
+            {
+              onClick: onZoomIn,
+              disabled: zoomLevel <= 2 || isReplaceAllMode && isManualSyncing && !isPaused,
+              size: "small",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ZoomInIcon, { fontSize: "small" })
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            IconButton,
+            {
+              onClick: onScrollRight,
+              disabled: visibleEndTime >= endTime,
+              size: "small",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowForwardIcon, { fontSize: "small" })
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Tooltip,
+            {
+              title: autoScrollEnabled ? "Disable Auto-Page Turn During Playback" : "Enable Auto-Page Turn During Playback",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                IconButton,
+                {
+                  onClick: onToggleAutoScroll,
+                  color: autoScrollEnabled ? "primary" : "default",
+                  size: "small",
+                  children: autoScrollEnabled ? /* @__PURE__ */ jsxRuntimeExports.jsx(AutorenewIcon, { fontSize: "small" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(PauseCircleOutlineIcon, { fontSize: "small" })
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Jump to Current Playback Position", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            IconButton,
+            {
+              onClick: onJumpToCurrentTime,
+              disabled: !currentTime,
+              size: "small",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(CenterFocusStrongIcon, { fontSize: "small" })
+            }
+          ) })
+        ] }),
+        isReplaceAllMode && onStopAudio && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outlined",
+            onClick: onStopAudio,
+            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(StopIcon, { fontSize: "small" }),
+            color: "error",
+            size: "small",
+            children: "Stop"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: isManualSyncing ? "outlined" : "contained",
+            onClick: onStartManualSync,
+            startIcon: isManualSyncing ? /* @__PURE__ */ jsxRuntimeExports.jsx(CancelIcon, { fontSize: "small" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(PlayCircleOutlineIcon, { fontSize: "small" }),
+            color: isManualSyncing ? "error" : "primary",
+            size: "small",
+            children: isManualSyncing ? "Cancel" : "Tap To Sync"
+          }
+        ),
+        isManualSyncing && isReplaceAllMode && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "outlined",
+            onClick: onPauseResume,
+            startIcon: isPaused ? /* @__PURE__ */ jsxRuntimeExports.jsx(PlayArrowIcon, { fontSize: "small" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(PauseCircleOutlineIcon, { fontSize: "small" }),
+            color: isPaused ? "success" : "warning",
+            size: "small",
+            children: isPaused ? "Resume" : "Pause"
+          }
+        )
+      ]
+    }
+  );
 });
 function EditTimelineSection({
   words,
@@ -36963,8 +37042,12 @@ function EditTimelineSection({
   isPaused = false,
   isGlobal = false,
   defaultZoomLevel = 10,
-  isReplaceAllMode = false
+  isReplaceAllMode = false,
+  onTapStart,
+  onTapEnd
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [zoomLevel, setZoomLevel] = reactExports.useState(defaultZoomLevel);
   const [visibleStartTime, setVisibleStartTime] = reactExports.useState(startTime);
   const [visibleEndTime, setVisibleEndTime] = reactExports.useState(Math.min(startTime + zoomLevel, endTime));
@@ -37115,7 +37198,7 @@ function EditTimelineSection({
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Box,
       {
-        sx: { height: "120px", mb: 2 },
+        sx: { height: isMobile ? "80px" : "120px", mb: 0 },
         ref: timelineRef,
         onWheel: handleScroll,
         children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -37132,8 +37215,16 @@ function EditTimelineSection({
         )
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "body2", color: "text.secondary", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      alignItems: isMobile ? "stretch" : "center",
+      justifyContent: "space-between",
+      gap: isMobile ? 1 : 0,
+      mt: isMobile ? 1.5 : 0,
+      mb: isMobile ? 2 : 0
+    }, children: [
+      !isMobile && /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "body2", color: "text.secondary", children: [
         "Original Time Range: ",
         (originalStartTime == null ? void 0 : originalStartTime.toFixed(2)) ?? "N/A",
         " - ",
@@ -37144,7 +37235,12 @@ function EditTimelineSection({
         " - ",
         (currentEndTime == null ? void 0 : currentEndTime.toFixed(2)) ?? "N/A"
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 2 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: isMobile ? "stretch" : "center",
+        gap: isMobile ? 1 : 2
+      }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           TimelineControls,
           {
@@ -37170,7 +37266,7 @@ function EditTimelineSection({
             onStopAudio
           }
         ),
-        currentWordInfo && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { children: [
+        currentWordInfo && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { textAlign: isMobile ? "center" : "left" }, children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(Typography, { variant: "body2", children: [
             "Word ",
             currentWordInfo.index,
@@ -37179,8 +37275,40 @@ function EditTimelineSection({
             ": ",
             /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: currentWordInfo.text })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", color: "text.secondary", children: isSpacebarPressed ? "Holding spacebar... Release when word ends" : "Press spacebar when word starts (tap for short words, hold for long words)" })
-        ] })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", color: "text.secondary", children: isSpacebarPressed ? "Holding... Release when word ends" : isMobile ? "Tap the button when word starts" : "Press spacebar when word starts (tap for short words, hold for long words)" })
+        ] }),
+        isMobile && isManualSyncing && onTapStart && onTapEnd && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "contained",
+            color: isSpacebarPressed ? "secondary" : "primary",
+            onTouchStart: (e) => {
+              e.preventDefault();
+              onTapStart();
+            },
+            onTouchEnd: (e) => {
+              e.preventDefault();
+              onTapEnd();
+            },
+            onMouseDown: onTapStart,
+            onMouseUp: onTapEnd,
+            onMouseLeave: () => {
+              if (isSpacebarPressed) onTapEnd();
+            },
+            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(TouchAppIcon, {}),
+            sx: {
+              py: 2,
+              fontSize: "1.1rem",
+              fontWeight: "bold",
+              width: "100%",
+              minHeight: "56px",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              touchAction: "manipulation"
+            },
+            children: isSpacebarPressed ? "HOLD..." : "TAP"
+          }
+        )
       ] })
     ] })
   ] });
@@ -37199,7 +37327,6 @@ const MergeIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
 }), "CallMerge");
 const buttonTextStyle = {
   color: "text.secondary",
-  // Use theme color for proper light/dark mode support
   fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
   fontWeight: 400,
   fontSize: "0.7rem",
@@ -37235,19 +37362,21 @@ function WordDivider({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        height: "20px",
-        my: -0.5,
-        width: "50%",
+        height: "auto",
+        minHeight: "20px",
+        my: 0,
+        width: "100%",
         bgcolor: "background.paper",
-        // Theme-aware background
+        overflow: "hidden",
         ...sx
       },
       children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
         display: "flex",
         alignItems: "center",
         gap: 1,
+        flexWrap: "wrap",
+        justifyContent: "center",
         bgcolor: "background.paper",
-        // Theme-aware background
         padding: "0 8px",
         zIndex: 1
       }, children: [
@@ -37365,7 +37494,8 @@ const WordRow = reactExports.memo(function WordRow2({
   onSplitWord,
   onRemoveWord,
   wordsLength,
-  onTabNavigation
+  onTabNavigation,
+  isMobile
 }) {
   var _a, _b;
   const handleKeyDown = (e) => {
@@ -37376,67 +37506,107 @@ const WordRow = reactExports.memo(function WordRow2({
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
     display: "flex",
-    gap: 2,
-    alignItems: "center",
+    flexDirection: isMobile ? "column" : "row",
+    gap: isMobile ? 1 : 2,
+    alignItems: isMobile ? "stretch" : "center",
     padding: "4px 0"
   }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      TextField,
-      {
-        label: `Word ${index}`,
-        value: word.text,
-        onChange: (e) => onWordUpdate(index, { text: e.target.value }),
-        onKeyDown: handleKeyDown,
-        fullWidth: true,
-        size: "small",
-        id: `word-text-${index}`
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      TextField,
-      {
-        label: "Start Time",
-        value: ((_a = word.start_time) == null ? void 0 : _a.toFixed(2)) ?? "",
-        onChange: (e) => onWordUpdate(index, { start_time: parseFloat(e.target.value) }),
-        type: "number",
-        inputProps: { step: 0.01 },
-        sx: { width: "150px" },
-        size: "small"
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      TextField,
-      {
-        label: "End Time",
-        value: ((_b = word.end_time) == null ? void 0 : _b.toFixed(2)) ?? "",
-        onChange: (e) => onWordUpdate(index, { end_time: parseFloat(e.target.value) }),
-        type: "number",
-        inputProps: { step: 0.01 },
-        sx: { width: "150px" },
-        size: "small"
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      IconButton,
-      {
-        onClick: () => onSplitWord(index),
-        title: "Split Word",
-        sx: { color: "primary.main" },
-        size: "small",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(SplitIcon, { fontSize: "small" })
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      IconButton,
-      {
-        onClick: () => onRemoveWord(index),
-        disabled: wordsLength <= 1,
-        title: "Remove Word",
-        sx: { color: "error.main" },
-        size: "small",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(DeleteIcon, { fontSize: "small" })
-      }
-    )
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+      display: "flex",
+      gap: 1,
+      alignItems: "center",
+      flex: isMobile ? "none" : 1
+    }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        TextField,
+        {
+          label: `Word ${index}`,
+          value: word.text,
+          onChange: (e) => onWordUpdate(index, { text: e.target.value }),
+          onKeyDown: handleKeyDown,
+          fullWidth: true,
+          size: "small",
+          id: `word-text-${index}`
+        }
+      ),
+      isMobile && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          IconButton,
+          {
+            onClick: () => onSplitWord(index),
+            title: "Split Word",
+            sx: { color: "primary.main" },
+            size: "small",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(SplitIcon, { fontSize: "small" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          IconButton,
+          {
+            onClick: () => onRemoveWord(index),
+            disabled: wordsLength <= 1,
+            title: "Remove Word",
+            sx: { color: "error.main" },
+            size: "small",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(DeleteIcon, { fontSize: "small" })
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+      display: "flex",
+      gap: 1,
+      alignItems: "center",
+      justifyContent: isMobile ? "flex-start" : "flex-end"
+    }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        TextField,
+        {
+          label: "Start",
+          value: ((_a = word.start_time) == null ? void 0 : _a.toFixed(2)) ?? "",
+          onChange: (e) => onWordUpdate(index, { start_time: parseFloat(e.target.value) }),
+          type: "number",
+          inputProps: { step: 0.01 },
+          sx: { width: isMobile ? "80px" : "100px" },
+          size: "small"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        TextField,
+        {
+          label: "End",
+          value: ((_b = word.end_time) == null ? void 0 : _b.toFixed(2)) ?? "",
+          onChange: (e) => onWordUpdate(index, { end_time: parseFloat(e.target.value) }),
+          type: "number",
+          inputProps: { step: 0.01 },
+          sx: { width: isMobile ? "80px" : "100px" },
+          size: "small"
+        }
+      ),
+      !isMobile && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          IconButton,
+          {
+            onClick: () => onSplitWord(index),
+            title: "Split Word",
+            sx: { color: "primary.main" },
+            size: "small",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(SplitIcon, { fontSize: "small" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          IconButton,
+          {
+            onClick: () => onRemoveWord(index),
+            disabled: wordsLength <= 1,
+            title: "Remove Word",
+            sx: { color: "error.main" },
+            size: "small",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(DeleteIcon, { fontSize: "small" })
+          }
+        )
+      ] })
+    ] })
   ] });
 });
 const WordItem = reactExports.memo(function WordItem2({
@@ -37452,7 +37622,8 @@ const WordItem = reactExports.memo(function WordItem2({
   onMergeSegment,
   wordsLength,
   isGlobal,
-  onTabNavigation
+  onTabNavigation,
+  isMobile
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -37464,7 +37635,8 @@ const WordItem = reactExports.memo(function WordItem2({
         onSplitWord,
         onRemoveWord,
         wordsLength,
-        onTabNavigation
+        onTabNavigation,
+        isMobile
       }
     ),
     !isGlobal && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -37476,8 +37648,7 @@ const WordItem = reactExports.memo(function WordItem2({
         onAddSegmentAfter: index === wordsLength - 1 ? () => onAddSegment == null ? void 0 : onAddSegment(index + 1) : void 0,
         onMergeSegment: index === wordsLength - 1 ? () => onMergeSegment == null ? void 0 : onMergeSegment(true) : void 0,
         canMerge: index < wordsLength - 1,
-        isLast: index === wordsLength - 1,
-        sx: { ml: 15 }
+        isLast: index === wordsLength - 1
       }
     ),
     isGlobal && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -37485,8 +37656,7 @@ const WordItem = reactExports.memo(function WordItem2({
       {
         onAddWord: () => onAddWord(index),
         onMergeWords: index < wordsLength - 1 ? () => onMergeWords(index) : void 0,
-        canMerge: index < wordsLength - 1,
-        sx: { ml: 15 }
+        canMerge: index < wordsLength - 1
       }
     )
   ] }, word.id);
@@ -37503,6 +37673,8 @@ function EditWordList({
   onMergeSegment,
   isGlobal = false
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [replacementText, setReplacementText] = reactExports.useState("");
   const [page, setPage] = reactExports.useState(1);
   const pageSize = isGlobal ? 50 : words.length;
@@ -37558,15 +37730,13 @@ function EditWordList({
         onAddWord: () => onAddWord(-1),
         onAddSegmentBefore: () => onAddSegment == null ? void 0 : onAddSegment(0),
         onMergeSegment: () => onMergeSegment == null ? void 0 : onMergeSegment(false),
-        isFirst: true,
-        sx: { ml: 15 }
+        isFirst: true
       }
     ),
     isGlobal && /* @__PURE__ */ jsxRuntimeExports.jsx(
       WordDivider,
       {
-        onAddWord: () => onAddWord(-1),
-        sx: { ml: 15 }
+        onAddWord: () => onAddWord(-1)
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: {
@@ -37581,7 +37751,7 @@ function EditWordList({
         width: "8px"
       },
       "&::-webkit-scrollbar-thumb": {
-        backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(248, 250, 252, 0.2)" : "rgba(30, 41, 59, 0.3)",
+        backgroundColor: (theme2) => theme2.palette.mode === "dark" ? "rgba(248, 250, 252, 0.2)" : "rgba(30, 41, 59, 0.3)",
         // dark scrollbar for light mode
         borderRadius: "4px"
       },
@@ -37604,7 +37774,8 @@ function EditWordList({
           onMergeSegment,
           wordsLength: words.length,
           isGlobal,
-          onTabNavigation: handleTabNavigation
+          onTabNavigation: handleTabNavigation,
+          isMobile
         },
         word.id
       );
@@ -37653,7 +37824,7 @@ function EditWordList({
     ] })
   ] });
 }
-const RestoreFromTrash = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
+const RestoreIcon$1 = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M19 4h-3.5l-1-1h-5l-1 1H5v2h14zM6 7v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7zm8 7v4h-4v-4H8l4-4 4 4z"
 }), "RestoreFromTrash");
 const HistoryIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
@@ -37669,14 +37840,29 @@ function EditActionBar({
   originalTranscribedSegment,
   isGlobal = false
 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1, width: "100%" }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+    display: "flex",
+    flexDirection: isMobile ? "column" : "row",
+    alignItems: isMobile ? "stretch" : "center",
+    gap: 1,
+    width: "100%"
+  }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+      display: "flex",
+      alignItems: "center",
+      gap: 1,
+      flexWrap: "wrap",
+      justifyContent: isMobile ? "center" : "flex-start"
+    }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
-          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(RestoreFromTrash, {}),
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(RestoreIcon$1, {}),
           onClick: onReset,
           color: "warning",
+          size: isMobile ? "small" : "medium",
           children: "Reset"
         }
       ),
@@ -37685,6 +37871,7 @@ function EditActionBar({
         {
           onClick: onRevertToOriginal,
           startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(HistoryIcon, {}),
+          size: isMobile ? "small" : "medium",
           children: "Un-Correct"
         }
       ),
@@ -37694,18 +37881,25 @@ function EditActionBar({
           startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(DeleteIcon, {}),
           onClick: onDelete,
           color: "error",
+          size: isMobile ? "small" : "medium",
           children: "Delete Segment"
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { ml: "auto", display: "flex", gap: 1 }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: onClose, children: "Cancel" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
+      ml: isMobile ? 0 : "auto",
+      display: "flex",
+      gap: 1,
+      justifyContent: isMobile ? "center" : "flex-end"
+    }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Button, { onClick: onClose, size: isMobile ? "small" : "medium", children: "Cancel" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
           onClick: onSave,
           variant: "contained",
           disabled: !editedSegment || editedSegment.words.length === 0,
+          size: isMobile ? "small" : "medium",
           children: "Save"
         }
       )
@@ -37724,7 +37918,9 @@ const MemoizedTimelineSection = reactExports.memo(function TimelineSection({
   onWordUpdate,
   onPlaySegment,
   startManualSync,
-  isGlobal
+  isGlobal,
+  onTapStart,
+  onTapEnd
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     EditTimelineSection,
@@ -37743,7 +37939,9 @@ const MemoizedTimelineSection = reactExports.memo(function TimelineSection({
       onWordUpdate,
       onPlaySegment,
       startManualSync,
-      isGlobal
+      isGlobal,
+      onTapStart,
+      onTapEnd
     }
   );
 });
@@ -37817,6 +38015,8 @@ function EditModal({
   isGlobal = false,
   isLoading = false
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [editedSegment, setEditedSegment] = reactExports.useState(segment);
   const [isPlaying, setIsPlaying] = reactExports.useState(false);
   const updateSegment2 = reactExports.useCallback((newWords) => {
@@ -37839,7 +38039,9 @@ function EditModal({
     startManualSync,
     cleanupManualSync,
     handleSpacebar,
-    isSpacebarPressed
+    isSpacebarPressed,
+    handleTapStart,
+    handleTapEnd
   } = useManualSync({
     editedSegment,
     currentTime,
@@ -38092,6 +38294,7 @@ function EditModal({
       onClose: handleClose,
       maxWidth: "md",
       fullWidth: true,
+      fullScreen: isMobile,
       onKeyDown: (e) => {
         if (e.key === "Enter" && !e.shiftKey && !isLoading) {
           e.preventDefault();
@@ -38100,8 +38303,8 @@ function EditModal({
       },
       PaperProps: {
         sx: {
-          height: "90vh",
-          margin: "5vh 0"
+          height: isMobile ? "100%" : "90vh",
+          margin: isMobile ? 0 : "5vh 0"
         }
       },
       children: [
@@ -38128,7 +38331,7 @@ function EditModal({
                 position: "absolute",
                 top: 0,
                 left: 0,
-                backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(30, 41, 59, 0.95)" : "rgba(248, 250, 252, 0.95)",
+                backgroundColor: (theme2) => theme2.palette.mode === "dark" ? "rgba(30, 41, 59, 0.95)" : "rgba(248, 250, 252, 0.95)",
                 // light background for light mode
                 zIndex: 10
               }, children: [
@@ -38155,7 +38358,9 @@ function EditModal({
                     onWordUpdate: handleWordChange,
                     onPlaySegment,
                     startManualSync,
-                    isGlobal
+                    isGlobal,
+                    onTapStart: handleTapStart,
+                    onTapEnd: handleTapEnd
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -38773,16 +38978,38 @@ const CANVAS_PADDING = 8;
 const TEXT_ABOVE_BLOCK = 14;
 const RESIZE_HANDLE_SIZE = 8;
 const RESIZE_HANDLE_HITAREA = 12;
-const PLAYHEAD_COLOR = "#f97316";
-const WORD_BLOCK_COLOR = "#dc2626";
-const WORD_BLOCK_SELECTED_COLOR = "#b91c1c";
-const WORD_BLOCK_CURRENT_COLOR = "#ef4444";
-const WORD_TEXT_CURRENT_COLOR = "#fca5a5";
-const UPCOMING_WORD_BG = "#2a2a2a";
-const UPCOMING_WORD_TEXT = "#e5e5e5";
-const TIME_BAR_BG = "#1a1a1a";
-const TIME_BAR_TEXT = "#888888";
-const TIMELINE_BG = "#0f0f0f";
+const getThemeColors = (isDarkMode) => ({
+  playhead: "#f97316",
+  // orange-500 - same for both themes
+  wordBlock: isDarkMode ? "#dc2626" : "#ef4444",
+  // red-600 dark, red-500 light
+  wordBlockSelected: isDarkMode ? "#b91c1c" : "#dc2626",
+  // red-700 dark, red-600 light
+  wordBlockCurrent: isDarkMode ? "#ef4444" : "#f87171",
+  // red-500 dark, red-400 light
+  wordTextCurrent: isDarkMode ? "#fca5a5" : "#991b1b",
+  // red-300 dark, red-800 light
+  wordText: isDarkMode ? "#f8fafc" : "#1e293b",
+  // slate-50 dark, slate-800 light
+  upcomingWordBg: isDarkMode ? "#2a2a2a" : "#e5e7eb",
+  // slate-700 dark, gray-200 light
+  upcomingWordText: isDarkMode ? "#e5e5e5" : "#374151",
+  // slate-50 dark, gray-700 light
+  timeBarBg: isDarkMode ? "#1a1a1a" : "#f3f4f6",
+  // slate-800 dark, gray-100 light
+  timeBarText: isDarkMode ? "#888888" : "#6b7280",
+  // slate-400 dark, gray-500 light
+  timelineBg: isDarkMode ? "#0f0f0f" : "#ffffff",
+  // slate-900 dark, white light
+  gridLine: isDarkMode ? "#64748b" : "#94a3b8",
+  // slate-500 dark, slate-400 light
+  borderLine: isDarkMode ? "#2a2a2a" : "#cbd5e1",
+  // slate-700 dark, slate-300 light
+  handleStroke: isDarkMode ? "#0f0f0f" : "#ffffff",
+  // stroke around handles
+  playheadShadow: isDarkMode ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.3)"
+  // shadow behind playhead line
+});
 function buildWordToSegmentMap(segments) {
   const map = /* @__PURE__ */ new Map();
   segments.forEach((segment, idx) => {
@@ -38837,8 +39064,10 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
   onScrollChange,
   audioDuration,
   zoomSeconds,
-  height: height2 = 200
+  height: height2 = 200,
+  isDarkMode = true
 }) {
+  const colors = getThemeColors(isDarkMode);
   const canvasRef = reactExports.useRef(null);
   const containerRef = reactExports.useRef(null);
   const [canvasWidth, setCanvasWidth] = reactExports.useState(800);
@@ -38927,20 +39156,20 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
     canvas.width = canvasWidth * dpr;
     canvas.height = height2 * dpr;
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = TIMELINE_BG;
+    ctx.fillStyle = colors.timelineBg;
     ctx.fillRect(0, 0, canvasWidth, height2);
-    ctx.fillStyle = TIME_BAR_BG;
+    ctx.fillStyle = colors.timeBarBg;
     ctx.fillRect(0, 0, canvasWidth, TIME_BAR_HEIGHT);
     const duration2 = visibleEndTime - visibleStartTime;
     const secondsPerTick = duration2 > 15 ? 2 : duration2 > 8 ? 1 : 0.5;
     const startSecond = Math.ceil(visibleStartTime / secondsPerTick) * secondsPerTick;
-    ctx.fillStyle = TIME_BAR_TEXT;
+    ctx.fillStyle = colors.timeBarText;
     ctx.font = "11px system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     for (let t = startSecond; t <= visibleEndTime; t += secondsPerTick) {
       const x = timeToX(t);
       ctx.beginPath();
-      ctx.strokeStyle = "#64748b";
+      ctx.strokeStyle = colors.gridLine;
       ctx.lineWidth = 1;
       ctx.moveTo(x, TIME_BAR_HEIGHT - 6);
       ctx.lineTo(x, TIME_BAR_HEIGHT);
@@ -38950,7 +39179,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
       }
     }
     ctx.beginPath();
-    ctx.strokeStyle = "#2a2a2a";
+    ctx.strokeStyle = colors.borderLine;
     ctx.lineWidth = 1;
     ctx.moveTo(0, TIME_BAR_HEIGHT);
     ctx.lineTo(canvasWidth, TIME_BAR_HEIGHT);
@@ -38967,25 +39196,25 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
       const isCurrent = word.id === currentWordId;
       const isHovered = word.id === hoveredWordId;
       if (isSelected) {
-        ctx.fillStyle = WORD_BLOCK_SELECTED_COLOR;
+        ctx.fillStyle = colors.wordBlockSelected;
       } else if (isCurrent) {
-        ctx.fillStyle = WORD_BLOCK_CURRENT_COLOR;
+        ctx.fillStyle = colors.wordBlockCurrent;
       } else {
-        ctx.fillStyle = WORD_BLOCK_COLOR;
+        ctx.fillStyle = colors.wordBlock;
       }
       ctx.fillRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT);
       if (isSelected) {
-        ctx.strokeStyle = "#f97316";
+        ctx.strokeStyle = colors.playhead;
         ctx.lineWidth = 2;
         ctx.strokeRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT);
         if (isHovered || selectedWordIds.size === 1) {
           const handleX = bounds.startX + bounds.blockWidth - RESIZE_HANDLE_SIZE / 2;
           const handleY = bounds.y + WORD_BLOCK_HEIGHT / 2;
           ctx.beginPath();
-          ctx.fillStyle = "#f97316";
+          ctx.fillStyle = colors.playhead;
           ctx.arc(handleX, handleY, RESIZE_HANDLE_SIZE / 2, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = "#0f0f0f";
+          ctx.strokeStyle = colors.handleStroke;
           ctx.lineWidth = 1;
           ctx.stroke();
         }
@@ -39017,7 +39246,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
         const textStartX = Math.max(blockStartX, rightmostTextEnd + 3);
         if (textStartX < canvasWidth - 10) {
           const isCurrent = word.id === currentWordId;
-          ctx.fillStyle = isCurrent ? WORD_TEXT_CURRENT_COLOR : "#f8fafc";
+          ctx.fillStyle = isCurrent ? colors.wordTextCurrent : colors.wordText;
           ctx.fillText(word.text, textStartX, textY);
           rightmostTextEnd = textStartX + textWidth;
         }
@@ -39031,9 +39260,9 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
       for (let i = 0; i < Math.min(upcomingWords.length, 12); i++) {
         const word = upcomingWords[i];
         const textWidth = ctx.measureText(word.text).width + 10;
-        ctx.fillStyle = UPCOMING_WORD_BG;
+        ctx.fillStyle = colors.upcomingWordBg;
         ctx.fillRect(offsetX, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 60, textWidth, 20);
-        ctx.fillStyle = UPCOMING_WORD_TEXT;
+        ctx.fillStyle = colors.upcomingWordText;
         ctx.textAlign = "left";
         ctx.fillText(word.text, offsetX + 5, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 74);
         offsetX += textWidth + 3;
@@ -39043,8 +39272,8 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
     if (currentTime >= visibleStartTime && currentTime <= visibleEndTime) {
       const playheadX = timeToX(currentTime);
       ctx.beginPath();
-      ctx.fillStyle = PLAYHEAD_COLOR;
-      ctx.strokeStyle = "#0f0f0f";
+      ctx.fillStyle = colors.playhead;
+      ctx.strokeStyle = colors.handleStroke;
       ctx.lineWidth = 1;
       ctx.moveTo(playheadX - 6, 2);
       ctx.lineTo(playheadX + 6, 2);
@@ -39053,13 +39282,13 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
       ctx.fill();
       ctx.stroke();
       ctx.beginPath();
-      ctx.strokeStyle = PLAYHEAD_COLOR;
+      ctx.strokeStyle = colors.playhead;
       ctx.lineWidth = 2;
       ctx.moveTo(playheadX, TIME_BAR_HEIGHT);
       ctx.lineTo(playheadX, height2);
       ctx.stroke();
       ctx.beginPath();
-      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.strokeStyle = colors.playheadShadow;
       ctx.lineWidth = 1;
       ctx.moveTo(playheadX + 1, TIME_BAR_HEIGHT);
       ctx.lineTo(playheadX + 1, height2);
@@ -39090,7 +39319,8 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
     syncWordIndex,
     isManualSyncing,
     timeToX,
-    getWordBounds
+    getWordBounds,
+    colors
   ]);
   reactExports.useEffect(() => {
     const animate = () => {
@@ -39251,7 +39481,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
     onScrollChange(Math.max(0, newStart));
   }, [visibleStartTime, zoomSeconds, audioDuration, onScrollChange]);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { display: "flex", flexDirection: "column", gap: 0.5 }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Left", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Left", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       IconButton,
       {
         size: "small",
@@ -39259,7 +39489,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
         disabled: visibleStartTime <= 0,
         children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowBackIcon, { fontSize: "small" })
       }
-    ) }),
+    ) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Box,
       {
@@ -39290,7 +39520,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
         )
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Right", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Scroll Right", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       IconButton,
       {
         size: "small",
@@ -39298,7 +39528,7 @@ const TimelineCanvas = reactExports.memo(function TimelineCanvas2({
         disabled: visibleStartTime >= audioDuration - zoomSeconds,
         children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowForwardIcon, { fontSize: "small" })
       }
-    ) })
+    ) }) })
   ] }) });
 });
 const UpcomingWordsBar = reactExports.memo(function UpcomingWordsBar2({
@@ -39372,10 +39602,14 @@ const SyncControls = reactExports.memo(function SyncControls2({
   onUnsyncFromCursor,
   onEditSelectedWord,
   onDeleteSelected,
-  canUnsyncFromCursor
+  canUnsyncFromCursor,
+  isMobile = false,
+  onTapStart,
+  onTapEnd,
+  isTapping = false
 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 1.5 }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Stack, { direction: "row", spacing: 1, alignItems: "center", flexWrap: "wrap", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexDirection: "column", gap: 1 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
@@ -39400,7 +39634,7 @@ const SyncControls = reactExports.memo(function SyncControls2({
           children: "Stop"
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true, sx: { mx: 0.5 } }),
+      !isMobile && /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true }),
       isManualSyncing ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
@@ -39423,6 +39657,26 @@ const SyncControls = reactExports.memo(function SyncControls2({
             size: "small",
             children: isPaused ? "Resume" : "Pause"
           }
+        ),
+        isMobile && !isPaused && onTapStart && onTapEnd && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Button,
+          {
+            variant: "contained",
+            color: isTapping ? "warning" : "success",
+            onTouchStart: (e) => {
+              e.preventDefault();
+              onTapStart();
+            },
+            onTouchEnd: (e) => {
+              e.preventDefault();
+              onTapEnd();
+            },
+            onMouseDown: onTapStart,
+            onMouseUp: onTapEnd,
+            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(TouchAppIcon, {}),
+            size: "small",
+            children: isTapping ? "Release" : "TAP"
+          }
         )
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
@@ -39436,7 +39690,7 @@ const SyncControls = reactExports.memo(function SyncControls2({
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Stack, { direction: "row", spacing: 1, alignItems: "center", flexWrap: "wrap", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
@@ -39460,7 +39714,7 @@ const SyncControls = reactExports.memo(function SyncControls2({
           children: "Edit Lyrics"
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true, sx: { mx: 0.5 } }),
+      !isMobile && /* @__PURE__ */ jsxRuntimeExports.jsx(Divider, { orientation: "vertical", flexItem: true }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
@@ -39501,7 +39755,7 @@ const SyncControls = reactExports.memo(function SyncControls2({
     ] })
   ] });
 });
-const MIN_ZOOM_SECONDS = 4.5;
+const MIN_ZOOM_SECONDS = 2;
 const MAX_ZOOM_SECONDS = 24;
 const ZOOM_STEPS = 50;
 function getAllWords(segments) {
@@ -39518,6 +39772,9 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
   onCancel,
   setModalSpacebarHandler
 }) {
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === "dark";
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [workingSegments, setWorkingSegments] = reactExports.useState(
     () => cloneSegments(initialSegments)
   );
@@ -39948,6 +40205,53 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
       setModalSpacebarHandler(void 0);
     };
   }, [setModalSpacebarHandler]);
+  const handleTapStart = reactExports.useCallback(() => {
+    if (!isManualSyncing || isPaused) return;
+    if (syncWordIndex < 0 || syncWordIndex >= allWords.length) return;
+    if (isSpacebarPressed) return;
+    setIsSpacebarPressed(true);
+    wordStartTimeRef.current = currentTimeRef.current;
+    spacebarPressTimeRef.current = Date.now();
+    const newWords = [...allWords];
+    const currentWord = newWords[syncWordIndex];
+    currentWord.start_time = currentTimeRef.current;
+    if (syncWordIndex > 0) {
+      const prevWord = newWords[syncWordIndex - 1];
+      if (prevWord.start_time !== null && prevWord.end_time === null) {
+        const gap2 = currentTimeRef.current - prevWord.start_time;
+        if (gap2 > 1) {
+          prevWord.end_time = prevWord.start_time + 0.5;
+        } else {
+          prevWord.end_time = currentTimeRef.current - 5e-3;
+        }
+      }
+    }
+    updateWords(newWords);
+  }, [isManualSyncing, isPaused, syncWordIndex, allWords, isSpacebarPressed, updateWords]);
+  const handleTapEnd = reactExports.useCallback(() => {
+    if (!isManualSyncing || isPaused) return;
+    if (!isSpacebarPressed) return;
+    setIsSpacebarPressed(false);
+    const pressDuration = spacebarPressTimeRef.current ? Date.now() - spacebarPressTimeRef.current : 0;
+    const isTap = pressDuration < 200;
+    const newWords = [...allWords];
+    const currentWord = newWords[syncWordIndex];
+    if (isTap) {
+      currentWord.end_time = (wordStartTimeRef.current || currentTimeRef.current) + 0.5;
+    } else {
+      currentWord.end_time = currentTimeRef.current;
+    }
+    updateWords(newWords);
+    if (syncWordIndex < allWords.length - 1) {
+      setSyncWordIndex(syncWordIndex + 1);
+    } else {
+      setIsManualSyncing(false);
+      setSyncWordIndex(-1);
+      handleStopAudio();
+    }
+    wordStartTimeRef.current = null;
+    spacebarPressTimeRef.current = null;
+  }, [isManualSyncing, isPaused, isSpacebarPressed, syncWordIndex, allWords, updateWords, handleStopAudio]);
   const handleSave = reactExports.useCallback(() => {
     onSave(workingSegments);
   }, [workingSegments, onSave]);
@@ -39998,8 +40302,8 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
             sx: {
               p: 1.5,
               height: "100%",
-              bgcolor: isManualSyncing ? "info.main" : "grey.100",
-              color: isManualSyncing ? "info.contrastText" : "text.primary",
+              bgcolor: isManualSyncing ? "success.main" : isDarkMode ? "grey.800" : "grey.100",
+              color: isManualSyncing ? "common.white" : "text.primary",
               display: "flex",
               flexDirection: "column",
               justifyContent: "center",
@@ -40007,14 +40311,37 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
               boxSizing: "border-box"
             },
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "body2", sx: { fontWeight: 500, lineHeight: 1.3 }, children: instruction.primary }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", sx: { opacity: 0.85, display: "block", lineHeight: 1.3 }, children: instruction.secondary })
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Typography,
+                {
+                  variant: "body2",
+                  sx: {
+                    fontWeight: 500,
+                    lineHeight: 1.3,
+                    color: isManualSyncing ? "common.white" : "text.primary"
+                  },
+                  children: instruction.primary
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Typography,
+                {
+                  variant: "caption",
+                  sx: {
+                    opacity: 0.9,
+                    display: "block",
+                    lineHeight: 1.3,
+                    color: isManualSyncing ? "common.white" : "text.secondary"
+                  },
+                  children: instruction.secondary
+                }
+              )
             ]
           }
         )
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { height: 88, flexShrink: 0 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { minHeight: 88, flexShrink: 0 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       SyncControls,
       {
         isManualSyncing,
@@ -40032,7 +40359,11 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
         onUnsyncFromCursor: handleUnsyncFromCursor,
         onEditSelectedWord: handleEditSelectedWord,
         onDeleteSelected: handleDeleteSelected,
-        canUnsyncFromCursor
+        canUnsyncFromCursor,
+        isMobile,
+        onTapStart: handleTapStart,
+        onTapEnd: handleTapEnd,
+        isTapping: isSpacebarPressed
       }
     ) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { height: 44, flexShrink: 0 }, children: isManualSyncing && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -40063,7 +40394,8 @@ const LyricsSynchronizer = reactExports.memo(function LyricsSynchronizer2({
         onScrollChange: handleScrollChange,
         audioDuration,
         zoomSeconds,
-        height: 200
+        height: 200,
+        isDarkMode
       }
     ) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 2, px: 2 }, children: [
@@ -41410,6 +41742,7 @@ function Header({
   onFindReplace,
   onEditAll,
   onUnCorrectAll,
+  onResetCorrections,
   onTimingOffset,
   timingOffsetMs = 0,
   onUndo,
@@ -41462,56 +41795,37 @@ function Header({
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
       display: "flex",
-      flexDirection: isMobile ? "column" : "row",
       gap: 1,
-      justifyContent: "space-between",
-      alignItems: isMobile ? "stretch" : "center",
+      justifyContent: "flex-end",
+      alignItems: "center",
       mb: 1
     }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "h4", sx: { fontSize: isMobile ? "1.3rem" : "1.5rem" }, children: "Nomad Karaoke: Lyrics Transcription Review" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center", gap: 1 }, children: [
-        !isReadOnly && isAgenticMode && onReviewModeToggle && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: reviewMode ? "Hide inline correction actions" : "Show inline actions on all corrections for quick review", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Chip,
-          {
-            icon: /* @__PURE__ */ jsxRuntimeExports.jsx(VisibilityIcon, {}),
-            label: reviewMode ? "Review Mode" : "Review Off",
-            onClick: () => onReviewModeToggle(!reviewMode),
-            color: reviewMode ? "secondary" : "default",
-            variant: reviewMode ? "filled" : "outlined",
-            size: "small",
-            sx: {
-              cursor: "pointer",
-              "& .MuiChip-icon": { fontSize: "1rem" }
-            }
+      !isReadOnly && isAgenticMode && onReviewModeToggle && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: reviewMode ? "Hide inline correction actions" : "Show inline actions on all corrections for quick review", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Chip,
+        {
+          icon: /* @__PURE__ */ jsxRuntimeExports.jsx(VisibilityIcon, {}),
+          label: reviewMode ? "Review Mode" : "Review Off",
+          onClick: () => onReviewModeToggle(!reviewMode),
+          color: reviewMode ? "secondary" : "default",
+          variant: reviewMode ? "filled" : "outlined",
+          size: "small",
+          sx: {
+            cursor: "pointer",
+            "& .MuiChip-icon": { fontSize: "1rem" }
           }
-        ) }),
-        !isReadOnly && onAnnotationsToggle && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: annotationsEnabled ? "Click to disable annotation prompts when editing" : "Click to enable annotation prompts when editing", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Chip,
-          {
-            icon: /* @__PURE__ */ jsxRuntimeExports.jsx(RateReviewIcon, {}),
-            label: annotationsEnabled ? "Feedback On" : "Feedback Off",
-            onClick: () => onAnnotationsToggle(!annotationsEnabled),
-            color: annotationsEnabled ? "primary" : "default",
-            variant: annotationsEnabled ? "filled" : "outlined",
-            size: "small",
-            sx: {
-              cursor: "pointer",
-              "& .MuiChip-icon": { fontSize: "1rem" }
-            }
-          }
-        ) }),
-        isReadOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Button,
-          {
-            variant: "outlined",
-            size: "small",
-            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(UploadFileIcon, {}),
-            onClick: onFileLoad,
-            fullWidth: isMobile,
-            children: "Load File"
-          }
-        )
-      ] })
+        }
+      ) }),
+      isReadOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          size: "small",
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(UploadFileIcon, {}),
+          onClick: onFileLoad,
+          fullWidth: isMobile,
+          children: "Load File"
+        }
+      )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
       display: "flex",
@@ -41693,6 +42007,18 @@ function Header({
           onChange: onModeChange
         }
       ),
+      !isReadOnly && onResetCorrections && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Undo all your changes", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          size: "small",
+          color: "warning",
+          onClick: onResetCorrections,
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(UndoIcon, {}),
+          sx: { minWidth: "fit-content", height: "32px" },
+          children: "Undo All"
+        }
+      ) }),
       !isReadOnly && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", height: "32px" }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Undo", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           IconButton,
@@ -41757,7 +42083,7 @@ function Header({
           onClick: onUnCorrectAll,
           startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(RestoreIcon, {}),
           sx: { minWidth: "fit-content", height: "32px" },
-          children: "Un-Correct All"
+          children: "Undo Auto Corrections"
         }
       ),
       !isReadOnly && onTimingOffset && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center" }, children: [
@@ -41790,6 +42116,18 @@ function Header({
           }
         )
       ] }),
+      !isReadOnly && onAnnotationsToggle && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: annotationsEnabled ? "Click to disable annotation prompts when editing" : "Click to enable annotation prompts when editing", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Button,
+        {
+          variant: "outlined",
+          size: "small",
+          onClick: () => onAnnotationsToggle(!annotationsEnabled),
+          startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(RateReviewIcon, {}),
+          color: annotationsEnabled ? "primary" : "inherit",
+          sx: { minWidth: "fit-content", height: "32px" },
+          children: annotationsEnabled ? "Feedback On" : "Feedback Off"
+        }
+      ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         AudioPlayer,
         {
@@ -42315,7 +42653,7 @@ function TimingOffsetModal({
             {
               onClick: handleApply,
               variant: "contained",
-              color: offsetMs === 0 ? "warning" : "primary",
+              color: "primary",
               children: offsetMs === 0 ? "Remove Offset" : "Apply Offset"
             }
           )
@@ -42422,6 +42760,7 @@ const MemoizedHeader = reactExports.memo(function MemoizedHeader2({
   canUndo,
   canRedo,
   onUnCorrectAll,
+  onResetCorrections,
   annotationsEnabled,
   onAnnotationsToggle,
   reviewMode,
@@ -42454,6 +42793,7 @@ const MemoizedHeader = reactExports.memo(function MemoizedHeader2({
       canUndo,
       canRedo,
       onUnCorrectAll,
+      onResetCorrections,
       annotationsEnabled,
       onAnnotationsToggle,
       reviewMode,
@@ -43081,8 +43421,6 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
     console.log(`[TIMING] timingOffsetMs changed to: ${timingOffsetMs}ms`);
   }, [timingOffsetMs]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
-    p: 1,
-    pb: 3,
     maxWidth: "100%",
     overflowX: "hidden"
   }, children: [
@@ -43110,6 +43448,7 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
         canUndo,
         canRedo,
         onUnCorrectAll: handleUnCorrectAll,
+        onResetCorrections: handleResetCorrections,
         annotationsEnabled,
         onAnnotationsToggle: handleAnnotationsToggle,
         reviewMode,
@@ -43119,61 +43458,31 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
         onRevertAllCorrections: handleRevertAllCorrections
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(Grid, { container: true, direction: isMobile ? "column" : "row", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(Grid, { item: true, xs: 12, md: 6, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          MemoizedTranscriptionView,
-          {
-            data: displayData,
-            mode: effectiveMode,
-            onElementClick: setModalContent,
-            onWordClick: handleWordClick,
-            flashingType,
-            flashingHandler,
-            highlightInfo,
-            onPlaySegment: handlePlaySegment,
-            currentTime: currentAudioTime,
-            anchors: data.anchor_sequences,
-            disableHighlighting: isAnyModalOpenMemo,
-            onDataChange: (updatedData) => {
-              updateDataWithHistory(updatedData, "direct data change");
-            },
-            reviewMode,
-            onRevertCorrection: handleRevertCorrection,
-            onEditCorrection: handleEditCorrection,
-            onAcceptCorrection: handleAcceptCorrection,
-            onShowCorrectionDetail: handleShowCorrectionDetail
-          }
-        ),
-        !isReadOnly && apiClient && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
-          mt: 2,
-          mb: 3,
-          display: "flex",
-          justifyContent: "space-between",
-          width: "100%"
-        }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Button,
-            {
-              variant: "outlined",
-              color: "warning",
-              onClick: handleResetCorrections,
-              startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(RestoreFromTrash, {}),
-              children: "Reset Corrections"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            Button,
-            {
-              variant: "contained",
-              onClick: handleFinishReview,
-              disabled: isReviewComplete,
-              endIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(OndemandVideo, {}),
-              children: isReviewComplete ? "Review Complete" : "Preview Video"
-            }
-          )
-        ] })
-      ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(Grid, { container: true, direction: isMobile ? "column" : "row", spacing: 1, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Grid, { item: true, xs: 12, md: 6, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        MemoizedTranscriptionView,
+        {
+          data: displayData,
+          mode: effectiveMode,
+          onElementClick: setModalContent,
+          onWordClick: handleWordClick,
+          flashingType,
+          flashingHandler,
+          highlightInfo,
+          onPlaySegment: handlePlaySegment,
+          currentTime: currentAudioTime,
+          anchors: data.anchor_sequences,
+          disableHighlighting: isAnyModalOpenMemo,
+          onDataChange: (updatedData) => {
+            updateDataWithHistory(updatedData, "direct data change");
+          },
+          reviewMode,
+          onRevertCorrection: handleRevertCorrection,
+          onEditCorrection: handleEditCorrection,
+          onAcceptCorrection: handleAcceptCorrection,
+          onShowCorrectionDetail: handleShowCorrectionDetail
+        }
+      ) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Grid, { item: true, xs: 12, md: 6, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         MemoizedReferenceView,
         {
@@ -43193,6 +43502,54 @@ function LyricsAnalyzer({ data: initialData, onFileLoad, apiClient, isReadOnly, 
         }
       ) })
     ] }),
+    !isReadOnly && apiClient && /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: { height: 64 } }),
+    !isReadOnly && apiClient && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      Box,
+      {
+        sx: {
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          bgcolor: "background.paper",
+          borderTop: 1,
+          borderColor: "divider",
+          boxShadow: "0 -2px 10px rgba(0,0,0,0.1)",
+          py: 1.5,
+          px: 2,
+          zIndex: 1100,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 2
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Typography,
+            {
+              variant: "body2",
+              sx: { color: "text.secondary" },
+              children: "Lyrics look good?"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Button,
+            {
+              variant: "contained",
+              onClick: handleFinishReview,
+              disabled: isReviewComplete,
+              endIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(OndemandVideo, {}),
+              sx: {
+                px: 2.5,
+                py: 0.75,
+                fontWeight: 500
+              },
+              children: isReviewComplete ? "Review Complete" : "Preview Video"
+            }
+          )
+        ]
+      }
+    ),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       EditModal,
       {
@@ -44082,4 +44439,4 @@ console.log(`🎵 Lyrics Transcriber Frontend v${packageJson.version}`);
 ReactDOM$1.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
 );
-//# sourceMappingURL=index-CI81iDfx.js.map
+//# sourceMappingURL=index-BH-UGILD.js.map
