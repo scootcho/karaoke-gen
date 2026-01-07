@@ -803,18 +803,14 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                         p: 1.5,
                         height: '100%',
                         bgcolor: isManualSyncing
-                            ? (isDarkMode ? 'success.dark' : 'success.light')
+                            ? 'success.main'
                             : (isDarkMode ? 'grey.800' : 'grey.100'),
-                        color: isManualSyncing
-                            ? (isDarkMode ? 'success.contrastText' : 'success.dark')
-                            : 'text.primary',
+                        color: isManualSyncing ? 'common.white' : 'text.primary',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center',
                         overflow: 'hidden',
-                        boxSizing: 'border-box',
-                        border: isManualSyncing ? 2 : 0,
-                        borderColor: 'success.main'
+                        boxSizing: 'border-box'
                     }}
                 >
                     <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
@@ -823,12 +819,10 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     <Typography
                         variant="caption"
                         sx={{
-                            opacity: 0.85,
+                            opacity: 0.9,
                             display: 'block',
                             lineHeight: 1.3,
-                            color: isManualSyncing
-                                ? (isDarkMode ? 'success.contrastText' : 'success.dark')
-                                : 'text.secondary'
+                            color: isManualSyncing ? 'common.white' : 'text.secondary'
                         }}
                     >
                         {instruction.secondary}
