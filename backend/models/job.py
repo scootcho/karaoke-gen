@@ -9,6 +9,8 @@ from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, validator
 
+from karaoke_gen.utils import normalize_text
+
 
 class JobStatus(str, Enum):
     """
@@ -485,12 +487,28 @@ class JobCreate(BaseModel):
     - custom_headers: All X-* headers
     """
     
-    @validator('url', 'artist', 'title')
-    def validate_inputs(cls, v):
-        """Validate string inputs are not empty."""
+    @validator('url')
+    def validate_url(cls, v):
+        """Validate URL is not empty."""
         if v is not None and isinstance(v, str) and not v.strip():
             raise ValueError("Field cannot be empty string")
         return v.strip() if isinstance(v, str) else v
+
+    @validator('artist', 'title')
+    def normalize_artist_title(cls, v):
+        """Normalize artist/title text to standardize Unicode characters.
+
+        This ensures consistent data storage by converting:
+        - Curly quotes -> straight quotes
+        - Various dashes -> hyphen
+        - Unusual whitespace -> regular space
+        """
+        if v is not None and isinstance(v, str):
+            if not v.strip():
+                raise ValueError("Field cannot be empty string")
+            # normalize_text handles stripping and Unicode normalization
+            return normalize_text(v)
+        return v
 
 
 class JobResponse(BaseModel):

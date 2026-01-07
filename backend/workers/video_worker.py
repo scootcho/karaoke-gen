@@ -44,6 +44,7 @@ from backend.services.tracing import job_span, add_span_event, add_span_attribut
 
 # Import from karaoke_gen package - reuse existing implementation
 from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
+from karaoke_gen.utils import sanitize_filename
 
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,10 @@ async def generate_video_orchestrated(job_id: str) -> bool:
             )
 
             # Download and set up files
-            base_name = f"{job.artist} - {job.title}"
+            # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+            safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+            safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+            base_name = f"{safe_artist} - {safe_title}"
             with job_span("download-files", job_id):
                 job_log.info("Downloading files from GCS...")
                 await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
@@ -493,7 +497,10 @@ async def generate_video_legacy(job_id: str) -> bool:
             )
             
             # Download and set up files in the format KaraokeFinalise expects
-            base_name = f"{job.artist} - {job.title}"
+            # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+            safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+            safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+            base_name = f"{safe_artist} - {safe_title}"
             with job_span("download-files", job_id):
                 job_log.info("Downloading files from GCS (this may take a few minutes for large files)...")
                 await _setup_working_directory(job_id, job, storage, temp_dir, base_name, job_log)
@@ -755,8 +762,11 @@ async def _handle_native_distribution(
         storage: StorageService instance for downloading stems/lyrics
     """
     brand_code = result.get('brand_code')
-    base_name = f"{job.artist} - {job.title}"
-    
+    # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+    safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+    safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+    base_name = f"{safe_artist} - {safe_title}"
+
     # Check if we should preserve existing brand code (Batch 6: --keep-brand-code)
     keep_brand_code = getattr(job, 'keep_brand_code', None)
     if keep_brand_code:

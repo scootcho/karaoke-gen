@@ -753,6 +753,53 @@ Choose based on your threat model. For most projects, trusting Pulumi state is a
 - Pre-job checks provide fail-fast behavior with clear error messages
 - `docker builder prune -af` catches buildkit cache that `system prune` misses
 
+### Unicode Characters in Artist/Title Break HTTP Headers
+
+**Problem**: Non-ASCII "smart" characters (curly quotes, em dashes) in artist/title fields caused HTTP header encoding failures. Job d49efab1 failed because the title "Mama Says (You Can't Back Down)" contained a curly apostrophe (U+2019 `'`) instead of a straight apostrophe (U+0027 `'`).
+
+**Symptoms**:
+- Audio separation fails with "no files were downloaded"
+- Modal API returns encoding errors
+- Email subjects cause UnicodeEncodeError
+- Google Drive API queries fail with "Invalid Value"
+- Content-Disposition headers fail
+
+**Root cause**: HTTP headers must be latin-1 encodable. Many Unicode characters (curly quotes U+2018/U+2019, em dash U+2014, ellipsis U+2026, etc.) are NOT latin-1 compatible, but look identical to ASCII equivalents.
+
+**Solution**: Two-tier sanitization approach:
+
+1. **Input-time normalization** (`normalize_text()`): Standardize visually-similar Unicode characters to ASCII equivalents when data enters the system. Applied via Pydantic validators on `JobCreate` and `AudioSearchRequest` models.
+
+2. **Output-time sanitization** (`sanitize_filename()`): Additional safety for filenames and HTTP headers. Removes filesystem-unsafe characters, strips periods/spaces, collapses underscores.
+
+```python
+# Character categories normalized:
+APOSTROPHE_REPLACEMENTS = {
+    "\u2018": "'",  # LEFT SINGLE QUOTATION MARK
+    "\u2019": "'",  # RIGHT SINGLE QUOTATION MARK (caused the bug!)
+    "\u0060": "'",  # GRAVE ACCENT (backtick)
+    # ... more
+}
+DASH_REPLACEMENTS = {
+    "\u2013": "-",  # EN DASH
+    "\u2014": "-",  # EM DASH
+    # ... more
+}
+WHITESPACE_REPLACEMENTS = {
+    "\u00A0": " ",  # NON-BREAKING SPACE
+    "\u3000": " ",  # IDEOGRAPHIC SPACE (CJK full-width)
+    # ... more
+}
+```
+
+**Key insight**: These characters are often invisible problems - they look correct in logs and UIs but fail at encoding time. Users copy/paste from Word, macOS, or websites that use "smart" typography.
+
+**Where to sanitize**:
+- `sanitize_filename()` call anywhere artist/title is used in: HTTP headers, filenames, API queries, email subjects
+- `normalize_text()` applied automatically via model validators at job creation and audio search
+
+**Lesson**: Always normalize user-provided text at input time. Don't trust that "obviously ASCII" text is actually ASCII - smart quotes from copy/paste are invisible bugs waiting to happen.
+
 ### Fonts in Docker for Video Rendering
 
 **Problem**: Video rendering showed replacement characters (squares with question marks) for special Unicode symbols like `♪` in intro/instrumental screens.

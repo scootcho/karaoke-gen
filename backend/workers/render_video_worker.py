@@ -43,6 +43,7 @@ from lyrics_transcriber.core.config import OutputConfig
 
 # Import from the unified style loader
 from karaoke_gen.style_loader import load_styles_from_gcs
+from karaoke_gen.utils import sanitize_filename
 
 
 logger = logging.getLogger(__name__)
@@ -242,7 +243,10 @@ async def process_render_video(job_id: str) -> bool:
                     output_generator = OutputGenerator(config, logger)
                     
                     # 8. Generate outputs (video, LRC, ASS, etc.)
-                    output_prefix = f"{job.artist or 'Unknown'} - {job.title or 'Unknown'}"
+                    # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+                    safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+                    safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+                    output_prefix = f"{safe_artist} - {safe_title}"
                     job_log.info(f"Generating outputs with prefix '{output_prefix}'")
                     logger.info(f"Job {job_id}: Generating outputs with prefix '{output_prefix}'")
                     

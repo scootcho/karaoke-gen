@@ -20,6 +20,7 @@ from google.oauth2.credentials import Credentials
 import base64
 from email.mime.text import MIMEText
 from lyrics_transcriber.output.cdg import CDGGenerator
+from ..utils import sanitize_filename
 
 
 class KaraokeFinalise:
@@ -1514,7 +1515,11 @@ class KaraokeFinalise:
 
         email_body = template.format(youtube_url=youtube_url, dropbox_url=dropbox_url)
 
-        subject = f"{self.brand_code}: {artist} - {title}"
+        # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+        # that cause email header encoding issues (MIME headers use latin-1)
+        safe_artist = sanitize_filename(artist) if artist else "Unknown"
+        safe_title = sanitize_filename(title) if title else "Unknown"
+        subject = f"{self.brand_code}: {safe_artist} - {safe_title}"
 
         if self.dry_run:
             self.logger.info(f"DRY RUN: Would create email draft with subject: {subject}")
