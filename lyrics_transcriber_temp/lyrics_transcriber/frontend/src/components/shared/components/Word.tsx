@@ -41,14 +41,16 @@ export const WordComponent = React.memo(function Word({
                 borderRadius: '2px',
                 color: isCurrentlyPlaying ? '#ffffff' : 'inherit',
                 textDecoration: correction ? 'underline dotted' : 'none',
-                textDecorationColor: correction ? '#666666' : 'inherit', // slate-500 for dark mode
                 textUnderlineOffset: '2px',
                 fontSize: '0.85rem',
                 lineHeight: 1.2
             }}
             sx={{
+                textDecorationColor: correction ? 'text.disabled' : 'inherit', // Theme-aware underline color
                 '&:hover': {
-                    backgroundColor: 'rgba(248, 250, 252, 0.08)' // slate-50 hover for dark mode
+                    backgroundColor: (theme) => theme.palette.mode === 'dark'
+                        ? 'rgba(248, 250, 252, 0.08)'  // light hover for dark mode
+                        : 'rgba(30, 41, 59, 0.08)'    // dark hover for light mode
                 }
             }}
             onClick={onClick}

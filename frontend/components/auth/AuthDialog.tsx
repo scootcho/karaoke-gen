@@ -84,7 +84,7 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
           <>
             <DialogHeader>
               <DialogTitle className="text-white flex items-center gap-2">
-                <Mail className="w-5 h-5 text-blue-400" />
+                <Mail className="w-5 h-5 text-primary-400" />
                 Sign In
               </DialogTitle>
               <DialogDescription className="text-slate-400">
@@ -114,7 +114,7 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                 <Button
                   type="submit"
                   disabled={!email.trim() || isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-500"
+                  className="w-full bg-primary-500 hover:bg-primary-600"
                 >
                   {isLoading ? (
                     <>

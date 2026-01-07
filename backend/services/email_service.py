@@ -192,15 +192,16 @@ class EmailService:
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
         }}
         .logo {{
             font-size: 24px;
             font-weight: bold;
-            color: #3b82f6;
+            color: #ff7acc;
         }}
         .button {{
             display: inline-block;
-            background-color: #3b82f6;
+            background-color: #ff7acc;
             color: white;
             padding: 14px 28px;
             text-decoration: none;
@@ -209,12 +210,12 @@ class EmailService:
             margin: 20px 0;
         }}
         .button:hover {{
-            background-color: #2563eb;
+            background-color: #ff5bb8;
         }}
         .footer {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ff7acc;
             font-size: 12px;
             color: #666;
         }}
@@ -307,11 +308,12 @@ If you didn't request this email, you can safely ignore it.
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
         }}
         .logo {{
             font-size: 24px;
             font-weight: bold;
-            color: #3b82f6;
+            color: #ff7acc;
         }}
         .credits-box {{
             background-color: #ecfdf5;
@@ -328,7 +330,7 @@ If you didn't request this email, you can safely ignore it.
         }}
         .button {{
             display: inline-block;
-            background-color: #3b82f6;
+            background-color: #ff7acc;
             color: white;
             padding: 14px 28px;
             text-decoration: none;
@@ -339,7 +341,7 @@ If you didn't request this email, you can safely ignore it.
         .footer {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ff7acc;
             font-size: 12px;
             color: #666;
         }}
@@ -425,15 +427,16 @@ Start creating: {self.frontend_url}
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
         }}
         .logo {{
             font-size: 24px;
             font-weight: bold;
-            color: #3b82f6;
+            color: #ff7acc;
         }}
         .button {{
             display: inline-block;
-            background-color: #3b82f6;
+            background-color: #ff7acc;
             color: white;
             padding: 14px 28px;
             text-decoration: none;
@@ -453,7 +456,7 @@ Start creating: {self.frontend_url}
         .footer {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ff7acc;
             font-size: 12px;
             color: #666;
         }}
@@ -570,11 +573,12 @@ Get started: {self.frontend_url}
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
         }}
         .logo {{
             font-size: 24px;
             font-weight: bold;
-            color: #3b82f6;
+            color: #ff7acc;
         }}
         .beta-badge {{
             display: inline-block;
@@ -608,7 +612,7 @@ Get started: {self.frontend_url}
         }}
         .button {{
             display: inline-block;
-            background-color: #3b82f6;
+            background-color: #ff7acc;
             color: white;
             padding: 14px 28px;
             text-decoration: none;
@@ -619,7 +623,7 @@ Get started: {self.frontend_url}
         .footer {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ff7acc;
             font-size: 12px;
             color: #666;
         }}
@@ -722,15 +726,16 @@ Thanks for helping us make Nomad Karaoke better!
         .header {{
             text-align: center;
             padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
         }}
         .logo {{
             font-size: 24px;
             font-weight: bold;
-            color: #3b82f6;
+            color: #ff7acc;
         }}
         .feedback-box {{
-            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
-            border: 2px solid #3b82f6;
+            background: linear-gradient(135deg, #fff0f8, #ffe0f4);
+            border: 2px solid #ff7acc;
             border-radius: 12px;
             padding: 24px;
             text-align: center;
@@ -742,7 +747,7 @@ Thanks for helping us make Nomad Karaoke better!
         }}
         .button {{
             display: inline-block;
-            background-color: #3b82f6;
+            background-color: #ff7acc;
             color: white;
             padding: 14px 28px;
             text-decoration: none;
@@ -760,7 +765,7 @@ Thanks for helping us make Nomad Karaoke better!
         .footer {{
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #eee;
+            border-top: 1px solid #ff7acc;
             font-size: 12px;
             color: #666;
         }}
@@ -1115,17 +1120,33 @@ Thanks for being part of making Nomad Karaoke better!
             padding: 20px;
             white-space: pre-wrap;
         }}
+        .header {{
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
+        }}
+        .logo {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff7acc;
+        }}
         .content {{
             white-space: pre-wrap;
             font-size: 14px;
+            margin-top: 20px;
         }}
         .signature {{
             margin-top: 30px;
             padding-top: 20px;
+            border-top: 1px solid #ff7acc;
         }}
     </style>
 </head>
 <body>
+    <div class="header">
+        <div class="logo">🎤 Nomad Karaoke</div>
+    </div>
+
     <div class="content">{html.escape(message_content)}</div>
 
     <div class="signature">
@@ -1189,6 +1210,16 @@ Thanks for being part of making Nomad Karaoke better!
             margin: 0 auto;
             padding: 20px;
         }}
+        .header {{
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #ff7acc;
+        }}
+        .logo {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff7acc;
+        }}
         .alert {{
             background-color: #fef3c7;
             border: 1px solid #fcd34d;
@@ -1204,10 +1235,15 @@ Thanks for being part of making Nomad Karaoke better!
         .signature {{
             margin-top: 30px;
             padding-top: 20px;
+            border-top: 1px solid #ff7acc;
         }}
     </style>
 </head>
 <body>
+    <div class="header">
+        <div class="logo">🎤 Nomad Karaoke</div>
+    </div>
+
     <div class="alert">
         ⏰ Your karaoke video is waiting for you!
     </div>

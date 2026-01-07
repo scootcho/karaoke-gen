@@ -614,17 +614,19 @@ export default function EditModal({
                 }}
             >
                 {isLoading && (
-                    <Box sx={{ 
-                        display: 'flex', 
+                    <Box sx={{
+                        display: 'flex',
                         flexDirection: 'column',
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         height: '100%',
                         width: '100%',
                         position: 'absolute',
                         top: 0,
                         left: 0,
-                        backgroundColor: 'rgba(30, 41, 59, 0.95)', // slate-800 with opacity for dark mode
+                        backgroundColor: (theme) => theme.palette.mode === 'dark'
+                            ? 'rgba(30, 41, 59, 0.95)'  // slate-800 with opacity for dark mode
+                            : 'rgba(248, 250, 252, 0.95)', // light background for light mode
                         zIndex: 10
                     }}>
                         <CircularProgress size={60} thickness={4} />

@@ -16,7 +16,7 @@ const darkColors = {
   action: {
     active: '#f8fafc',
     hover: 'rgba(248, 250, 252, 0.08)',
-    selected: 'rgba(249, 115, 22, 0.16)',
+    selected: 'rgba(255, 122, 204, 0.16)',
     disabled: '#64748b',
     disabledBackground: 'rgba(100, 116, 139, 0.12)',
   },
@@ -38,24 +38,26 @@ const lightColors = {
   action: {
     active: '#1e293b',
     hover: 'rgba(30, 41, 59, 0.08)',
-    selected: 'rgba(249, 115, 22, 0.16)',
+    selected: 'rgba(255, 122, 204, 0.16)',
     disabled: '#94a3b8',
     disabledBackground: 'rgba(148, 163, 184, 0.12)',
   },
 };
 
-// Shared colors
+// Shared colors - Nomad Karaoke brand palette
+// Primary: Brand Pink (#ff7acc), Secondary: Brand Purple (#8b5cf6)
+// See docs/BRAND-STYLE-GUIDE.md for full brand guidelines
 const sharedColors = {
   primary: {
-    main: '#f97316',
-    light: '#fb923c',
-    dark: '#ea580c',
+    main: '#ff7acc',
+    light: '#ff8fd4',
+    dark: '#ff5bb8',
     contrastText: '#ffffff',
   },
   secondary: {
-    main: '#6366f1',
-    light: '#818cf8',
-    dark: '#4f46e5',
+    main: '#8b5cf6',
+    light: '#a78bfa',
+    dark: '#7c3aed',
     contrastText: '#ffffff',
   },
   error: {
@@ -140,7 +142,7 @@ export function createAppTheme(mode: 'dark' | 'light'): Theme {
             borderColor: colors.divider,
             '&:hover': {
               borderColor: sharedColors.primary.main,
-              backgroundColor: 'rgba(249, 115, 22, 0.08)',
+              backgroundColor: 'rgba(255, 122, 204, 0.08)',
             },
           },
         },
@@ -210,7 +212,7 @@ export function createAppTheme(mode: 'dark' | 'light'): Theme {
             '&:hover': { backgroundColor: colors.action.hover },
             '&.Mui-selected': {
               backgroundColor: colors.action.selected,
-              '&:hover': { backgroundColor: 'rgba(249, 115, 22, 0.24)' },
+              '&:hover': { backgroundColor: 'rgba(255, 122, 204, 0.24)' },
             },
           },
         },
@@ -288,7 +290,7 @@ export function createAppTheme(mode: 'dark' | 'light'): Theme {
             '&:hover': { backgroundColor: colors.action.hover },
             '&.Mui-selected': {
               backgroundColor: colors.action.selected,
-              '&:hover': { backgroundColor: 'rgba(249, 115, 22, 0.24)' },
+              '&:hover': { backgroundColor: 'rgba(255, 122, 204, 0.24)' },
             },
           },
         },

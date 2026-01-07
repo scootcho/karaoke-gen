@@ -312,7 +312,9 @@ export default function EditWordList({
                     width: '8px',
                 },
                 '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: 'rgba(248, 250, 252, 0.2)', // slate-50 for dark mode
+                    backgroundColor: (theme) => theme.palette.mode === 'dark'
+                        ? 'rgba(248, 250, 252, 0.2)'  // light scrollbar for dark mode
+                        : 'rgba(30, 41, 59, 0.3)',    // dark scrollbar for light mode
                     borderRadius: '4px',
                 },
                 scrollbarWidth: 'thin',

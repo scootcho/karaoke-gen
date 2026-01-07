@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  MicVocal,
   Music,
   Sparkles,
   Video,
@@ -212,9 +211,8 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-dark-900/80 backdrop-blur-md border-b border-dark-700">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MicVocal className="w-8 h-8 text-primary-500" />
-            <span className="text-xl font-bold">Nomad Karaoke</span>
+          <div className="flex items-center gap-3">
+            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-10" />
           </div>
           <button
             onClick={() => setShowAuthDialog(true)}
@@ -294,8 +292,8 @@ export default function LandingPage() {
       {/* Beta Tester Program */}
       <section className="py-12 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-2xl p-8 text-center">
-            <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full text-sm font-medium mb-4">
+          <div className="bg-gradient-to-r from-[#3d1f35]/60 to-[#2d1f3d]/60 border border-primary-500/30 rounded-2xl p-8 text-center">
+            <div className="inline-flex items-center gap-2 bg-primary-500/20 text-primary-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
               <Gift className="w-4 h-4" />
               Beta Tester Program
             </div>
@@ -309,7 +307,7 @@ export default function LandingPage() {
             {!showBetaForm && !betaSuccess && (
               <button
                 onClick={() => setShowBetaForm(true)}
-                className="inline-flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold px-6 py-3 rounded-xl transition-all"
+                className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-6 py-3 rounded-xl transition-all btn-glow"
               >
                 Join Beta Program
                 <MessageSquare className="w-5 h-5" />
@@ -328,7 +326,7 @@ export default function LandingPage() {
                     value={betaEmail}
                     onChange={(e) => setBetaEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-dark-500"
+                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-white placeholder-dark-500"
                     required
                   />
                 </div>
@@ -343,7 +341,7 @@ export default function LandingPage() {
                     onChange={(e) => setBetaPromise(e.target.value)}
                     placeholder="Tell us about a song you'd love to sing..."
                     rows={3}
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-dark-500 resize-none"
+                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-white placeholder-dark-500 resize-none"
                   />
                 </div>
 
@@ -353,7 +351,7 @@ export default function LandingPage() {
                     id="beta-accept"
                     checked={betaAccept}
                     onChange={(e) => setBetaAccept(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-dark-600 bg-dark-900 text-purple-500 focus:ring-purple-500"
+                    className="mt-1 w-4 h-4 rounded border-dark-600 bg-dark-900 text-primary-500 focus:ring-primary-500"
                   />
                   <label htmlFor="beta-accept" className="text-sm text-dark-300">
                     I understand that beta testers help improve lyrics accuracy by reviewing and correcting AI-generated lyrics
@@ -367,7 +365,7 @@ export default function LandingPage() {
                 <button
                   type="submit"
                   disabled={betaLoading}
-                  className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-primary-500 hover:bg-primary-600 disabled:bg-primary-500/50 text-white font-semibold py-3 rounded-xl transition-all btn-glow flex items-center justify-center gap-2"
                 >
                   {betaLoading ? 'Enrolling...' : 'Get My Free Credit'}
                   {!betaLoading && <Gift className="w-5 h-5" />}
@@ -526,20 +524,19 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 border-t border-dark-700">
+      <footer className="py-12 px-4 border-t border-primary-500/30">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <MicVocal className="w-6 h-6 text-primary-500" />
-            <span className="font-semibold">Nomad Karaoke</span>
+            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8" />
           </div>
           <div className="text-sm text-dark-500">
             © {new Date().getFullYear()} Nomad Karaoke. All rights reserved.
           </div>
           <div className="flex gap-6 text-sm text-dark-400">
-            <a href="mailto:support@nomadkaraoke.com" className="hover:text-white transition-colors">
+            <a href="mailto:support@nomadkaraoke.com" className="hover:text-primary-400 transition-colors">
               Support
             </a>
-            <a href="https://nomadkaraoke.com" className="hover:text-white transition-colors">
+            <a href="https://nomadkaraoke.com" className="hover:text-primary-400 transition-colors">
               About
             </a>
           </div>

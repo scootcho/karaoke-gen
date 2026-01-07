@@ -206,7 +206,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                   href={dropboxUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-blue-600 hover:bg-blue-500 text-white"
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-primary-500 hover:bg-primary-600 text-white"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <FolderOpen className="w-3 h-3" />
@@ -215,7 +215,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); copyToClipboard(dropboxUrl) }}
-                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-blue-700 hover:bg-blue-600 text-white"
+                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-[#cc5fa3] hover:bg-primary-600 text-white"
                   title="Copy Dropbox URL"
                   aria-label={copiedUrl === dropboxUrl ? "Dropbox URL copied" : "Copy Dropbox URL"}
                 >

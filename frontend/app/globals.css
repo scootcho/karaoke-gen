@@ -4,22 +4,40 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Dark theme (default) - Matching instrumental review UI color scheme */
+  /* ===========================================
+     Nomad Karaoke Brand Colors
+     See docs/BRAND-STYLE-GUIDE.md for details
+     =========================================== */
+
+  /* Brand Primary Colors */
+  --brand-pink: #ff7acc;
+  --brand-pink-hover: #ff5bb8;
+  --brand-pink-glow: rgba(255, 122, 204, 0.4);
+  --brand-gold: #ffdf6b;
+  --brand-purple: #8b5cf6;
+  --brand-blue: #3b82f6;
+  --brand-soft-pink: #ec4899;
+
+  /* Dark theme (default) */
   --bg: #0f0f0f;
   --card: #1a1a1a;
   --card-border: #2a2a2a;
   --waveform-bg: #0d1117;
   --text: #e5e5e5;
-  --text-muted: #888;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  --text-muted: #888888;
+  --text-subtle: #666666;
+
+  /* Primary now uses brand pink */
+  --primary: var(--brand-pink);
+  --primary-hover: var(--brand-pink-hover);
+
   --secondary: #252525;
-  --secondary-hover: #333;
+  --secondary-hover: #333333;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --pink: #ec4899;
-  --blue: #60a5fa;
+  --pink: var(--brand-pink);
+  --blue: var(--brand-blue);
 
   /* Tailwind compatibility mappings */
   --background: var(--bg);
@@ -38,26 +56,38 @@
   --border: var(--card-border);
   --input: var(--secondary);
   --ring: var(--primary);
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 }
 
-:root.light {
-  /* Light theme */
+.light {
+  /* Light theme - applied via next-themes class on html element */
   --bg: #f8fafc;
   --card: #ffffff;
   --card-border: #e2e8f0;
   --waveform-bg: #f1f5f9;
   --text: #1e293b;
   --text-muted: #64748b;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  --text-subtle: #94a3b8;
+  --primary: var(--brand-pink);
+  --primary-hover: var(--brand-pink-hover);
   --secondary: #f1f5f9;
   --secondary-hover: #e2e8f0;
   --success: #22c55e;
   --warning: #f59e0b;
   --danger: #ef4444;
-  --pink: #ec4899;
-  --blue: #60a5fa;
+  --pink: var(--brand-pink);
+  --blue: var(--brand-blue);
+
+  /* Tailwind compatibility - light mode adjustments */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card-foreground: var(--text);
+  --popover: var(--card);
+  --popover-foreground: var(--text);
+  --muted: var(--secondary);
+  --muted-foreground: var(--text-muted);
+  --border: var(--card-border);
+  --input: var(--secondary);
 }
 
 @theme inline {
@@ -99,17 +129,17 @@
 
 /* Landing page utilities */
 @layer utilities {
-  /* Glow effect for primary buttons */
+  /* Glow effect for primary buttons - uses brand pink */
   .btn-glow {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 20px var(--brand-pink-glow);
   }
   .btn-glow:hover {
-    box-shadow: 0 0 30px rgba(59, 130, 246, 0.7);
+    box-shadow: 0 0 30px rgba(255, 122, 204, 0.6);
   }
 
-  /* Gradient text */
+  /* Gradient text - flows to brand pink */
   .gradient-text {
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ff7acc 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -124,31 +154,46 @@
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
   }
 
-  /* Animated background gradient */
+  /* Animated background gradient - subtle brand integration */
   @keyframes gradient-shift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
     100% { background-position: 0% 50%; }
   }
   .animated-gradient {
-    background: linear-gradient(-45deg, #0f172a, #1e293b, #1e3a8a, #312e81);
+    /* Dark mode gradient (default) */
+    background: linear-gradient(-45deg, #0f0f0f, #1a1a1a, #2d1f3d, #3d1f35);
     background-size: 400% 400%;
     animation: gradient-shift 15s ease infinite;
   }
+  /* Light mode gradient */
+  .light .animated-gradient {
+    background: linear-gradient(-45deg, #f8fafc, #ffffff, #f1f5f9, #fce7f3);
+    background-size: 400% 400%;
+  }
 
-  /* Dark theme color utilities for landing page */
-  .text-dark-300 { color: #d1d5db; }
-  .text-dark-400 { color: #9ca3af; }
-  .text-dark-500 { color: #6b7280; }
-  .bg-dark-700 { background-color: #374151; }
-  .bg-dark-800 { background-color: #1f2937; }
-  .bg-dark-900 { background-color: #111827; }
-  .border-dark-600 { border-color: #4b5563; }
-  .border-dark-700 { border-color: #374151; }
-  .text-primary-400 { color: #60a5fa; }
-  .text-primary-500 { color: #3b82f6; }
-  .bg-primary-500 { background-color: #3b82f6; }
-  .hover\:bg-primary-600:hover { background-color: #2563eb; }
+  /* Theme-aware color utilities - use CSS variables for theme switching */
+  .text-dark-300 { color: var(--text); }
+  .text-dark-400 { color: var(--text-muted); }
+  .text-dark-500 { color: var(--text-subtle); }
+  .bg-dark-700 { background-color: var(--secondary); }
+  .bg-dark-800 { background-color: var(--card); }
+  .bg-dark-900 { background-color: var(--bg); }
+  .border-dark-600 { border-color: var(--card-border); }
+  .border-dark-700 { border-color: var(--card-border); }
+
+  /* Primary color utilities - now brand pink */
+  .text-primary-400 { color: #ff8fd4; } /* Lighter pink */
+  .text-primary-500 { color: var(--brand-pink); }
+  .bg-primary-500 { background-color: var(--brand-pink); }
+  .hover\:bg-primary-600:hover { background-color: var(--brand-pink-hover); }
+
+  /* Brand accent utilities */
+  .text-brand-pink { color: var(--brand-pink); }
+  .text-brand-gold { color: var(--brand-gold); }
+  .bg-brand-pink { background-color: var(--brand-pink); }
+  .bg-brand-gold { background-color: var(--brand-gold); }
+  .border-brand-pink { border-color: var(--brand-pink); }
 
   /* Fade in animation for cold start messages */
   @keyframes fade-in {
