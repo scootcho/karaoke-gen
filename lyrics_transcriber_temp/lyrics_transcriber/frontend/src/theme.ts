@@ -160,19 +160,44 @@ export function createAppTheme(mode: 'dark' | 'light'): Theme {
       MuiTextField: {
         styleOverrides: {
           root: {
-            '& .MuiInputBase-root': { minHeight: '32px', backgroundColor: colors.background.default },
+            '& .MuiInputBase-root': {
+              minHeight: '32px',
+              backgroundColor: colors.background.default,
+            },
             '& .MuiOutlinedInput-root': {
+              backgroundColor: colors.background.default,
               '& fieldset': { borderColor: colors.divider },
               '&:hover fieldset': { borderColor: colors.text.secondary },
               '&.Mui-focused fieldset': { borderColor: sharedColors.primary.main },
             },
+            '& .MuiFilledInput-root': {
+              backgroundColor: colors.background.default,
+              '&:hover': { backgroundColor: colors.background.elevated },
+              '&.Mui-focused': { backgroundColor: colors.background.default },
+            },
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            backgroundColor: colors.background.default,
+          },
+          input: {
+            backgroundColor: 'transparent',
           },
         },
       },
       MuiInputBase: {
         styleOverrides: {
-          root: { color: colors.text.primary },
-          input: { '&::placeholder': { color: colors.text.disabled, opacity: 1 } },
+          root: {
+            color: colors.text.primary,
+            backgroundColor: colors.background.default,
+          },
+          input: {
+            '&::placeholder': { color: colors.text.disabled, opacity: 1 },
+            backgroundColor: 'transparent',
+          },
         },
       },
       MuiDialog: {

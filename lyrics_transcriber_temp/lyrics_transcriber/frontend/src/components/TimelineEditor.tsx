@@ -16,10 +16,13 @@ interface TimelineEditorProps {
 const TimelineContainer = styled(Box)(({ theme }) => ({
     position: 'relative',
     height: '75px',
-    backgroundColor: theme.palette.grey[200],
+    backgroundColor: theme.palette.mode === 'dark'
+        ? theme.palette.background.paper  // Dark mode: use card background
+        : theme.palette.grey[100],         // Light mode: subtle gray
     borderRadius: theme.shape.borderRadius,
     margin: theme.spacing(1, 0),
     padding: theme.spacing(0, 1),
+    border: `1px solid ${theme.palette.divider}`,
 }))
 
 const TimelineRuler = styled(Box)(({ theme }) => ({
@@ -28,7 +31,7 @@ const TimelineRuler = styled(Box)(({ theme }) => ({
     left: 0,
     right: 0,
     height: '40px',
-    borderBottom: `1px solid ${theme.palette.grey[300]}`,
+    borderBottom: `1px solid ${theme.palette.divider}`,
     cursor: 'pointer',
 }))
 
@@ -37,11 +40,11 @@ const TimelineMark = styled(Box)(({ theme }) => ({
     top: '20px',
     width: '1px',
     height: '18px',
-    backgroundColor: theme.palette.grey[700],
+    backgroundColor: theme.palette.text.secondary,
     '&.subsecond': {
         top: '25px',
         height: '13px',
-        backgroundColor: theme.palette.grey[500],
+        backgroundColor: theme.palette.text.disabled,
     }
 }))
 
@@ -52,7 +55,11 @@ const TimelineLabel = styled(Box)(({ theme }) => ({
     fontSize: '0.8rem',
     color: theme.palette.text.primary,
     fontWeight: 700,
-    backgroundColor: theme.palette.grey[200],
+    backgroundColor: theme.palette.mode === 'dark'
+        ? theme.palette.background.paper
+        : theme.palette.grey[100],
+    padding: '0 4px',
+    borderRadius: '2px',
 }))
 
 const TimelineWord = styled(Box)(({ theme }) => ({

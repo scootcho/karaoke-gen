@@ -34477,16 +34477,16 @@ const WordComponent = React.memo(function Word({
         borderRadius: "2px",
         color: isCurrentlyPlaying ? "#ffffff" : "inherit",
         textDecoration: correction ? "underline dotted" : "none",
-        textDecorationColor: correction ? "#666666" : "inherit",
-        // slate-500 for dark mode
         textUnderlineOffset: "2px",
         fontSize: "0.85rem",
         lineHeight: 1.2
       },
       sx: {
+        textDecorationColor: correction ? "text.disabled" : "inherit",
+        // Theme-aware underline color
         "&:hover": {
-          backgroundColor: "rgba(248, 250, 252, 0.08)"
-          // slate-50 hover for dark mode
+          backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(248, 250, 252, 0.08)" : "rgba(30, 41, 59, 0.08)"
+          // dark hover for light mode
         }
       },
       onClick,
@@ -34700,21 +34700,21 @@ const WordContainer = styled(Box, {
   },
   "&:hover": {
     backgroundColor: "rgba(34, 197, 94, 0.35)"
-    // green tint hover for dark mode
+    // green tint hover - works for both modes
   }
 }));
-const OriginalWordLabel$1 = styled(Box)({
+const OriginalWordLabel$1 = styled(Box)(({ theme }) => ({
   position: "absolute",
   top: "-14px",
   left: "0",
   fontSize: "0.6rem",
-  color: "#888888",
-  // slate-400 for dark mode
+  color: theme.palette.text.secondary,
+  // Theme-aware text color
   textDecoration: "line-through",
   opacity: 0.7,
   whiteSpace: "nowrap",
   pointerEvents: "none"
-});
+}));
 const ActionsContainer = styled(Box)({
   display: "inline-flex",
   alignItems: "center",
@@ -34727,13 +34727,12 @@ const ActionButton = styled(IconButton)(({ theme }) => ({
   minHeight: "20px",
   width: "20px",
   height: "20px",
-  backgroundColor: "rgba(30, 41, 59, 0.9)",
-  // slate-800 with opacity for dark mode
-  border: "1px solid rgba(248, 250, 252, 0.1)",
-  // light border for dark mode
+  backgroundColor: theme.palette.mode === "dark" ? "rgba(30, 41, 59, 0.9)" : "rgba(241, 245, 249, 0.9)",
+  // slate-100 for light mode
+  border: `1px solid ${theme.palette.divider}`,
   "&:hover": {
-    backgroundColor: "rgba(51, 65, 85, 1)",
-    // slate-700 for dark mode
+    backgroundColor: theme.palette.mode === "dark" ? "rgba(51, 65, 85, 1)" : "rgba(226, 232, 240, 1)",
+    // slate-200 for light mode
     transform: "scale(1.1)"
   },
   "& .MuiSvgIcon-root": {
@@ -35355,8 +35354,7 @@ function ReferenceView({
           width: "100%",
           mb: 0,
           "&:hover": {
-            backgroundColor: "rgba(248, 250, 252, 0.04)"
-            // slate-50 hover for dark mode
+            backgroundColor: (theme) => theme.palette.action.hover
           }
         },
         children: [
@@ -36079,8 +36077,7 @@ function TranscriptionView({
         width: "100%",
         mb: 0,
         "&:hover": {
-          backgroundColor: "rgba(248, 250, 252, 0.04)"
-          // slate-50 hover for dark mode
+          backgroundColor: (theme) => theme.palette.action.hover
         }
       }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(SegmentControls, { children: [
@@ -36513,10 +36510,12 @@ const CenterFocusStrongIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.js
 const TimelineContainer = styled(Box)(({ theme }) => ({
   position: "relative",
   height: "75px",
-  backgroundColor: theme.palette.grey[200],
+  backgroundColor: theme.palette.mode === "dark" ? theme.palette.background.paper : theme.palette.grey[100],
+  // Light mode: subtle gray
   borderRadius: theme.shape.borderRadius,
   margin: theme.spacing(1, 0),
-  padding: theme.spacing(0, 1)
+  padding: theme.spacing(0, 1),
+  border: `1px solid ${theme.palette.divider}`
 }));
 const TimelineRuler = styled(Box)(({ theme }) => ({
   position: "absolute",
@@ -36524,7 +36523,7 @@ const TimelineRuler = styled(Box)(({ theme }) => ({
   left: 0,
   right: 0,
   height: "40px",
-  borderBottom: `1px solid ${theme.palette.grey[300]}`,
+  borderBottom: `1px solid ${theme.palette.divider}`,
   cursor: "pointer"
 }));
 const TimelineMark = styled(Box)(({ theme }) => ({
@@ -36532,11 +36531,11 @@ const TimelineMark = styled(Box)(({ theme }) => ({
   top: "20px",
   width: "1px",
   height: "18px",
-  backgroundColor: theme.palette.grey[700],
+  backgroundColor: theme.palette.text.secondary,
   "&.subsecond": {
     top: "25px",
     height: "13px",
-    backgroundColor: theme.palette.grey[500]
+    backgroundColor: theme.palette.text.disabled
   }
 }));
 const TimelineLabel = styled(Box)(({ theme }) => ({
@@ -36546,7 +36545,9 @@ const TimelineLabel = styled(Box)(({ theme }) => ({
   fontSize: "0.8rem",
   color: theme.palette.text.primary,
   fontWeight: 700,
-  backgroundColor: theme.palette.grey[200]
+  backgroundColor: theme.palette.mode === "dark" ? theme.palette.background.paper : theme.palette.grey[100],
+  padding: "0 4px",
+  borderRadius: "2px"
 }));
 const TimelineWord = styled(Box)(({ theme }) => ({
   position: "absolute",
@@ -37197,8 +37198,8 @@ const MergeIcon = createSvgIcon(/* @__PURE__ */ jsxRuntimeExports.jsx("path", {
   d: "M17 20.41 18.41 19 15 15.59 13.59 17zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5z"
 }), "CallMerge");
 const buttonTextStyle = {
-  color: "rgba(248, 250, 252, 0.8)",
-  // slate-50 with opacity for dark mode
+  color: "text.secondary",
+  // Use theme color for proper light/dark mode support
   fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
   fontWeight: 400,
   fontSize: "0.7rem",
@@ -37237,16 +37238,16 @@ function WordDivider({
         height: "20px",
         my: -0.5,
         width: "50%",
-        backgroundColor: "#1a1a1a",
-        // slate-800 for dark mode
+        bgcolor: "background.paper",
+        // Theme-aware background
         ...sx
       },
       children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
         display: "flex",
         alignItems: "center",
         gap: 1,
-        backgroundColor: "#1a1a1a",
-        // slate-800 for dark mode
+        bgcolor: "background.paper",
+        // Theme-aware background
         padding: "0 8px",
         zIndex: 1
       }, children: [
@@ -37580,8 +37581,8 @@ function EditWordList({
         width: "8px"
       },
       "&::-webkit-scrollbar-thumb": {
-        backgroundColor: "rgba(248, 250, 252, 0.2)",
-        // slate-50 for dark mode
+        backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(248, 250, 252, 0.2)" : "rgba(30, 41, 59, 0.3)",
+        // dark scrollbar for light mode
         borderRadius: "4px"
       },
       scrollbarWidth: "thin",
@@ -38127,8 +38128,8 @@ function EditModal({
                 position: "absolute",
                 top: 0,
                 left: 0,
-                backgroundColor: "rgba(30, 41, 59, 0.95)",
-                // slate-800 with opacity for dark mode
+                backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(30, 41, 59, 0.95)" : "rgba(248, 250, 252, 0.95)",
+                // light background for light mode
                 zIndex: 10
               }, children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(CircularProgress, { size: 60, thickness: 4 }),
@@ -41517,12 +41518,14 @@ function Header({
       gap: 1,
       mb: 1,
       flexDirection: isMobile ? "column" : "row",
-      height: "140px"
+      height: isMobile ? "auto" : "140px",
+      minHeight: isMobile ? "auto" : "140px"
     }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Box, { sx: {
-        width: "280px",
+        width: isMobile ? "100%" : "280px",
+        minWidth: isMobile ? "100%" : "280px",
         position: "relative",
-        height: "100%"
+        height: isMobile ? "auto" : "100%"
       }, children: isAgenticMode ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         AgenticCorrectionMetrics,
         {
@@ -41677,10 +41680,11 @@ function Header({
       width: "100%"
     }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: {
       display: "flex",
-      gap: 1,
-      flexDirection: isMobile ? "column" : "row",
-      alignItems: isMobile ? "flex-start" : "center",
-      height: "32px"
+      gap: 0.5,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      minHeight: "32px"
     }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         ModeSelector,
@@ -43527,7 +43531,7 @@ const darkColors = {
   action: {
     active: "#f8fafc",
     hover: "rgba(248, 250, 252, 0.08)",
-    selected: "rgba(249, 115, 22, 0.16)",
+    selected: "rgba(255, 122, 204, 0.16)",
     disabled: "#64748b",
     disabledBackground: "rgba(100, 116, 139, 0.12)"
   }
@@ -43547,22 +43551,22 @@ const lightColors = {
   action: {
     active: "#1e293b",
     hover: "rgba(30, 41, 59, 0.08)",
-    selected: "rgba(249, 115, 22, 0.16)",
+    selected: "rgba(255, 122, 204, 0.16)",
     disabled: "#94a3b8",
     disabledBackground: "rgba(148, 163, 184, 0.12)"
   }
 };
 const sharedColors = {
   primary: {
-    main: "#f97316",
-    light: "#fb923c",
-    dark: "#ea580c",
+    main: "#ff7acc",
+    light: "#ff8fd4",
+    dark: "#ff5bb8",
     contrastText: "#ffffff"
   },
   secondary: {
-    main: "#6366f1",
-    light: "#818cf8",
-    dark: "#4f46e5",
+    main: "#8b5cf6",
+    light: "#a78bfa",
+    dark: "#7c3aed",
     contrastText: "#ffffff"
   },
   error: {
@@ -43644,7 +43648,7 @@ function createAppTheme(mode) {
             borderColor: colors.divider,
             "&:hover": {
               borderColor: sharedColors.primary.main,
-              backgroundColor: "rgba(249, 115, 22, 0.08)"
+              backgroundColor: "rgba(255, 122, 204, 0.08)"
             }
           }
         }
@@ -43662,19 +43666,44 @@ function createAppTheme(mode) {
       MuiTextField: {
         styleOverrides: {
           root: {
-            "& .MuiInputBase-root": { minHeight: "32px", backgroundColor: colors.background.default },
+            "& .MuiInputBase-root": {
+              minHeight: "32px",
+              backgroundColor: colors.background.default
+            },
             "& .MuiOutlinedInput-root": {
+              backgroundColor: colors.background.default,
               "& fieldset": { borderColor: colors.divider },
               "&:hover fieldset": { borderColor: colors.text.secondary },
               "&.Mui-focused fieldset": { borderColor: sharedColors.primary.main }
+            },
+            "& .MuiFilledInput-root": {
+              backgroundColor: colors.background.default,
+              "&:hover": { backgroundColor: colors.background.elevated },
+              "&.Mui-focused": { backgroundColor: colors.background.default }
             }
+          }
+        }
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            backgroundColor: colors.background.default
+          },
+          input: {
+            backgroundColor: "transparent"
           }
         }
       },
       MuiInputBase: {
         styleOverrides: {
-          root: { color: colors.text.primary },
-          input: { "&::placeholder": { color: colors.text.disabled, opacity: 1 } }
+          root: {
+            color: colors.text.primary,
+            backgroundColor: colors.background.default
+          },
+          input: {
+            "&::placeholder": { color: colors.text.disabled, opacity: 1 },
+            backgroundColor: "transparent"
+          }
         }
       },
       MuiDialog: {
@@ -43714,7 +43743,7 @@ function createAppTheme(mode) {
             "&:hover": { backgroundColor: colors.action.hover },
             "&.Mui-selected": {
               backgroundColor: colors.action.selected,
-              "&:hover": { backgroundColor: "rgba(249, 115, 22, 0.24)" }
+              "&:hover": { backgroundColor: "rgba(255, 122, 204, 0.24)" }
             }
           }
         }
@@ -43792,7 +43821,7 @@ function createAppTheme(mode) {
             "&:hover": { backgroundColor: colors.action.hover },
             "&.Mui-selected": {
               backgroundColor: colors.action.selected,
-              "&:hover": { backgroundColor: "rgba(249, 115, 22, 0.24)" }
+              "&:hover": { backgroundColor: "rgba(255, 122, 204, 0.24)" }
             }
           }
         }
@@ -44045,7 +44074,7 @@ function App() {
     ] })
   ] });
 }
-const version = "0.84.0";
+const version = "0.86.0";
 const packageJson = {
   version
 };
@@ -44053,4 +44082,4 @@ console.log(`🎵 Lyrics Transcriber Frontend v${packageJson.version}`);
 ReactDOM$1.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
 );
-//# sourceMappingURL=index-V91xgc4E.js.map
+//# sourceMappingURL=index-CI81iDfx.js.map

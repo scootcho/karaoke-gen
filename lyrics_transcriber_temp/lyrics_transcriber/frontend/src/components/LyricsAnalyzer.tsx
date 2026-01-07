@@ -1255,8 +1255,6 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
     
     return (
         <Box sx={{
-            p: 1,
-            pb: 3,
             maxWidth: '100%',
             overflowX: 'hidden'
         }}>
@@ -1291,7 +1289,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 onRevertAllCorrections={handleRevertAllCorrections}
             />
 
-            <Grid container direction={isMobile ? 'column' : 'row'}>
+            <Grid container direction={isMobile ? 'column' : 'row'} spacing={1}>
                 <Grid item xs={12} md={6}>
                     <MemoizedTranscriptionView
                         data={displayData}
@@ -1316,32 +1314,6 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                         onAcceptCorrection={handleAcceptCorrection}
                         onShowCorrectionDetail={handleShowCorrectionDetail}
                     />
-                    {!isReadOnly && apiClient && (
-                        <Box sx={{
-                            mt: 2,
-                            mb: 3,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            width: '100%'
-                        }}>
-                            <Button
-                                variant="outlined"
-                                color="warning"
-                                onClick={handleResetCorrections}
-                                startIcon={<RestoreFromTrash />}
-                            >
-                                Reset Corrections
-                            </Button>
-                            <Button
-                                variant="contained"
-                                onClick={handleFinishReview}
-                                disabled={isReviewComplete}
-                                endIcon={<OndemandVideo />}
-                            >
-                                {isReviewComplete ? 'Review Complete' : 'Preview Video'}
-                            </Button>
-                        </Box>
-                    )}
                 </Grid>
                 <Grid item xs={12} md={6}>
                     <MemoizedReferenceView
@@ -1361,6 +1333,34 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                     />
                 </Grid>
             </Grid>
+
+            {/* Action buttons - appear at bottom on mobile, after Reference Lyrics */}
+            {!isReadOnly && apiClient && (
+                <Box sx={{
+                    mt: 2,
+                    mb: 3,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    width: '100%'
+                }}>
+                    <Button
+                        variant="outlined"
+                        color="warning"
+                        onClick={handleResetCorrections}
+                        startIcon={<RestoreFromTrash />}
+                    >
+                        Reset Corrections
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleFinishReview}
+                        disabled={isReviewComplete}
+                        endIcon={<OndemandVideo />}
+                    >
+                        {isReviewComplete ? 'Review Complete' : 'Preview Video'}
+                    </Button>
+                </Box>
+            )}
 
 
 

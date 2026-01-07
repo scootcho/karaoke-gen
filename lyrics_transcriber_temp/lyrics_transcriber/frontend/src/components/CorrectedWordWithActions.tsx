@@ -28,7 +28,7 @@ interface CorrectedWordWithActionsProps {
 
 const WordContainer = styled(Box, {
     shouldForwardProp: (prop) => !['shouldFlash'].includes(prop as string)
-})<{ shouldFlash?: boolean }>(({ theme, shouldFlash }) => ({
+})<{ shouldFlash?: boolean }>(({ shouldFlash }) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: '2px',

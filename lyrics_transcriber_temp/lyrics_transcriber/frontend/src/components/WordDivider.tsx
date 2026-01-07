@@ -58,7 +58,7 @@ export default function WordDivider({
                 height: '20px',
                 my: -0.5,
                 width: '50%',
-                backgroundColor: 'background.paper', // Theme-aware background
+                bgcolor: 'background.paper', // Theme-aware background
                 ...sx
             }}
         >
@@ -66,7 +66,7 @@ export default function WordDivider({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                backgroundColor: 'background.paper', // Theme-aware background
+                bgcolor: 'background.paper', // Theme-aware background
                 padding: '0 8px',
                 zIndex: 1
             }}>
