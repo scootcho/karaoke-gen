@@ -114,11 +114,52 @@ Content-Type: application/json
 
 ### Audio Search
 
+#### Search for Audio
+
 ```http
-GET /api/audio-search?q=song+name
+POST /api/audio-search/search
+Content-Type: application/json
+
+{
+  "artist": "Artist Name",
+  "title": "Song Title",
+  "auto_download": false,
+  "theme_id": "nomad",
+  "display_artist": "Display Artist (optional)",
+  "display_title": "Display Title (optional)"
+}
 ```
 
-Search for songs (flacfetch integration).
+Searches for audio sources (flacfetch integration). Creates a job and returns search results.
+
+**Key fields:**
+- `artist`, `title` - Used to search for audio on trackers
+- `display_artist`, `display_title` - Optional overrides for how artist/title appear on title screens and filenames. If omitted, search values are used.
+- `auto_download` - If true, automatically selects best result and starts processing
+- `theme_id` - Video theme to use
+
+**Use case:** Search for "Jeremy Kushnier" but display "Footloose (Broadway Cast)" on the karaoke video.
+
+#### Get Search Results
+
+```http
+GET /api/audio-search/{job_id}/results
+```
+
+Returns cached search results for a job awaiting audio selection.
+
+#### Select Audio Source
+
+```http
+POST /api/audio-search/{job_id}/select
+Content-Type: application/json
+
+{
+  "selection_index": 0
+}
+```
+
+Selects an audio source from the search results and starts processing.
 
 ### Themes
 

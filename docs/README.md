@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **Audio Search Display Override** (2026-01-06): Added optional "Display As" fields to audio search, allowing users to search for audio by one artist/title (e.g., "Jeremy Kushnier") but display a different artist/title on title screens and filenames (e.g., "Footloose (Broadway Cast)"). Useful for Broadway casts, covers, remixes where tracker metadata differs from desired display. See [API.md](API.md#audio-search).
+
 - **Infrastructure Modularization** (2026-01-06): Refactored `infrastructure/__main__.py` from 2,602 lines to 339 lines (87% reduction). Split into organized modules: `modules/` for core GCP resources, `compute/` for VMs and startup scripts, `config.py` for shared constants. Extracted embedded encoding worker Python app to `backend/services/gce_encoding/`. See `infrastructure/README.md` for new structure and `infrastructure/docs/PHASE5-PACKER-IMAGE-PLAN.md` for planned Packer image optimization.
 
 - **Email Notification System** (2026-01-06): Added automated email notifications for job completion and user action reminders. Features: GCS-backed HTML email templates with fallback defaults, SendGrid with CC support, auto-completion emails on job finish, idle reminder emails via Cloud Tasks (5-min delay for blocking states), admin UI buttons to copy message or send email manually. Endpoints: `GET /api/admin/jobs/{id}/completion-message`, `POST /api/admin/jobs/{id}/send-completion-email`. Feature flag `ENABLE_AUTO_EMAILS` (default: false). See [API.md](API.md#email-notifications-admin) and [ARCHITECTURE.md](ARCHITECTURE.md#video-worker-orchestrator).

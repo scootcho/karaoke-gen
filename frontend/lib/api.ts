@@ -418,6 +418,9 @@ export const api = {
       theme_id?: string;
       color_overrides?: ColorOverrides;
       non_interactive?: boolean;
+      // Display overrides - if provided, these appear on title screens/filenames instead of search values
+      display_artist?: string;
+      display_title?: string;
     }
   ): Promise<AudioSearchResponse> {
     const body: Record<string, any> = { artist, title, auto_download: autoDownload };
@@ -428,6 +431,9 @@ export const api = {
     if (options?.theme_id) body.theme_id = options.theme_id;
     if (options?.color_overrides) body.color_overrides = options.color_overrides;
     if (options?.non_interactive !== undefined) body.non_interactive = options.non_interactive;
+    // Display overrides
+    if (options?.display_artist) body.display_artist = options.display_artist;
+    if (options?.display_title) body.display_title = options.display_title;
 
     const response = await fetch(`${API_BASE_URL}/api/audio-search/search`, {
       method: 'POST',

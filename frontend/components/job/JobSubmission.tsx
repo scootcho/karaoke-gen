@@ -34,6 +34,9 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   // Audio search form
   const [searchArtist, setSearchArtist] = useState("")
   const [searchTitle, setSearchTitle] = useState("")
+  // Display As overrides (optional - if empty, search values used for display)
+  const [displayArtist, setDisplayArtist] = useState("")
+  const [displayTitle, setDisplayTitle] = useState("")
 
   // Theme selection (shared across all tabs)
   const [selectedTheme, setSelectedTheme] = useState<string | undefined>()
@@ -128,9 +131,14 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         theme_id: selectedTheme,
         color_overrides: cleanColorOverrides(colorOverrides),
         non_interactive: nonInteractive,
+        // Display overrides (empty string means use search values)
+        display_artist: displayArtist.trim() || undefined,
+        display_title: displayTitle.trim() || undefined,
       })
       setSearchArtist("")
       setSearchTitle("")
+      setDisplayArtist("")
+      setDisplayTitle("")
       onJobCreated()
     } catch (err) {
       if (err instanceof ApiError) {
@@ -407,33 +415,69 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
       <TabsContent value="search" className="mt-4">
         <form onSubmit={handleSearchSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="search-artist" style={{ color: 'var(--text)' }}>Artist</Label>
-              <Input
-                id="search-artist"
-                placeholder="Artist name"
-                value={searchArtist}
-                onChange={(e) => setSearchArtist(e.target.value)}
-                disabled={isSubmitting}
-                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="search-title" style={{ color: 'var(--text)' }}>Title</Label>
-              <Input
-                id="search-title"
-                placeholder="Song title"
-                value={searchTitle}
-                onChange={(e) => setSearchTitle(e.target.value)}
-                disabled={isSubmitting}
-                style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
-              />
+          {/* Search For section */}
+          <div className="space-y-2">
+            <Label style={{ color: 'var(--text)' }}>Search For</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="search-artist" className="text-xs" style={{ color: 'var(--text-muted)' }}>Artist</Label>
+                <Input
+                  id="search-artist"
+                  placeholder="Artist name on trackers"
+                  value={searchArtist}
+                  onChange={(e) => setSearchArtist(e.target.value)}
+                  disabled={isSubmitting}
+                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="search-title" className="text-xs" style={{ color: 'var(--text-muted)' }}>Title</Label>
+                <Input
+                  id="search-title"
+                  placeholder="Song title on trackers"
+                  value={searchTitle}
+                  onChange={(e) => setSearchTitle(e.target.value)}
+                  disabled={isSubmitting}
+                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                />
+              </div>
             </div>
           </div>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
-          </p>
+
+          {/* Display As section (optional) */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label style={{ color: 'var(--text)' }}>Display As</Label>
+              <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--secondary)' }}>optional</span>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Override how artist/title appear on the title card and filename. Leave empty to use search values.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="display-artist" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Artist</Label>
+                <Input
+                  id="display-artist"
+                  placeholder="e.g., Footloose (Broadway Cast)"
+                  value={displayArtist}
+                  onChange={(e) => setDisplayArtist(e.target.value)}
+                  disabled={isSubmitting}
+                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="display-title" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Title</Label>
+                <Input
+                  id="display-title"
+                  placeholder="e.g., I Can't Stand Still"
+                  value={displayTitle}
+                  onChange={(e) => setDisplayTitle(e.target.value)}
+                  disabled={isSubmitting}
+                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Theme Selection */}
           <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
