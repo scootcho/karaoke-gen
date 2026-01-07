@@ -335,16 +335,9 @@ async def generate_video_orchestrated(job_id: str) -> bool:
                     'final_karaoke_txt_zip': result.final_karaoke_txt_zip,
                 })
 
-            # Mark job as complete
+            # Store result metadata in job BEFORE transitioning to COMPLETE
+            # This ensures youtube_url is available when completion email is sent
             logger.info(f"[job:{job_id}] Video generation complete")
-            job_manager.transition_to_state(
-                job_id=job_id,
-                new_status=JobStatus.COMPLETE,
-                progress=100,
-                message="Karaoke generation complete!"
-            )
-
-            # Store result metadata in job
             job_manager.update_job(job_id, {
                 'state_data': {
                     **job.state_data,
@@ -354,6 +347,14 @@ async def generate_video_orchestrated(job_id: str) -> bool:
                     'gdrive_files': result.gdrive_files,
                 }
             })
+
+            # Mark job as complete (triggers completion email with youtube_url now available)
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.COMPLETE,
+                progress=100,
+                message="Karaoke generation complete!"
+            )
 
             duration = time.time() - start_time
             root_span.set_attribute("duration_seconds", duration)
@@ -665,19 +666,12 @@ async def generate_video_legacy(job_id: str) -> bool:
             with job_span("upload-results", job_id):
                 await _upload_results(job_id, job_manager, storage, temp_dir, result)
             
-            # Mark job as complete
-            logger.info(f"[job:{job_id}] Video generation complete")
-            job_manager.transition_to_state(
-                job_id=job_id,
-                new_status=JobStatus.COMPLETE,
-                progress=100,
-                message="Karaoke generation complete!"
-            )
-            
-            # Store result metadata in job
+            # Store result metadata in job BEFORE transitioning to COMPLETE
+            # This ensures youtube_url is available when completion email is sent
             # NOTE: Must include dropbox_link and gdrive_files from result, since
             # _handle_native_distribution already saved them but job.state_data
             # is stale (fetched before distribution ran)
+            logger.info(f"[job:{job_id}] Video generation complete")
             job_manager.update_job(job_id, {
                 'state_data': {
                     **job.state_data,
@@ -687,7 +681,15 @@ async def generate_video_legacy(job_id: str) -> bool:
                     'gdrive_files': result.get('gdrive_files'),
                 }
             })
-            
+
+            # Mark job as complete (triggers completion email with youtube_url now available)
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.COMPLETE,
+                progress=100,
+                message="Karaoke generation complete!"
+            )
+
             duration = time.time() - start_time
             root_span.set_attribute("duration_seconds", duration)
             root_span.set_attribute("brand_code", result.get('brand_code', ''))
