@@ -39,6 +39,7 @@ interface HeaderProps {
     onFindReplace?: () => void
     onEditAll?: () => void
     onUnCorrectAll?: () => void
+    onResetCorrections?: () => void
     onTimingOffset?: () => void
     timingOffsetMs?: number
     onUndo: () => void
@@ -72,6 +73,7 @@ export default function Header({
     onFindReplace,
     onEditAll,
     onUnCorrectAll,
+    onResetCorrections,
     onTimingOffset,
     timingOffsetMs = 0,
     onUndo,
@@ -443,7 +445,19 @@ export default function Header({
                                 startIcon={<RestoreIcon />}
                                 sx={{ minWidth: 'fit-content', height: '32px' }}
                             >
-                                Un-Correct All
+                                Undo Auto Corrections
+                            </Button>
+                        )}
+                        {!isReadOnly && onResetCorrections && (
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                color="warning"
+                                onClick={onResetCorrections}
+                                startIcon={<RestoreIcon />}
+                                sx={{ minWidth: 'fit-content', height: '32px' }}
+                            >
+                                Undo Your Changes
                             </Button>
                         )}
                         {!isReadOnly && onTimingOffset && (

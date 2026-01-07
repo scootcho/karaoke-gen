@@ -33,7 +33,7 @@ import { setupKeyboardHandlers, setModalHandler, getModalState } from './shared/
 import Header from './Header'
 import { getWordsFromIds } from './shared/utils/wordUtils'
 import AddLyricsModal from './AddLyricsModal'
-import { RestoreFromTrash, OndemandVideo } from '@mui/icons-material'
+import { OndemandVideo } from '@mui/icons-material'
 import FindReplaceModal from './FindReplaceModal'
 import TimingOffsetModal from './TimingOffsetModal'
 import { applyOffsetToCorrectionData, applyOffsetToSegment } from './shared/utils/timingUtils'
@@ -216,6 +216,7 @@ interface MemoizedHeaderProps {
     canUndo: boolean
     canRedo: boolean
     onUnCorrectAll: () => void
+    onResetCorrections: () => void
     annotationsEnabled: boolean
     onAnnotationsToggle: (enabled: boolean) => void
     // Review mode props
@@ -250,6 +251,7 @@ const MemoizedHeader = memo(function MemoizedHeader({
     canUndo,
     canRedo,
     onUnCorrectAll,
+    onResetCorrections,
     annotationsEnabled,
     onAnnotationsToggle,
     reviewMode,
@@ -281,6 +283,7 @@ const MemoizedHeader = memo(function MemoizedHeader({
             canUndo={canUndo}
             canRedo={canRedo}
             onUnCorrectAll={onUnCorrectAll}
+            onResetCorrections={onResetCorrections}
             annotationsEnabled={annotationsEnabled}
             onAnnotationsToggle={onAnnotationsToggle}
             reviewMode={reviewMode}
@@ -1280,6 +1283,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 canUndo={canUndo}
                 canRedo={canRedo}
                 onUnCorrectAll={handleUnCorrectAll}
+                onResetCorrections={handleResetCorrections}
                 annotationsEnabled={annotationsEnabled}
                 onAnnotationsToggle={handleAnnotationsToggle}
                 reviewMode={reviewMode}
@@ -1340,17 +1344,9 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                     mt: 2,
                     mb: 3,
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    justifyContent: 'flex-end',
                     width: '100%'
                 }}>
-                    <Button
-                        variant="outlined"
-                        color="warning"
-                        onClick={handleResetCorrections}
-                        startIcon={<RestoreFromTrash />}
-                    >
-                        Undo All Changes
-                    </Button>
                     <Button
                         variant="contained"
                         onClick={handleFinishReview}
