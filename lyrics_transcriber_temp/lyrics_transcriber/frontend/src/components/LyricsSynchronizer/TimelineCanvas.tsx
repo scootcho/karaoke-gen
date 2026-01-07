@@ -42,7 +42,7 @@ const getThemeColors = (isDarkMode: boolean) => ({
     wordBlockSelected: isDarkMode ? '#b91c1c' : '#dc2626', // red-700 dark, red-600 light
     wordBlockCurrent: isDarkMode ? '#ef4444' : '#f87171', // red-500 dark, red-400 light
     wordTextCurrent: isDarkMode ? '#fca5a5' : '#991b1b', // red-300 dark, red-800 light
-    wordText: isDarkMode ? '#f8fafc' : '#ffffff', // slate-50 dark, white light
+    wordText: isDarkMode ? '#f8fafc' : '#1e293b', // slate-50 dark, slate-800 light
     upcomingWordBg: isDarkMode ? '#2a2a2a' : '#e5e7eb', // slate-700 dark, gray-200 light
     upcomingWordText: isDarkMode ? '#e5e5e5' : '#374151', // slate-50 dark, gray-700 light
     timeBarBg: isDarkMode ? '#1a1a1a' : '#f3f4f6', // slate-800 dark, gray-100 light
