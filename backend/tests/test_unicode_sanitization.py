@@ -14,7 +14,16 @@ the Modal API couldn't handle the non-latin-1 character in HTTP headers.
 """
 
 import pytest
-from karaoke_gen.utils import sanitize_filename, UNICODE_REPLACEMENTS
+from karaoke_gen.utils import (
+    sanitize_filename,
+    normalize_text,
+    UNICODE_REPLACEMENTS,
+    TEXT_NORMALIZATIONS,
+    APOSTROPHE_REPLACEMENTS,
+    DOUBLE_QUOTE_REPLACEMENTS,
+    DASH_REPLACEMENTS,
+    WHITESPACE_REPLACEMENTS,
+)
 
 
 class TestSanitizeFilename:
@@ -339,3 +348,175 @@ class TestEdgeCasesAndRegression:
         assert "♫" in sanitize_filename("♫ Music ♫")
         assert "♯" in sanitize_filename("C♯ Minor")
         assert "♭" in sanitize_filename("B♭ Major")
+
+
+class TestNormalizeText:
+    """Test the normalize_text function for data consistency normalization."""
+
+    def test_curly_single_quotes_normalized(self):
+        """Test that curly single quotes are converted to straight apostrophe."""
+        assert normalize_text("Can\u2019t") == "Can't"
+        assert normalize_text("It\u2018s") == "It's"
+        assert normalize_text("\u201Aquote\u201B") == "'quote'"
+
+    def test_curly_double_quotes_normalized(self):
+        """Test that curly double quotes are converted to straight double quotes."""
+        assert normalize_text("\u201CHello\u201D") == '"Hello"'
+        assert normalize_text("\u201Equote\u201F") == '"quote"'
+
+    def test_backticks_normalized(self):
+        """Test that backticks and similar marks are converted to apostrophe."""
+        assert normalize_text("code`here") == "code'here"
+        assert normalize_text("acute\u00B4accent") == "acute'accent"
+        assert normalize_text("prime\u2032mark") == "prime'mark"
+
+    def test_dashes_normalized(self):
+        """Test that various dashes are converted to hyphen-minus."""
+        # EN DASH
+        assert normalize_text("1990\u20132000") == "1990-2000"
+        # EM DASH
+        assert normalize_text("word\u2014word") == "word-word"
+        # MINUS SIGN
+        assert normalize_text("a\u2212b") == "a-b"
+        # FIGURE DASH
+        assert normalize_text("phone\u2012number") == "phone-number"
+
+    def test_whitespace_normalized(self):
+        """Test that various whitespace characters are normalized."""
+        # NON-BREAKING SPACE
+        assert normalize_text("hello\u00A0world") == "hello world"
+        # EM SPACE
+        assert normalize_text("hello\u2003world") == "hello world"
+        # IDEOGRAPHIC SPACE (CJK full-width)
+        assert normalize_text("hello\u3000world") == "hello world"
+        # ZERO WIDTH SPACE (removed entirely)
+        assert normalize_text("hello\u200Bworld") == "helloworld"
+
+    def test_ellipsis_normalized(self):
+        """Test that ellipsis character is converted to three dots."""
+        assert normalize_text("Wait\u2026") == "Wait..."
+        assert normalize_text("Loading\u2026please wait") == "Loading...please wait"
+
+    def test_multiple_spaces_collapsed(self):
+        """Test that multiple spaces are collapsed to one."""
+        assert normalize_text("hello   world") == "hello world"
+        # After normalizing multiple whitespace chars
+        assert normalize_text("hello\u00A0\u00A0\u00A0world") == "hello world"
+
+    def test_leading_trailing_whitespace_stripped(self):
+        """Test that leading/trailing whitespace is stripped."""
+        assert normalize_text("  hello  ") == "hello"
+        assert normalize_text("\u00A0hello\u00A0") == "hello"
+
+    def test_none_input(self):
+        """Test that None input returns None."""
+        assert normalize_text(None) is None
+
+    def test_non_string_input(self):
+        """Test that non-string input is returned unchanged."""
+        assert normalize_text(123) == 123
+        assert normalize_text(["list"]) == ["list"]
+
+    def test_international_characters_preserved(self):
+        """Test that international characters are NOT normalized away."""
+        assert normalize_text("日本語") == "日本語"
+        assert normalize_text("한국어") == "한국어"
+        assert normalize_text("Café") == "Café"
+        assert normalize_text("Björk") == "Björk"
+
+    def test_real_world_examples(self):
+        """Test real-world examples with mixed content."""
+        # Job d49efab1's title
+        assert normalize_text("Mama Says (You Can\u2019t Back Down)") == "Mama Says (You Can't Back Down)"
+        # Broadway cast with smart quotes and em dash
+        assert normalize_text("Footloose \u2014 \u201CFinal Song\u201D") == 'Footloose - "Final Song"'
+        # Japanese with em dash
+        assert normalize_text("宇多田ヒカル \u2014 First Love") == "宇多田ヒカル - First Love"
+
+    def test_idempotent(self):
+        """Test that normalizing twice gives the same result."""
+        original = "It\u2019s \u201CMy\u201D Song \u2014 Test\u2026"
+        once = normalize_text(original)
+        twice = normalize_text(once)
+        assert once == twice
+
+    def test_text_normalizations_dict_complete(self):
+        """Verify TEXT_NORMALIZATIONS includes all expected categories."""
+        # Check apostrophe-like characters
+        for char in APOSTROPHE_REPLACEMENTS:
+            assert char in TEXT_NORMALIZATIONS
+
+        # Check double quote-like characters
+        for char in DOUBLE_QUOTE_REPLACEMENTS:
+            assert char in TEXT_NORMALIZATIONS
+
+        # Check dash-like characters
+        for char in DASH_REPLACEMENTS:
+            assert char in TEXT_NORMALIZATIONS
+
+        # Check whitespace characters
+        for char in WHITESPACE_REPLACEMENTS:
+            assert char in TEXT_NORMALIZATIONS
+
+
+class TestModelValidatorNormalization:
+    """Test that model validators correctly normalize input text."""
+
+    def test_job_create_normalizes_artist_title(self):
+        """Test that JobCreate model normalizes artist and title fields."""
+        from backend.models.job import JobCreate
+
+        job = JobCreate(
+            artist="Don\u2019t Stop",
+            title="Believin\u2019 \u2014 Live",
+        )
+        assert job.artist == "Don't Stop"
+        assert job.title == "Believin' - Live"
+
+    def test_job_create_preserves_international_chars(self):
+        """Test that JobCreate preserves international characters."""
+        from backend.models.job import JobCreate
+
+        job = JobCreate(
+            artist="宇多田ヒカル",
+            title="First Love",
+        )
+        assert job.artist == "宇多田ヒカル"
+        assert job.title == "First Love"
+
+    def test_job_create_handles_none(self):
+        """Test that JobCreate handles None values correctly."""
+        from backend.models.job import JobCreate
+
+        job = JobCreate(
+            artist=None,
+            title="Some Title",
+        )
+        assert job.artist is None
+        assert job.title == "Some Title"
+
+    def test_audio_search_normalizes_fields(self):
+        """Test that AudioSearchRequest normalizes text fields."""
+        from backend.api.routes.audio_search import AudioSearchRequest
+
+        request = AudioSearchRequest(
+            artist="Artist\u2019s Name",
+            title="Song \u2014 Remix",
+            display_artist="Display\u2019s Artist",
+            display_title="Display\u2019s Title",
+        )
+        assert request.artist == "Artist's Name"
+        assert request.title == "Song - Remix"
+        assert request.display_artist == "Display's Artist"
+        assert request.display_title == "Display's Title"
+
+    def test_audio_search_preserves_international_chars(self):
+        """Test that AudioSearchRequest preserves international characters."""
+        from backend.api.routes.audio_search import AudioSearchRequest
+
+        request = AudioSearchRequest(
+            artist="방탄소년단",
+            title="Dynamite",
+        )
+        assert request.artist == "방탄소년단"
+        assert request.title == "Dynamite"

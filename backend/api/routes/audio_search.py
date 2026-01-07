@@ -18,9 +18,10 @@ import tempfile
 from typing import Optional, List, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 from backend.models.job import JobCreate, JobStatus
+from karaoke_gen.utils import normalize_text
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
@@ -123,6 +124,13 @@ class AudioSearchRequest(BaseModel):
 
     # Non-interactive mode
     non_interactive: bool = Field(False, description="Skip interactive steps (lyrics review, instrumental selection)")
+
+    @validator('artist', 'title', 'lyrics_artist', 'lyrics_title', 'display_artist', 'display_title')
+    def normalize_text_fields(cls, v):
+        """Normalize text fields to standardize Unicode characters."""
+        if v is not None and isinstance(v, str):
+            return normalize_text(v)
+        return v
 
 
 class AudioSearchResultResponse(BaseModel):
