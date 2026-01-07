@@ -39,6 +39,7 @@ from backend.services.tracing import job_span, add_span_event, add_span_attribut
 
 # Import from karaoke_gen package
 from karaoke_gen.video_generator import VideoGenerator
+from karaoke_gen.utils import sanitize_filename
 
 
 logger = logging.getLogger(__name__)
@@ -294,9 +295,12 @@ async def _generate_title_screen(
     """
     try:
         logger.info(f"Job {job_id}: Generating title screen")
-        
+
         # Set up output paths
-        artist_title = f"{job.artist} - {job.title}"
+        # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+        safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+        safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+        artist_title = f"{safe_artist} - {safe_title}"
         output_image_filepath_noext = os.path.join(temp_dir, f"{artist_title} (Title)")
         output_video_filepath = os.path.join(temp_dir, f"{artist_title} (Title).mov")
         
@@ -372,9 +376,12 @@ async def _generate_end_screen(
     """
     try:
         logger.info(f"Job {job_id}: Generating end screen")
-        
+
         # Set up output paths
-        artist_title = f"{job.artist} - {job.title}"
+        # Sanitize artist/title to handle Unicode characters (curly quotes, em dashes, etc.)
+        safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+        safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+        artist_title = f"{safe_artist} - {safe_title}"
         output_image_filepath_noext = os.path.join(temp_dir, f"{artist_title} (End)")
         output_video_filepath = os.path.join(temp_dir, f"{artist_title} (End).mov")
         

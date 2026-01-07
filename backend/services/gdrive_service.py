@@ -15,6 +15,7 @@ import os
 from typing import Any, Dict, Optional
 
 from backend.config import get_settings
+from karaoke_gen.utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +254,10 @@ class GoogleDriveService:
         Returns:
             Dictionary mapping category to uploaded file ID
         """
-        filename_base = f"{brand_code} - {base_name}"
+        # Sanitize base_name to handle Unicode characters (curly quotes, em dashes, etc.)
+        # that could cause issues with Google Drive API queries and file naming
+        safe_base_name = sanitize_filename(base_name) if base_name else base_name
+        filename_base = f"{brand_code} - {safe_base_name}"
         uploaded_files = {}
 
         logger.info(
