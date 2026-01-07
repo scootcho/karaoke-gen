@@ -17,6 +17,7 @@ import {
 import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
 import { AuthDialog } from '@/components/auth/AuthDialog';
 import { WarmingUpLoader } from '@/components/WarmingUpLoader';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 // FAQ data
 const faqs = [
@@ -68,8 +69,6 @@ export default function LandingPage() {
   const [betaSuccess, setBetaSuccess] = useState(false);
   const [betaWillRedirect, setBetaWillRedirect] = useState(false);
 
-  // FAQ expansion state
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   // Auth dialog state
   const [showAuthDialog, setShowAuthDialog] = useState(false);
@@ -214,12 +213,15 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-10" />
           </div>
-          <button
-            onClick={() => setShowAuthDialog(true)}
-            className="text-sm text-dark-300 hover:text-white transition-colors"
-          >
-            Already have credits? Sign in
-          </button>
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <button
+              onClick={() => setShowAuthDialog(true)}
+              className="text-sm text-dark-300 hover:text-white transition-colors"
+            >
+              Already have credits? Sign in
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -292,7 +294,7 @@ export default function LandingPage() {
       {/* Beta Tester Program */}
       <section className="py-12 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-gradient-to-r from-[#3d1f35]/60 to-[#2d1f3d]/60 border border-primary-500/30 rounded-2xl p-8 text-center">
+          <div className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-primary/30 rounded-2xl p-8 text-center">
             <div className="inline-flex items-center gap-2 bg-primary-500/20 text-primary-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
               <Gift className="w-4 h-4" />
               Beta Tester Program
@@ -326,7 +328,7 @@ export default function LandingPage() {
                     value={betaEmail}
                     onChange={(e) => setBetaEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-white placeholder-dark-500"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground"
                     required
                   />
                 </div>
@@ -341,7 +343,7 @@ export default function LandingPage() {
                     onChange={(e) => setBetaPromise(e.target.value)}
                     placeholder="Tell us about a song you'd love to sing..."
                     rows={3}
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-white placeholder-dark-500 resize-none"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground resize-none"
                   />
                 </div>
 
@@ -351,9 +353,9 @@ export default function LandingPage() {
                     id="beta-accept"
                     checked={betaAccept}
                     onChange={(e) => setBetaAccept(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-dark-600 bg-dark-900 text-primary-500 focus:ring-primary-500"
+                    className="mt-1 w-4 h-4 rounded border-border bg-secondary text-primary focus:ring-primary"
                   />
-                  <label htmlFor="beta-accept" className="text-sm text-dark-300">
+                  <label htmlFor="beta-accept" className="text-sm text-muted-foreground">
                     I understand that beta testers help improve lyrics accuracy by reviewing and correcting AI-generated lyrics
                   </label>
                 </div>
@@ -459,14 +461,14 @@ export default function LandingPage() {
                   Email address
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-500" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
                     type="email"
                     id="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full pl-10 pr-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-white placeholder-dark-500"
+                    className="w-full pl-10 pr-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
                     required
                   />
                 </div>
@@ -501,22 +503,9 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">Questions?</h2>
           <div className="space-y-4">
             {faqs.map((faq, i) => (
-              <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
-                  aria-expanded={expandedFaq === i}
-                  className="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-dark-700/50 transition-colors"
-                >
-                  <span className="font-medium">{faq.question}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 text-dark-400 transition-transform ${
-                      expandedFaq === i ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-                {expandedFaq === i && (
-                  <div className="px-6 pb-4 text-dark-300 text-sm">{faq.answer}</div>
-                )}
+              <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl p-6">
+                <h3 className="font-medium mb-2">{faq.question}</h3>
+                <p className="text-dark-400 text-sm">{faq.answer}</p>
               </div>
             ))}
           </div>

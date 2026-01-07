@@ -125,7 +125,7 @@ export default function AdminJobDetailPage() {
       case "INFO":
         return "text-blue-500"
       case "DEBUG":
-        return "text-gray-500"
+        return "text-muted-foreground"
       default:
         return "text-foreground"
     }

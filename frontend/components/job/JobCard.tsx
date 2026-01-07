@@ -45,7 +45,7 @@ function ProgressBar({ job }: { job: Job }) {
 
   // Map color class to background color for the bar
   const barColorMap: Record<string, string> = {
-    "text-slate-400": "bg-slate-400",
+    "text-muted-foreground": "bg-muted-foreground",
     "text-blue-400": "bg-blue-400",
     "text-purple-400": "bg-purple-400",
     "text-teal-400": "bg-teal-400",

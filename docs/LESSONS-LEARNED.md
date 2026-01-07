@@ -78,6 +78,62 @@ Audio separation and lyrics transcription run in parallel:
 
 ## Common Gotchas
 
+### Verify Active Worktree Before Making Changes
+
+**Problem**: When multiple git worktrees exist (e.g., `karaoke-gen` for main, `karaoke-gen-brand-consistency` for a feature branch), it's easy to make changes in the wrong worktree, especially if not paying attention to which directory the user's dev server is running from.
+
+**Symptoms**:
+- Changes made successfully but don't appear in the user's browser
+- User says "I'm running the dev server from X" and X is a different directory
+- Build passes but UI doesn't reflect changes
+
+**Solution**: Before making any file changes in a multi-worktree setup:
+1. Ask or confirm which worktree/directory the user is actively working in
+2. Verify by checking where their dev server is running
+3. Make changes in the correct worktree path
+
+**Lesson**: The working directory in your terminal may not match where the user is running their dev server. Always verify the active worktree before editing files.
+
+### Frontend Theme-Aware Styling: Search All Files Proactively
+
+**Problem**: When making frontend styling changes for theme support (light/dark mode), fixing issues one-by-one as they're reported is inefficient. Hardcoded colors are scattered across many files.
+
+**Wrong approach**:
+1. User reports: "email placeholder is invisible in light mode"
+2. Fix that one file
+3. User reports: "sign-in dialog is dark"
+4. Fix that file
+5. Repeat for every component...
+
+**Right approach**: Proactively search for ALL non-theme-aware color patterns and fix them in one pass:
+
+```bash
+# Find all hardcoded slate/gray colors that should be theme-aware
+grep -r --include="*.tsx" --include="*.ts" -E \
+  "(text-slate-|bg-slate-|border-slate-|text-gray-|bg-gray-|border-gray-)" \
+  app/ components/ lib/
+```
+
+**Theme-aware replacements**:
+| Hardcoded | Theme-aware |
+|-----------|-------------|
+| `text-slate-400`, `text-gray-400` | `text-muted-foreground` |
+| `text-slate-100`, `text-white` | `text-foreground` |
+| `bg-slate-800`, `bg-gray-800` | `bg-card` or `bg-secondary` |
+| `bg-slate-900`, `bg-gray-900` | `bg-background` |
+| `border-slate-700`, `border-gray-700` | `border-border` |
+
+**CSS variables** (defined in `globals.css`):
+- `--background`, `--foreground` - Main page colors
+- `--card`, `--card-foreground` - Card/dialog colors
+- `--muted`, `--muted-foreground` - Subdued text
+- `--border` - Border colors
+- `--primary`, `--secondary`, `--destructive`, etc. - Semantic colors
+
+**Also check tests**: After bulk-replacing colors in source files, update test expectations that assert on color classes.
+
+**Lesson**: When adding theme support, treat it as a codebase-wide refactor. Search for all hardcoded color patterns upfront rather than playing whack-a-mole with user-reported issues.
+
 ### Cross-Domain localStorage Isolation
 
 **Problem**: Auth tokens stored in localStorage on one subdomain are invisible to other subdomains.

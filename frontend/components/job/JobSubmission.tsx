@@ -273,7 +273,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 checked={nonInteractive}
                 onChange={(e) => setNonInteractive(e.target.checked)}
                 disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-gray-800"
+                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
               />
               <div>
                 <Label htmlFor="non-interactive-upload" className="cursor-pointer" style={{ color: 'var(--text)' }}>
@@ -378,7 +378,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 checked={nonInteractive}
                 onChange={(e) => setNonInteractive(e.target.checked)}
                 disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-gray-800"
+                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
               />
               <div>
                 <Label htmlFor="non-interactive-url" className="cursor-pointer" style={{ color: 'var(--text)' }}>
@@ -502,7 +502,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 checked={nonInteractive}
                 onChange={(e) => setNonInteractive(e.target.checked)}
                 disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-gray-800"
+                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
               />
               <div>
                 <Label htmlFor="non-interactive-search" className="cursor-pointer" style={{ color: 'var(--text)' }}>

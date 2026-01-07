@@ -190,7 +190,7 @@ export default function AdminSearchesPage() {
       case "ops":
         return "bg-blue-500/20 text-blue-400 border-blue-500/30"
       default:
-        return "bg-slate-500/20 text-slate-400 border-slate-500/30"
+        return "bg-muted text-muted-foreground border-border"
     }
   }
 

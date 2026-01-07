@@ -257,7 +257,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.cdg_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-secondary hover:bg-muted text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -267,7 +267,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.txt_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-secondary hover:bg-muted text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -278,7 +278,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
 
           {/* Admin-only buttons */}
           {isAdmin && (
-            <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-700/50 mt-2">
+            <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50 mt-2">
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); copyCompletionMessage() }}

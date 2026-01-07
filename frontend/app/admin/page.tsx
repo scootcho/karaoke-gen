@@ -164,7 +164,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <XCircle className="w-4 h-4 text-gray-500" />
+                    <XCircle className="w-4 h-4 text-muted-foreground" />
                     <span className="text-sm">Cancelled</span>
                   </div>
                   <Badge variant="outline">{stats?.jobs_by_status?.cancelled ?? 0}</Badge>
