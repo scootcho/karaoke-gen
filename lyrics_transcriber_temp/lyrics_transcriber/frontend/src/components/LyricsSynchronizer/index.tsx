@@ -10,7 +10,8 @@ import {
     TextField,
     Button,
     Paper,
-    Alert
+    Alert,
+    useTheme
 } from '@mui/material'
 import ZoomInIcon from '@mui/icons-material/ZoomIn'
 import ZoomOutIcon from '@mui/icons-material/ZoomOut'
@@ -60,8 +61,11 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
     onCancel,
     setModalSpacebarHandler
 }: LyricsSynchronizerProps) {
+    const theme = useTheme()
+    const isDarkMode = theme.palette.mode === 'dark'
+
     // Working copy of segments
-    const [workingSegments, setWorkingSegments] = useState<LyricsSegment[]>(() => 
+    const [workingSegments, setWorkingSegments] = useState<LyricsSegment[]>(() =>
         cloneSegments(initialSegments)
     )
     
@@ -726,11 +730,11 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     flexShrink: 0
                 }}
             >
-                <Paper 
-                    sx={{ 
-                        p: 1.5, 
+                <Paper
+                    sx={{
+                        p: 1.5,
                         height: '100%',
-                        bgcolor: isManualSyncing ? 'info.main' : 'grey.100',
+                        bgcolor: isManualSyncing ? 'info.main' : (isDarkMode ? 'grey.800' : 'grey.100'),
                         color: isManualSyncing ? 'info.contrastText' : 'text.primary',
                         display: 'flex',
                         flexDirection: 'column',
@@ -802,6 +806,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     audioDuration={audioDuration}
                     zoomSeconds={zoomSeconds}
                     height={200}
+                    isDarkMode={isDarkMode}
                 />
             </Box>
 
