@@ -1339,7 +1339,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
             </Grid>
 
             {/* Spacer for sticky footer */}
-            {!isReadOnly && apiClient && <Box sx={{ height: 80 }} />}
+            {!isReadOnly && apiClient && <Box sx={{ height: 64 }} />}
 
             {/* Sticky footer bar with Preview Video button */}
             {!isReadOnly && apiClient && (
@@ -1364,26 +1364,19 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 >
                     <Typography
                         variant="body2"
-                        sx={{
-                            color: 'text.secondary',
-                            display: { xs: 'none', sm: 'block' }
-                        }}
+                        sx={{ color: 'text.secondary' }}
                     >
                         Lyrics look good?
                     </Typography>
                     <Button
                         variant="contained"
-                        size="large"
                         onClick={handleFinishReview}
                         disabled={isReviewComplete}
                         endIcon={<OndemandVideo />}
                         sx={{
-                            px: 4,
-                            py: 1.5,
-                            fontSize: '1.1rem',
-                            fontWeight: 600,
-                            minWidth: { xs: '100%', sm: 'auto' },
-                            maxWidth: { xs: '300px', sm: 'none' }
+                            px: 2.5,
+                            py: 0.75,
+                            fontWeight: 500
                         }}
                     >
                         {isReviewComplete ? 'Review Complete' : 'Preview Video'}
