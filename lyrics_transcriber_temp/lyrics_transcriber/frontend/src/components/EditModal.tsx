@@ -6,7 +6,9 @@ import {
     IconButton,
     Box,
     CircularProgress,
-    Typography
+    Typography,
+    useMediaQuery,
+    useTheme
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
@@ -195,6 +197,9 @@ export default function EditModal({
     //     hasOriginalTranscribedSegment: !!originalTranscribedSegment
     // });
     
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
     const [editedSegment, setEditedSegment] = useState<LyricsSegment | null>(segment)
     const [isPlaying, setIsPlaying] = useState(false)
 
@@ -588,6 +593,7 @@ export default function EditModal({
             onClose={handleClose}
             maxWidth="md"
             fullWidth
+            fullScreen={isMobile}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
                     e.preventDefault()
@@ -596,8 +602,8 @@ export default function EditModal({
             }}
             PaperProps={{
                 sx: {
-                    height: '90vh',
-                    margin: '5vh 0'
+                    height: isMobile ? '100%' : '90vh',
+                    margin: isMobile ? 0 : '5vh 0'
                 }
             }}
         >
