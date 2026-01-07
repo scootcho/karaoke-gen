@@ -182,7 +182,7 @@ const TimelineControls = memo(({
                 color={isManualSyncing ? "error" : "primary"}
                 size="small"
             >
-                {isManualSyncing ? "Cancel" : "Sync"}
+                {isManualSyncing ? "Cancel" : "Tap To Sync"}
             </Button>
             {isManualSyncing && isReplaceAllMode && (
                 <Button
@@ -447,7 +447,7 @@ export default function EditTimelineSection({
     return (
         <>
             <Box
-                sx={{ height: isMobile ? '80px' : '120px', mb: isMobile ? 1 : 2 }}
+                sx={{ height: isMobile ? '80px' : '120px', mb: 0 }}
                 ref={timelineRef}
                 onWheel={handleScroll}
             >
