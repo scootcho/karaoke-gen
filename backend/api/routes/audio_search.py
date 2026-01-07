@@ -107,6 +107,10 @@ class AudioSearchRequest(BaseModel):
     lyrics_artist: Optional[str] = Field(None, description="Override artist name for lyrics search")
     lyrics_title: Optional[str] = Field(None, description="Override title for lyrics search")
     subtitle_offset_ms: int = Field(0, description="Subtitle timing offset in milliseconds")
+
+    # Display overrides (optional - if empty, search values are used for display)
+    display_artist: Optional[str] = Field(None, description="Artist name for title screens/filenames. If empty, uses search artist.")
+    display_title: Optional[str] = Field(None, description="Title for title screens/filenames. If empty, uses search title.")
     
     # Audio separation model configuration
     clean_instrumental_model: Optional[str] = Field(None, description="Model for clean instrumental separation")
@@ -530,10 +534,16 @@ async def search_audio(
         # Use authenticated user's email
         effective_user_email = auth_result.user_email
 
+        # Determine display values - use display_* if provided, otherwise fall back to search values
+        # Display values are used for title screens, filenames, YouTube, etc.
+        # Search values (body.artist, body.title) are used for audio search
+        effective_display_artist = body.display_artist.strip() if body.display_artist else body.artist
+        effective_display_title = body.display_title.strip() if body.display_title else body.title
+
         # Create job
         job_create = JobCreate(
-            artist=body.artist,
-            title=body.title,
+            artist=effective_display_artist,  # Display value for title screens, filenames
+            title=effective_display_title,    # Display value for title screens, filenames
             theme_id=body.theme_id,
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
