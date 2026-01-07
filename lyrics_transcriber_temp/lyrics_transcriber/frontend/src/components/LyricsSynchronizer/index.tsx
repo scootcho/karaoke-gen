@@ -11,7 +11,8 @@ import {
     Button,
     Paper,
     Alert,
-    useTheme
+    useTheme,
+    useMediaQuery
 } from '@mui/material'
 import ZoomInIcon from '@mui/icons-material/ZoomIn'
 import ZoomOutIcon from '@mui/icons-material/ZoomOut'
@@ -63,6 +64,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
 }: LyricsSynchronizerProps) {
     const theme = useTheme()
     const isDarkMode = theme.palette.mode === 'dark'
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
     // Working copy of segments
     const [workingSegments, setWorkingSegments] = useState<LyricsSegment[]>(() =>
@@ -668,13 +670,79 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                 spacebarHandlerRef.current(e)
             }
         }
-        
+
         setModalSpacebarHandler(() => handler)
-        
+
         return () => {
             setModalSpacebarHandler(undefined)
         }
     }, [setModalSpacebarHandler])
+
+    // Tap handlers for mobile (simulate spacebar press/release)
+    const handleTapStart = useCallback(() => {
+        if (!isManualSyncing || isPaused) return
+        if (syncWordIndex < 0 || syncWordIndex >= allWords.length) return
+        if (isSpacebarPressed) return
+
+        setIsSpacebarPressed(true)
+        wordStartTimeRef.current = currentTimeRef.current
+        spacebarPressTimeRef.current = Date.now()
+
+        // Set start time for current word
+        const newWords = [...allWords]
+        const currentWord = newWords[syncWordIndex]
+        currentWord.start_time = currentTimeRef.current
+
+        // Handle previous word's end time
+        if (syncWordIndex > 0) {
+            const prevWord = newWords[syncWordIndex - 1]
+            if (prevWord.start_time !== null && prevWord.end_time === null) {
+                const gap = currentTimeRef.current - prevWord.start_time
+                if (gap > 1.0) {
+                    prevWord.end_time = prevWord.start_time + 0.5
+                } else {
+                    prevWord.end_time = currentTimeRef.current - 0.005
+                }
+            }
+        }
+
+        updateWords(newWords)
+    }, [isManualSyncing, isPaused, syncWordIndex, allWords, isSpacebarPressed, updateWords])
+
+    const handleTapEnd = useCallback(() => {
+        if (!isManualSyncing || isPaused) return
+        if (!isSpacebarPressed) return
+
+        setIsSpacebarPressed(false)
+
+        const pressDuration = spacebarPressTimeRef.current
+            ? Date.now() - spacebarPressTimeRef.current
+            : 0
+        const isTap = pressDuration < 200
+
+        const newWords = [...allWords]
+        const currentWord = newWords[syncWordIndex]
+
+        if (isTap) {
+            currentWord.end_time = (wordStartTimeRef.current || currentTimeRef.current) + 0.5
+        } else {
+            currentWord.end_time = currentTimeRef.current
+        }
+
+        updateWords(newWords)
+
+        // Move to next word
+        if (syncWordIndex < allWords.length - 1) {
+            setSyncWordIndex(syncWordIndex + 1)
+        } else {
+            setIsManualSyncing(false)
+            setSyncWordIndex(-1)
+            handleStopAudio()
+        }
+
+        wordStartTimeRef.current = null
+        spacebarPressTimeRef.current = null
+    }, [isManualSyncing, isPaused, isSpacebarPressed, syncWordIndex, allWords, updateWords, handleStopAudio])
 
     // Handle save
     const handleSave = useCallback(() => {
@@ -735,7 +803,7 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                         p: 1.5,
                         height: '100%',
                         bgcolor: isManualSyncing ? 'info.main' : (isDarkMode ? 'grey.800' : 'grey.100'),
-                        color: isManualSyncing ? 'info.contrastText' : 'text.primary',
+                        color: isManualSyncing ? 'common.white' : 'text.primary',
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center',
@@ -746,7 +814,15 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
                     <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>
                         {instruction.primary}
                     </Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', lineHeight: 1.3 }}>
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            opacity: isManualSyncing ? 0.9 : 0.85,
+                            display: 'block',
+                            lineHeight: 1.3,
+                            color: isManualSyncing ? 'common.white' : 'text.secondary'
+                        }}
+                    >
                         {instruction.secondary}
                     </Typography>
                 </Paper>
@@ -755,22 +831,26 @@ const LyricsSynchronizer = memo(function LyricsSynchronizer({
             {/* Controls - fixed height section */}
             <Box sx={{ height: 88, flexShrink: 0 }}>
                 <SyncControls
-                isManualSyncing={isManualSyncing}
-                isPaused={isPaused}
-                onStartSync={handleStartSync}
-                onPauseSync={handlePauseSync}
-                onResumeSync={handleResumeSync}
-                onClearSync={handleClearSync}
-                onEditLyrics={handleEditLyrics}
-                onPlay={handlePlayAudio}
-                onStop={handleStopAudio}
-                isPlaying={isPlaying}
-                hasSelectedWords={selectedWordIds.size > 0}
-                selectedWordCount={selectedWordIds.size}
-                onUnsyncFromCursor={handleUnsyncFromCursor}
-                onEditSelectedWord={handleEditSelectedWord}
-                onDeleteSelected={handleDeleteSelected}
-                canUnsyncFromCursor={canUnsyncFromCursor}
+                    isManualSyncing={isManualSyncing}
+                    isPaused={isPaused}
+                    onStartSync={handleStartSync}
+                    onPauseSync={handlePauseSync}
+                    onResumeSync={handleResumeSync}
+                    onClearSync={handleClearSync}
+                    onEditLyrics={handleEditLyrics}
+                    onPlay={handlePlayAudio}
+                    onStop={handleStopAudio}
+                    isPlaying={isPlaying}
+                    hasSelectedWords={selectedWordIds.size > 0}
+                    selectedWordCount={selectedWordIds.size}
+                    onUnsyncFromCursor={handleUnsyncFromCursor}
+                    onEditSelectedWord={handleEditSelectedWord}
+                    onDeleteSelected={handleDeleteSelected}
+                    canUnsyncFromCursor={canUnsyncFromCursor}
+                    isMobile={isMobile}
+                    onTapStart={handleTapStart}
+                    onTapEnd={handleTapEnd}
+                    isTapping={isSpacebarPressed}
             />
             </Box>
 
