@@ -134,6 +134,31 @@ grep -r --include="*.tsx" --include="*.ts" -E \
 
 **Lesson**: When adding theme support, treat it as a codebase-wide refactor. Search for all hardcoded color patterns upfront rather than playing whack-a-mole with user-reported issues.
 
+### UI Simplification: Apply Backend Defaults for Removed Options
+
+**Problem**: Frontend was simplified to hide theme selection (all videos should use the "Nomad Karaoke" theme by default). However, removing the `theme_id` from API calls meant the backend received `None` and didn't apply any theme.
+
+**Symptoms**:
+- New karaoke jobs had `Theme: None` instead of expected "nomad" theme
+- Videos generated without the branded styling (no black background, custom colors, etc.)
+- Only discovered after users created jobs post-UI change
+
+**Root cause**: Frontend previously sent `theme_id: selectedTheme` to the API. When theme selection was removed from UI, the parameter was simply deleted rather than set to a default value. Backend had a `get_default_theme_id()` method but wasn't calling it when `theme_id` was `None`.
+
+**Solution**: Backend now applies the default theme when none is specified:
+```python
+effective_theme_id = body.theme_id
+if effective_theme_id is None:
+    theme_service = get_theme_service()
+    effective_theme_id = theme_service.get_default_theme_id()
+```
+
+**Lesson**: When simplifying UI by removing options, ensure the backend applies sensible defaults for removed parameters. Either:
+1. Frontend should explicitly send the default value, OR
+2. Backend should apply defaults when parameters are omitted
+
+The backend approach is more robust - it ensures correct behavior regardless of which client (web, CLI, API) makes the request.
+
 ### Cross-Domain localStorage Isolation
 
 **Problem**: Auth tokens stored in localStorage on one subdomain are invisible to other subdomains.
