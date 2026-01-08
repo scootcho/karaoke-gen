@@ -173,7 +173,7 @@ class EmailService:
     BRAND_PRIMARY = "#ff7acc"  # Pink
     BRAND_PRIMARY_HOVER = "#e066b3"  # Darker pink for hover states
     BRAND_SECONDARY = "#ffdf6b"  # Yellow (accent)
-    BRAND_SUCCESS = "#10b981"  # Green for success states
+    BRAND_SUCCESS = "#22c55e"  # Green for success states (Tailwind green-500)
     LOGO_URL = "https://beveradb.github.io/public-images/Nomad-Karaoke-Logo-small-indexed-websafe-rectangle.gif"
 
     def __init__(self):

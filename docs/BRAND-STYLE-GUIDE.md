@@ -1,6 +1,6 @@
 # Nomad Karaoke Brand Style Guide
 
-> **Version**: 1.0
+> **Version**: 1.1
 > **Last Updated**: 2026-01-07
 > **Purpose**: Unified brand identity for all Nomad Karaoke products and communications
 
@@ -19,7 +19,8 @@ This style guide is designed for both human designers and LLM agents implementin
 7. [Layout & Spacing](#layout--spacing)
 8. [Email Design](#email-design)
 9. [Tone & Voice](#tone--voice)
-10. [Implementation Reference](#implementation-reference)
+10. [Light/Dark Theme Requirements](#lightdark-theme-requirements)
+11. [Implementation Reference](#implementation-reference)
 
 ---
 
@@ -94,13 +95,33 @@ background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ff7acc 100%);
 ```
 Use for: Hero text, feature highlights, premium elements. The gradient flows from blue through purple to the brand pink.
 
-#### Animated Background Gradient
+#### Radial Background Gradient (Landing Pages)
 ```css
-background: linear-gradient(-45deg, #0f172a, #1e293b, #1e3a8a, #312e81);
-background-size: 400% 400%;
-animation: gradient-shift 15s ease infinite;
+/* Layered radial gradients using brand colors */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),   /* Purple glow top-left */
+    radial-gradient(ellipse at 80% 100%, rgba(255, 122, 204, 0.10) 0%, transparent 50%), /* Pink glow bottom-right */
+    radial-gradient(ellipse at 50% 50%, rgba(255, 223, 107, 0.03) 0%, transparent 70%);  /* Gold subtle center */
+  pointer-events: none;
+}
+
+/* Optional: Add subtle pulsing animation for ambient glow effect */
+@keyframes ambient-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+body::after {
+  animation: ambient-glow 8s ease-in-out infinite;
+}
 ```
-Use for: Landing page hero backgrounds, special sections.
+Use for: Landing page backgrounds, hero sections. Creates depth with brand colors without being distracting.
+
+**Light theme variant**: Reduce opacity values (0.08, 0.06, 0.02) for subtler effect on light backgrounds.
 
 #### Beta/Special Gradient
 ```css
@@ -148,32 +169,52 @@ Use for: Code snippets, technical information, job IDs.
 
 ## Logo Usage
 
+**Important**: Always use the Nomad Karaoke logo rather than generic emojis (like 🎤) in headers, navigation, and brand touchpoints.
+
 ### Primary Logo
 The Nomad Karaoke logo consists of:
 1. **Wordmark**: "NOMAD" stylized letters (pink #ff7acc)
 2. **Tagline**: "KARAOKE" below (pink #ff7acc)
 3. **Subline**: "WHERE EVERY SONG'S YOURS, SINGING!" (gold #ffdf6b)
 
+### Logo Format Priority
+
+1. **SVG (Preferred)**: Use `nomad-karaoke-logo.svg` for all web applications
+   - Vector format scales perfectly at any size
+   - Smaller file size
+   - Supports both light and dark themes
+   - Located in: `frontend/public/` directory
+
+2. **PNG**: Use for contexts that don't support SVG
+   - `nomad-logo.png` - Standard PNG fallback
+
+3. **GIF (Email Only)**: Use the hosted GIF **only** for email templates
+   - URL: `https://beveradb.github.io/public-images/Nomad-Karaoke-Logo-small-indexed-websafe-rectangle.gif`
+   - This hosted URL exists because emails cannot embed local assets
+   - Do NOT use this URL in web applications - use the local SVG instead
+
 ### Logo Files
-- `nomad-karaoke-logo.svg` - Full vector logo
+- `nomad-karaoke-logo.svg` - Full vector logo (**primary choice**)
 - `nomad-logo.png` - PNG fallback
 - `favicon.ico`, `favicon-16x16.png`, `favicon-32x32.png` - Favicons
 - `apple-touch-icon.png` - iOS home screen icon
 
 ### Logo Placement
-- **Navigation**: Left-aligned, 32-40px height
-- **Footer**: Smaller, 24-32px height
-- **Email Header**: Centered or left-aligned, 100-130px width
+- **Navigation**: Left-aligned, 32-40px height, use SVG
+- **Footer**: Smaller, 24-32px height, use SVG
+- **Email Header**: Centered, 130-180px width, use hosted GIF URL
 
 ### Logo Clear Space
 Maintain clear space equal to the "N" letter height around all sides of the logo.
 
 ### Logo Don'ts
+- Don't use emojis (🎤, 🎵) instead of the logo
 - Don't change the logo colors
 - Don't stretch or distort the logo
 - Don't add effects (shadows, gradients, etc.)
 - Don't place on busy backgrounds without contrast
 - Don't use the logo smaller than 24px height
+- Don't use the hosted GIF URL in web applications (use SVG)
 
 ---
 
@@ -393,11 +434,15 @@ Use CSS Grid or Flexbox with responsive breakpoints:
 ```
 
 ### Email Header
+Always use the Nomad Karaoke logo image in email headers, not an emoji.
+
 ```html
-<div style="text-align: center; padding: 20px 0; border-bottom: 2px solid #ff7acc;">
-  <span style="font-size: 24px; font-weight: bold; color: #ff7acc;">
-    🎤 Nomad Karaoke
-  </span>
+<div style="text-align: center; padding: 20px 0;">
+  <a href="https://nomadkaraoke.com">
+    <img src="https://beveradb.github.io/public-images/Nomad-Karaoke-Logo-small-indexed-websafe-rectangle.gif"
+         alt="Nomad Karaoke"
+         style="max-width: 180px; height: auto; border-radius: 10px;" />
+  </a>
 </div>
 ```
 
@@ -433,6 +478,103 @@ Include consistent signature with:
 - Common: 🎤 (brand), 🎵 (music), ✨ (magic), 🎉 (celebration)
 - Avoid in error messages
 - Email subject lines: One emoji max
+
+---
+
+## Light/Dark Theme Requirements
+
+### Overview
+All Nomad Karaoke web application screens must support both light and dark themes. Dark theme is the default, but users should have easy access to toggle between themes.
+
+### Implementation Requirements
+
+1. **Theme Toggle**: Every screen/page must include a visible theme toggle
+   - Location: Typically in the header or settings area
+   - Use `next-themes` library for Next.js applications
+   - Toggle should be easily discoverable
+
+2. **Default Theme**: Dark mode
+   - Respects system preference on first visit
+   - User preference is persisted
+
+3. **Color Consistency**: All brand colors must work in both themes
+   - Brand pink (#ff7acc) remains consistent
+   - Background, card, and text colors adapt per theme tables above
+   - Ensure sufficient contrast in both modes
+
+### next-themes Setup (Next.js)
+
+```tsx
+// app/layout.tsx or _app.tsx
+import { ThemeProvider } from 'next-themes'
+
+export default function RootLayout({ children }) {
+  return (
+    <html suppressHydrationWarning>
+      <body>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}
+
+// Theme toggle component
+import { useTheme } from 'next-themes'
+import { Sun, Moon } from 'lucide-react'
+
+export function ThemeToggle() {
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <button
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      className="p-2 rounded-lg hover:bg-white/10"
+      aria-label="Toggle theme"
+    >
+      {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+    </button>
+  )
+}
+```
+
+### CSS Variables for Theming
+
+```css
+/* Dark theme (default) */
+:root {
+  --background: #0f0f0f;
+  --card: #1a1a1a;
+  --card-border: #2a2a2a;
+  --text: #e5e5e5;
+  --text-muted: #888888;
+}
+
+/* Light theme */
+.light {
+  --background: #f8fafc;
+  --card: #ffffff;
+  --card-border: #e2e8f0;
+  --text: #1e293b;
+  --text-muted: #64748b;
+}
+
+/* Brand colors stay consistent */
+:root {
+  --brand-pink: #ff7acc;
+  --brand-gold: #ffdf6b;
+  --brand-purple: #8b5cf6;
+}
+```
+
+### Testing Checklist
+- [ ] Theme toggle is visible on all pages
+- [ ] Toggle persists preference across sessions
+- [ ] All text is readable in both themes
+- [ ] Brand colors render correctly in both themes
+- [ ] Interactive elements have proper hover/focus states in both themes
+- [ ] Radial background gradient adjusts opacity for light theme
 
 ---
 
@@ -533,7 +675,7 @@ export function PrimaryButton({ children, ...props }) {
 - [ ] Dark/light theme toggle working
 
 ### Emails
-- [ ] Header with logo/emoji brand mark
+- [ ] Header with logo image (not emoji)
 - [ ] Brand pink buttons
 - [ ] Pink divider lines
 - [ ] Consistent footer with signature
@@ -551,6 +693,7 @@ export function PrimaryButton({ children, ...props }) {
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1 | 2026-01-07 | Updated radial background gradient (now uses layered radial gradients with optional animation); Updated logo usage (SVG preferred, hosted GIF URL for emails only); Updated email header (use logo image, not emoji); Added Light/Dark Theme Requirements section; Fixed success color consistency (#22c55e) |
 | 1.0 | 2026-01-07 | Initial brand guide created |
 
 ---
