@@ -583,51 +583,49 @@ async def _handle_done_for_you_order(
                     else:
                         # Local download (YouTube or local torrent)
                         temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
+                        import shutil
 
-                        if source_id and source_name and is_remote_enabled:
-                            result = audio_search_service.download_by_id(
-                                source_name=source_name,
-                                source_id=source_id,
-                                output_dir=temp_dir,
-                                target_file=target_file,
-                                download_url=download_url,
-                            )
-                        elif source_name == 'YouTube' and download_url:
-                            # YouTube download
-                            from backend.workers.audio_worker import download_from_url
-                            local_path = await download_from_url(
-                                download_url,
-                                temp_dir,
-                                selected.get('artist'),
-                                selected.get('title')
-                            )
-                            if not local_path or not os.path.exists(local_path):
-                                raise Exception(f"Failed to download from YouTube: {download_url}")
-
-                            class DownloadResult:
-                                def __init__(self, filepath):
-                                    self.filepath = filepath
-                            result = DownloadResult(local_path)
-                        else:
-                            result = audio_search_service.download(
-                                result_index=best_index,
-                                output_dir=temp_dir,
-                                remote_search_id=remote_search_id,
-                            )
-
-                        # Upload to GCS
-                        filename = os.path.basename(result.filepath)
-                        audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
-
-                        with open(result.filepath, 'rb') as f:
-                            storage_service.upload_fileobj(f, audio_gcs_path, content_type='audio/flac')
-
-                        # Cleanup
                         try:
-                            os.remove(result.filepath)
-                            os.rmdir(temp_dir)
-                        except Exception:
-                            pass
+                            if source_id and source_name and is_remote_enabled:
+                                result = audio_search_service.download_by_id(
+                                    source_name=source_name,
+                                    source_id=source_id,
+                                    output_dir=temp_dir,
+                                    target_file=target_file,
+                                    download_url=download_url,
+                                )
+                            elif source_name == 'YouTube' and download_url:
+                                # YouTube download
+                                from backend.workers.audio_worker import download_from_url
+                                local_path = await download_from_url(
+                                    download_url,
+                                    temp_dir,
+                                    selected.get('artist'),
+                                    selected.get('title')
+                                )
+                                if not local_path or not os.path.exists(local_path):
+                                    raise Exception(f"Failed to download from YouTube: {download_url}")
+
+                                class DownloadResult:
+                                    def __init__(self, filepath):
+                                        self.filepath = filepath
+                                result = DownloadResult(local_path)
+                            else:
+                                result = audio_search_service.download(
+                                    result_index=best_index,
+                                    output_dir=temp_dir,
+                                    remote_search_id=remote_search_id,
+                                )
+
+                            # Upload to GCS
+                            filename = os.path.basename(result.filepath)
+                            audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
+
+                            with open(result.filepath, 'rb') as f:
+                                storage_service.upload_fileobj(f, audio_gcs_path, content_type='audio/flac')
+                        finally:
+                            # Always cleanup temp directory
+                            shutil.rmtree(temp_dir, ignore_errors=True)
 
                     # Update job with GCS path
                     job_manager.update_job(job_id, {
