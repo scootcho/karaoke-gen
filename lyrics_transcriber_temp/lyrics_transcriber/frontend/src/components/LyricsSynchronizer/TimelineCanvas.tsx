@@ -23,6 +23,7 @@ interface TimelineCanvasProps {
     audioDuration: number
     zoomSeconds: number
     height?: number
+    isDarkMode?: boolean
 }
 
 // Constants for rendering
@@ -33,17 +34,25 @@ const CANVAS_PADDING = 8
 const TEXT_ABOVE_BLOCK = 14
 const RESIZE_HANDLE_SIZE = 8
 const RESIZE_HANDLE_HITAREA = 12
-// Dark theme colors matching karaoke-gen
-const PLAYHEAD_COLOR = '#f97316' // orange-500 for better visibility
-const WORD_BLOCK_COLOR = '#dc2626' // red-600 for dark mode
-const WORD_BLOCK_SELECTED_COLOR = '#b91c1c' // red-700 for dark mode
-const WORD_BLOCK_CURRENT_COLOR = '#ef4444' // red-500 for dark mode
-const WORD_TEXT_CURRENT_COLOR = '#fca5a5' // red-300 for dark mode
-const UPCOMING_WORD_BG = '#2a2a2a' // slate-700 for dark mode
-const UPCOMING_WORD_TEXT = '#e5e5e5' // slate-50 for dark mode
-const TIME_BAR_BG = '#1a1a1a' // slate-800 for dark mode
-const TIME_BAR_TEXT = '#888888' // slate-400 for dark mode
-const TIMELINE_BG = '#0f0f0f' // slate-900 for dark mode
+
+// Theme-aware colors
+const getThemeColors = (isDarkMode: boolean) => ({
+    playhead: '#f97316', // orange-500 - same for both themes
+    wordBlock: isDarkMode ? '#dc2626' : '#ef4444', // red-600 dark, red-500 light
+    wordBlockSelected: isDarkMode ? '#b91c1c' : '#dc2626', // red-700 dark, red-600 light
+    wordBlockCurrent: isDarkMode ? '#ef4444' : '#f87171', // red-500 dark, red-400 light
+    wordTextCurrent: isDarkMode ? '#fca5a5' : '#991b1b', // red-300 dark, red-800 light
+    wordText: isDarkMode ? '#f8fafc' : '#1e293b', // slate-50 dark, slate-800 light
+    upcomingWordBg: isDarkMode ? '#2a2a2a' : '#e5e7eb', // slate-700 dark, gray-200 light
+    upcomingWordText: isDarkMode ? '#e5e5e5' : '#374151', // slate-50 dark, gray-700 light
+    timeBarBg: isDarkMode ? '#1a1a1a' : '#f3f4f6', // slate-800 dark, gray-100 light
+    timeBarText: isDarkMode ? '#888888' : '#6b7280', // slate-400 dark, gray-500 light
+    timelineBg: isDarkMode ? '#0f0f0f' : '#ffffff', // slate-900 dark, white light
+    gridLine: isDarkMode ? '#64748b' : '#94a3b8', // slate-500 dark, slate-400 light
+    borderLine: isDarkMode ? '#2a2a2a' : '#cbd5e1', // slate-700 dark, slate-300 light
+    handleStroke: isDarkMode ? '#0f0f0f' : '#ffffff', // stroke around handles
+    playheadShadow: isDarkMode ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.3)', // shadow behind playhead line
+})
 
 // Drag modes
 type DragMode = 'none' | 'selection' | 'resize' | 'move'
@@ -116,8 +125,11 @@ const TimelineCanvas = memo(function TimelineCanvas({
     onScrollChange,
     audioDuration,
     zoomSeconds,
-    height = 200
+    height = 200,
+    isDarkMode = true
 }: TimelineCanvasProps) {
+    // Get theme colors
+    const colors = getThemeColors(isDarkMode)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [canvasWidth, setCanvasWidth] = useState(800)
@@ -249,11 +261,11 @@ const TimelineCanvas = memo(function TimelineCanvas({
         ctx.scale(dpr, dpr)
 
         // Clear canvas
-        ctx.fillStyle = TIMELINE_BG
+        ctx.fillStyle = colors.timelineBg
         ctx.fillRect(0, 0, canvasWidth, height)
 
         // Draw time bar background
-        ctx.fillStyle = TIME_BAR_BG
+        ctx.fillStyle = colors.timeBarBg
         ctx.fillRect(0, 0, canvasWidth, TIME_BAR_HEIGHT)
 
         // Draw time markers
@@ -261,15 +273,15 @@ const TimelineCanvas = memo(function TimelineCanvas({
         const secondsPerTick = duration > 15 ? 2 : duration > 8 ? 1 : 0.5
         const startSecond = Math.ceil(visibleStartTime / secondsPerTick) * secondsPerTick
 
-        ctx.fillStyle = TIME_BAR_TEXT
+        ctx.fillStyle = colors.timeBarText
         ctx.font = '11px system-ui, -apple-system, sans-serif'
         ctx.textAlign = 'center'
 
         for (let t = startSecond; t <= visibleEndTime; t += secondsPerTick) {
             const x = timeToX(t)
-            
+
             ctx.beginPath()
-            ctx.strokeStyle = '#64748b' // slate-500 for dark mode
+            ctx.strokeStyle = colors.gridLine
             ctx.lineWidth = 1
             ctx.moveTo(x, TIME_BAR_HEIGHT - 6)
             ctx.lineTo(x, TIME_BAR_HEIGHT)
@@ -281,7 +293,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
         }
 
         ctx.beginPath()
-        ctx.strokeStyle = '#2a2a2a' // slate-700 for dark mode
+        ctx.strokeStyle = colors.borderLine
         ctx.lineWidth = 1
         ctx.moveTo(0, TIME_BAR_HEIGHT)
         ctx.lineTo(canvasWidth, TIME_BAR_HEIGHT)
@@ -305,17 +317,17 @@ const TimelineCanvas = memo(function TimelineCanvas({
 
             // Draw word block background
             if (isSelected) {
-                ctx.fillStyle = WORD_BLOCK_SELECTED_COLOR
+                ctx.fillStyle = colors.wordBlockSelected
             } else if (isCurrent) {
-                ctx.fillStyle = WORD_BLOCK_CURRENT_COLOR
+                ctx.fillStyle = colors.wordBlockCurrent
             } else {
-                ctx.fillStyle = WORD_BLOCK_COLOR
+                ctx.fillStyle = colors.wordBlock
             }
             ctx.fillRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT)
 
             // Draw selection border
             if (isSelected) {
-                ctx.strokeStyle = '#f97316' // orange-500 for dark mode selection
+                ctx.strokeStyle = colors.playhead
                 ctx.lineWidth = 2
                 ctx.strokeRect(bounds.startX, bounds.y, bounds.blockWidth, WORD_BLOCK_HEIGHT)
 
@@ -325,10 +337,10 @@ const TimelineCanvas = memo(function TimelineCanvas({
                     const handleY = bounds.y + WORD_BLOCK_HEIGHT / 2
 
                     ctx.beginPath()
-                    ctx.fillStyle = '#f97316' // orange-500 for dark mode
+                    ctx.fillStyle = colors.playhead
                     ctx.arc(handleX, handleY, RESIZE_HANDLE_SIZE / 2, 0, Math.PI * 2)
                     ctx.fill()
-                    ctx.strokeStyle = '#0f0f0f' // slate-900 for dark mode
+                    ctx.strokeStyle = colors.handleStroke
                     ctx.lineWidth = 1
                     ctx.stroke()
                 }
@@ -369,7 +381,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
                 
                 if (textStartX < canvasWidth - 10) {
                     const isCurrent = word.id === currentWordId
-                    ctx.fillStyle = isCurrent ? WORD_TEXT_CURRENT_COLOR : '#f8fafc' // slate-50 for dark mode
+                    ctx.fillStyle = isCurrent ? colors.wordTextCurrent : colors.wordText
                     ctx.fillText(word.text, textStartX, textY)
                     rightmostTextEnd = textStartX + textWidth
                 }
@@ -387,14 +399,14 @@ const TimelineCanvas = memo(function TimelineCanvas({
             for (let i = 0; i < Math.min(upcomingWords.length, 12); i++) {
                 const word = upcomingWords[i]
                 const textWidth = ctx.measureText(word.text).width + 10
-                
-                ctx.fillStyle = UPCOMING_WORD_BG
+
+                ctx.fillStyle = colors.upcomingWordBg
                 ctx.fillRect(offsetX, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 60, textWidth, 20)
-                
-                ctx.fillStyle = UPCOMING_WORD_TEXT
+
+                ctx.fillStyle = colors.upcomingWordText
                 ctx.textAlign = 'left'
                 ctx.fillText(word.text, offsetX + 5, TIME_BAR_HEIGHT + CANVAS_PADDING + WORD_LEVEL_SPACING + 74)
-                
+
                 offsetX += textWidth + 3
                 if (offsetX > canvasWidth - 20) break
             }
@@ -403,10 +415,10 @@ const TimelineCanvas = memo(function TimelineCanvas({
         // Draw playhead
         if (currentTime >= visibleStartTime && currentTime <= visibleEndTime) {
             const playheadX = timeToX(currentTime)
-            
+
             ctx.beginPath()
-            ctx.fillStyle = PLAYHEAD_COLOR
-            ctx.strokeStyle = '#0f0f0f' // slate-900 for dark mode
+            ctx.fillStyle = colors.playhead
+            ctx.strokeStyle = colors.handleStroke
             ctx.lineWidth = 1
             ctx.moveTo(playheadX - 6, 2)
             ctx.lineTo(playheadX + 6, 2)
@@ -416,14 +428,14 @@ const TimelineCanvas = memo(function TimelineCanvas({
             ctx.stroke()
 
             ctx.beginPath()
-            ctx.strokeStyle = PLAYHEAD_COLOR
+            ctx.strokeStyle = colors.playhead
             ctx.lineWidth = 2
             ctx.moveTo(playheadX, TIME_BAR_HEIGHT)
             ctx.lineTo(playheadX, height)
             ctx.stroke()
 
             ctx.beginPath()
-            ctx.strokeStyle = 'rgba(0,0,0,0.6)' // Darker shadow for dark mode visibility
+            ctx.strokeStyle = colors.playheadShadow
             ctx.lineWidth = 1
             ctx.moveTo(playheadX + 1, TIME_BAR_HEIGHT)
             ctx.lineTo(playheadX + 1, height)
@@ -447,7 +459,7 @@ const TimelineCanvas = memo(function TimelineCanvas({
     }, [
         canvasWidth, height, visibleStartTime, visibleEndTime, currentTime,
         words, segments, selectedWordIds, selectionRect, hoveredWordId,
-        syncWordIndex, isManualSyncing, timeToX, getWordBounds
+        syncWordIndex, isManualSyncing, timeToX, getWordBounds, colors
     ])
 
     // Animation frame
@@ -653,13 +665,15 @@ const TimelineCanvas = memo(function TimelineCanvas({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Tooltip title="Scroll Left">
-                    <IconButton 
-                        size="small" 
-                        onClick={handleScrollLeft}
-                        disabled={visibleStartTime <= 0}
-                    >
-                        <ArrowBackIcon fontSize="small" />
-                    </IconButton>
+                    <span>
+                        <IconButton
+                            size="small"
+                            onClick={handleScrollLeft}
+                            disabled={visibleStartTime <= 0}
+                        >
+                            <ArrowBackIcon fontSize="small" />
+                        </IconButton>
+                    </span>
                 </Tooltip>
                 
                 <Box 
@@ -689,13 +703,15 @@ const TimelineCanvas = memo(function TimelineCanvas({
                 </Box>
                 
                 <Tooltip title="Scroll Right">
-                    <IconButton 
-                        size="small" 
-                        onClick={handleScrollRight}
-                        disabled={visibleStartTime >= audioDuration - zoomSeconds}
-                    >
-                        <ArrowForwardIcon fontSize="small" />
-                    </IconButton>
+                    <span>
+                        <IconButton
+                            size="small"
+                            onClick={handleScrollRight}
+                            disabled={visibleStartTime >= audioDuration - zoomSeconds}
+                        >
+                            <ArrowForwardIcon fontSize="small" />
+                        </IconButton>
+                    </span>
                 </Tooltip>
             </Box>
         </Box>

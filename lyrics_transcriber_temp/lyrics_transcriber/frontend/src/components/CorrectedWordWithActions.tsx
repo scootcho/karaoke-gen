@@ -43,21 +43,21 @@ const WordContainer = styled(Box, {
         '50%': { opacity: 0.5 }
     },
     '&:hover': {
-        backgroundColor: 'rgba(34, 197, 94, 0.35)' // green tint hover for dark mode
+        backgroundColor: 'rgba(34, 197, 94, 0.35)' // green tint hover - works for both modes
     }
 }))
 
-const OriginalWordLabel = styled(Box)({
+const OriginalWordLabel = styled(Box)(({ theme }) => ({
     position: 'absolute',
     top: '-14px',
     left: '0',
     fontSize: '0.6rem',
-    color: '#888888', // slate-400 for dark mode
+    color: theme.palette.text.secondary, // Theme-aware text color
     textDecoration: 'line-through',
     opacity: 0.7,
     whiteSpace: 'nowrap',
     pointerEvents: 'none'
-})
+}))
 
 const ActionsContainer = styled(Box)({
     display: 'inline-flex',
@@ -72,10 +72,14 @@ const ActionButton = styled(IconButton)(({ theme }) => ({
     minHeight: '20px',
     width: '20px',
     height: '20px',
-    backgroundColor: 'rgba(30, 41, 59, 0.9)', // slate-800 with opacity for dark mode
-    border: '1px solid rgba(248, 250, 252, 0.1)', // light border for dark mode
+    backgroundColor: theme.palette.mode === 'dark'
+        ? 'rgba(30, 41, 59, 0.9)'   // slate-800 with opacity for dark mode
+        : 'rgba(241, 245, 249, 0.9)', // slate-100 for light mode
+    border: `1px solid ${theme.palette.divider}`,
     '&:hover': {
-        backgroundColor: 'rgba(51, 65, 85, 1)', // slate-700 for dark mode
+        backgroundColor: theme.palette.mode === 'dark'
+            ? 'rgba(51, 65, 85, 1)'   // slate-700 for dark mode
+            : 'rgba(226, 232, 240, 1)', // slate-200 for light mode
         transform: 'scale(1.1)'
     },
     '& .MuiSvgIcon-root': {

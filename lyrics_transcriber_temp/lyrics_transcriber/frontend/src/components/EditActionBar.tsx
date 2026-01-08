@@ -1,4 +1,4 @@
-import { Box, Button } from '@mui/material'
+import { Box, Button, useMediaQuery, useTheme } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import RestoreIcon from '@mui/icons-material/RestoreFromTrash'
 import HistoryIcon from '@mui/icons-material/History'
@@ -25,13 +25,29 @@ export default function EditActionBar({
     originalTranscribedSegment,
     isGlobal = false
 }: EditActionBarProps) {
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
     return (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'stretch' : 'center',
+            gap: 1,
+            width: '100%'
+        }}>
+            <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                flexWrap: 'wrap',
+                justifyContent: isMobile ? 'center' : 'flex-start'
+            }}>
                 <Button
                     startIcon={<RestoreIcon />}
                     onClick={onReset}
                     color="warning"
+                    size={isMobile ? 'small' : 'medium'}
                 >
                     Reset
                 </Button>
@@ -39,6 +55,7 @@ export default function EditActionBar({
                     <Button
                         onClick={onRevertToOriginal}
                         startIcon={<HistoryIcon />}
+                        size={isMobile ? 'small' : 'medium'}
                     >
                         Un-Correct
                     </Button>
@@ -48,17 +65,26 @@ export default function EditActionBar({
                         startIcon={<DeleteIcon />}
                         onClick={onDelete}
                         color="error"
+                        size={isMobile ? 'small' : 'medium'}
                     >
                         Delete Segment
                     </Button>
                 )}
             </Box>
-            <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
-                <Button onClick={onClose}>Cancel</Button>
+            <Box sx={{
+                ml: isMobile ? 0 : 'auto',
+                display: 'flex',
+                gap: 1,
+                justifyContent: isMobile ? 'center' : 'flex-end'
+            }}>
+                <Button onClick={onClose} size={isMobile ? 'small' : 'medium'}>
+                    Cancel
+                </Button>
                 <Button
                     onClick={onSave}
                     variant="contained"
                     disabled={!editedSegment || editedSegment.words.length === 0}
+                    size={isMobile ? 'small' : 'medium'}
                 >
                     Save
                 </Button>

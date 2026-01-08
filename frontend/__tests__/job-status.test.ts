@@ -26,7 +26,7 @@ describe('getJobStep', () => {
       expect(result.total).toBe(10);
       expect(result.label).toBe('Setting up');
       expect(result.isBlocking).toBe(false);
-      expect(result.color).toBe('text-slate-400');
+      expect(result.color).toBe('text-muted-foreground');
     });
   });
 
@@ -328,7 +328,7 @@ describe('getJobStep', () => {
       const result = getJobStep(job);
       expect(result.step).toBe(0);
       expect(result.label).toBe('Cancelled');
-      expect(result.color).toBe('text-slate-500');
+      expect(result.color).toBe('text-muted-foreground');
     });
   });
 
@@ -339,7 +339,7 @@ describe('getJobStep', () => {
       expect(result.step).toBe(0);
       expect(result.label).toBe('some unknown status');
       expect(result.isBlocking).toBe(false);
-      expect(result.color).toBe('text-slate-400');
+      expect(result.color).toBe('text-muted-foreground');
     });
 
     it('handles null status gracefully', () => {

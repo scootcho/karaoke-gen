@@ -2,8 +2,7 @@ import { memo } from 'react'
 import {
     Box,
     Button,
-    Divider,
-    Stack
+    Divider
 } from '@mui/material'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import StopIcon from '@mui/icons-material/Stop'
@@ -14,6 +13,7 @@ import EditNoteIcon from '@mui/icons-material/EditNote'
 import BlockIcon from '@mui/icons-material/Block'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteIcon from '@mui/icons-material/Delete'
+import TouchAppIcon from '@mui/icons-material/TouchApp'
 
 interface SyncControlsProps {
     // Main buttons
@@ -24,21 +24,27 @@ interface SyncControlsProps {
     onResumeSync: () => void
     onClearSync: () => void
     onEditLyrics: () => void
-    
+
     // Playback controls
     onPlay: () => void
     onStop: () => void
     isPlaying: boolean
-    
+
     // Word action buttons
     hasSelectedWords: boolean
     selectedWordCount: number
     onUnsyncFromCursor: () => void
     onEditSelectedWord: () => void
     onDeleteSelected: () => void
-    
+
     // Additional state
     canUnsyncFromCursor: boolean
+
+    // Mobile tap support
+    isMobile?: boolean
+    onTapStart?: () => void
+    onTapEnd?: () => void
+    isTapping?: boolean
 }
 
 const SyncControls = memo(function SyncControls({
@@ -57,12 +63,16 @@ const SyncControls = memo(function SyncControls({
     onUnsyncFromCursor,
     onEditSelectedWord,
     onDeleteSelected,
-    canUnsyncFromCursor
+    canUnsyncFromCursor,
+    isMobile = false,
+    onTapStart,
+    onTapEnd,
+    isTapping = false
 }: SyncControlsProps) {
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {/* Row 1: Playback & Sync Mode Controls */}
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
                 {/* Playback controls */}
                 <Button
                     variant="outlined"
@@ -85,7 +95,7 @@ const SyncControls = memo(function SyncControls({
                     Stop
                 </Button>
 
-                <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                {!isMobile && <Divider orientation="vertical" flexItem />}
 
                 {/* Sync Mode controls */}
                 {isManualSyncing ? (
@@ -108,6 +118,27 @@ const SyncControls = memo(function SyncControls({
                         >
                             {isPaused ? 'Resume' : 'Pause'}
                         </Button>
+                        {/* TAP button for mobile - no spacebar on mobile */}
+                        {isMobile && !isPaused && onTapStart && onTapEnd && (
+                            <Button
+                                variant="contained"
+                                color={isTapping ? 'warning' : 'success'}
+                                onTouchStart={(e) => {
+                                    e.preventDefault()
+                                    onTapStart()
+                                }}
+                                onTouchEnd={(e) => {
+                                    e.preventDefault()
+                                    onTapEnd()
+                                }}
+                                onMouseDown={onTapStart}
+                                onMouseUp={onTapEnd}
+                                startIcon={<TouchAppIcon />}
+                                size="small"
+                            >
+                                {isTapping ? 'Release' : 'TAP'}
+                            </Button>
+                        )}
                     </>
                 ) : (
                     <Button
@@ -120,10 +151,10 @@ const SyncControls = memo(function SyncControls({
                         Start Sync
                     </Button>
                 )}
-            </Stack>
+            </Box>
 
             {/* Row 2: Editing & Word Actions */}
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
                 <Button
                     variant="outlined"
                     color="warning"
@@ -145,7 +176,7 @@ const SyncControls = memo(function SyncControls({
                     Edit Lyrics
                 </Button>
 
-                <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+                {!isMobile && <Divider orientation="vertical" flexItem />}
 
                 <Button
                     variant="outlined"
@@ -177,7 +208,7 @@ const SyncControls = memo(function SyncControls({
                 >
                     Delete{hasSelectedWords && selectedWordCount > 0 ? ` (${selectedWordCount})` : ''}
                 </Button>
-            </Stack>
+            </Box>
         </Box>
     )
 })

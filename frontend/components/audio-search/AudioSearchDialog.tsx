@@ -52,7 +52,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   'COMPILATIONS': { name: 'COMPILATIONS', maxDisplay: 2, color: 'text-teal-400', borderColor: 'border-teal-500/30' },
   'VINYL RIPS': { name: 'VINYL RIPS', maxDisplay: 2, color: 'text-orange-400', borderColor: 'border-orange-500/30' },
   'YOUTUBE/LOSSY': { name: 'YOUTUBE/LOSSY', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
-  'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-slate-400', borderColor: 'border-slate-500/30' },
+  'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-muted-foreground', borderColor: 'border-border' },
 }
 
 const CATEGORY_ORDER = [
@@ -261,30 +261,30 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col bg-slate-900 border-slate-700 !p-0 gap-0 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-slate-700 shrink-0 bg-slate-900 flex items-center justify-between">
-          <DialogTitle className="text-white text-sm font-semibold flex items-center gap-2">
+      <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col bg-card border-border !p-0 gap-0 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border shrink-0 bg-card flex items-center justify-between">
+          <DialogTitle className="text-foreground text-sm font-semibold flex items-center gap-2">
             Select Audio Source
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 font-mono">v{APP_VERSION}</span>
-            <span className="text-slate-400 font-normal text-xs">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-mono">v{APP_VERSION}</span>
+            <span className="text-muted-foreground font-normal text-xs">
               ({results.length} results across {totalCategories} categories)
             </span>
           </DialogTitle>
         </div>
 
         {error && (
-          <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-b border-slate-800">
+          <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-b border-border">
             {error}
           </div>
         )}
 
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
-            <span className="ml-2 text-sm text-slate-400">Loading...</span>
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
           </div>
         ) : results.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-12 text-slate-500">
+          <div className="flex-1 flex flex-col items-center justify-center py-12 text-muted-foreground">
             <Music2 className="w-8 h-8 mb-2 opacity-50" />
             <p className="text-sm">No audio sources found</p>
           </div>
@@ -299,17 +299,17 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                 const hasMore = hiddenCount > 0
 
                 return (
-                  <div key={category} className="border border-slate-700 rounded-lg overflow-hidden bg-slate-800/20">
+                  <div key={category} className="border border-border rounded-lg overflow-hidden bg-secondary/20">
                     {/* Category Header */}
-                    <div className={`px-3 py-2 bg-slate-800/70 flex items-center justify-between ${config.color}`}>
+                    <div className={`px-3 py-2 bg-secondary flex items-center justify-between ${config.color}`}>
                       <div className="flex items-center gap-2 text-xs font-semibold">
                         <span>{category}</span>
-                        <span className="text-slate-500 font-normal">({catResults.length})</span>
+                        <span className="text-muted-foreground font-normal">({catResults.length})</span>
                       </div>
                       {hasMore && (
                         <button
                           onClick={() => toggleCategory(category)}
-                          className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1"
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
                         >
                           {isExpanded ? (
                             <>Show less <ChevronUp className="w-3 h-3" /></>
@@ -325,10 +325,10 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                       {displayResults.map((result) => (
                         <div
                           key={result.index}
-                          className="px-3 py-1.5 hover:bg-slate-800/50 flex items-center gap-2 text-xs"
+                          className="px-3 py-1.5 hover:bg-secondary/50 flex items-center gap-2 text-xs"
                         >
                           {/* Index */}
-                          <span className="w-5 text-slate-500 font-mono shrink-0 text-[10px]">
+                          <span className="w-5 text-muted-foreground font-mono shrink-0 text-[10px]">
                             {result.index + 1}.
                           </span>
 
@@ -345,17 +345,17 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                                 result.provider === "YouTube" ? "bg-red-600/20 text-red-400" :
                                 result.provider === "RED" ? "bg-red-600/30 text-red-300" :
                                 result.provider === "OPS" ? "bg-blue-600/20 text-blue-400" :
-                                "bg-slate-600/20 text-slate-400"
+                                "bg-muted text-muted-foreground"
                               }`}>
                                 {result.provider}
                               </span>
                               <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
-                              <span className="text-slate-500">-</span>
-                              <span className="text-white">{result.title}</span>
-                              <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-slate-400"}`}>
+                              <span className="text-muted-foreground">-</span>
+                              <span className="text-foreground">{result.title}</span>
+                              <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-muted-foreground"}`}>
                                 ({formatQuality(result)})
                               </span>
-                              <span className="text-[10px] text-slate-400">{result.formatted_size || '-'}</span>
+                              <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
                               {result.seeders !== undefined && result.seeders !== null ? (
                                 <span className={`text-[10px] ${
                                   result.seeders >= 50 ? 'text-green-400' :
@@ -368,7 +368,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                                 <span className={`text-[10px] ${
                                   result.view_count >= 1000000 ? 'text-green-400' :
                                   result.view_count >= 10000 ? 'text-yellow-400' :
-                                  'text-slate-400'
+                                  'text-muted-foreground'
                                 }`}>
                                   {formatCount(result.view_count)} views
                                 </span>
@@ -377,7 +377,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
                             {/* Line 2: metadata + filename */}
                             {(formatMetadata(result) || result.target_file) && (
-                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                                 {formatMetadata(result) && (
                                   <span className="truncate">{formatMetadata(result)}</span>
                                 )}
@@ -393,7 +393,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                             size="sm"
                             onClick={() => handleSelect(result.index)}
                             disabled={isSelecting !== null}
-                            className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-white px-2 shrink-0"
+                            className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-foreground px-2 shrink-0"
                           >
                             {isSelecting === result.index ? (
                               <Loader2 className="w-3 h-3 animate-spin" />

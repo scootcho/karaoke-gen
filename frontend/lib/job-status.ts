@@ -35,7 +35,7 @@ const STATUS_CONFIG: Record<
   { step: number; label: string; isBlocking: boolean; color: string }
 > = {
   // Step 1: Setup
-  pending: { step: 1, label: "Setting up", isBlocking: false, color: "text-slate-400" },
+  pending: { step: 1, label: "Setting up", isBlocking: false, color: "text-muted-foreground" },
 
   // Step 2: Audio Search (optional path)
   searching_audio: { step: 2, label: "Searching for audio", isBlocking: false, color: "text-blue-400" },
@@ -82,7 +82,7 @@ const STATUS_CONFIG: Record<
 
   // Terminal states (no step progression)
   failed: { step: 0, label: "Failed", isBlocking: false, color: "text-red-400" },
-  cancelled: { step: 0, label: "Cancelled", isBlocking: false, color: "text-slate-500" },
+  cancelled: { step: 0, label: "Cancelled", isBlocking: false, color: "text-muted-foreground" },
 };
 
 const TOTAL_STEPS = 10;
@@ -118,7 +118,7 @@ export function getJobStep(job: Job): JobStep {
       total: TOTAL_STEPS,
       label: status.replace(/_/g, " "),
       isBlocking: false,
-      color: "text-slate-400",
+      color: "text-muted-foreground",
     };
   }
 

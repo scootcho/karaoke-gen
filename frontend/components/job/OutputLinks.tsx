@@ -206,7 +206,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                   href={dropboxUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-blue-600 hover:bg-blue-500 text-white"
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-primary-500 hover:bg-primary-600 text-white"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <FolderOpen className="w-3 h-3" />
@@ -215,7 +215,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); copyToClipboard(dropboxUrl) }}
-                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-blue-700 hover:bg-blue-600 text-white"
+                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-[#cc5fa3] hover:bg-primary-600 text-white"
                   title="Copy Dropbox URL"
                   aria-label={copiedUrl === dropboxUrl ? "Dropbox URL copied" : "Copy Dropbox URL"}
                 >
@@ -257,7 +257,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.cdg_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-secondary hover:bg-muted text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -267,7 +267,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
             {downloadUrls?.packages?.txt_zip && (
               <a
                 href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-white"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded bg-secondary hover:bg-muted text-white"
                 onClick={(e) => e.stopPropagation()}
               >
                 <Download className="w-3 h-3" />
@@ -278,7 +278,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
 
           {/* Admin-only buttons */}
           {isAdmin && (
-            <div className="flex flex-wrap gap-2 pt-1 border-t border-gray-700/50 mt-2">
+            <div className="flex flex-wrap gap-2 pt-1 border-t border-border/50 mt-2">
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); copyCompletionMessage() }}

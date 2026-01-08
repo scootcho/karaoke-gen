@@ -221,7 +221,7 @@ export default function ReferenceView({
                             width: '100%', 
                             mb: 0,
                             '&:hover': {
-                                backgroundColor: 'rgba(248, 250, 252, 0.04)' // slate-50 hover for dark mode
+                                backgroundColor: (theme) => theme.palette.action.hover
                             }
                         }}
                     >

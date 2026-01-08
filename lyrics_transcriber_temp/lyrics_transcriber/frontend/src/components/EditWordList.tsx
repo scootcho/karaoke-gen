@@ -4,7 +4,9 @@ import {
     IconButton,
     Button,
     Pagination,
-    Typography
+    Typography,
+    useMediaQuery,
+    useTheme
 } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SplitIcon from '@mui/icons-material/CallSplit'
@@ -34,7 +36,8 @@ const WordRow = memo(function WordRow({
     onSplitWord,
     onRemoveWord,
     wordsLength,
-    onTabNavigation
+    onTabNavigation,
+    isMobile
 }: {
     word: Word
     index: number
@@ -43,11 +46,10 @@ const WordRow = memo(function WordRow({
     onRemoveWord: (index: number) => void
     wordsLength: number
     onTabNavigation: (currentIndex: number) => void
+    isMobile: boolean
 }) {
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        // console.log('KeyDown event:', e.key, 'Shift:', e.shiftKey, 'Index:', index);
         if (e.key === 'Tab' && !e.shiftKey) {
-            // console.log('Tab key detected, preventing default and navigating');
             e.preventDefault();
             onTabNavigation(index);
         }
@@ -56,54 +58,99 @@ const WordRow = memo(function WordRow({
     return (
         <Box sx={{
             display: 'flex',
-            gap: 2,
-            alignItems: 'center',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: isMobile ? 1 : 2,
+            alignItems: isMobile ? 'stretch' : 'center',
             padding: '4px 0',
         }}>
-            <TextField
-                label={`Word ${index}`}
-                value={word.text}
-                onChange={(e) => onWordUpdate(index, { text: e.target.value })}
-                onKeyDown={handleKeyDown}
-                fullWidth
-                size="small"
-                id={`word-text-${index}`}
-            />
-            <TextField
-                label="Start Time"
-                value={word.start_time?.toFixed(2) ?? ''}
-                onChange={(e) => onWordUpdate(index, { start_time: parseFloat(e.target.value) })}
-                type="number"
-                inputProps={{ step: 0.01 }}
-                sx={{ width: '150px' }}
-                size="small"
-            />
-            <TextField
-                label="End Time"
-                value={word.end_time?.toFixed(2) ?? ''}
-                onChange={(e) => onWordUpdate(index, { end_time: parseFloat(e.target.value) })}
-                type="number"
-                inputProps={{ step: 0.01 }}
-                sx={{ width: '150px' }}
-                size="small"
-            />
-            <IconButton
-                onClick={() => onSplitWord(index)}
-                title="Split Word"
-                sx={{ color: 'primary.main' }}
-                size="small"
-            >
-                <SplitIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-                onClick={() => onRemoveWord(index)}
-                disabled={wordsLength <= 1}
-                title="Remove Word"
-                sx={{ color: 'error.main' }}
-                size="small"
-            >
-                <DeleteIcon fontSize="small" />
-            </IconButton>
+            {/* Word text field - full width on mobile */}
+            <Box sx={{
+                display: 'flex',
+                gap: 1,
+                alignItems: 'center',
+                flex: isMobile ? 'none' : 1
+            }}>
+                <TextField
+                    label={`Word ${index}`}
+                    value={word.text}
+                    onChange={(e) => onWordUpdate(index, { text: e.target.value })}
+                    onKeyDown={handleKeyDown}
+                    fullWidth
+                    size="small"
+                    id={`word-text-${index}`}
+                />
+                {/* Action buttons inline with word on mobile */}
+                {isMobile && (
+                    <>
+                        <IconButton
+                            onClick={() => onSplitWord(index)}
+                            title="Split Word"
+                            sx={{ color: 'primary.main' }}
+                            size="small"
+                        >
+                            <SplitIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            onClick={() => onRemoveWord(index)}
+                            disabled={wordsLength <= 1}
+                            title="Remove Word"
+                            sx={{ color: 'error.main' }}
+                            size="small"
+                        >
+                            <DeleteIcon fontSize="small" />
+                        </IconButton>
+                    </>
+                )}
+            </Box>
+
+            {/* Time fields - row on desktop, separate row on mobile */}
+            <Box sx={{
+                display: 'flex',
+                gap: 1,
+                alignItems: 'center',
+                justifyContent: isMobile ? 'flex-start' : 'flex-end'
+            }}>
+                <TextField
+                    label="Start"
+                    value={word.start_time?.toFixed(2) ?? ''}
+                    onChange={(e) => onWordUpdate(index, { start_time: parseFloat(e.target.value) })}
+                    type="number"
+                    inputProps={{ step: 0.01 }}
+                    sx={{ width: isMobile ? '80px' : '100px' }}
+                    size="small"
+                />
+                <TextField
+                    label="End"
+                    value={word.end_time?.toFixed(2) ?? ''}
+                    onChange={(e) => onWordUpdate(index, { end_time: parseFloat(e.target.value) })}
+                    type="number"
+                    inputProps={{ step: 0.01 }}
+                    sx={{ width: isMobile ? '80px' : '100px' }}
+                    size="small"
+                />
+                {/* Action buttons on desktop only */}
+                {!isMobile && (
+                    <>
+                        <IconButton
+                            onClick={() => onSplitWord(index)}
+                            title="Split Word"
+                            sx={{ color: 'primary.main' }}
+                            size="small"
+                        >
+                            <SplitIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                            onClick={() => onRemoveWord(index)}
+                            disabled={wordsLength <= 1}
+                            title="Remove Word"
+                            sx={{ color: 'error.main' }}
+                            size="small"
+                        >
+                            <DeleteIcon fontSize="small" />
+                        </IconButton>
+                    </>
+                )}
+            </Box>
         </Box>
     );
 });
@@ -122,7 +169,8 @@ const WordItem = memo(function WordItem({
     onMergeSegment,
     wordsLength,
     isGlobal,
-    onTabNavigation
+    onTabNavigation,
+    isMobile
 }: {
     word: Word
     index: number
@@ -137,6 +185,7 @@ const WordItem = memo(function WordItem({
     wordsLength: number
     isGlobal: boolean
     onTabNavigation: (currentIndex: number) => void
+    isMobile: boolean
 }) {
     return (
         <Box key={word.id}>
@@ -148,6 +197,7 @@ const WordItem = memo(function WordItem({
                 onRemoveWord={onRemoveWord}
                 wordsLength={wordsLength}
                 onTabNavigation={onTabNavigation}
+                isMobile={isMobile}
             />
 
             {/* Word divider with merge/split functionality */}
@@ -168,16 +218,14 @@ const WordItem = memo(function WordItem({
                     }
                     canMerge={index < wordsLength - 1}
                     isLast={index === wordsLength - 1}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             {isGlobal && (
                 <WordDivider
                     onAddWord={() => onAddWord(index)}
                     onMergeWords={index < wordsLength - 1 ? () => onMergeWords(index) : undefined}
                     canMerge={index < wordsLength - 1}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
         </Box>
     );
@@ -195,6 +243,9 @@ export default function EditWordList({
     onMergeSegment,
     isGlobal = false
 }: EditWordListProps) {
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
     const [replacementText, setReplacementText] = useState('')
     const [page, setPage] = useState(1)
     const pageSize = isGlobal ? 50 : words.length // Use pagination only in global mode
@@ -289,14 +340,12 @@ export default function EditWordList({
                     onAddSegmentBefore={() => onAddSegment?.(0)}
                     onMergeSegment={() => onMergeSegment?.(false)}
                     isFirst={true}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             {isGlobal && (
                 <WordDivider
                     onAddWord={() => onAddWord(-1)}
-                    sx={{ ml: 15 }}
-                />
+                                    />
             )}
             
             {/* Word list with scrolling */}
@@ -312,7 +361,9 @@ export default function EditWordList({
                     width: '8px',
                 },
                 '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: 'rgba(248, 250, 252, 0.2)', // slate-50 for dark mode
+                    backgroundColor: (theme) => theme.palette.mode === 'dark'
+                        ? 'rgba(248, 250, 252, 0.2)'  // light scrollbar for dark mode
+                        : 'rgba(30, 41, 59, 0.3)',    // dark scrollbar for light mode
                     borderRadius: '4px',
                 },
                 scrollbarWidth: 'thin',
@@ -336,6 +387,7 @@ export default function EditWordList({
                             wordsLength={words.length}
                             isGlobal={isGlobal}
                             onTabNavigation={handleTabNavigation}
+                            isMobile={isMobile}
                         />
                     );
                 })}

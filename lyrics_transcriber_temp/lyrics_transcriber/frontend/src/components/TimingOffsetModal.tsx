@@ -118,10 +118,10 @@ export default function TimingOffsetModal({
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose}>Cancel</Button>
-                <Button 
-                    onClick={handleApply} 
+                <Button
+                    onClick={handleApply}
                     variant="contained"
-                    color={offsetMs === 0 ? "warning" : "primary"}
+                    color="primary"
                 >
                     {offsetMs === 0 ? "Remove Offset" : "Apply Offset"}
                 </Button>

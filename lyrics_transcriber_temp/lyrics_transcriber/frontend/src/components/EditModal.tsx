@@ -6,7 +6,9 @@ import {
     IconButton,
     Box,
     CircularProgress,
-    Typography
+    Typography,
+    useMediaQuery,
+    useTheme
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
@@ -33,6 +35,8 @@ interface TimelineSectionProps {
     onPlaySegment?: (startTime: number) => void
     startManualSync: () => void
     isGlobal: boolean
+    onTapStart?: () => void
+    onTapEnd?: () => void
 }
 
 const MemoizedTimelineSection = memo(function TimelineSection({
@@ -47,7 +51,9 @@ const MemoizedTimelineSection = memo(function TimelineSection({
     onWordUpdate,
     onPlaySegment,
     startManualSync,
-    isGlobal
+    isGlobal,
+    onTapStart,
+    onTapEnd
 }: TimelineSectionProps) {
     return (
         <EditTimelineSection
@@ -66,6 +72,8 @@ const MemoizedTimelineSection = memo(function TimelineSection({
             onPlaySegment={onPlaySegment}
             startManualSync={startManualSync}
             isGlobal={isGlobal}
+            onTapStart={onTapStart}
+            onTapEnd={onTapEnd}
         />
     )
 })
@@ -195,6 +203,9 @@ export default function EditModal({
     //     hasOriginalTranscribedSegment: !!originalTranscribedSegment
     // });
     
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
     const [editedSegment, setEditedSegment] = useState<LyricsSegment | null>(segment)
     const [isPlaying, setIsPlaying] = useState(false)
 
@@ -224,7 +235,9 @@ export default function EditModal({
         startManualSync,
         cleanupManualSync,
         handleSpacebar,
-        isSpacebarPressed
+        isSpacebarPressed,
+        handleTapStart,
+        handleTapEnd
     } = useManualSync({
         editedSegment,
         currentTime,
@@ -588,6 +601,7 @@ export default function EditModal({
             onClose={handleClose}
             maxWidth="md"
             fullWidth
+            fullScreen={isMobile}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
                     e.preventDefault()
@@ -596,8 +610,8 @@ export default function EditModal({
             }}
             PaperProps={{
                 sx: {
-                    height: '90vh',
-                    margin: '5vh 0'
+                    height: isMobile ? '100%' : '90vh',
+                    margin: isMobile ? 0 : '5vh 0'
                 }
             }}
         >
@@ -614,17 +628,19 @@ export default function EditModal({
                 }}
             >
                 {isLoading && (
-                    <Box sx={{ 
-                        display: 'flex', 
+                    <Box sx={{
+                        display: 'flex',
                         flexDirection: 'column',
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         height: '100%',
                         width: '100%',
                         position: 'absolute',
                         top: 0,
                         left: 0,
-                        backgroundColor: 'rgba(30, 41, 59, 0.95)', // slate-800 with opacity for dark mode
+                        backgroundColor: (theme) => theme.palette.mode === 'dark'
+                            ? 'rgba(30, 41, 59, 0.95)'  // slate-800 with opacity for dark mode
+                            : 'rgba(248, 250, 252, 0.95)', // light background for light mode
                         zIndex: 10
                     }}>
                         <CircularProgress size={60} thickness={4} />
@@ -652,6 +668,8 @@ export default function EditModal({
                             onPlaySegment={onPlaySegment}
                             startManualSync={startManualSync}
                             isGlobal={isGlobal}
+                            onTapStart={handleTapStart}
+                            onTapEnd={handleTapEnd}
                         />
 
                         <MemoizedWordList

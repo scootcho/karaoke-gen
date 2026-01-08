@@ -10,7 +10,7 @@ import {
     WordCorrection,
     CorrectionAnnotation
 } from '../types'
-import { Box, Button, Grid, useMediaQuery, useTheme } from '@mui/material'
+import { Box, Button, Grid, Typography, useMediaQuery, useTheme } from '@mui/material'
 import { ApiClient } from '../api'
 import ReferenceView from './ReferenceView'
 import TranscriptionView from './TranscriptionView'
@@ -33,7 +33,7 @@ import { setupKeyboardHandlers, setModalHandler, getModalState } from './shared/
 import Header from './Header'
 import { getWordsFromIds } from './shared/utils/wordUtils'
 import AddLyricsModal from './AddLyricsModal'
-import { RestoreFromTrash, OndemandVideo } from '@mui/icons-material'
+import { OndemandVideo } from '@mui/icons-material'
 import FindReplaceModal from './FindReplaceModal'
 import TimingOffsetModal from './TimingOffsetModal'
 import { applyOffsetToCorrectionData, applyOffsetToSegment } from './shared/utils/timingUtils'
@@ -216,6 +216,7 @@ interface MemoizedHeaderProps {
     canUndo: boolean
     canRedo: boolean
     onUnCorrectAll: () => void
+    onResetCorrections: () => void
     annotationsEnabled: boolean
     onAnnotationsToggle: (enabled: boolean) => void
     // Review mode props
@@ -250,6 +251,7 @@ const MemoizedHeader = memo(function MemoizedHeader({
     canUndo,
     canRedo,
     onUnCorrectAll,
+    onResetCorrections,
     annotationsEnabled,
     onAnnotationsToggle,
     reviewMode,
@@ -281,6 +283,7 @@ const MemoizedHeader = memo(function MemoizedHeader({
             canUndo={canUndo}
             canRedo={canRedo}
             onUnCorrectAll={onUnCorrectAll}
+            onResetCorrections={onResetCorrections}
             annotationsEnabled={annotationsEnabled}
             onAnnotationsToggle={onAnnotationsToggle}
             reviewMode={reviewMode}
@@ -1255,8 +1258,6 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
     
     return (
         <Box sx={{
-            p: 1,
-            pb: 3,
             maxWidth: '100%',
             overflowX: 'hidden'
         }}>
@@ -1282,6 +1283,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 canUndo={canUndo}
                 canRedo={canRedo}
                 onUnCorrectAll={handleUnCorrectAll}
+                onResetCorrections={handleResetCorrections}
                 annotationsEnabled={annotationsEnabled}
                 onAnnotationsToggle={handleAnnotationsToggle}
                 reviewMode={reviewMode}
@@ -1291,7 +1293,7 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                 onRevertAllCorrections={handleRevertAllCorrections}
             />
 
-            <Grid container direction={isMobile ? 'column' : 'row'}>
+            <Grid container direction={isMobile ? 'column' : 'row'} spacing={1}>
                 <Grid item xs={12} md={6}>
                     <MemoizedTranscriptionView
                         data={displayData}
@@ -1316,32 +1318,6 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                         onAcceptCorrection={handleAcceptCorrection}
                         onShowCorrectionDetail={handleShowCorrectionDetail}
                     />
-                    {!isReadOnly && apiClient && (
-                        <Box sx={{
-                            mt: 2,
-                            mb: 3,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            width: '100%'
-                        }}>
-                            <Button
-                                variant="outlined"
-                                color="warning"
-                                onClick={handleResetCorrections}
-                                startIcon={<RestoreFromTrash />}
-                            >
-                                Reset Corrections
-                            </Button>
-                            <Button
-                                variant="contained"
-                                onClick={handleFinishReview}
-                                disabled={isReviewComplete}
-                                endIcon={<OndemandVideo />}
-                            >
-                                {isReviewComplete ? 'Review Complete' : 'Preview Video'}
-                            </Button>
-                        </Box>
-                    )}
                 </Grid>
                 <Grid item xs={12} md={6}>
                     <MemoizedReferenceView
@@ -1361,6 +1337,52 @@ export default function LyricsAnalyzer({ data: initialData, onFileLoad, apiClien
                     />
                 </Grid>
             </Grid>
+
+            {/* Spacer for sticky footer */}
+            {!isReadOnly && apiClient && <Box sx={{ height: 64 }} />}
+
+            {/* Sticky footer bar with Preview Video button */}
+            {!isReadOnly && apiClient && (
+                <Box
+                    sx={{
+                        position: 'fixed',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        bgcolor: 'background.paper',
+                        borderTop: 1,
+                        borderColor: 'divider',
+                        boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
+                        py: 1.5,
+                        px: 2,
+                        zIndex: 1100,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: 2
+                    }}
+                >
+                    <Typography
+                        variant="body2"
+                        sx={{ color: 'text.secondary' }}
+                    >
+                        Lyrics look good?
+                    </Typography>
+                    <Button
+                        variant="contained"
+                        onClick={handleFinishReview}
+                        disabled={isReviewComplete}
+                        endIcon={<OndemandVideo />}
+                        sx={{
+                            px: 2.5,
+                            py: 0.75,
+                            fontWeight: 500
+                        }}
+                    >
+                        {isReviewComplete ? 'Review Complete' : 'Preview Video'}
+                    </Button>
+                </Box>
+            )}
 
 
 

@@ -18,7 +18,7 @@ interface WordDividerProps {
 }
 
 const buttonTextStyle = {
-    color: 'rgba(248, 250, 252, 0.8)', // slate-50 with opacity for dark mode
+    color: 'text.secondary',
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
     fontWeight: 400,
     fontSize: '0.7rem',
@@ -55,10 +55,12 @@ export default function WordDivider({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                height: '20px',
-                my: -0.5,
-                width: '50%',
-                backgroundColor: '#1a1a1a', // slate-800 for dark mode
+                height: 'auto',
+                minHeight: '20px',
+                my: 0,
+                width: '100%',
+                bgcolor: 'background.paper',
+                overflow: 'hidden',
                 ...sx
             }}
         >
@@ -66,7 +68,9 @@ export default function WordDivider({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                backgroundColor: '#1a1a1a', // slate-800 for dark mode
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                bgcolor: 'background.paper',
                 padding: '0 8px',
                 zIndex: 1
             }}>
@@ -184,4 +188,4 @@ export default function WordDivider({
             </Box>
         </Box>
     )
-} 
+}

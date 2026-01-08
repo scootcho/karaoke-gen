@@ -45,7 +45,7 @@ function ProgressBar({ job }: { job: Job }) {
 
   // Map color class to background color for the bar
   const barColorMap: Record<string, string> = {
-    "text-slate-400": "bg-slate-400",
+    "text-muted-foreground": "bg-muted-foreground",
     "text-blue-400": "bg-blue-400",
     "text-purple-400": "bg-purple-400",
     "text-teal-400": "bg-teal-400",
@@ -56,7 +56,7 @@ function ProgressBar({ job }: { job: Job }) {
     "text-violet-400": "bg-violet-400",
     "text-green-400": "bg-green-400",
   }
-  const barColor = barColorMap[color] || "bg-blue-400"
+  const barColor = barColorMap[color] || "bg-primary-500"
 
   return (
     <div className="w-full h-1 rounded-full mt-2 overflow-hidden" style={{ backgroundColor: 'var(--secondary)' }}>
@@ -133,7 +133,7 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
           href={getReviewUrl()}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-primary-500 hover:bg-primary-600 text-white"
         >
           <ExternalLink className="w-3 h-3" />
           Review Lyrics
@@ -146,7 +146,7 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
         <Button
           size="sm"
           onClick={() => setShowAudioSearch(true)}
-          className="text-xs h-7 px-3 bg-blue-600 hover:bg-blue-500"
+          className="text-xs h-7 px-3 bg-primary-500 hover:bg-primary-600"
         >
           Select Audio
         </Button>
@@ -159,7 +159,7 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
           href={getInstrumentalUrl()}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-primary-500 hover:bg-primary-600 text-white"
         >
           <ExternalLink className="w-3 h-3" />
           Select Instrumental

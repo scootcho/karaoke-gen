@@ -79,15 +79,15 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-md bg-slate-900 border-slate-700">
+      <DialogContent className="sm:max-w-md bg-card border-border">
         {step === "email" && (
           <>
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <Mail className="w-5 h-5 text-blue-400" />
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <Mail className="w-5 h-5 text-primary" />
                 Sign In
               </DialogTitle>
-              <DialogDescription className="text-slate-400">
+              <DialogDescription className="text-muted-foreground">
                 Enter your email to receive a sign-in link
               </DialogDescription>
             </DialogHeader>
@@ -102,19 +102,19 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                     setLocalError("")
                     clearError()
                   }}
-                  className="bg-slate-800 border-slate-600 text-white"
+                  className="bg-secondary border-border text-foreground"
                   autoFocus
                   disabled={isLoading}
                 />
                 {displayError && (
-                  <p className="text-xs text-red-400 mt-1">{displayError}</p>
+                  <p className="text-xs text-destructive mt-1">{displayError}</p>
                 )}
               </div>
               <div className="flex flex-col gap-2">
                 <Button
                   type="submit"
                   disabled={!email.trim() || isLoading}
-                  className="w-full bg-blue-600 hover:bg-blue-500"
+                  className="w-full bg-primary hover:bg-primary/90"
                 >
                   {isLoading ? (
                     <>
@@ -129,13 +129,13 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                   type="button"
                   variant="ghost"
                   onClick={() => setStep("token")}
-                  className="text-slate-400 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <KeyRound className="w-4 h-4 mr-2" />
                   Use Access Token Instead
                 </Button>
               </div>
-              <p className="text-xs text-slate-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 No account? Just enter your email to get started.
               </p>
             </form>
@@ -145,26 +145,26 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
         {step === "sent" && (
           <>
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-green-400" />
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-success" />
                 Check Your Email
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <p className="text-slate-300">
+              <p className="text-foreground">
                 We sent a sign-in link to:
               </p>
-              <p className="text-white font-medium bg-slate-800 px-4 py-2 rounded-md">
+              <p className="text-foreground font-medium bg-secondary px-4 py-2 rounded-md">
                 {email}
               </p>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted-foreground">
                 Click the link in the email to sign in. The link expires in 15 minutes.
               </p>
-              <div className="pt-4 border-t border-slate-700 space-y-2">
+              <div className="pt-4 border-t border-border space-y-2">
                 <Button
                   variant="outline"
                   onClick={() => setStep("email")}
-                  className="w-full border-slate-600 text-slate-300 hover:text-white"
+                  className="w-full border-border text-foreground hover:text-foreground"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Try a Different Email
@@ -172,7 +172,7 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                 <Button
                   variant="ghost"
                   onClick={handleClose}
-                  className="w-full text-slate-400"
+                  className="w-full text-muted-foreground"
                 >
                   Close
                 </Button>
@@ -184,11 +184,11 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
         {step === "token" && (
           <>
             <DialogHeader>
-              <DialogTitle className="text-white flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-amber-400" />
+              <DialogTitle className="text-foreground flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-warning" />
                 Access Token
               </DialogTitle>
-              <DialogDescription className="text-slate-400">
+              <DialogDescription className="text-muted-foreground">
                 Enter your access token to authenticate
               </DialogDescription>
             </DialogHeader>
@@ -203,19 +203,19 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                     setLocalError("")
                     clearError()
                   }}
-                  className="bg-slate-800 border-slate-600 text-white"
+                  className="bg-secondary border-border text-foreground"
                   autoFocus
                   disabled={isLoading}
                 />
                 {displayError && (
-                  <p className="text-xs text-red-400 mt-1">{displayError}</p>
+                  <p className="text-xs text-destructive mt-1">{displayError}</p>
                 )}
               </div>
               <div className="flex flex-col gap-2">
                 <Button
                   type="submit"
                   disabled={!token.trim() || isLoading}
-                  className="w-full bg-amber-600 hover:bg-amber-500"
+                  className="w-full bg-warning hover:bg-warning/90 text-warning-foreground"
                 >
                   {isLoading ? (
                     <>
@@ -230,13 +230,13 @@ export function AuthDialog({ open, onClose, onSuccess }: AuthDialogProps) {
                   type="button"
                   variant="ghost"
                   onClick={() => setStep("email")}
-                  className="text-slate-400 hover:text-white"
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back to Email Sign-In
                 </Button>
               </div>
-              <p className="text-xs text-slate-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Contact an admin to get an access token
               </p>
             </form>

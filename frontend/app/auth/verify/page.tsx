@@ -51,14 +51,14 @@ function VerifyMagicLinkContent() {
   }, [searchParams, verifyMagicLink, router])
 
   return (
-    <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-xl p-8 text-center">
+    <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center">
       {state === "loading" && (
         <>
-          <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto mb-4" />
-          <h1 className="text-xl font-semibold text-white mb-2">
+          <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-foreground mb-2">
             Verifying your sign-in link...
           </h1>
-          <p className="text-slate-400">
+          <p className="text-muted-foreground">
             Please wait while we sign you in.
           </p>
         </>
@@ -66,14 +66,14 @@ function VerifyMagicLinkContent() {
 
       {state === "success" && (
         <>
-          <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold text-white mb-2">
+          <CheckCircle className="w-12 h-12 text-success mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-foreground mb-2">
             Successfully signed in!
           </h1>
-          <p className="text-slate-400 mb-4">
+          <p className="text-muted-foreground mb-4">
             Welcome back{user?.email ? `, ${user.email}` : ""}!
           </p>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Redirecting you to the app...
           </p>
         </>
@@ -81,21 +81,21 @@ function VerifyMagicLinkContent() {
 
       {state === "error" && (
         <>
-          <XCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h1 className="text-xl font-semibold text-white mb-2">
+          <XCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <h1 className="text-xl font-semibold text-foreground mb-2">
             Sign-in failed
           </h1>
-          <p className="text-slate-400 mb-6">
+          <p className="text-muted-foreground mb-6">
             {errorMessage || "The link may have expired or already been used."}
           </p>
           <div className="space-y-2">
             <Button
               onClick={() => router.push("/app")}
-              className="w-full bg-blue-600 hover:bg-blue-500"
+              className="w-full bg-primary hover:bg-primary/90"
             >
               Go to App
             </Button>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               You can request a new sign-in link from the app.
             </p>
           </div>
@@ -107,12 +107,12 @@ function VerifyMagicLinkContent() {
 
 function VerifyLoadingFallback() {
   return (
-    <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-xl p-8 text-center">
-      <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto mb-4" />
-      <h1 className="text-xl font-semibold text-white mb-2">
+    <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center">
+      <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
+      <h1 className="text-xl font-semibold text-foreground mb-2">
         Loading...
       </h1>
-      <p className="text-slate-400">
+      <p className="text-muted-foreground">
         Please wait.
       </p>
     </div>
@@ -121,7 +121,7 @@ function VerifyLoadingFallback() {
 
 export default function VerifyMagicLinkPage() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Suspense fallback={<VerifyLoadingFallback />}>
         <VerifyMagicLinkContent />
       </Suspense>

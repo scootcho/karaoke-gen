@@ -4,7 +4,9 @@ import {
     Typography,
     IconButton,
     Tooltip,
-    Stack
+    Stack,
+    useMediaQuery,
+    useTheme
 } from '@mui/material'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import CancelIcon from '@mui/icons-material/Cancel'
@@ -17,9 +19,67 @@ import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'
+import TouchAppIcon from '@mui/icons-material/TouchApp'
 import TimelineEditor from './TimelineEditor'
 import { Word } from '../types'
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
+
+// Separate TapButton component to properly track local press state
+// This prevents issues where onMouseLeave fires before parent state updates
+const TapButton = memo(function TapButton({
+    isSpacebarPressed,
+    onTapStart,
+    onTapEnd
+}: {
+    isSpacebarPressed: boolean
+    onTapStart: () => void
+    onTapEnd: () => void
+}) {
+    const isPressedRef = useRef(false)
+
+    const handleTapStart = useCallback(() => {
+        isPressedRef.current = true
+        onTapStart()
+    }, [onTapStart])
+
+    const handleTapEnd = useCallback(() => {
+        if (isPressedRef.current) {
+            isPressedRef.current = false
+            onTapEnd()
+        }
+    }, [onTapEnd])
+
+    return (
+        <Button
+            variant="contained"
+            color={isSpacebarPressed ? "secondary" : "primary"}
+            onTouchStart={(e) => {
+                e.preventDefault()
+                handleTapStart()
+            }}
+            onTouchEnd={(e) => {
+                e.preventDefault()
+                handleTapEnd()
+            }}
+            onMouseDown={handleTapStart}
+            onMouseUp={handleTapEnd}
+            onMouseLeave={handleTapEnd}
+            startIcon={<TouchAppIcon />}
+            sx={{
+                py: 2,
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                width: '100%',
+                minHeight: '56px',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                touchAction: 'manipulation'
+            }}
+        >
+            {isSpacebarPressed ? "HOLD..." : "TAP"}
+        </Button>
+    )
+})
 
 interface EditTimelineSectionProps {
     words: Word[]
@@ -44,6 +104,8 @@ interface EditTimelineSectionProps {
     isGlobal?: boolean
     defaultZoomLevel?: number
     isReplaceAllMode?: boolean
+    onTapStart?: () => void
+    onTapEnd?: () => void
 }
 
 // Memoized control buttons to prevent unnecessary re-renders
@@ -91,16 +153,21 @@ const TimelineControls = memo(({
     onStopAudio?: () => void
 }) => {
     return (
-        <Stack direction="row" spacing={1} alignItems="center">
+        <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            sx={{ flexWrap: 'wrap', justifyContent: 'center', gap: 0.5 }}
+        >
             {isGlobal && (
-                <>  
+                <>
                     <Tooltip title="Scroll Left">
                         <IconButton
                             onClick={onScrollLeft}
                             disabled={visibleStartTime <= startTime}
                             size="small"
                         >
-                            <ArrowBackIcon />
+                            <ArrowBackIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Zoom Out (Show More Time)">
@@ -109,7 +176,7 @@ const TimelineControls = memo(({
                             disabled={zoomLevel >= (endTime - startTime) || (isReplaceAllMode && isManualSyncing && !isPaused)}
                             size="small"
                         >
-                            <ZoomOutIcon />
+                            <ZoomOutIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Zoom In (Show Less Time)">
@@ -118,7 +185,7 @@ const TimelineControls = memo(({
                             disabled={zoomLevel <= 2 || (isReplaceAllMode && isManualSyncing && !isPaused)}
                             size="small"
                         >
-                            <ZoomInIcon />
+                            <ZoomInIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Scroll Right">
@@ -127,7 +194,7 @@ const TimelineControls = memo(({
                             disabled={visibleEndTime >= endTime}
                             size="small"
                         >
-                            <ArrowForwardIcon />
+                            <ArrowForwardIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                     <Tooltip
@@ -140,7 +207,7 @@ const TimelineControls = memo(({
                             color={autoScrollEnabled ? "primary" : "default"}
                             size="small"
                         >
-                            {autoScrollEnabled ? <AutorenewIcon /> : <PauseCircleOutlineIcon />}
+                            {autoScrollEnabled ? <AutorenewIcon fontSize="small" /> : <PauseCircleOutlineIcon fontSize="small" />}
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Jump to Current Playback Position">
@@ -149,7 +216,7 @@ const TimelineControls = memo(({
                             disabled={!currentTime}
                             size="small"
                         >
-                            <CenterFocusStrongIcon />
+                            <CenterFocusStrongIcon fontSize="small" />
                         </IconButton>
                     </Tooltip>
                 </>
@@ -158,26 +225,27 @@ const TimelineControls = memo(({
                 <Button
                     variant="outlined"
                     onClick={onStopAudio}
-                    startIcon={<StopIcon />}
+                    startIcon={<StopIcon fontSize="small" />}
                     color="error"
                     size="small"
                 >
-                    Stop Audio
+                    Stop
                 </Button>
             )}
             <Button
                 variant={isManualSyncing ? "outlined" : "contained"}
                 onClick={onStartManualSync}
-                startIcon={isManualSyncing ? <CancelIcon /> : <PlayCircleOutlineIcon />}
+                startIcon={isManualSyncing ? <CancelIcon fontSize="small" /> : <PlayCircleOutlineIcon fontSize="small" />}
                 color={isManualSyncing ? "error" : "primary"}
+                size="small"
             >
-                {isManualSyncing ? "Cancel Sync" : "Manual Sync"}
+                {isManualSyncing ? "Cancel" : "Tap To Sync"}
             </Button>
             {isManualSyncing && isReplaceAllMode && (
                 <Button
                     variant="outlined"
                     onClick={onPauseResume}
-                    startIcon={isPaused ? <PlayArrowIcon /> : <PauseCircleOutlineIcon />}
+                    startIcon={isPaused ? <PlayArrowIcon fontSize="small" /> : <PauseCircleOutlineIcon fontSize="small" />}
                     color={isPaused ? "success" : "warning"}
                     size="small"
                 >
@@ -210,8 +278,12 @@ export default function EditTimelineSection({
     isPaused = false,
     isGlobal = false,
     defaultZoomLevel = 10,
-    isReplaceAllMode = false
+    isReplaceAllMode = false,
+    onTapStart,
+    onTapEnd
 }: EditTimelineSectionProps) {
+    const theme = useTheme()
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
     // Add state for zoom level - use larger default for Replace All mode
     const [zoomLevel, setZoomLevel] = useState(defaultZoomLevel)
     const [visibleStartTime, setVisibleStartTime] = useState(startTime)
@@ -432,7 +504,7 @@ export default function EditTimelineSection({
     return (
         <>
             <Box
-                sx={{ height: '120px', mb: 2 }}
+                sx={{ height: isMobile ? '80px' : '120px', mb: 0 }}
                 ref={timelineRef}
                 onWheel={handleScroll}
             >
@@ -447,14 +519,30 @@ export default function EditTimelineSection({
                 />
             </Box>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                    Original Time Range: {originalStartTime?.toFixed(2) ?? 'N/A'} - {originalEndTime?.toFixed(2) ?? 'N/A'}
-                    <br />
-                    Current Time Range: {currentStartTime?.toFixed(2) ?? 'N/A'} - {currentEndTime?.toFixed(2) ?? 'N/A'}
-                </Typography>
+            <Box sx={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: isMobile ? 'stretch' : 'center',
+                justifyContent: 'space-between',
+                gap: isMobile ? 1 : 0,
+                mt: isMobile ? 1.5 : 0,
+                mb: isMobile ? 2 : 0
+            }}>
+                {/* Time range info - hidden on mobile to save space */}
+                {!isMobile && (
+                    <Typography variant="body2" color="text.secondary">
+                        Original Time Range: {originalStartTime?.toFixed(2) ?? 'N/A'} - {originalEndTime?.toFixed(2) ?? 'N/A'}
+                        <br />
+                        Current Time Range: {currentStartTime?.toFixed(2) ?? 'N/A'} - {currentEndTime?.toFixed(2) ?? 'N/A'}
+                    </Typography>
+                )}
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box sx={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    gap: isMobile ? 1 : 2
+                }}>
                     <TimelineControls
                         isGlobal={isGlobal}
                         visibleStartTime={visibleStartTime}
@@ -478,16 +566,24 @@ export default function EditTimelineSection({
                         onStopAudio={onStopAudio}
                     />
                     {currentWordInfo && (
-                        <Box>
+                        <Box sx={{ textAlign: isMobile ? 'center' : 'left' }}>
                             <Typography variant="body2">
                                 Word {currentWordInfo.index} of {currentWordInfo.total}: <strong>{currentWordInfo.text}</strong>
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                                 {isSpacebarPressed ?
-                                    "Holding spacebar... Release when word ends" :
-                                    "Press spacebar when word starts (tap for short words, hold for long words)"}
+                                    "Holding... Release when word ends" :
+                                    (isMobile ? "Tap the button when word starts" : "Press spacebar when word starts (tap for short words, hold for long words)")}
                             </Typography>
                         </Box>
+                    )}
+                    {/* Mobile TAP button for manual sync */}
+                    {isMobile && isManualSyncing && onTapStart && onTapEnd && (
+                        <TapButton
+                            isSpacebarPressed={isSpacebarPressed}
+                            onTapStart={onTapStart}
+                            onTapEnd={onTapEnd}
+                        />
                     )}
                 </Box>
             </Box>

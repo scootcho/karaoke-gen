@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import {
-  MicVocal,
   Music,
   Sparkles,
   Video,
@@ -18,28 +18,29 @@ import {
 import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
 import { AuthDialog } from '@/components/auth/AuthDialog';
 import { WarmingUpLoader } from '@/components/WarmingUpLoader';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 // FAQ data
 const faqs = [
   {
     question: 'How does it work?',
     answer:
-      'Enter the artist and song title, and our AI finds the audio, removes the vocals, transcribes and syncs the lyrics, then generates a professional karaoke video. You can review and edit the lyrics before final export.',
+      'Enter an artist and song title (or paste a YouTube link, or upload your own audio file). Our system finds the audio, separates the vocals from the instrumental, transcribes the lyrics, and syncs them to the music. You then review and correct any transcription errors before we generate your final karaoke video.',
   },
   {
     question: 'What songs can I use?',
     answer:
-      'Any song! Our system searches multiple audio sources to find high-quality versions. If a song exists online, we can likely create a karaoke video for it.',
+      'Any song! Search by artist and title, paste a YouTube URL, or upload your own audio file. If you can get the audio, we can make it into karaoke.',
   },
   {
     question: 'What format is the output?',
     answer:
-      'You get a 4K MP4 video file with perfectly synced lyrics. We also offer direct YouTube upload and cloud storage integration.',
+      'You get multiple files: a 4K MP4 karaoke video, a "With Vocals" version for sing-along practice, and a CDG+MP3 ZIP for older karaoke systems. All videos are also published to our YouTube channel for easy sharing.',
   },
   {
-    question: 'What if something goes wrong?',
+    question: 'Do I need to do anything, or is it fully automatic?',
     answer:
-      "If the AI makes mistakes, you can edit the lyrics and timing before generating the final video. If there's a technical issue, contact us and we'll make it right.",
+      "The lyrics transcription is very accurate, but you'll need to review it and correct any misheard words before the final video is generated. For songs with clear vocals, there may be few or no corrections needed. For complex songs, expect to spend 5-10 minutes fixing errors. The word timing/sync is handled automatically and is very precise.",
   },
   {
     question: 'Do credits expire?',
@@ -69,8 +70,6 @@ export default function LandingPage() {
   const [betaSuccess, setBetaSuccess] = useState(false);
   const [betaWillRedirect, setBetaWillRedirect] = useState(false);
 
-  // FAQ expansion state
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   // Auth dialog state
   const [showAuthDialog, setShowAuthDialog] = useState(false);
@@ -212,16 +211,18 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-dark-900/80 backdrop-blur-md border-b border-dark-700">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MicVocal className="w-8 h-8 text-primary-500" />
-            <span className="text-xl font-bold">Nomad Karaoke</span>
+          <div className="flex items-center gap-3">
+            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-10" />
           </div>
-          <button
-            onClick={() => setShowAuthDialog(true)}
-            className="text-sm text-dark-300 hover:text-white transition-colors"
-          >
-            Already have credits? Sign in
-          </button>
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <button
+              onClick={() => setShowAuthDialog(true)}
+              className="text-sm text-dark-300 hover:text-white transition-colors"
+            >
+              Already have credits? Sign in
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -229,20 +230,38 @@ export default function LandingPage() {
       <section className="pt-32 pb-16 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mb-6 leading-tight">
-            Turn Any Song Into a{' '}
-            <span className="gradient-text">Karaoke Video</span>
+            Create a <span className="gradient-text">Karaoke Video</span> for Any Song
           </h1>
           <p className="text-xl text-dark-300 mb-8 max-w-2xl mx-auto">
-            Professional karaoke videos in minutes. AI-powered vocal removal,
-            perfect lyrics sync, and stunning video output.
+            Create professional karaoke videos in under 30 minutes. Real instrumentals
+            from the original song, precise lyrics sync, and 4K video output.
           </p>
           <a
-            href="#pricing"
+            href="#beta"
             className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-8 py-4 rounded-xl transition-all btn-glow"
           >
-            Get Started
+            Try It For Free
             <ChevronDown className="w-5 h-5" />
           </a>
+        </div>
+      </section>
+
+      {/* Demo Video Section */}
+      <section className="py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-dark-800 border border-dark-700 rounded-2xl p-2 overflow-hidden">
+            <div className="aspect-video">
+              <iframe
+                className="w-full h-full rounded-xl"
+                src="https://www.youtube.com/embed/wHiMti3xLJE?si=dij5wsaHnedaZdFg"
+                title="Nomad Karaoke Demo"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -252,10 +271,10 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
           <div className="grid md:grid-cols-4 gap-8">
             {[
-              { icon: Music, title: 'Search', desc: 'Enter artist & song title' },
-              { icon: Sparkles, title: 'AI Magic', desc: 'We remove vocals & sync lyrics' },
-              { icon: Video, title: 'Review', desc: 'Preview and fine-tune' },
-              { icon: Youtube, title: 'Export', desc: 'Download or upload to YouTube' },
+              { icon: Music, title: 'Choose a Song', desc: 'Search, paste a YouTube link, or upload audio' },
+              { icon: Sparkles, title: 'We Do the Heavy Lifting', desc: 'Vocals removed, lyrics transcribed & synced' },
+              { icon: Video, title: 'Review & Correct', desc: 'Fix any transcription errors (usually 5-10 min)' },
+              { icon: Youtube, title: 'Get Your Video', desc: 'Download files or watch on our YouTube' },
             ].map((step, i) => (
               <div key={i} className="text-center">
                 <div className="w-16 h-16 bg-primary-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -275,12 +294,12 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">What You Get</h2>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { title: 'Studio-Quality Separation', desc: 'State-of-the-art AI removes vocals cleanly, keeping the instrumental crisp.' },
-              { title: 'Perfect Lyrics Sync', desc: 'Word-by-word timing that highlights exactly when to sing.' },
-              { title: 'Multiple Instrumental Options', desc: 'Choose from different vocal removal levels to get the sound you want.' },
-              { title: '4K Video Output', desc: 'Stunning video quality that looks great on any screen.' },
-              { title: 'YouTube Integration', desc: 'Upload directly to your YouTube channel with one click.' },
-              { title: 'Edit Before Export', desc: 'Fix any lyrics issues before generating your final video.' },
+              { title: 'Real Instrumentals', desc: "Uses the actual instrumental from your song—not a cover band or MIDI recreation." },
+              { title: 'Precise Lyrics Sync', desc: 'Word-by-word timing that highlights exactly when to sing. You review the lyrics for accuracy.' },
+              { title: 'Keep or Remove Backing Vocals', desc: 'Choose a clean instrumental or one that preserves backing vocals for a fuller sound.' },
+              { title: '4K Video + Multiple Formats', desc: 'Get a 4K karaoke video, a sing-along version with vocals, and CDG+MP3 for older systems.' },
+              { title: 'Published to YouTube', desc: 'Every video is automatically published to our YouTube channel for easy sharing.' },
+              { title: 'Full Control Before Export', desc: 'Review and correct any transcription errors before the final video is generated.' },
             ].map((feature, i) => (
               <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl p-6 card-hover">
                 <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
@@ -291,25 +310,104 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Screenshots Section */}
+      <section className="py-16 px-4">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">See It In Action</h2>
+          <p className="text-dark-400 text-center mb-12 max-w-xl mx-auto">
+            Here&apos;s what the process looks like at each step
+          </p>
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Job Dashboard Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/job-dashboard.avif"
+                  alt="Job Dashboard showing karaoke video projects with status indicators"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Job Dashboard</h3>
+                <p className="text-dark-400 text-sm">Track progress of all your karaoke video projects</p>
+              </div>
+            </div>
+
+            {/* Lyrics Review Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/lyrics-review.avif"
+                  alt="Lyrics Review UI with word-by-word editing and timing controls"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Lyrics Review</h3>
+                <p className="text-dark-400 text-sm">Correct any transcription errors before generating your video</p>
+              </div>
+            </div>
+
+            {/* Instrumental Selection Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/instrumental-review.avif"
+                  alt="Instrumental Selection UI with audio player and backing vocals options"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Instrumental Selection</h3>
+                <p className="text-dark-400 text-sm">Pick the sound that works best for your karaoke</p>
+              </div>
+            </div>
+
+            {/* Example Output Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/example-output.avif"
+                  alt="Example karaoke video output with synchronized lyrics"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Final Video</h3>
+                <p className="text-dark-400 text-sm">4K karaoke video ready for your next singing session</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Beta Tester Program */}
-      <section className="py-12 px-4">
+      <section id="beta" className="py-12 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-2xl p-8 text-center">
-            <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-2 rounded-full text-sm font-medium mb-4">
+          <div className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-primary/30 rounded-2xl p-8 text-center">
+            <div className="inline-flex items-center gap-2 bg-primary-500/20 text-primary-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
               <Gift className="w-4 h-4" />
               Beta Tester Program
             </div>
             <h3 className="text-2xl font-bold mb-3">Try It Free!</h3>
             <p className="text-dark-300 mb-6">
-              Help us improve by testing the tool and sharing your feedback. Get a{' '}
-              <span className="text-green-400 font-semibold">free credit</span> to
-              create your first karaoke video!
+              Help us improve by testing the tool and sharing your feedback. Beta testers get{' '}
+              <span className="text-green-400 font-semibold">up to 5 free karaoke videos</span>{' '}
+              in exchange for providing feedback on each one.
             </p>
 
             {!showBetaForm && !betaSuccess && (
               <button
                 onClick={() => setShowBetaForm(true)}
-                className="inline-flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold px-6 py-3 rounded-xl transition-all"
+                className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-6 py-3 rounded-xl transition-all btn-glow"
               >
                 Join Beta Program
                 <MessageSquare className="w-5 h-5" />
@@ -328,7 +426,7 @@ export default function LandingPage() {
                     value={betaEmail}
                     onChange={(e) => setBetaEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-dark-500"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground"
                     required
                   />
                 </div>
@@ -343,7 +441,7 @@ export default function LandingPage() {
                     onChange={(e) => setBetaPromise(e.target.value)}
                     placeholder="Tell us about a song you'd love to sing..."
                     rows={3}
-                    className="w-full px-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-dark-500 resize-none"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground resize-none"
                   />
                 </div>
 
@@ -353,10 +451,10 @@ export default function LandingPage() {
                     id="beta-accept"
                     checked={betaAccept}
                     onChange={(e) => setBetaAccept(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-dark-600 bg-dark-900 text-purple-500 focus:ring-purple-500"
+                    className="mt-1 w-4 h-4 rounded border-border bg-secondary text-primary focus:ring-primary"
                   />
-                  <label htmlFor="beta-accept" className="text-sm text-dark-300">
-                    I understand that beta testers help improve lyrics accuracy by reviewing and correcting AI-generated lyrics
+                  <label htmlFor="beta-accept" className="text-sm text-muted-foreground">
+                    I understand that I&apos;ll need to review and correct any lyrics transcription errors, and provide feedback after each video
                   </label>
                 </div>
 
@@ -367,7 +465,7 @@ export default function LandingPage() {
                 <button
                   type="submit"
                   disabled={betaLoading}
-                  className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-primary-500 hover:bg-primary-600 disabled:bg-primary-500/50 text-white font-semibold py-3 rounded-xl transition-all btn-glow flex items-center justify-center gap-2"
                 >
                   {betaLoading ? 'Enrolling...' : 'Get My Free Credit'}
                   {!betaLoading && <Gift className="w-5 h-5" />}
@@ -461,14 +559,14 @@ export default function LandingPage() {
                   Email address
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-500" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
                     type="email"
                     id="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="w-full pl-10 pr-4 py-3 bg-dark-900 border border-dark-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-white placeholder-dark-500"
+                    className="w-full pl-10 pr-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
                     required
                   />
                 </div>
@@ -503,22 +601,9 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">Questions?</h2>
           <div className="space-y-4">
             {faqs.map((faq, i) => (
-              <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-                <button
-                  onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
-                  aria-expanded={expandedFaq === i}
-                  className="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-dark-700/50 transition-colors"
-                >
-                  <span className="font-medium">{faq.question}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 text-dark-400 transition-transform ${
-                      expandedFaq === i ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-                {expandedFaq === i && (
-                  <div className="px-6 pb-4 text-dark-300 text-sm">{faq.answer}</div>
-                )}
+              <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl p-6">
+                <h3 className="font-medium mb-2">{faq.question}</h3>
+                <p className="text-dark-400 text-sm">{faq.answer}</p>
               </div>
             ))}
           </div>
@@ -526,20 +611,19 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 border-t border-dark-700">
+      <footer className="py-12 px-4 border-t border-primary-500/30">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <MicVocal className="w-6 h-6 text-primary-500" />
-            <span className="font-semibold">Nomad Karaoke</span>
+            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8" />
           </div>
           <div className="text-sm text-dark-500">
             © {new Date().getFullYear()} Nomad Karaoke. All rights reserved.
           </div>
           <div className="flex gap-6 text-sm text-dark-400">
-            <a href="mailto:support@nomadkaraoke.com" className="hover:text-white transition-colors">
+            <a href="mailto:support@nomadkaraoke.com" className="hover:text-primary-400 transition-colors">
               Support
             </a>
-            <a href="https://nomadkaraoke.com" className="hover:text-white transition-colors">
+            <a href="https://nomadkaraoke.com" className="hover:text-primary-400 transition-colors">
               About
             </a>
           </div>

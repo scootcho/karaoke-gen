@@ -98,7 +98,7 @@ export const AIFeedbackModal: React.FC<Props> = ({ isOpen, onClose, onSubmit, su
             onClick={() =>
               onSubmit({ reviewerAction, finalText: finalText || undefined, reasonCategory, reasonDetail: reasonDetail || undefined })
             }
-            style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 12px', cursor: 'pointer' }}
+            style={{ background: '#ff7acc', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 12px', cursor: 'pointer' }}
           >
             Submit
           </button>

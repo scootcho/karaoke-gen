@@ -36,6 +36,8 @@
 
 ## Recent Changes
 
+- **Brand Consistency & Style Guide** (2026-01-07): Implemented unified brand theming across all Nomad Karaoke frontends. Primary color changed from blue to brand pink (#ff7acc). Added comprehensive [BRAND-STYLE-GUIDE.md](BRAND-STYLE-GUIDE.md) for human and LLM reference. Includes: CSS variables for light/dark mode, MUI theme updates for lyrics transcriber, email template branding, and Playwright visual tests. See [BRAND-STYLE-GUIDE.md](BRAND-STYLE-GUIDE.md).
+
 - **Audio Search Display Override** (2026-01-06): Added optional "Display As" fields to audio search, allowing users to search for audio by one artist/title (e.g., "Jeremy Kushnier") but display a different artist/title on title screens and filenames (e.g., "Footloose (Broadway Cast)"). Useful for Broadway casts, covers, remixes where tracker metadata differs from desired display. See [API.md](API.md#audio-search).
 
 - **Infrastructure Modularization** (2026-01-06): Refactored `infrastructure/__main__.py` from 2,602 lines to 339 lines (87% reduction). Split into organized modules: `modules/` for core GCP resources, `compute/` for VMs and startup scripts, `config.py` for shared constants. Extracted embedded encoding worker Python app to `backend/services/gce_encoding/`. See `infrastructure/README.md` for new structure and `infrastructure/docs/PHASE5-PACKER-IMAGE-PLAN.md` for planned Packer image optimization.
@@ -97,6 +99,7 @@
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data flow, integrations |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, testing, deployment |
 | [API.md](API.md) | Backend endpoint reference |
+| [BRAND-STYLE-GUIDE.md](BRAND-STYLE-GUIDE.md) | Brand colors, typography, UI patterns |
 | [LESSONS-LEARNED.md](LESSONS-LEARNED.md) | Key insights for future agents |
 | [STRIPE-SETUP.md](STRIPE-SETUP.md) | Payment integration setup |
 | [MOBILE-UX-BEST-PRACTICES.md](MOBILE-UX-BEST-PRACTICES.md) | Mobile/responsive design guidelines |
