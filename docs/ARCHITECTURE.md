@@ -30,9 +30,10 @@
         │ (jobs)   │  │ (files)  │  │  (API keys)  │ │  Worker (*)  │
         └──────────┘  └──────────┘  └──────────────┘ └──────────────┘
 
-(*) GCE Encoding Worker: C4-standard-8 VM with Intel Granite Rapids for
-    high-performance FFmpeg encoding. Used for both final video encoding and
-    preview video generation. Uses LocalEncodingService via GCS wheel deployment.
+(*) GCE Encoding Worker: c4d-highcpu-32 VM with AMD EPYC 9B45 (Turin) for
+    high-performance FFmpeg encoding (4.92x faster than previous c4-standard-8).
+    Used for both final video encoding and preview video generation.
+    Uses LocalEncodingService via GCS wheel deployment.
 ```
 
 ## Processing Pipeline

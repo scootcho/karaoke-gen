@@ -28,7 +28,7 @@
 | Beta tester program | Working |
 | Admin dashboard | Working |
 | CI/CD self-hosted runner | Working (GCP) |
-| E2E happy path test | Working (38 min full pipeline) |
+| E2E happy path test | Working (~20-25 min full pipeline) |
 
 ## Known Issues
 
@@ -39,6 +39,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Encoding Worker Infrastructure Upgrade** (2026-01-08): Upgraded GCE encoding worker from c4-standard-8 (Intel) to c4d-highcpu-32 (AMD EPYC 9B45 Turin). Benchmarking showed **4.92x faster encoding** (135s vs 666s total). Key improvements: With Vocals 4K rendering 6x faster (54s vs 324s), 720p downscale 4.6x faster (11s vs 50s). Reduces total encoding time from ~11 min to ~2.3 min per job. See [archive/2026-01-08-performance-investigation.md](archive/2026-01-08-performance-investigation.md) for full benchmark methodology and results.
 
 - **Theme Enforcement & Encoding Resilience** (2026-01-08): Added defense-in-depth theme enforcement - jobs without theme_id are now rejected at creation (JobManager) with a safety net at processing time (screens_worker). Fixed done-for-you webhook to apply default theme. Added retry logic with exponential backoff (3 retries, 2s→4s→8s) to GCE encoding service for transient connection failures during worker restarts. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#defense-in-depth-enforce-critical-requirements-at-multiple-layers).
 

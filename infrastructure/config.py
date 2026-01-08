@@ -41,7 +41,7 @@ class MachineTypes:
     """Machine type configurations for GCE instances."""
 
     GITHUB_RUNNER = "e2-standard-4"  # 4 vCPU, 16GB RAM
-    ENCODING_WORKER = "c4-standard-8"  # 8 vCPU, Intel Granite Rapids 3.9 GHz
+    ENCODING_WORKER = "c4d-highcpu-32"  # 32 vCPU, AMD EPYC 9B45 Turin - 4.92x faster than c4-standard-8
     FLACFETCH = "e2-small"  # 0.5 vCPU, 2GB RAM
 
 
