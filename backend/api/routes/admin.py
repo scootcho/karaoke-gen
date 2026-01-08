@@ -99,17 +99,27 @@ async def get_admin_stats_overview(
         "uploading", "notifying"
     ]
 
+    # Limits for streaming queries - these are safety limits to prevent memory issues
+    # If hit, stats may be incomplete so we log a warning
+    USERS_STREAM_LIMIT = 2000
+    JOBS_STREAM_LIMIT = 10000
+
     if exclude_test:
         # When excluding test data, we must stream and filter in Python
         # because Firestore doesn't support "not ends with" queries
 
         # Stream all users and filter
         all_users = []
-        for doc in users_collection.limit(1000).stream():
+        users_fetched = 0
+        for doc in users_collection.limit(USERS_STREAM_LIMIT).stream():
+            users_fetched += 1
             user_data = doc.to_dict()
             email = user_data.get("email", "")
             if not is_test_email(email):
                 all_users.append(user_data)
+
+        if users_fetched >= USERS_STREAM_LIMIT:
+            logger.warning(f"Users stream hit limit ({USERS_STREAM_LIMIT}), stats may be incomplete")
 
         # Calculate user stats from filtered list
         total_users = len(all_users)
@@ -136,11 +146,16 @@ async def get_admin_stats_overview(
 
         # Stream all jobs and filter by user_email
         all_jobs = []
-        for doc in jobs_collection.limit(5000).stream():
+        jobs_fetched = 0
+        for doc in jobs_collection.limit(JOBS_STREAM_LIMIT).stream():
+            jobs_fetched += 1
             job_data = doc.to_dict()
             user_email = job_data.get("user_email", "")
             if not is_test_email(user_email):
                 all_jobs.append(job_data)
+
+        if jobs_fetched >= JOBS_STREAM_LIMIT:
+            logger.warning(f"Jobs stream hit limit ({JOBS_STREAM_LIMIT}), stats may be incomplete")
 
         # Calculate job stats from filtered list
         total_jobs = len(all_jobs)
@@ -229,8 +244,9 @@ async def get_admin_stats_overview(
         # Credit statistics - sum credits added in last 30 days
         total_credits_issued_30d = 0
         try:
-            users_docs = users_collection.limit(500).stream()
-            for user_doc in users_docs:
+            users_fetched = 0
+            for user_doc in users_collection.limit(USERS_STREAM_LIMIT).stream():
+                users_fetched += 1
                 user_data = user_doc.to_dict()
                 transactions = user_data.get("credit_transactions", [])
                 for txn in transactions:
@@ -239,6 +255,8 @@ async def get_admin_stats_overview(
                         amount = txn.get("amount", 0)
                         if amount > 0:
                             total_credits_issued_30d += amount
+            if users_fetched >= USERS_STREAM_LIMIT:
+                logger.warning(f"Credit calculation hit user limit ({USERS_STREAM_LIMIT}), total may be incomplete")
         except Exception as e:
             logger.warning(f"Error calculating credits: {e}")
 
