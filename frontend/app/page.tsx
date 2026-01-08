@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import {
   Music,
   Sparkles,
@@ -320,14 +321,14 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-2 gap-8">
             {/* Job Dashboard Screenshot */}
             <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-              <div className="aspect-video bg-dark-900 flex items-center justify-center">
-                {/* TODO: Replace with screenshot of job dashboard
-                     Path: /screenshots/job-dashboard.png
-                     Should show: list of jobs with status indicators, progress bars */}
-                <div className="text-center text-dark-500 p-4">
-                  <p className="text-sm">Screenshot: Job Dashboard</p>
-                  <p className="text-xs mt-1">Track all your karaoke projects in one place</p>
-                </div>
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/job-dashboard.avif"
+                  alt="Job Dashboard showing karaoke video projects with status indicators"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold mb-1">Job Dashboard</h3>
@@ -337,14 +338,14 @@ export default function LandingPage() {
 
             {/* Lyrics Review Screenshot */}
             <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-              <div className="aspect-video bg-dark-900 flex items-center justify-center">
-                {/* TODO: Replace with screenshot of lyrics review UI
-                     Path: /screenshots/lyrics-review.png
-                     Should show: waveform, word-by-word lyrics with timing, edit controls */}
-                <div className="text-center text-dark-500 p-4">
-                  <p className="text-sm">Screenshot: Lyrics Review</p>
-                  <p className="text-xs mt-1">Review and correct transcribed lyrics with precise timing</p>
-                </div>
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/lyrics-review.avif"
+                  alt="Lyrics Review UI with word-by-word editing and timing controls"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold mb-1">Lyrics Review</h3>
@@ -354,14 +355,14 @@ export default function LandingPage() {
 
             {/* Instrumental Selection Screenshot */}
             <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-              <div className="aspect-video bg-dark-900 flex items-center justify-center">
-                {/* TODO: Replace with screenshot of instrumental selection UI
-                     Path: /screenshots/instrumental-selection.png
-                     Should show: audio player with options for clean vs backing vocals versions */}
-                <div className="text-center text-dark-500 p-4">
-                  <p className="text-sm">Screenshot: Instrumental Selection</p>
-                  <p className="text-xs mt-1">Choose between clean or backing vocals versions</p>
-                </div>
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/instrumental-review.avif"
+                  alt="Instrumental Selection UI with audio player and backing vocals options"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold mb-1">Instrumental Selection</h3>
@@ -371,14 +372,14 @@ export default function LandingPage() {
 
             {/* Example Output Screenshot */}
             <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-              <div className="aspect-video bg-dark-900 flex items-center justify-center">
-                {/* TODO: Replace with screenshot or thumbnail of example output video
-                     Path: /screenshots/example-output.png
-                     Should show: frame from a generated karaoke video with lyrics displayed */}
-                <div className="text-center text-dark-500 p-4">
-                  <p className="text-sm">Screenshot: Example Output</p>
-                  <p className="text-xs mt-1">Professional karaoke video with synced lyrics</p>
-                </div>
+              <div className="aspect-video bg-dark-900 relative">
+                <Image
+                  src="/screenshots/example-output.avif"
+                  alt="Example karaoke video output with synchronized lyrics"
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
               </div>
               <div className="p-4">
                 <h3 className="font-semibold mb-1">Final Video</h3>
