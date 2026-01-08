@@ -99,7 +99,11 @@ async def send_magic_link(
 
     The user will receive an email with a link that logs them in.
     Links expire after 15 minutes and can only be used once.
+
+    For white-label tenants, validates email domain against tenant config.
     """
+    from backend.middleware.tenant import get_tenant_from_request, get_tenant_config_from_request
+
     # Check if email service is configured
     if not email_service.is_configured():
         logger.error("Email service not configured - cannot send magic links")
@@ -110,19 +114,39 @@ async def send_magic_link(
 
     email = request.email.lower()
 
+    # Get tenant context from middleware
+    tenant_id = get_tenant_from_request(http_request)
+    tenant_config = get_tenant_config_from_request(http_request)
+
+    # Validate email domain for tenant if configured
+    if tenant_config and tenant_config.auth.allowed_email_domains:
+        if not tenant_config.is_email_allowed(email):
+            logger.warning(f"Email domain not allowed for tenant {tenant_id}: {email}")
+            # Return success anyway to prevent email enumeration
+            return SendMagicLinkResponse(
+                status="success",
+                message="If this email is registered, you will receive a sign-in link shortly."
+            )
+
     # Get client info for security logging
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
 
-    # Create magic link token
+    # Create magic link token with tenant context
     magic_link = user_service.create_magic_link(
         email,
         ip_address=ip_address,
-        user_agent=user_agent
+        user_agent=user_agent,
+        tenant_id=tenant_id
     )
 
-    # Send email
-    sent = email_service.send_magic_link(email, magic_link.token)
+    # Get tenant-specific sender email
+    sender_email = None
+    if tenant_config:
+        sender_email = tenant_config.get_sender_email()
+
+    # Send email (with tenant-specific sender if configured)
+    sent = email_service.send_magic_link(email, magic_link.token, sender_email=sender_email)
 
     if not sent:
         logger.error(f"Failed to send magic link email to {email}")
@@ -146,6 +170,7 @@ async def verify_magic_link(
     Verify a magic link token and create a session.
 
     Returns a session token that should be stored and used for subsequent requests.
+    The session will be associated with the tenant from the magic link.
     """
     # Get client info
     ip_address = http_request.client.host if http_request.client else None
@@ -153,11 +178,14 @@ async def verify_magic_link(
 
     # Check if this is a first login BEFORE verification (which sets last_login_at)
     # We need to get the user's state before verify_magic_link updates it
+    # Also extract tenant_id from the magic link for session creation
     from backend.services.user_service import MAGIC_LINKS_COLLECTION
     magic_link_doc = user_service.db.collection(MAGIC_LINKS_COLLECTION).document(token).get()
     is_first_login = False
+    magic_link_tenant_id = None
     if magic_link_doc.exists:
         magic_link_data = magic_link_doc.to_dict()
+        magic_link_tenant_id = magic_link_data.get('tenant_id')
         pre_verify_user = user_service.get_user(magic_link_data.get('email', ''))
         if pre_verify_user:
             is_first_login = pre_verify_user.total_jobs_created == 0 and not pre_verify_user.last_login_at
@@ -168,18 +196,19 @@ async def verify_magic_link(
     if not success or not user:
         raise HTTPException(status_code=401, detail=message)
 
-    # Create session
+    # Create session with tenant context from the magic link
     session = user_service.create_session(
         user.email,
         ip_address=ip_address,
-        user_agent=user_agent
+        user_agent=user_agent,
+        tenant_id=magic_link_tenant_id
     )
 
     # Send welcome email to first-time users
     if is_first_login:
         email_service.send_welcome_email(user.email, user.credits)
 
-    # Return user info
+    # Return user info with tenant_id
     user_public = UserPublic(
         email=user.email,
         role=user.role,
@@ -187,6 +216,7 @@ async def verify_magic_link(
         display_name=user.display_name,
         total_jobs_created=user.total_jobs_created,
         total_jobs_completed=user.total_jobs_completed,
+        tenant_id=user.tenant_id,
     )
 
     return VerifyMagicLinkResponse(
