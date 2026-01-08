@@ -249,15 +249,17 @@ export default function LandingPage() {
       {/* Demo Video Section */}
       <section className="py-8 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-dark-800 border border-dark-700 rounded-2xl p-4 aspect-video flex items-center justify-center">
-            {/* TODO: Replace with actual demo video
-                 Video should show: full end-to-end flow from song search to final video
-                 Suggested filename: /demo-video.mp4 or embed YouTube video
-                 Duration: 2-3 minutes showing the complete process */}
-            <div className="text-center text-dark-400">
-              <Video className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-sm">Demo video coming soon</p>
-              <p className="text-xs mt-1">See the full process from song selection to finished karaoke video</p>
+          <div className="bg-dark-800 border border-dark-700 rounded-2xl p-2 overflow-hidden">
+            <div className="aspect-video">
+              <iframe
+                className="w-full h-full rounded-xl"
+                src="https://www.youtube.com/embed/wHiMti3xLJE?si=dij5wsaHnedaZdFg"
+                title="Nomad Karaoke Demo"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
             </div>
           </div>
         </div>

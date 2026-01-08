@@ -18,6 +18,8 @@
 | Dev setup & testing | `docs/DEVELOPMENT.md` |
 | API reference | `docs/API.md` |
 | Past learnings | `docs/LESSONS-LEARNED.md` |
+| **Product communication** | `docs/PRODUCT-COMMUNICATION-GUIDE.md` |
+| Brand style guide | `docs/BRAND-STYLE-GUIDE.md` |
 
 ## Tech Stack
 
