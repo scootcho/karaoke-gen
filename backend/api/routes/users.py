@@ -32,7 +32,9 @@ from backend.models.user import (
 from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
+from backend.services.theme_service import get_theme_service
 from backend.api.dependencies import require_admin
+from backend.api.routes.file_upload import _prepare_theme_for_job
 from backend.services.auth_service import UserType
 from backend.utils.test_data import is_test_email
 
@@ -413,8 +415,6 @@ async def _handle_done_for_you_order(
         AudioSearchError,
     )
     from backend.services.storage_service import StorageService
-    from backend.services.theme_service import get_theme_service
-    from backend.api.routes.file_upload import _prepare_theme_for_job
     import asyncio
     import tempfile
     import os

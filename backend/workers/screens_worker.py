@@ -218,26 +218,36 @@ async def generate_screens(job_id: str) -> bool:
 def _validate_prerequisites(job) -> bool:
     """
     Validate that both audio and lyrics processing are complete.
-    
+
     Single Responsibility: Validation logic separated from main flow.
-    
+
     Args:
         job: Job object
-        
+
     Returns:
         True if prerequisites met, False otherwise
     """
+    # SAFETY NET: Enforce theme requirement at processing time
+    # This catches any jobs that somehow bypassed JobManager.create_job() validation
+    if not job.theme_id:
+        logger.error(
+            f"Job {job.job_id}: CRITICAL - No theme_id configured. "
+            "All jobs must have a theme to generate styled videos. "
+            "This job should have been rejected at creation time."
+        )
+        return False
+
     audio_complete = job.state_data.get('audio_complete', False)
     lyrics_complete = job.state_data.get('lyrics_complete', False)
-    
+
     if not audio_complete:
         logger.error(f"Job {job.job_id}: Audio processing not complete")
         return False
-    
+
     if not lyrics_complete:
         logger.error(f"Job {job.job_id}: Lyrics processing not complete")
         return False
-    
+
     if not job.artist or not job.title:
         logger.error(f"Job {job.job_id}: Missing artist or title")
         return False
