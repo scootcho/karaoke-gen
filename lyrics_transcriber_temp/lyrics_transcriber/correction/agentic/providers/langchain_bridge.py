@@ -100,7 +100,75 @@ class LangChainBridge(BaseAIProvider):
         # Lock prevents race condition where multiple threads try to initialize simultaneously
         self._chat_model: Optional[Any] = None
         self._model_init_lock = threading.Lock()
-    
+
+    def warmup(self) -> bool:
+        """Eagerly initialize the chat model.
+
+        Call this after creating the bridge to avoid lazy initialization delays
+        when multiple threads call generate_correction_proposals() simultaneously.
+
+        Returns:
+            True if model was initialized successfully, False otherwise
+        """
+        if self._chat_model is not None:
+            logger.debug(f"🤖 Model {self._model} already initialized")
+            return True
+
+        logger.info(f"🤖 Warming up model {self._model}...")
+        # Trigger initialization by calling the initialization logic directly
+        try:
+            self._ensure_model_initialized()
+            return self._chat_model is not None
+        except Exception as e:
+            logger.error(f"🤖 Warmup failed for {self._model}: {e}")
+            return False
+
+    def _ensure_model_initialized(self) -> None:
+        """Ensure the chat model is initialized (thread-safe).
+
+        This method handles the lazy initialization with proper locking.
+        It's separated out so it can be called from both warmup() and
+        generate_correction_proposals().
+        """
+        if self._chat_model is not None:
+            return
+
+        with self._model_init_lock:
+            # Double-check after acquiring lock
+            if self._chat_model is not None:
+                return
+
+            timeout = self._config.initialization_timeout_seconds
+            logger.info(f"🤖 Initializing model {self._model} with {timeout}s timeout...")
+            init_start = time.time()
+
+            try:
+                # Use ThreadPoolExecutor for cross-platform timeout
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        self._factory.create_chat_model,
+                        self._model,
+                        self._config
+                    )
+                    try:
+                        self._chat_model = future.result(timeout=timeout)
+                    except FuturesTimeoutError:
+                        raise InitializationTimeoutError(
+                            f"Model initialization timed out after {timeout}s. "
+                            f"This may indicate network issues or service unavailability."
+                        ) from None
+
+                init_elapsed = time.time() - init_start
+                logger.info(f"🤖 Model initialized in {init_elapsed:.2f}s")
+
+            except InitializationTimeoutError:
+                self._circuit_breaker.record_failure(self._model)
+                raise
+            except Exception as e:
+                self._circuit_breaker.record_failure(self._model)
+                logger.error(f"🤖 Failed to initialize chat model: {e}")
+                raise
+
     def name(self) -> str:
         """Return provider name for logging."""
         return f"langchain:{self._model}"
@@ -147,48 +215,24 @@ class LangChainBridge(BaseAIProvider):
         # Use double-checked locking to avoid race condition where multiple threads
         # all try to initialize the model simultaneously (which caused job 2ccbdf6b
         # to have 5 concurrent model initializations and 6+ minute delays)
-        if not self._chat_model:
-            with self._model_init_lock:
-                # Double-check after acquiring lock - another thread may have initialized
-                if not self._chat_model:
-                    timeout = self._config.initialization_timeout_seconds
-                    logger.info(f"🤖 Initializing model {self._model} with {timeout}s timeout...")
-                    init_start = time.time()
-
-                    try:
-                        # Use ThreadPoolExecutor for cross-platform timeout
-                        with ThreadPoolExecutor(max_workers=1) as executor:
-                            future = executor.submit(
-                                self._factory.create_chat_model,
-                                self._model,
-                                self._config
-                            )
-                            try:
-                                self._chat_model = future.result(timeout=timeout)
-                            except FuturesTimeoutError:
-                                raise InitializationTimeoutError(
-                                    f"Model initialization timed out after {timeout}s. "
-                                    f"This may indicate network issues or service unavailability."
-                                ) from None
-
-                        init_elapsed = time.time() - init_start
-                        logger.info(f"🤖 Model initialized in {init_elapsed:.2f}s")
-
-                    except InitializationTimeoutError as e:
-                        self._circuit_breaker.record_failure(self._model)
-                        logger.exception("🤖 Model initialization timeout")
-                        return [{
-                            "error": INIT_TIMEOUT_ERROR,
-                            "message": str(e),
-                            "timeout_seconds": timeout
-                        }]
-                    except Exception as e:
-                        self._circuit_breaker.record_failure(self._model)
-                        logger.error(f"🤖 Failed to initialize chat model: {e}")
-                        return [{
-                            "error": MODEL_INIT_ERROR,
-                            "message": str(e)
-                        }]
+        #
+        # NOTE: For best performance, call warmup() after creating the bridge to
+        # eagerly initialize the model before parallel processing begins.
+        try:
+            self._ensure_model_initialized()
+        except InitializationTimeoutError as e:
+            logger.exception("🤖 Model initialization timeout")
+            return [{
+                "error": INIT_TIMEOUT_ERROR,
+                "message": str(e),
+                "timeout_seconds": self._config.initialization_timeout_seconds
+            }]
+        except Exception as e:
+            logger.error(f"🤖 Failed to initialize chat model: {e}")
+            return [{
+                "error": MODEL_INIT_ERROR,
+                "message": str(e)
+            }]
         
         # Step 3: Execute with retry logic
         logger.info(

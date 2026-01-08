@@ -13,6 +13,9 @@ from backend.services.flacfetch_client import get_flacfetch_client
 from backend.services.email_service import get_email_service
 from backend.services.stripe_service import get_stripe_service
 from backend.services.encoding_service import get_encoding_service
+from backend.services.spacy_preloader import get_preloaded_model, is_model_preloaded
+from backend.services.nltk_preloader import get_preloaded_cmudict, is_cmudict_preloaded
+from backend.services.langfuse_preloader import get_preloaded_langfuse_handler, is_langfuse_preloaded, is_langfuse_configured
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -330,6 +333,68 @@ async def detailed_health_check() -> Dict[str, Any]:
         "services": {
             "email": email_status,
             "stripe": stripe_status,
+        }
+    }
+
+
+@router.get("/health/preload-status")
+async def preload_status() -> Dict[str, Any]:
+    """
+    Check status of preloaded resources for performance optimization.
+
+    Use this endpoint to verify that NLTK, SpaCy, and Langfuse resources
+    were successfully preloaded at container startup. If any show as
+    not preloaded, check Cloud Run startup logs for errors.
+
+    Expected state after successful deployment:
+    - spacy.preloaded: true
+    - nltk.preloaded: true
+    - langfuse.preloaded: true (if configured) or configured: false
+    """
+    # SpaCy status
+    spacy_model = get_preloaded_model("en_core_web_sm")
+    spacy_status = {
+        "preloaded": is_model_preloaded("en_core_web_sm"),
+        "model": "en_core_web_sm",
+    }
+    if spacy_model:
+        spacy_status["vocab_size"] = len(spacy_model.vocab)
+
+    # NLTK status
+    cmudict = get_preloaded_cmudict()
+    nltk_status = {
+        "preloaded": is_cmudict_preloaded(),
+        "resource": "cmudict",
+    }
+    if cmudict:
+        nltk_status["entries"] = len(cmudict)
+
+    # Langfuse status
+    langfuse_handler = get_preloaded_langfuse_handler()
+    langfuse_status = {
+        "configured": is_langfuse_configured(),
+        "preloaded": is_langfuse_preloaded(),
+    }
+    if langfuse_handler:
+        langfuse_status["handler_type"] = type(langfuse_handler).__name__
+
+    # Overall status
+    all_preloaded = (
+        spacy_status["preloaded"]
+        and nltk_status["preloaded"]
+        and (langfuse_status["preloaded"] or not langfuse_status["configured"])
+    )
+
+    return {
+        "status": "ok" if all_preloaded else "degraded",
+        "message": "All resources preloaded" if all_preloaded else "Some resources not preloaded - check startup logs",
+        "spacy": spacy_status,
+        "nltk": nltk_status,
+        "langfuse": langfuse_status,
+        "performance_impact": {
+            "spacy_preload": "Saves ~60s on first lyrics correction",
+            "nltk_preload": "Saves ~100-150s on SyllablesMatchHandler init",
+            "langfuse_preload": "Saves ~200s on AgenticCorrector init",
         }
     }
 

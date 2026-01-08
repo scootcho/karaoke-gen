@@ -250,6 +250,65 @@ class AnchorSequenceFinder:
             self.logger.error(f"Unexpected error loading cache: {type(e).__name__}: {e}")
             return None
 
+    def _process_ngram_length_no_state(
+        self,
+        n: int,
+        trans_words: List[str],
+        all_words: List[Word],
+        ref_texts_clean: Dict[str, List[str]],
+        ref_words: Dict[str, List[Word]],
+        min_sources: int,
+    ) -> List[AnchorSequence]:
+        """Process a single n-gram length without modifying shared state (thread-safe).
+
+        This version doesn't track used positions - overlap filtering happens later
+        in _remove_overlapping_sequences. This allows parallel processing of different
+        n-gram lengths.
+        """
+        candidate_anchors = []
+
+        # Build hash-based index for O(1) lookups
+        ngram_index = self._build_ngram_index(ref_texts_clean, n)
+
+        # Generate n-grams from transcribed text
+        trans_ngrams = self._find_ngrams(trans_words, n)
+
+        # Single pass through all transcription n-grams
+        for ngram, trans_pos in trans_ngrams:
+            # Use indexed lookup (O(1) instead of O(n))
+            ngram_tuple = tuple(ngram)
+            if ngram_tuple not in ngram_index:
+                continue
+
+            # Find matches in all sources (no used_positions check - handled later)
+            matches = {}
+            source_positions = ngram_index[ngram_tuple]
+            for source, positions in source_positions.items():
+                if positions:
+                    matches[source] = positions[0]  # Take first position
+
+            if len(matches) >= min_sources:
+                # Get Word IDs for transcribed words
+                transcribed_word_ids = [w.id for w in all_words[trans_pos : trans_pos + n]]
+
+                # Get Word IDs for reference words
+                reference_word_ids = {
+                    source: [w.id for w in ref_words[source][pos : pos + n]]
+                    for source, pos in matches.items()
+                }
+
+                anchor = AnchorSequence(
+                    id=WordUtils.generate_id(),
+                    transcribed_word_ids=transcribed_word_ids,
+                    transcription_position=trans_pos,
+                    reference_positions=matches,
+                    reference_word_ids=reference_word_ids,
+                    confidence=len(matches) / len(ref_texts_clean),
+                )
+                candidate_anchors.append(anchor)
+
+        return candidate_anchors
+
     def _process_ngram_length(
         self,
         n: int,
@@ -413,45 +472,95 @@ class AnchorSequenceFinder:
                 min_sources=self.min_sources,
             )
 
-            # Process n-gram lengths sequentially (single-threaded for cloud compatibility)
+            # Process n-gram lengths in parallel for better performance
+            # The overlap filtering at the end handles deduplication, so we don't
+            # need to track used_positions during processing
             candidate_anchors = []
-            
+
             # Check timeout before processing
             self._check_timeout(start_time, "n-gram processing start")
-            self.logger.info(f"🔍 ANCHOR SEARCH: Starting sequential n-gram processing ({len(n_gram_lengths)} lengths)")
-            
-            batch_size = 10
-            batch_results = []
-            
-            for i, n in enumerate(n_gram_lengths):
-                try:
-                    # Check timeout periodically
-                    if self.timeout_seconds > 0:
-                        elapsed_time = time.time() - start_time
-                        if elapsed_time > self.timeout_seconds:
-                            self.logger.warning(f"🔍 ANCHOR SEARCH: ⏰ Timeout reached at n-gram {n}, stopping")
-                            break
-                    
-                    anchors = self._process_ngram_length(
-                        n, trans_words, all_words, ref_texts_clean, ref_words, self.min_sources
-                    )
-                    candidate_anchors.extend(anchors)
-                    
-                    # Batch logging
-                    batch_results.append((n, len(anchors)))
-                    
-                    # Log progress every batch_size results or on the last result
-                    if (i + 1) % batch_size == 0 or (i + 1) == len(n_gram_lengths):
-                        total_anchors_in_batch = sum(anchor_count for _, anchor_count in batch_results)
-                        n_gram_ranges = [str(ng) for ng, _ in batch_results]
-                        range_str = f"{n_gram_ranges[0]}-{n_gram_ranges[-1]}" if len(n_gram_ranges) > 1 else n_gram_ranges[0]
-                        self.logger.debug(f"🔍 ANCHOR SEARCH: Completed n-gram lengths {range_str} - found {total_anchors_in_batch} anchors")
-                        batch_results = []
-                        
-                except Exception as e:
-                    self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ n-gram length {n} failed: {str(e)}")
-                    batch_results.append((n, 0))
-                    continue
+
+            # Determine parallelization strategy
+            import os
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            # Use parallel processing by default, can be disabled via env var
+            use_parallel = os.getenv("ANCHOR_SEARCH_SEQUENTIAL", "0").lower() not in {"1", "true", "yes"}
+            max_workers = int(os.getenv("ANCHOR_SEARCH_WORKERS", "4"))
+
+            if use_parallel and len(n_gram_lengths) > 1:
+                self.logger.info(f"🔍 ANCHOR SEARCH: Starting PARALLEL n-gram processing ({len(n_gram_lengths)} lengths, {max_workers} workers)")
+
+                # Process in parallel - each n-gram length is independent
+                # since we don't track used_positions during processing
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all tasks
+                    future_to_n = {
+                        executor.submit(
+                            self._process_ngram_length_no_state,
+                            n, trans_words, all_words, ref_texts_clean, ref_words, self.min_sources
+                        ): n
+                        for n in n_gram_lengths
+                    }
+
+                    completed = 0
+                    for future in as_completed(future_to_n):
+                        n = future_to_n[future]
+                        completed += 1
+
+                        # Check timeout periodically
+                        if self.timeout_seconds > 0:
+                            elapsed_time = time.time() - start_time
+                            if elapsed_time > self.timeout_seconds:
+                                self.logger.warning(f"🔍 ANCHOR SEARCH: ⏰ Timeout reached, stopping ({completed}/{len(n_gram_lengths)} completed)")
+                                # Cancel remaining futures
+                                for f in future_to_n.keys():
+                                    f.cancel()
+                                break
+
+                        try:
+                            anchors = future.result()
+                            candidate_anchors.extend(anchors)
+                            if completed % 20 == 0:
+                                self.logger.debug(f"🔍 ANCHOR SEARCH: Progress {completed}/{len(n_gram_lengths)} lengths processed")
+                        except Exception as e:
+                            self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ n-gram length {n} failed: {str(e)}")
+            else:
+                # Sequential fallback
+                self.logger.info(f"🔍 ANCHOR SEARCH: Starting sequential n-gram processing ({len(n_gram_lengths)} lengths)")
+
+                batch_size = 10
+                batch_results = []
+
+                for i, n in enumerate(n_gram_lengths):
+                    try:
+                        # Check timeout periodically
+                        if self.timeout_seconds > 0:
+                            elapsed_time = time.time() - start_time
+                            if elapsed_time > self.timeout_seconds:
+                                self.logger.warning(f"🔍 ANCHOR SEARCH: ⏰ Timeout reached at n-gram {n}, stopping")
+                                break
+
+                        anchors = self._process_ngram_length(
+                            n, trans_words, all_words, ref_texts_clean, ref_words, self.min_sources
+                        )
+                        candidate_anchors.extend(anchors)
+
+                        # Batch logging
+                        batch_results.append((n, len(anchors)))
+
+                        # Log progress every batch_size results or on the last result
+                        if (i + 1) % batch_size == 0 or (i + 1) == len(n_gram_lengths):
+                            total_anchors_in_batch = sum(anchor_count for _, anchor_count in batch_results)
+                            n_gram_ranges = [str(ng) for ng, _ in batch_results]
+                            range_str = f"{n_gram_ranges[0]}-{n_gram_ranges[-1]}" if len(n_gram_ranges) > 1 else n_gram_ranges[0]
+                            self.logger.debug(f"🔍 ANCHOR SEARCH: Completed n-gram lengths {range_str} - found {total_anchors_in_batch} anchors")
+                            batch_results = []
+
+                    except Exception as e:
+                        self.logger.warning(f"🔍 ANCHOR SEARCH: ⚠️ n-gram length {n} failed: {str(e)}")
+                        batch_results.append((n, 0))
+                        continue
 
             self.logger.info(f"🔍 ANCHOR SEARCH: ✅ Found {len(candidate_anchors)} candidate anchors in {time.time() - start_time:.1f}s")
             

@@ -1055,53 +1055,82 @@ class LangChainBridge:
 
 ### Preloading Heavy Resources at Container Startup
 
-**Problem**: Lazy-loading heavy resources (like SpaCy NLP models) during request processing can cause 60+ second delays on Cloud Run due to slow filesystem I/O during cold starts. The first request after deployment/scaling pays the full load penalty.
+**Problem**: Lazy-loading heavy resources (like SpaCy NLP models, NLTK data, or external service clients) during request processing can cause 60-200+ second delays on Cloud Run due to slow filesystem I/O and network latency during cold starts. The first request after deployment/scaling pays the full load penalty.
 
-**Example bug**: `PhraseAnalyzer` loaded SpaCy's `en_core_web_sm` model lazily on first use during agentic lyrics correction. On Cloud Run, this took 63 seconds due to container filesystem being slower than local SSD. Job `2ccbdf6b` showed 73-second gap between "Initializing PhraseAnalyzer" and "Initialized AnchorSequenceFinder" logs.
+**Example bugs**:
+- `PhraseAnalyzer` loaded SpaCy's `en_core_web_sm` lazily → 63 seconds on Cloud Run
+- `SyllablesMatchHandler` downloaded NLTK cmudict lazily → 100-150 seconds (30MB download)
+- `ModelFactory` initialized Langfuse CallbackHandler lazily → 201 seconds (network calls to `us.cloud.langfuse.com`)
+
+Job `36c21ece` (ABBA - Waterloo) had lyrics processing take **16 minutes 28 seconds**, with over 10 minutes wasted on initialization that could have been preloaded.
 
 **Symptoms**:
 - First job after deployment is extremely slow
 - Large time gaps in logs between "loading X" and "using X"
-- Same code runs much faster locally (where filesystem is faster)
+- Same code runs much faster locally (where filesystem is faster and network is lower latency)
 - Subsequent requests (warm container) are fast
 
 **Solution**: Preload heavy resources at container startup using FastAPI's lifespan handler:
 
 ```python
-# backend/services/spacy_preloader.py - singleton storage
-_preloaded_models: dict = {}
-
-def preload_spacy_model(model_name: str = "en_core_web_sm") -> None:
-    if model_name not in _preloaded_models:
-        _preloaded_models[model_name] = spacy.load(model_name)
-
-def get_preloaded_model(model_name: str) -> Optional[object]:
-    return _preloaded_models.get(model_name)
-
-# backend/main.py - load at startup
+# backend/main.py - load ALL heavy resources at startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    preload_spacy_model("en_core_web_sm")  # Pay cost once at startup
+    # SpaCy model (~60s → ~2s)
+    preload_spacy_model("en_core_web_sm")
+
+    # NLTK cmudict (~100-150s → ~2s)
+    preload_all_nltk_resources()
+
+    # Langfuse callback handler (~200s → ~2s)
+    preload_langfuse_handler()
+
     yield
 ```
 
-Then modify consumers to check for preloaded model:
+**Pattern for each preloader**:
+
 ```python
-class PhraseAnalyzer:
-    def __init__(self):
-        preloaded = get_preloaded_model("en_core_web_sm")
+# backend/services/nltk_preloader.py
+_preloaded_resources: Dict[str, Any] = {}
+
+def preload_nltk_cmudict() -> None:
+    """Preload NLTK cmudict at container startup."""
+    global _preloaded_resources
+    if "cmudict" in _preloaded_resources:
+        return
+    try:
+        from nltk.corpus import cmudict
+        _ = cmudict.dict()  # Trigger download if needed
+    except LookupError:
+        nltk.download("cmudict", quiet=True)
+    _preloaded_resources["cmudict"] = cmudict.dict()
+
+def get_preloaded_cmudict() -> Optional[Dict]:
+    return _preloaded_resources.get("cmudict")
+
+def is_cmudict_preloaded() -> bool:
+    return "cmudict" in _preloaded_resources
+```
+
+Then modify consumers to check for preloaded resource:
+```python
+class SyllablesMatchHandler:
+    def _init_nltk_resources(self):
+        preloaded = get_preloaded_cmudict()
         if preloaded:
-            self.nlp = preloaded  # Fast path
+            self.cmudict = preloaded  # Fast path
         else:
-            self.nlp = spacy.load("en_core_web_sm")  # Fallback
+            self.cmudict = cmudict.dict()  # Fallback for local dev
 ```
 
 **Key insight**: On Cloud Run, container startup time doesn't directly impact users (they don't see the startup delay), but request processing time does. Moving heavy initialization from request-time to startup-time improves user experience even if total work is the same.
 
 **Good candidates for preloading**:
-- ML model files (SpaCy, transformers, etc.)
+- ML model files (SpaCy, transformers, etc.) - saved **60s**
+- NLTK data downloads (cmudict, wordnet, etc.) - saved **100-150s**
+- External service clients that make network calls during init (Langfuse) - saved **200s**
 - Large data files
-- Expensive-to-initialize clients
 - Anything that touches the filesystem heavily
 
 **Not worth preloading**:
@@ -1109,13 +1138,30 @@ class PhraseAnalyzer:
 - Resources that vary per-request
 - Rarely-used code paths
 
-**Logging**: Add timing logs to both startup preload and usage paths so you can verify the optimization is working:
-```
-# At startup: "SpaCy model 'en_core_web_sm' preloaded in 2.34s"
-# During request: "Using preloaded SpaCy model: en_core_web_sm"
+**Verification endpoint**: Add a `/health/preload-status` endpoint to verify preloading works:
+```python
+@router.get("/health/preload-status")
+async def preload_status():
+    return {
+        "status": "ok" if all_preloaded else "degraded",
+        "spacy": {"preloaded": is_model_preloaded("en_core_web_sm")},
+        "nltk": {"preloaded": is_cmudict_preloaded()},
+        "langfuse": {"preloaded": is_langfuse_preloaded()},
+        "performance_impact": {
+            "spacy_preload": "Saves ~60s on first lyrics correction",
+            "nltk_preload": "Saves ~100-150s on SyllablesMatchHandler init",
+            "langfuse_preload": "Saves ~200s on AgenticCorrector init",
+        }
+    }
 ```
 
-See `docs/archive/2026-01-08-spacy-preload-plan.md` for full implementation details.
+**Logging**: Add timing logs to both startup preload and usage paths:
+```
+# At startup: "NLTK cmudict preloaded in 2.34s (133906 entries)"
+# During request: "Using preloaded NLTK cmudict"
+```
+
+See `docs/archive/2026-01-08-performance-investigation.md` for full analysis and implementation details.
 
 ## Performance Observations
 

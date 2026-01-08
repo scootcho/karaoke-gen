@@ -86,28 +86,39 @@ class AgenticCorrector:
     
     @classmethod
     def from_model(
-        cls, 
-        model: str, 
+        cls,
+        model: str,
         config: ProviderConfig | None = None,
         session_id: Optional[str] = None,
-        cache_dir: Optional[str] = None
+        cache_dir: Optional[str] = None,
+        warmup: bool = True
     ) -> "AgenticCorrector":
         """Factory method to create corrector from model specification.
-        
+
         This is a convenience method for the common case where you want
         to use LangChainBridge with a model spec string.
-        
+
         Args:
             model: Model identifier in format "provider/model"
             config: Optional provider configuration
             session_id: Optional Langfuse session ID to group related traces
             cache_dir: Optional cache directory (uses default if not provided)
-            
+            warmup: If True, eagerly initialize the model to avoid delays when
+                    multiple threads call classify_gap() simultaneously (default: True)
+
         Returns:
             AgenticCorrector instance with LangChainBridge provider
         """
         config = config or ProviderConfig.from_env(cache_dir=cache_dir)
         provider = LangChainBridge(model=model, config=config)
+
+        # Eagerly initialize the model to avoid lazy initialization delays
+        # when multiple threads call classify_gap() simultaneously
+        if warmup:
+            logger.info(f"🤖 Warming up model {model} before parallel processing...")
+            if not provider.warmup():
+                logger.warning(f"🤖 Model warmup failed for {model}, will retry on first use")
+
         return cls(provider=provider, session_id=session_id)
 
     def classify_gap(

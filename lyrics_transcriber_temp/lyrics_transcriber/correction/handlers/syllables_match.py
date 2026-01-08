@@ -12,9 +12,10 @@ from lyrics_transcriber.types import GapSequence, WordCorrection
 from lyrics_transcriber.correction.handlers.base import GapCorrectionHandler
 from lyrics_transcriber.correction.handlers.word_operations import WordOperations
 
-# Try to import preloader (may not exist in standalone library usage)
+# Try to import preloaders (may not exist in standalone library usage)
 try:
     from backend.services.spacy_preloader import get_preloaded_model
+    from backend.services.nltk_preloader import get_preloaded_cmudict
 
     _HAS_PRELOADER = True
 except ImportError:
@@ -78,7 +79,16 @@ class SyllablesMatchHandler(GapCorrectionHandler):
         # Initialize Pyphen for English
         self.dic = pyphen.Pyphen(lang="en_US")
 
-        # Initialize NLTK's CMU dictionary
+        # Try to use preloaded cmudict first (avoids 50-100+ second download on Cloud Run)
+        if _HAS_PRELOADER:
+            preloaded_cmudict = get_preloaded_cmudict()
+            if preloaded_cmudict is not None:
+                self.logger.debug("Using preloaded NLTK cmudict")
+                self.cmudict = preloaded_cmudict
+                return
+
+        # Fall back to loading directly
+        self.logger.info("Loading NLTK cmudict (not preloaded)...")
         try:
             self.cmudict = cmudict.dict()
         except LookupError:
