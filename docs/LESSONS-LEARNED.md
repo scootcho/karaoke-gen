@@ -945,6 +945,54 @@ If you're already making real requests, warm-up adds latency without benefit.
 
 **Configuration**: Added `AGENTIC_MAX_PARALLEL_GAPS` env var (default: 5) to control parallelism. Higher values increase throughput but may hit rate limits.
 
+### Thread-Safe Lazy Initialization in Shared Components
+
+**Problem**: Lazy-initialized singleton resources (like LLM model instances) that are shared across parallel threads can have race conditions if the initialization check isn't thread-safe.
+
+**Example bug**: `LangChainBridge._chat_model` was lazily initialized with a simple `if not self._chat_model:` check. When 5 parallel gap-processing threads called `generate_correction_proposals()` simultaneously, ALL threads saw `_chat_model == None` and entered the initialization block, causing:
+- 5 concurrent model initializations instead of 1
+- ~6 minute delay from Vertex AI resource contention
+- All 5 threads timing out (30s limit each)
+- Circuit breaker triggered → 0/8 gaps corrected by AI
+
+**Symptoms**:
+- Multiple "Initializing model X with timeout..." log entries appearing simultaneously
+- Long unexplained delays in parallel processing
+- Timeouts that don't make sense given individual operation times
+- Circuit breaker opening when single-threaded tests pass
+
+**Solution**: Use double-checked locking pattern:
+
+```python
+import threading
+
+class LangChainBridge:
+    def __init__(self):
+        self._chat_model = None
+        self._model_init_lock = threading.Lock()  # Add lock
+
+    def generate_correction_proposals(self, ...):
+        # Fast path: model already initialized
+        if not self._chat_model:
+            with self._model_init_lock:
+                # Double-check after acquiring lock
+                if not self._chat_model:
+                    self._chat_model = self._factory.create_chat_model(...)
+```
+
+**Why double-checked locking**:
+1. First check (without lock): Fast path for normal case - avoids lock overhead when model is already initialized
+2. Lock acquisition: Only happens when model might need initialization
+3. Second check (with lock): Prevents race where another thread initialized while we waited for lock
+
+**Key insight**: Any lazily-initialized shared resource accessed from parallel threads needs synchronization. The pattern of "check if None, then initialize" is inherently racy without locking. This applies to:
+- LLM model instances
+- Database connections
+- API client instances
+- Cached computation results
+
+**Testing**: Write tests that use `threading.Barrier` to ensure multiple threads hit the initialization check simultaneously, then assert the initialization function was called exactly once.
+
 ## Performance Observations
 
 | Operation | Duration |
