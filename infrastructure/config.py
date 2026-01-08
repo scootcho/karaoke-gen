@@ -33,6 +33,10 @@ def get_project_number() -> str:
 REGION = "us-central1"
 ZONE = f"{REGION}-a"
 
+# Encoding worker zone - uses us-central1-c due to c4d-highcpu-32 availability
+# (us-central1-a and us-central1-b often lack capacity for high-end C4D instances)
+ENCODING_WORKER_ZONE = f"{REGION}-c"
+
 # Pulumi config accessor
 config = pulumi.Config()
 
