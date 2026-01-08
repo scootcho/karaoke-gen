@@ -14,6 +14,7 @@ proceeds as a default Nomad Karaoke request (tenant_id = None).
 """
 
 import logging
+import os
 from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -24,6 +25,10 @@ from backend.services.tenant_service import get_tenant_service
 from backend.models.tenant import TenantConfig
 
 logger = logging.getLogger(__name__)
+
+# Only allow query param tenant override in non-production environments
+IS_PRODUCTION = os.environ.get("ENV", "").lower() == "production" or \
+                os.environ.get("ENVIRONMENT", "").lower() == "production"
 
 
 # Known non-tenant subdomains that should be treated as default Nomad Karaoke
@@ -92,10 +97,12 @@ class TenantMiddleware(BaseHTTPMiddleware):
         if header_tenant:
             return header_tenant.lower().strip()
 
-        # Priority 2: Query parameter (for development/testing)
-        query_tenant = request.query_params.get("tenant")
-        if query_tenant:
-            return query_tenant.lower().strip()
+        # Priority 2: Query parameter (for development/testing only)
+        # Disabled in production to prevent tenant spoofing
+        if not IS_PRODUCTION:
+            query_tenant = request.query_params.get("tenant")
+            if query_tenant:
+                return query_tenant.lower().strip()
 
         # Priority 3: Host header subdomain detection
         host = request.headers.get("Host", "")

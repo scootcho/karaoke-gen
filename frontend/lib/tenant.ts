@@ -291,10 +291,6 @@ export function isFeatureEnabled(feature: keyof TenantFeatures): boolean {
   return features[feature]
 }
 
-// Initialize tenant config on module load (client-side only)
-if (typeof window !== "undefined") {
-  // Use setTimeout to ensure this runs after hydration
-  setTimeout(() => {
-    useTenant.getState().fetchTenantConfig()
-  }, 0)
-}
+// NOTE: Tenant initialization is handled by TenantProvider component
+// to avoid hydration race conditions and duplicate fetches.
+// Do not auto-initialize here at module load time.
