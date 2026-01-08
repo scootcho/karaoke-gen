@@ -25,6 +25,11 @@ from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Retry configuration for handling transient failures (e.g., worker restarts)
+MAX_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 2.0
+MAX_BACKOFF_SECONDS = 10.0
+
 
 class EncodingService:
     """Service for dispatching encoding jobs to GCE worker."""
@@ -68,6 +73,81 @@ class EncodingService:
         """Check if GCE preview encoding is enabled and configured."""
         return self.settings.use_gce_preview_encoding and self.is_configured
 
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        json_payload: Optional[Dict[str, Any]] = None,
+        timeout: float = 30.0,
+        job_id: str = "unknown",
+    ) -> Dict[str, Any]:
+        """
+        Make an HTTP request with retry logic for transient failures.
+
+        This handles connection errors that occur when the GCE worker is
+        restarting (e.g., during deployments) by retrying with exponential backoff.
+
+        Args:
+            method: HTTP method (GET, POST)
+            url: Request URL
+            headers: Request headers
+            json_payload: JSON body for POST requests
+            timeout: Request timeout in seconds
+            job_id: Job ID for logging
+
+        Returns:
+            Dict with keys:
+                - status (int): HTTP status code
+                - json (Any): Parsed JSON response body (if status 200, else None)
+                - text (str): Raw response text (if status != 200, else None)
+
+        Raises:
+            aiohttp.ClientConnectorError: If all retries fail due to connection errors
+            aiohttp.ServerDisconnectedError: If all retries fail due to server disconnect
+            asyncio.TimeoutError: If all retries fail due to timeout
+        """
+        last_exception = None
+        backoff = INITIAL_BACKOFF_SECONDS
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    if method.upper() == "POST":
+                        async with session.post(
+                            url, json=json_payload, headers=headers, timeout=timeout
+                        ) as resp:
+                            # Return a copy of the response data since we exit the context
+                            return {
+                                "status": resp.status,
+                                "json": await resp.json() if resp.status == 200 else None,
+                                "text": await resp.text() if resp.status != 200 else None,
+                            }
+                    else:  # GET
+                        async with session.get(
+                            url, headers=headers, timeout=timeout
+                        ) as resp:
+                            return {
+                                "status": resp.status,
+                                "json": await resp.json() if resp.status == 200 else None,
+                                "text": await resp.text() if resp.status != 200 else None,
+                            }
+            except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError) as e:
+                last_exception = e
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"[job:{job_id}] GCE worker connection failed (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}. "
+                        f"Retrying in {backoff:.1f}s..."
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
+                else:
+                    logger.error(
+                        f"[job:{job_id}] GCE worker connection failed after {MAX_RETRIES + 1} attempts: {e}"
+                    )
+
+        raise last_exception
+
     async def submit_encoding_job(
         self,
         job_id: str,
@@ -106,17 +186,23 @@ class EncodingService:
 
         logger.info(f"[job:{job_id}] Submitting encoding job to GCE worker: {url}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
-                if resp.status == 401:
-                    raise RuntimeError("Invalid API key for encoding worker")
-                if resp.status == 409:
-                    raise RuntimeError(f"Encoding job {job_id} already exists")
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise RuntimeError(f"Failed to submit encoding job: {resp.status} - {text}")
+        resp = await self._request_with_retry(
+            method="POST",
+            url=url,
+            headers=headers,
+            json_payload=payload,
+            timeout=30.0,
+            job_id=job_id,
+        )
 
-                return await resp.json()
+        if resp["status"] == 401:
+            raise RuntimeError("Invalid API key for encoding worker")
+        if resp["status"] == 409:
+            raise RuntimeError(f"Encoding job {job_id} already exists")
+        if resp["status"] != 200:
+            raise RuntimeError(f"Failed to submit encoding job: {resp['status']} - {resp['text']}")
+
+        return resp["json"]
 
     async def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """
@@ -136,17 +222,22 @@ class EncodingService:
         url = f"{self._url}/status/{job_id}"
         headers = {"X-API-Key": self._api_key}
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=30) as resp:
-                if resp.status == 401:
-                    raise RuntimeError("Invalid API key for encoding worker")
-                if resp.status == 404:
-                    raise RuntimeError(f"Encoding job {job_id} not found")
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise RuntimeError(f"Failed to get job status: {resp.status} - {text}")
+        resp = await self._request_with_retry(
+            method="GET",
+            url=url,
+            headers=headers,
+            timeout=30.0,
+            job_id=job_id,
+        )
 
-                return await resp.json()
+        if resp["status"] == 401:
+            raise RuntimeError("Invalid API key for encoding worker")
+        if resp["status"] == 404:
+            raise RuntimeError(f"Encoding job {job_id} not found")
+        if resp["status"] != 200:
+            raise RuntimeError(f"Failed to get job status: {resp['status']} - {resp['text']}")
+
+        return resp["json"]
 
     async def wait_for_completion(
         self,
@@ -296,17 +387,23 @@ class EncodingService:
 
         logger.info(f"[job:{job_id}] Submitting preview encoding job to GCE worker: {url}")
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
-                if resp.status == 401:
-                    raise RuntimeError("Invalid API key for encoding worker")
-                if resp.status == 409:
-                    raise RuntimeError(f"Preview encoding job {job_id} already exists")
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise RuntimeError(f"Failed to submit preview encoding job: {resp.status} - {text}")
+        resp = await self._request_with_retry(
+            method="POST",
+            url=url,
+            headers=headers,
+            json_payload=payload,
+            timeout=30.0,
+            job_id=job_id,
+        )
 
-                return await resp.json()
+        if resp["status"] == 401:
+            raise RuntimeError("Invalid API key for encoding worker")
+        if resp["status"] == 409:
+            raise RuntimeError(f"Preview encoding job {job_id} already exists")
+        if resp["status"] != 200:
+            raise RuntimeError(f"Failed to submit preview encoding job: {resp['status']} - {resp['text']}")
+
+        return resp["json"]
 
     async def encode_preview_video(
         self,

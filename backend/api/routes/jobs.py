@@ -25,6 +25,7 @@ from backend.models.requests import (
 from backend.services.job_manager import JobManager
 from backend.services.worker_service import get_worker_service
 from backend.services.storage_service import StorageService
+from backend.services.theme_service import get_theme_service
 from backend.config import get_settings
 from backend.api.dependencies import require_admin, require_auth, require_instrumental_auth
 from backend.services.auth_service import UserType, AuthResult
@@ -93,11 +94,22 @@ async def create_job(
         settings = get_settings()
         effective_enable_youtube_upload = request.enable_youtube_upload if request.enable_youtube_upload is not None else settings.default_enable_youtube_upload
 
+        # Apply default theme - all jobs require a theme
+        theme_service = get_theme_service()
+        effective_theme_id = theme_service.get_default_theme_id()
+        if not effective_theme_id:
+            raise HTTPException(
+                status_code=422,
+                detail="No default theme configured. Please contact support or specify a theme_id."
+            )
+        logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Create job with all preferences
         job_create = JobCreate(
             url=str(request.url),
             artist=request.artist,
             title=request.title,
+            theme_id=effective_theme_id,  # Required - all jobs must have a theme
             enable_cdg=request.enable_cdg,
             enable_txt=request.enable_txt,
             enable_youtube_upload=effective_enable_youtube_upload,

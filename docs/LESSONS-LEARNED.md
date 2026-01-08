@@ -159,6 +159,105 @@ if effective_theme_id is None:
 
 The backend approach is more robust - it ensures correct behavior regardless of which client (web, CLI, API) makes the request.
 
+### Defense in Depth: Enforce Critical Requirements at Multiple Layers
+
+**Problem**: Despite backend logic to apply a default theme, a job created via the done-for-you webhook was created without a theme_id. The webhook handler didn't include the theme application logic that other endpoints had.
+
+**Symptoms**:
+- Job had `theme_id: None` and generated unstyled videos (black background, no branding)
+- Only affected one code path (done-for-you webhook), others worked correctly
+- Discovered only after customer received output
+
+**Root cause**: Multiple job creation endpoints (POST /jobs, audio search, file upload, webhook) all needed to apply the default theme, but the logic was duplicated rather than centralized. The webhook endpoint was added later and missed this requirement.
+
+**Solution**: Defense in depth with two enforcement layers:
+
+1. **Reject at creation** (JobManager.create_job):
+   ```python
+   def create_job(self, job_create: JobCreate) -> Job:
+       if not job_create.theme_id:
+           raise ValueError(
+               "theme_id is required for all jobs. "
+               "Use get_theme_service().get_default_theme_id() to get the default theme."
+           )
+   ```
+
+2. **Safety net at processing** (screens_worker._validate_prerequisites):
+   ```python
+   if not job.theme_id:
+       logger.error(
+           f"Job {job.job_id}: CRITICAL - No theme_id configured. "
+           "This job should have been rejected at creation time."
+       )
+       return False  # Fail fast before generating assets
+   ```
+
+**Key insight**: Critical requirements should be enforced at the lowest possible level, with fail-fast behavior that prevents partial work. Multiple enforcement points (defense in depth) catch issues that slip through higher layers.
+
+**Benefits**:
+- New code paths automatically get validation (via JobManager)
+- Jobs fail at creation, not after minutes of processing
+- Safety net catches any edge cases that bypass JobManager
+- Clear error messages tell developers exactly what's missing
+
+**Lesson**: When a requirement is truly mandatory (like theme for styled videos), don't rely on each endpoint to remember to enforce it. Centralize validation in the core data layer and add safety nets at processing time.
+
+### Retry Logic for Transient External Service Failures
+
+**Problem**: E2E test job (b099c91b) failed during encoding with "Cannot connect to host 136.119.50.148:8080 ssl:default". Investigation showed the GCE encoding worker had restarted (likely during a deployment) at the exact moment the job tried to connect.
+
+**Symptoms**:
+- Job failed at encoding stage with connection error
+- GCE worker was healthy before and after the failure
+- Worker logs showed restart at the time of failure
+- Failure was timing-dependent (hit during brief restart window)
+
+**Root cause**: The GCE encoding worker runs on a VM that can restart during deployments. During the ~10-30 second restart window, HTTP connections fail immediately rather than being retried.
+
+**Solution**: Add retry logic with exponential backoff for transient failures:
+
+```python
+MAX_RETRIES = 3
+INITIAL_BACKOFF_SECONDS = 2.0
+MAX_BACKOFF_SECONDS = 10.0
+
+async def _request_with_retry(
+    self,
+    method: str,
+    url: str,
+    headers: Dict[str, str],
+    json_payload: Optional[Dict[str, Any]] = None,
+    timeout: float = 30.0,
+    job_id: str = "unknown",
+) -> Dict[str, Any]:
+    last_exception = None
+    backoff = INITIAL_BACKOFF_SECONDS
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Make request...
+                return {"status": resp.status, "json": ..., "text": ...}
+        except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError) as e:
+            last_exception = e
+            if attempt < MAX_RETRIES:
+                logger.warning(f"[job:{job_id}] Connection failed (attempt {attempt + 1}): {e}. Retrying in {backoff:.1f}s...")
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
+            else:
+                logger.error(f"[job:{job_id}] Connection failed after {MAX_RETRIES + 1} attempts: {e}")
+
+    raise last_exception
+```
+
+**Key design decisions**:
+- Retry only on connection-level errors (`ClientConnectorError`, `ServerDisconnectedError`, `TimeoutError`)
+- Don't retry on HTTP errors (4xx, 5xx) - those indicate real problems
+- Exponential backoff (2s → 4s → 8s) with cap to avoid excessive delays
+- Log each retry attempt for debugging
+
+**Lesson**: Any HTTP call to an external service that might restart (VMs, containers, serverless) should have retry logic for transient connection failures. The total retry time (~14s with 3 retries) should be less than the typical restart window of the service.
+
 ### Cross-Domain localStorage Isolation
 
 **Problem**: Auth tokens stored in localStorage on one subdomain are invisible to other subdomains.
