@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { adminApi, AdminBetaStats, AdminBetaFeedback } from "@/lib/api"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { StatsCard, StatsGrid } from "@/components/admin/stats-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +28,7 @@ import { useToast } from "@/hooks/use-toast"
 
 export default function AdminBetaPage() {
   const { toast } = useToast()
+  const { showTestData } = useAdminSettings()
   const [stats, setStats] = useState<AdminBetaStats | null>(null)
   const [feedback, setFeedback] = useState<AdminBetaFeedback[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,7 +37,7 @@ export default function AdminBetaPage() {
     try {
       setLoading(true)
       const [statsData, feedbackData] = await Promise.all([
-        adminApi.getBetaStats(),
+        adminApi.getBetaStats({ exclude_test: !showTestData }),
         adminApi.getBetaFeedback(50),
       ])
       setStats(statsData)
@@ -54,7 +56,7 @@ export default function AdminBetaPage() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [showTestData])
 
   const renderStars = (rating?: number) => {
     if (!rating) return "—"

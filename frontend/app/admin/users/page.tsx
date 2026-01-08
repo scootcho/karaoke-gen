@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { adminApi, AdminUser, AdminUserListResponse } from "@/lib/api"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +50,7 @@ import { useToast } from "@/hooks/use-toast"
 export default function AdminUsersPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { showTestData } = useAdminSettings()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -76,6 +78,7 @@ export default function AdminUsersPage() {
         search: search || undefined,
         sort_by: sortBy,
         sort_order: sortOrder,
+        exclude_test: !showTestData,
       })
       setUsers(data.users)
       setTotal(data.total)
@@ -90,7 +93,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [limit, offset, search, sortBy, sortOrder, toast])
+  }, [limit, offset, search, sortBy, sortOrder, showTestData, toast])
 
   useEffect(() => {
     loadUsers()
