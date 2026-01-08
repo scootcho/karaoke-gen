@@ -24,22 +24,22 @@ const faqs = [
   {
     question: 'How does it work?',
     answer:
-      'Enter the artist and song title, and our AI finds the audio, removes the vocals, transcribes and syncs the lyrics, then generates a professional karaoke video. You can review and edit the lyrics before final export.',
+      'Enter an artist and song title (or paste a YouTube link, or upload your own audio file). Our system finds the audio, separates the vocals from the instrumental, transcribes the lyrics, and syncs them to the music. You then review and correct any transcription errors before we generate your final karaoke video.',
   },
   {
     question: 'What songs can I use?',
     answer:
-      'Any song! Our system searches multiple audio sources to find high-quality versions. If a song exists online, we can likely create a karaoke video for it.',
+      'Any song! Search by artist and title, paste a YouTube URL, or upload your own audio file. If you can get the audio, we can make it into karaoke.',
   },
   {
     question: 'What format is the output?',
     answer:
-      'You get a 4K MP4 video file with perfectly synced lyrics. We also offer direct YouTube upload and cloud storage integration.',
+      'You get multiple files: a 4K MP4 karaoke video, a "With Vocals" version for sing-along practice, and a CDG+MP3 ZIP for older karaoke systems. All videos are also published to our YouTube channel for easy sharing.',
   },
   {
-    question: 'What if something goes wrong?',
+    question: 'Do I need to do anything, or is it fully automatic?',
     answer:
-      "If the AI makes mistakes, you can edit the lyrics and timing before generating the final video. If there's a technical issue, contact us and we'll make it right.",
+      "The lyrics transcription is very accurate, but you'll need to review it and correct any misheard words before the final video is generated. For songs with clear vocals, there may be few or no corrections needed. For complex songs, expect to spend 5-10 minutes fixing errors. The word timing/sync is handled automatically and is very precise.",
   },
   {
     question: 'Do credits expire?',
@@ -233,8 +233,8 @@ export default function LandingPage() {
             <span className="gradient-text">Karaoke Video</span>
           </h1>
           <p className="text-xl text-dark-300 mb-8 max-w-2xl mx-auto">
-            Professional karaoke videos in minutes. AI-powered vocal removal,
-            perfect lyrics sync, and stunning video output.
+            Create professional karaoke videos in under 30 minutes. Real instrumentals
+            from the original song, precise lyrics sync, and 4K video output.
           </p>
           <a
             href="#pricing"
@@ -246,16 +246,33 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Demo Video Section */}
+      <section className="py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-dark-800 border border-dark-700 rounded-2xl p-4 aspect-video flex items-center justify-center">
+            {/* TODO: Replace with actual demo video
+                 Video should show: full end-to-end flow from song search to final video
+                 Suggested filename: /demo-video.mp4 or embed YouTube video
+                 Duration: 2-3 minutes showing the complete process */}
+            <div className="text-center text-dark-400">
+              <Video className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p className="text-sm">Demo video coming soon</p>
+              <p className="text-xs mt-1">See the full process from song selection to finished karaoke video</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* How It Works */}
       <section className="py-16 px-4">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
           <div className="grid md:grid-cols-4 gap-8">
             {[
-              { icon: Music, title: 'Search', desc: 'Enter artist & song title' },
-              { icon: Sparkles, title: 'AI Magic', desc: 'We remove vocals & sync lyrics' },
-              { icon: Video, title: 'Review', desc: 'Preview and fine-tune' },
-              { icon: Youtube, title: 'Export', desc: 'Download or upload to YouTube' },
+              { icon: Music, title: 'Choose a Song', desc: 'Search, paste a YouTube link, or upload audio' },
+              { icon: Sparkles, title: 'We Do the Heavy Lifting', desc: 'Vocals removed, lyrics transcribed & synced' },
+              { icon: Video, title: 'Review & Correct', desc: 'Fix any transcription errors (usually 5-10 min)' },
+              { icon: Youtube, title: 'Get Your Video', desc: 'Download files or watch on our YouTube' },
             ].map((step, i) => (
               <div key={i} className="text-center">
                 <div className="w-16 h-16 bg-primary-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -275,18 +292,97 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-center mb-12">What You Get</h2>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { title: 'Studio-Quality Separation', desc: 'State-of-the-art AI removes vocals cleanly, keeping the instrumental crisp.' },
-              { title: 'Perfect Lyrics Sync', desc: 'Word-by-word timing that highlights exactly when to sing.' },
-              { title: 'Multiple Instrumental Options', desc: 'Choose from different vocal removal levels to get the sound you want.' },
-              { title: '4K Video Output', desc: 'Stunning video quality that looks great on any screen.' },
-              { title: 'YouTube Integration', desc: 'Upload directly to your YouTube channel with one click.' },
-              { title: 'Edit Before Export', desc: 'Fix any lyrics issues before generating your final video.' },
+              { title: 'Real Instrumentals', desc: "Uses the actual instrumental from your song—not a cover band or MIDI recreation." },
+              { title: 'Precise Lyrics Sync', desc: 'Word-by-word timing that highlights exactly when to sing. You review the lyrics for accuracy.' },
+              { title: 'Keep or Remove Backing Vocals', desc: 'Choose a clean instrumental or one that preserves backing vocals for a fuller sound.' },
+              { title: '4K Video + Multiple Formats', desc: 'Get a 4K karaoke video, a sing-along version with vocals, and CDG+MP3 for older systems.' },
+              { title: 'Published to YouTube', desc: 'Every video is automatically published to our YouTube channel for easy sharing.' },
+              { title: 'Full Control Before Export', desc: 'Review and correct any transcription errors before the final video is generated.' },
             ].map((feature, i) => (
               <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl p-6 card-hover">
                 <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
                 <p className="text-dark-400 text-sm">{feature.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Screenshots Section */}
+      <section className="py-16 px-4">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">See It In Action</h2>
+          <p className="text-dark-400 text-center mb-12 max-w-xl mx-auto">
+            Here&apos;s what the process looks like at each step
+          </p>
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Job Dashboard Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 flex items-center justify-center">
+                {/* TODO: Replace with screenshot of job dashboard
+                     Path: /screenshots/job-dashboard.png
+                     Should show: list of jobs with status indicators, progress bars */}
+                <div className="text-center text-dark-500 p-4">
+                  <p className="text-sm">Screenshot: Job Dashboard</p>
+                  <p className="text-xs mt-1">Track all your karaoke projects in one place</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Job Dashboard</h3>
+                <p className="text-dark-400 text-sm">Track progress of all your karaoke video projects</p>
+              </div>
+            </div>
+
+            {/* Lyrics Review Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 flex items-center justify-center">
+                {/* TODO: Replace with screenshot of lyrics review UI
+                     Path: /screenshots/lyrics-review.png
+                     Should show: waveform, word-by-word lyrics with timing, edit controls */}
+                <div className="text-center text-dark-500 p-4">
+                  <p className="text-sm">Screenshot: Lyrics Review</p>
+                  <p className="text-xs mt-1">Review and correct transcribed lyrics with precise timing</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Lyrics Review</h3>
+                <p className="text-dark-400 text-sm">Correct any transcription errors before generating your video</p>
+              </div>
+            </div>
+
+            {/* Instrumental Selection Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 flex items-center justify-center">
+                {/* TODO: Replace with screenshot of instrumental selection UI
+                     Path: /screenshots/instrumental-selection.png
+                     Should show: audio player with options for clean vs backing vocals versions */}
+                <div className="text-center text-dark-500 p-4">
+                  <p className="text-sm">Screenshot: Instrumental Selection</p>
+                  <p className="text-xs mt-1">Choose between clean or backing vocals versions</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Instrumental Selection</h3>
+                <p className="text-dark-400 text-sm">Pick the sound that works best for your karaoke</p>
+              </div>
+            </div>
+
+            {/* Example Output Screenshot */}
+            <div className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
+              <div className="aspect-video bg-dark-900 flex items-center justify-center">
+                {/* TODO: Replace with screenshot or thumbnail of example output video
+                     Path: /screenshots/example-output.png
+                     Should show: frame from a generated karaoke video with lyrics displayed */}
+                <div className="text-center text-dark-500 p-4">
+                  <p className="text-sm">Screenshot: Example Output</p>
+                  <p className="text-xs mt-1">Professional karaoke video with synced lyrics</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1">Final Video</h3>
+                <p className="text-dark-400 text-sm">4K karaoke video ready for your next singing session</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -301,9 +397,9 @@ export default function LandingPage() {
             </div>
             <h3 className="text-2xl font-bold mb-3">Try It Free!</h3>
             <p className="text-dark-300 mb-6">
-              Help us improve by testing the tool and sharing your feedback. Get a{' '}
-              <span className="text-green-400 font-semibold">free credit</span> to
-              create your first karaoke video!
+              Help us improve by testing the tool and sharing your feedback. Beta testers get{' '}
+              <span className="text-green-400 font-semibold">up to 5 free karaoke videos</span>{' '}
+              in exchange for providing feedback on each one.
             </p>
 
             {!showBetaForm && !betaSuccess && (
@@ -356,7 +452,7 @@ export default function LandingPage() {
                     className="mt-1 w-4 h-4 rounded border-border bg-secondary text-primary focus:ring-primary"
                   />
                   <label htmlFor="beta-accept" className="text-sm text-muted-foreground">
-                    I understand that beta testers help improve lyrics accuracy by reviewing and correcting AI-generated lyrics
+                    I understand that I&apos;ll need to review and correct any lyrics transcription errors, and provide feedback after each video
                   </label>
                 </div>
 
