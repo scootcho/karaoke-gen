@@ -57,6 +57,16 @@ class CreateCheckoutResponse(BaseModel):
     message: str
 
 
+class DoneForYouCheckoutRequest(BaseModel):
+    """Request to create a done-for-you karaoke video order."""
+    email: EmailStr
+    artist: str
+    title: str
+    source_type: str = "search"  # search, youtube, or upload
+    youtube_url: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class CreditPackage(BaseModel):
     """Credit package information."""
     id: str
@@ -327,9 +337,228 @@ async def create_checkout(
     )
 
 
+@router.post("/done-for-you/checkout", response_model=CreateCheckoutResponse)
+async def create_done_for_you_checkout(
+    request: DoneForYouCheckoutRequest,
+    stripe_service: StripeService = Depends(get_stripe_service),
+):
+    """
+    Create a Stripe checkout session for a done-for-you karaoke video order.
+
+    This is the full-service option where Nomad Karaoke handles everything:
+    - Finding or processing the audio
+    - Reviewing and correcting lyrics
+    - Selecting the best instrumental
+    - Generating the final video
+
+    $15 with 24-hour delivery guarantee.
+    No authentication required - customer email is provided in the request.
+    """
+    if not stripe_service.is_configured():
+        raise HTTPException(status_code=503, detail="Payment processing is not available")
+
+    success, checkout_url, message = stripe_service.create_done_for_you_checkout_session(
+        customer_email=request.email,
+        artist=request.artist,
+        title=request.title,
+        source_type=request.source_type,
+        youtube_url=request.youtube_url,
+        notes=request.notes,
+    )
+
+    if not success or not checkout_url:
+        raise HTTPException(status_code=400, detail=message)
+
+    return CreateCheckoutResponse(
+        status="success",
+        checkout_url=checkout_url,
+        message=message,
+    )
+
+
 # =============================================================================
 # Stripe Webhooks
 # =============================================================================
+
+# Admin email for done-for-you order notifications
+ADMIN_EMAIL = "andrew@nomadkaraoke.com"
+
+
+async def _handle_done_for_you_order(
+    session_id: str,
+    metadata: dict,
+    user_service: UserService,
+    email_service: EmailService,
+) -> None:
+    """
+    Handle a completed done-for-you order by creating a job and notifying Andrew.
+
+    Args:
+        session_id: Stripe checkout session ID
+        metadata: Order metadata from Stripe session
+        user_service: User service for marking session processed
+        email_service: Email service for notifications
+    """
+    from backend.models.job import JobCreate
+    from backend.services.job_manager import JobManager
+    from backend.services.worker_service import get_worker_service
+    import asyncio
+
+    customer_email = metadata.get("customer_email", "")
+    artist = metadata.get("artist", "Unknown Artist")
+    title = metadata.get("title", "Unknown Title")
+    source_type = metadata.get("source_type", "search")
+    youtube_url = metadata.get("youtube_url")
+    notes = metadata.get("notes", "")
+
+    logger.info(
+        f"Processing done-for-you order: {artist} - {title} for {customer_email} "
+        f"(session: {session_id})"
+    )
+
+    try:
+        job_manager = JobManager()
+        worker_service = get_worker_service()
+
+        # Determine the URL for the job
+        # If YouTube URL provided, use it; otherwise search will be triggered
+        job_url = youtube_url if youtube_url else None
+
+        # Create job for the customer
+        # Note: done-for-you jobs should NOT be non_interactive - Andrew needs to review
+        job_create = JobCreate(
+            url=job_url,
+            artist=artist,
+            title=title,
+            user_email=customer_email,  # Customer owns the job
+            non_interactive=False,  # Andrew will review lyrics/instrumental
+        )
+        job = job_manager.create_job(job_create)
+
+        logger.info(f"Created done-for-you job {job.job_id} for {customer_email}")
+
+        # Mark session as processed for idempotency
+        # Note: Using internal method since this isn't a credit transaction
+        user_service._mark_stripe_session_processed(
+            stripe_session_id=session_id,
+            email=customer_email,
+            amount=0  # No credits, just tracking the session
+        )
+
+        # Trigger workers to start processing
+        async def trigger_workers():
+            await asyncio.gather(
+                worker_service.trigger_audio_worker(job.job_id),
+                worker_service.trigger_lyrics_worker(job.job_id)
+            )
+        await trigger_workers()
+
+        # Send confirmation email to customer
+        email_service.send_email(
+            to_email=customer_email,
+            subject=f"Your Karaoke Video Order: {artist} - {title}",
+            html_content=f"""
+            <h2>Thank you for your order!</h2>
+            <p>We've received your request for a karaoke video:</p>
+            <ul>
+                <li><strong>Artist:</strong> {artist}</li>
+                <li><strong>Title:</strong> {title}</li>
+                {f'<li><strong>Notes:</strong> {notes}</li>' if notes else ''}
+            </ul>
+            <p>Our team will review and create your video within <strong>24 hours</strong>.</p>
+            <p>You'll receive another email with download links when your video is ready.</p>
+            <p>If you have any questions, reply to this email or contact us at support@nomadkaraoke.com</p>
+            <p>Thanks for using Nomad Karaoke!</p>
+            """,
+            text_content=f"""
+Thank you for your order!
+
+We've received your request for a karaoke video:
+- Artist: {artist}
+- Title: {title}
+{f'- Notes: {notes}' if notes else ''}
+
+Our team will review and create your video within 24 hours.
+You'll receive another email with download links when your video is ready.
+
+If you have any questions, reply to this email or contact us at support@nomadkaraoke.com
+
+Thanks for using Nomad Karaoke!
+            """.strip(),
+        )
+
+        # Send notification email to Andrew
+        email_service.send_email(
+            to_email=ADMIN_EMAIL,
+            subject=f"[Done For You Order] {artist} - {title}",
+            html_content=f"""
+            <h2>New Done-For-You Order</h2>
+            <p>A customer has ordered a karaoke video:</p>
+            <ul>
+                <li><strong>Customer:</strong> {customer_email}</li>
+                <li><strong>Artist:</strong> {artist}</li>
+                <li><strong>Title:</strong> {title}</li>
+                <li><strong>Source:</strong> {source_type}</li>
+                {f'<li><strong>YouTube URL:</strong> <a href="{youtube_url}">{youtube_url}</a></li>' if youtube_url else ''}
+                {f'<li><strong>Notes:</strong> {notes}</li>' if notes else ''}
+            </ul>
+            <p><strong>Job ID:</strong> {job.job_id}</p>
+            <p>View job in admin: <a href="https://gen.nomadkaraoke.com/admin/jobs/{job.job_id}">Admin Link</a></p>
+            <p>View job as customer: <a href="https://gen.nomadkaraoke.com/jobs/{job.job_id}">Customer Link</a></p>
+            <p><strong>Deadline:</strong> 24 hours from now</p>
+            """,
+            text_content=f"""
+New Done-For-You Order
+
+Customer: {customer_email}
+Artist: {artist}
+Title: {title}
+Source: {source_type}
+{f'YouTube URL: {youtube_url}' if youtube_url else ''}
+{f'Notes: {notes}' if notes else ''}
+
+Job ID: {job.job_id}
+Admin: https://gen.nomadkaraoke.com/admin/jobs/{job.job_id}
+Customer: https://gen.nomadkaraoke.com/jobs/{job.job_id}
+
+Deadline: 24 hours from now
+            """.strip(),
+        )
+
+        logger.info(f"Sent done-for-you order notifications for job {job.job_id}")
+
+    except Exception as e:
+        logger.error(f"Error processing done-for-you order: {e}", exc_info=True)
+        # Still try to notify Andrew of the failure
+        try:
+            email_service.send_email(
+                to_email=ADMIN_EMAIL,
+                subject=f"[FAILED] Done For You Order: {artist} - {title}",
+                html_content=f"""
+                <h2>Done-For-You Order Failed</h2>
+                <p>An error occurred processing this order:</p>
+                <ul>
+                    <li><strong>Customer:</strong> {customer_email}</li>
+                    <li><strong>Artist:</strong> {artist}</li>
+                    <li><strong>Title:</strong> {title}</li>
+                    <li><strong>Error:</strong> {str(e)}</li>
+                </ul>
+                <p>Please manually create this job and notify the customer.</p>
+                """,
+                text_content=f"""
+Done-For-You Order Failed
+
+Customer: {customer_email}
+Artist: {artist}
+Title: {title}
+Error: {str(e)}
+
+Please manually create this job and notify the customer.
+                """.strip(),
+            )
+        except Exception as email_error:
+            logger.error(f"Failed to send error notification: {email_error}")
+
 
 @router.post("/webhooks/stripe")
 async def stripe_webhook(
@@ -365,30 +594,41 @@ async def stripe_webhook(
     if event_type == "checkout.session.completed":
         session = event["data"]["object"]
         session_id = session.get("id")
+        metadata = session.get("metadata", {})
 
         # Idempotency check: Skip if this session was already processed
         if session_id and user_service.is_stripe_session_processed(session_id):
             logger.info(f"Skipping already processed session: {session_id}")
             return {"status": "received", "type": event_type, "note": "already_processed"}
 
-        # Process the completed checkout
-        success, user_email, credits, _ = stripe_service.handle_checkout_completed(session)
-
-        if success and user_email and credits > 0:
-            # Add credits to user account
-            ok, new_balance, credit_msg = user_service.add_credits(
-                email=user_email,
-                amount=credits,
-                reason="stripe_purchase",
-                stripe_session_id=session_id,
+        # Check if this is a done-for-you order
+        if metadata.get("order_type") == "done_for_you":
+            # Handle done-for-you order - create a job
+            await _handle_done_for_you_order(
+                session_id=session_id,
+                metadata=metadata,
+                user_service=user_service,
+                email_service=email_service,
             )
+        else:
+            # Handle regular credit purchase
+            success, user_email, credits, _ = stripe_service.handle_checkout_completed(session)
 
-            if ok:
-                # Send confirmation email
-                email_service.send_credits_added(user_email, credits, new_balance)
-                logger.info(f"Added {credits} credits to {user_email}, new balance: {new_balance}")
-            else:
-                logger.error(f"Failed to add credits: {credit_msg}")
+            if success and user_email and credits > 0:
+                # Add credits to user account
+                ok, new_balance, credit_msg = user_service.add_credits(
+                    email=user_email,
+                    amount=credits,
+                    reason="stripe_purchase",
+                    stripe_session_id=session_id,
+                )
+
+                if ok:
+                    # Send confirmation email
+                    email_service.send_credits_added(user_email, credits, new_balance)
+                    logger.info(f"Added {credits} credits to {user_email}, new balance: {new_balance}")
+                else:
+                    logger.error(f"Failed to add credits: {credit_msg}")
 
     elif event_type == "checkout.session.expired":
         logger.info(f"Checkout session expired: {event['data']['object'].get('id')}")

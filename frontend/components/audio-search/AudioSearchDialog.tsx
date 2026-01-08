@@ -44,7 +44,7 @@ interface CategoryConfig {
 }
 
 const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  'TOP SEEDED': { name: 'TOP SEEDED', maxDisplay: 3, color: 'text-amber-400', borderColor: 'border-amber-500/30' },
+  'BEST CHOICE': { name: 'BEST CHOICE', maxDisplay: 3, color: 'text-amber-400', borderColor: 'border-amber-500/30' },
   'HI-RES 24-BIT': { name: 'HI-RES 24-BIT', maxDisplay: 3, color: 'text-purple-400', borderColor: 'border-purple-500/30' },
   'STUDIO ALBUMS': { name: 'STUDIO ALBUMS', maxDisplay: 3, color: 'text-blue-400', borderColor: 'border-blue-500/30' },
   'SINGLES': { name: 'SINGLES', maxDisplay: 2, color: 'text-cyan-400', borderColor: 'border-cyan-500/30' },
@@ -56,7 +56,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
 }
 
 const CATEGORY_ORDER = [
-  'TOP SEEDED',
+  'BEST CHOICE',
   'HI-RES 24-BIT',
   'STUDIO ALBUMS',
   'SINGLES',
@@ -81,9 +81,9 @@ function categorizeResult(result: ExtendedAudioSearchResult): string {
     return 'YOUTUBE/LOSSY'
   }
 
-  // Top seeded (50+ seeders, lossless)
+  // Best choice (50+ seeders, lossless)
   if (isLossless && seeders >= 50) {
-    return 'TOP SEEDED'
+    return 'BEST CHOICE'
   }
 
   // Hi-res 24-bit
@@ -334,21 +334,23 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
                           {/* Main content - 2 lines */}
                           <div className="flex-1 min-w-0">
-                            {/* Line 1: badges + artist + title + quality + size + seeders */}
+                            {/* Line 1: badges + artist + title + quality + size + availability */}
                             <div className="flex items-center gap-1 flex-wrap">
                               {result.is_lossless && (
                                 <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
                                   LOSSLESS
                                 </span>
                               )}
-                              <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
-                                result.provider === "YouTube" ? "bg-red-600/20 text-red-400" :
-                                result.provider === "RED" ? "bg-red-600/30 text-red-300" :
-                                result.provider === "OPS" ? "bg-blue-600/20 text-blue-400" :
-                                "bg-muted text-muted-foreground"
-                              }`}>
-                                {result.provider}
-                              </span>
+                              {result.quality_data?.media?.toLowerCase() === 'vinyl' && (
+                                <span className="text-[8px] px-1 py-0.5 rounded bg-red-600/20 text-red-400 font-medium">
+                                  VINYL
+                                </span>
+                              )}
+                              {result.provider === "YouTube" && (
+                                <span className="text-[8px] px-1 py-0.5 rounded font-medium bg-red-600/20 text-red-400">
+                                  YouTube
+                                </span>
+                              )}
                               <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
                               <span className="text-muted-foreground">-</span>
                               <span className="text-foreground">{result.title}</span>
@@ -357,18 +359,18 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                               </span>
                               <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
                               {result.seeders !== undefined && result.seeders !== null ? (
-                                <span className={`text-[10px] ${
-                                  result.seeders >= 50 ? 'text-green-400' :
-                                  result.seeders >= 10 ? 'text-yellow-400' :
-                                  'text-red-400'
+                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
+                                  result.seeders >= 50 ? 'bg-green-600/20 text-green-400' :
+                                  result.seeders >= 10 ? 'bg-yellow-600/20 text-yellow-400' :
+                                  'bg-red-600/20 text-red-400'
                                 }`}>
-                                  {result.seeders} seed
+                                  {result.seeders >= 50 ? 'High' : result.seeders >= 10 ? 'Medium' : 'Low'} availability
                                 </span>
                               ) : result.view_count !== undefined ? (
-                                <span className={`text-[10px] ${
-                                  result.view_count >= 1000000 ? 'text-green-400' :
-                                  result.view_count >= 10000 ? 'text-yellow-400' :
-                                  'text-muted-foreground'
+                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
+                                  result.view_count >= 1000000 ? 'bg-green-600/20 text-green-400' :
+                                  result.view_count >= 10000 ? 'bg-yellow-600/20 text-yellow-400' :
+                                  'bg-muted text-muted-foreground'
                                 }`}>
                                   {formatCount(result.view_count)} views
                                 </span>

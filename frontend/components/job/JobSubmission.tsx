@@ -2,21 +2,21 @@
 
 import { useState } from "react"
 import { api, ApiError } from "@/lib/api"
-import type { ColorOverrides } from "@/lib/video-themes"
-import { cleanColorOverrides } from "@/lib/video-themes"
+import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ThemeSelector } from "./ThemeSelector"
-import { ColorOverridesPanel } from "./ColorOverrides"
-import { Upload, Youtube, Music, Loader2 } from "lucide-react"
+import { Upload, Youtube, Music, Loader2, ChevronDown, ChevronRight } from "lucide-react"
 
 interface JobSubmissionProps {
   onJobCreated: () => void
 }
 
 export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
+  const { user } = useAuth()
+  const isAdmin = user?.role === "admin"
+
   const [activeTab, setActiveTab] = useState("search")
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -37,10 +37,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   // Display As overrides (optional - if empty, search values used for display)
   const [displayArtist, setDisplayArtist] = useState("")
   const [displayTitle, setDisplayTitle] = useState("")
-
-  // Theme selection (shared across all tabs)
-  const [selectedTheme, setSelectedTheme] = useState<string | undefined>()
-  const [colorOverrides, setColorOverrides] = useState<ColorOverrides>({})
+  const [showDisplayAs, setShowDisplayAs] = useState(false)
 
   // Non-interactive mode (shared across all tabs)
   const [nonInteractive, setNonInteractive] = useState(false)
@@ -61,8 +58,6 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
     setIsSubmitting(true)
     try {
       await api.uploadJob(uploadFile, uploadArtist.trim(), uploadTitle.trim(), {
-        theme_id: selectedTheme,
-        color_overrides: cleanColorOverrides(colorOverrides),
         non_interactive: nonInteractive,
       })
       setUploadFile(null)
@@ -88,16 +83,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       setError("Please enter a URL")
       return
     }
+    if (!youtubeArtist.trim() || !youtubeTitle.trim()) {
+      setError("Please enter both artist and title")
+      return
+    }
 
     setIsSubmitting(true)
     try {
       await api.createJobFromUrl(
         youtubeUrl.trim(),
-        youtubeArtist.trim() || undefined,
-        youtubeTitle.trim() || undefined,
+        youtubeArtist.trim(),
+        youtubeTitle.trim(),
         {
-          theme_id: selectedTheme,
-          color_overrides: cleanColorOverrides(colorOverrides),
           non_interactive: nonInteractive,
         }
       )
@@ -128,8 +125,6 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
     setIsSubmitting(true)
     try {
       await api.searchAudio(searchArtist.trim(), searchTitle.trim(), false, {
-        theme_id: selectedTheme,
-        color_overrides: cleanColorOverrides(colorOverrides),
         non_interactive: nonInteractive,
         // Display overrides (empty string means use search values)
         display_artist: displayArtist.trim() || undefined,
@@ -164,7 +159,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       <TabsList className="grid w-full grid-cols-3 h-auto rounded-lg p-1" style={{ backgroundColor: 'var(--secondary)' }}>
         <TabsTrigger
           value="search"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-[var(--brand-pink)] data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-[var(--brand-pink)]/10"
           style={{ color: activeTab === 'search' ? 'white' : 'var(--text-muted)' }}
         >
           <Music className="w-4 h-4 shrink-0" />
@@ -172,7 +167,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         </TabsTrigger>
         <TabsTrigger
           value="upload"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-[var(--brand-pink)] data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-[var(--brand-pink)]/10"
           style={{ color: activeTab === 'upload' ? 'white' : 'var(--text-muted)' }}
         >
           <Upload className="w-4 h-4 shrink-0" />
@@ -180,7 +175,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         </TabsTrigger>
         <TabsTrigger
           value="url"
-          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-amber-600 data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-amber-600/10"
+          className="gap-1.5 sm:gap-2 py-3 min-h-[44px] text-xs sm:text-sm rounded-md data-[state=active]:!bg-[var(--brand-pink)] data-[state=active]:!text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-[var(--brand-pink)]/10"
           style={{ color: activeTab === 'url' ? 'white' : 'var(--text-muted)' }}
         >
           <Youtube className="w-4 h-4 shrink-0" />
@@ -195,8 +190,8 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             <div
               className="relative border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer"
               style={{
-                borderColor: uploadFile ? 'rgb(245 158 11 / 0.5)' : 'var(--card-border)',
-                backgroundColor: uploadFile ? 'rgb(245 158 11 / 0.05)' : 'var(--secondary)',
+                borderColor: uploadFile ? 'rgba(255, 122, 204, 0.5)' : 'var(--card-border)',
+                backgroundColor: uploadFile ? 'rgba(255, 122, 204, 0.05)' : 'var(--secondary)',
               }}
             >
               <Input
@@ -250,42 +245,30 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
           </p>
 
-          {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <ThemeSelector
-              value={selectedTheme}
-              onChange={setSelectedTheme}
-              disabled={isSubmitting}
-            />
-            <ColorOverridesPanel
-              value={colorOverrides}
-              onChange={setColorOverrides}
-              disabled={isSubmitting}
-            />
-          </div>
-
-          {/* Non-interactive mode */}
-          <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="non-interactive-upload"
-                checked={nonInteractive}
-                onChange={(e) => setNonInteractive(e.target.checked)}
-                disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
-              />
-              <div>
-                <Label htmlFor="non-interactive-upload" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Skip lyrics review (non-interactive)
-                </Label>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                  Skipping review will likely result in incorrect words in your karaoke video.
-                </p>
+          {/* Non-interactive mode (admin only) */}
+          {isAdmin && (
+            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="non-interactive-upload"
+                  checked={nonInteractive}
+                  onChange={(e) => setNonInteractive(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
+                />
+                <div>
+                  <Label htmlFor="non-interactive-upload" className="cursor-pointer" style={{ color: 'var(--text)' }}>
+                    Skip lyrics review (non-interactive)
+                  </Label>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
+                    Skipping review will likely result in incorrect words in your karaoke video.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {error && activeTab === "upload" && (
             <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
@@ -293,7 +276,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <Button
             type="submit"
-            className="w-full bg-amber-600 hover:bg-amber-500 text-white"
+            className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -329,10 +312,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="space-y-2">
-              <Label htmlFor="youtube-artist" style={{ color: 'var(--text)' }}>Artist (optional)</Label>
+              <Label htmlFor="youtube-artist" style={{ color: 'var(--text)' }}>Artist</Label>
               <Input
                 id="youtube-artist"
-                placeholder="Auto-detected"
+                placeholder="Artist name"
                 value={youtubeArtist}
                 onChange={(e) => setYoutubeArtist(e.target.value)}
                 disabled={isSubmitting}
@@ -340,10 +323,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="youtube-title" style={{ color: 'var(--text)' }}>Title (optional)</Label>
+              <Label htmlFor="youtube-title" style={{ color: 'var(--text)' }}>Title</Label>
               <Input
                 id="youtube-title"
-                placeholder="Auto-detected"
+                placeholder="Song title"
                 value={youtubeTitle}
                 onChange={(e) => setYoutubeTitle(e.target.value)}
                 disabled={isSubmitting}
@@ -352,45 +335,33 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             </div>
           </div>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span className="text-amber-500 font-medium">Note:</span> Override auto-detected values if needed. These appear on the title card and video filename.
+            <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
           </p>
 
-          {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <ThemeSelector
-              value={selectedTheme}
-              onChange={setSelectedTheme}
-              disabled={isSubmitting}
-            />
-            <ColorOverridesPanel
-              value={colorOverrides}
-              onChange={setColorOverrides}
-              disabled={isSubmitting}
-            />
-          </div>
-
-          {/* Non-interactive mode */}
-          <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="non-interactive-url"
-                checked={nonInteractive}
-                onChange={(e) => setNonInteractive(e.target.checked)}
-                disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
-              />
-              <div>
-                <Label htmlFor="non-interactive-url" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Skip lyrics review (non-interactive)
-                </Label>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                  Skipping review will likely result in incorrect words in your karaoke video.
-                </p>
+          {/* Non-interactive mode (admin only) */}
+          {isAdmin && (
+            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="non-interactive-url"
+                  checked={nonInteractive}
+                  onChange={(e) => setNonInteractive(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
+                />
+                <div>
+                  <Label htmlFor="non-interactive-url" className="cursor-pointer" style={{ color: 'var(--text)' }}>
+                    Skip lyrics review (non-interactive)
+                  </Label>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
+                    Skipping review will likely result in incorrect words in your karaoke video.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {error && activeTab === "url" && (
             <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
@@ -398,7 +369,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <Button
             type="submit"
-            className="w-full bg-amber-600 hover:bg-amber-500 text-white"
+            className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
@@ -417,13 +388,14 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         <form onSubmit={handleSearchSubmit} className="space-y-4">
           {/* Search For section */}
           <div className="space-y-2">
-            <Label style={{ color: 'var(--text)' }}>Search For</Label>
+            <Label style={{ color: 'var(--text)' }}>Search For Audio Online</Label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-2">
                 <Label htmlFor="search-artist" className="text-xs" style={{ color: 'var(--text-muted)' }}>Artist</Label>
                 <Input
                   id="search-artist"
-                  placeholder="Artist name on trackers"
+                  data-testid="search-artist-input"
+                  placeholder="Artist name"
                   value={searchArtist}
                   onChange={(e) => setSearchArtist(e.target.value)}
                   disabled={isSubmitting}
@@ -434,7 +406,8 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
                 <Label htmlFor="search-title" className="text-xs" style={{ color: 'var(--text-muted)' }}>Title</Label>
                 <Input
                   id="search-title"
-                  placeholder="Song title on trackers"
+                  data-testid="search-title-input"
+                  placeholder="Song title"
                   value={searchTitle}
                   onChange={(e) => setSearchTitle(e.target.value)}
                   disabled={isSubmitting}
@@ -443,78 +416,83 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               </div>
             </div>
           </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
+          </p>
 
-          {/* Display As section (optional) */}
+          {/* Display As toggle (optional) */}
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Label style={{ color: 'var(--text)' }}>Display As</Label>
-              <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: 'var(--text-muted)', backgroundColor: 'var(--secondary)' }}>optional</span>
-            </div>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Override how artist/title appear on the title card and filename. Leave empty to use search values.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="display-artist" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Artist</Label>
-                <Input
-                  id="display-artist"
-                  placeholder="e.g., Footloose (Broadway Cast)"
-                  value={displayArtist}
-                  onChange={(e) => setDisplayArtist(e.target.value)}
-                  disabled={isSubmitting}
-                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="display-title" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Title</Label>
-                <Input
-                  id="display-title"
-                  placeholder="e.g., I Can't Stand Still"
-                  value={displayTitle}
-                  onChange={(e) => setDisplayTitle(e.target.value)}
-                  disabled={isSubmitting}
-                  style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Theme Selection */}
-          <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <ThemeSelector
-              value={selectedTheme}
-              onChange={setSelectedTheme}
+            <button
+              type="button"
+              onClick={() => setShowDisplayAs(!showDisplayAs)}
+              className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--text-muted)' }}
               disabled={isSubmitting}
-            />
-            <ColorOverridesPanel
-              value={colorOverrides}
-              onChange={setColorOverrides}
-              disabled={isSubmitting}
-            />
-          </div>
-
-          {/* Non-interactive mode */}
-          <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="non-interactive-search"
-                checked={nonInteractive}
-                onChange={(e) => setNonInteractive(e.target.checked)}
-                disabled={isSubmitting}
-                className="mt-1 w-4 h-4 rounded border-border bg-secondary text-amber-500 focus:ring-amber-500 focus:ring-offset-background"
-              />
-              <div>
-                <Label htmlFor="non-interactive-search" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Skip lyrics review (non-interactive)
-                </Label>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                  Skipping review will likely result in incorrect words in your karaoke video.
+            >
+              {showDisplayAs ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+              Use different artist/title for title screen
+            </button>
+            {showDisplayAs && (
+              <div className="space-y-2 pl-6">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Override how artist/title appear on the title screen and filename, e.g. for soundtracks.
                 </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display-artist" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Artist</Label>
+                    <Input
+                      id="display-artist"
+                      placeholder="e.g., Footloose (Broadway Cast)"
+                      value={displayArtist}
+                      onChange={(e) => setDisplayArtist(e.target.value)}
+                      disabled={isSubmitting}
+                      style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="display-title" className="text-xs" style={{ color: 'var(--text-muted)' }}>Display Title</Label>
+                    <Input
+                      id="display-title"
+                      placeholder="e.g., I Can't Stand Still"
+                      value={displayTitle}
+                      onChange={(e) => setDisplayTitle(e.target.value)}
+                      disabled={isSubmitting}
+                      style={{ backgroundColor: 'var(--secondary)', borderColor: 'var(--card-border)', color: 'var(--text)' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Non-interactive mode (admin only) */}
+          {isAdmin && (
+            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="non-interactive-search"
+                  checked={nonInteractive}
+                  onChange={(e) => setNonInteractive(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
+                />
+                <div>
+                  <Label htmlFor="non-interactive-search" className="cursor-pointer" style={{ color: 'var(--text)' }}>
+                    Skip lyrics review (non-interactive)
+                  </Label>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
+                    Skipping review will likely result in incorrect words in your karaoke video.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {error && activeTab === "search" && (
             <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
@@ -522,7 +500,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
           <Button
             type="submit"
-            className="w-full bg-amber-600 hover:bg-amber-500 text-white"
+            className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
             disabled={isSubmitting}
           >
             {isSubmitting ? (

@@ -214,13 +214,13 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-10" />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <ThemeToggle />
             <button
               onClick={() => setShowAuthDialog(true)}
-              className="text-sm text-dark-300 hover:text-white transition-colors"
+              className="px-4 py-2 text-sm font-semibold rounded-lg bg-[var(--brand-pink)] text-white hover:bg-[var(--brand-pink-hover)] hover:scale-105 hover:shadow-[0_0_20px_rgba(255,122,204,0.5)] active:scale-95 transition-all duration-200"
             >
-              Already have credits? Sign in
+              Sign In
             </button>
           </div>
         </div>
@@ -253,7 +253,7 @@ export default function LandingPage() {
             <div className="aspect-video">
               <iframe
                 className="w-full h-full rounded-xl"
-                src="https://www.youtube.com/embed/wHiMti3xLJE?si=dij5wsaHnedaZdFg"
+                src="https://www.youtube.com/embed/uvKtLOUiqz8?si=K06hw2B-QJ81Loeo"
                 title="Nomad Karaoke Demo"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
