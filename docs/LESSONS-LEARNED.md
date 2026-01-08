@@ -76,6 +76,37 @@ Audio separation and lyrics transcription run in parallel:
 
 **Debugging**: Use `scripts/compare_local_vs_remote.py` to benchmark local vs cloud performance.
 
+### GCE Instance Type Selection for FFmpeg Encoding
+
+**Problem**: GCE encoding worker (c4-standard-8 Intel) was 1.75x slower than a MacBook Pro M3 Max for CPU-bound FFmpeg encoding with libass subtitle rendering. GPU acceleration is NOT an option because libass is CPU-only.
+
+**Investigation methodology**:
+1. Created benchmark scripts (`scripts/benchmark_encoding.py`, `scripts/benchmark_encoding_gce.sh`) using actual production data
+2. Tested actual code paths (not duplicated FFmpeg commands)
+3. Benchmarked multiple GCE instance types head-to-head
+
+**Key finding**: AMD EPYC vastly outperforms Intel Xeon for this workload.
+
+| Instance | CPU | Total Time | vs Baseline |
+|----------|-----|------------|-------------|
+| c4-standard-8 (baseline) | Intel Xeon 8581C | 666s | 1.00x |
+| c4-highcpu-16 | Intel Xeon 8581C | 309s | 2.16x |
+| c4a-highcpu-16 | Google Axion (ARM) | 248s | 2.69x |
+| c4d-highcpu-16 | AMD EPYC 9B45 | 220s | 3.03x |
+| **c4d-highcpu-32** | **AMD EPYC 9B45** | **135s** | **4.92x** |
+
+**Why AMD wins for this workload**:
+- Better single-thread performance (critical for libass, which is not fully parallelized)
+- Superior AVX-512 implementation for video encoding
+- Better memory bandwidth
+- Near-linear scaling with cores for FFmpeg (16→32 cores = 1.63x faster)
+
+**Lesson**: Don't assume Intel is faster. For CPU-bound media workloads (especially with libass/libx264), benchmark actual instance types. AMD EPYC Turin (C4D series) significantly outperforms Intel Granite Rapids (C4 series) at similar price points.
+
+**Important**: C4D instances require `hyperdisk-balanced` disk type, not `pd-balanced`.
+
+**Scripts**: See `scripts/benchmark_candidates.sh` for multi-instance benchmarking orchestration.
+
 ## Common Gotchas
 
 ### Verify Active Worktree Before Making Changes
