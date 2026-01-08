@@ -200,11 +200,12 @@ export const api = {
   /**
    * List all jobs
    */
-  async listJobs(params?: { status?: string; limit?: number }): Promise<Job[]> {
+  async listJobs(params?: { status?: string; limit?: number; exclude_test?: boolean }): Promise<Job[]> {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set('status', params.status);
     if (params?.limit) searchParams.set('limit', String(params.limit));
-    
+    if (params?.exclude_test !== undefined) searchParams.set('exclude_test', String(params.exclude_test));
+
     const url = `${API_BASE_URL}/api/jobs${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
     const response = await fetch(url, {
       headers: getAuthHeaders()

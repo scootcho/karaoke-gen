@@ -90,6 +90,9 @@ export default function AdminLayout({
   const router = useRouter()
   const { user } = useAuth()
   const [isChecking, setIsChecking] = useState(true)
+  // IMPORTANT: All hooks must be called before any conditional returns
+  // to satisfy React's Rules of Hooks
+  const { showTestData, setShowTestData } = useAdminSettings()
 
   useEffect(() => {
     const token = getAccessToken()
@@ -126,8 +129,6 @@ export default function AdminLayout({
       </div>
     )
   }
-
-  const { showTestData, setShowTestData } = useAdminSettings()
 
   return (
     <SidebarProvider>
