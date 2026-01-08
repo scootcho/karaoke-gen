@@ -20,7 +20,8 @@ test.describe('PR Screenshots', () => {
   test('capture homepage', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    await page.goto('https://gen.nomadkaraoke.com', { waitUntil: 'networkidle' });
+    // Use local dev server for latest code
+    await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
 
     // Hero section
@@ -49,6 +50,23 @@ test.describe('PR Screenshots', () => {
       });
     } catch (e) {
       console.log('Warning: Could not capture lyrics review UI. Make sure test-lyrics-review.py is running.');
+    }
+  });
+
+  test('capture instrumental review UI', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const instrumentalUrl = 'http://localhost:8765';
+
+    try {
+      await page.goto(instrumentalUrl, { waitUntil: 'networkidle', timeout: 10000 });
+      await page.waitForTimeout(2000);
+
+      await page.screenshot({
+        path: path.join(SCREENSHOT_DIR, 'instrumental-review.png'),
+      });
+    } catch (e) {
+      console.log('Warning: Could not capture instrumental review UI. Make sure test-instrumental-review.py is running.');
     }
   });
 
