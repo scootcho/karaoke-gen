@@ -122,12 +122,21 @@ function detectTenantFromUrl(): string | null {
   }
 
   // Production - check for subdomain
-  // Pattern: {tenant}.nomadkaraoke.com or {tenant}.gen.nomadkaraoke.com
+  // Strict patterns:
+  // - {tenant}.nomadkaraoke.com (3 parts)
+  // - {tenant}.gen.nomadkaraoke.com (4 parts with "gen" as second)
   if (hostname.includes("nomadkaraoke.com")) {
     const parts = hostname.split(".")
     // Skip known non-tenant subdomains
     const nonTenantSubdomains = ["gen", "api", "www", "buy", "admin", "app", "beta"]
-    if (parts.length >= 3 && !nonTenantSubdomains.includes(parts[0])) {
+
+    // Accept exactly 3 parts (tenant.nomadkaraoke.com)
+    // or exactly 4 parts where second is "gen" (tenant.gen.nomadkaraoke.com)
+    const isValidPattern =
+      parts.length === 3 ||
+      (parts.length === 4 && parts[1] === "gen")
+
+    if (isValidPattern && !nonTenantSubdomains.includes(parts[0])) {
       return parts[0]
     }
   }
