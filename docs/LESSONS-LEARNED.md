@@ -1937,6 +1937,78 @@ NOMAD-XXXX - Artist - Title/
 
 **Lesson**: When building distribution packages from cloud storage, the organization code must replicate the exact structure users expect from local execution. Track ALL intermediate files in `job.files` even if they're "optional" - users may rely on them.
 
+### Multitenancy: Config-Driven Feature Flags
+
+**Problem**: Adding B2B white-label support required tenant-specific feature restrictions (e.g., Vocal Star can't use audio search) without creating separate codebases or hardcoding tenant checks throughout the code.
+
+**Solution**: Config-driven multitenancy with feature flags:
+
+1. **GCS-backed config**: Each tenant has `tenants/{tenant_id}/config.json` in GCS containing branding, features, and defaults. Changes don't require deployment.
+
+2. **Middleware-based detection**: `TenantMiddleware` extracts tenant from X-Tenant-ID header, query param (dev only), or Host subdomain, then loads config and attaches to request state.
+
+3. **Feature flags in config**:
+   ```json
+   "features": {
+     "audio_search": false,
+     "youtube_upload": false,
+     "theme_selection": false
+   }
+   ```
+
+4. **Frontend checks via Zustand store**:
+   ```typescript
+   const { features } = useTenant()
+   // Conditionally render UI based on features.audio_search
+   ```
+
+5. **Backend enforcement**:
+   ```python
+   tenant_config = get_tenant_config_from_request(request)
+   if tenant_config and not tenant_config.features.audio_search:
+       raise HTTPException(403, "Feature not enabled")
+   ```
+
+**Key decisions**:
+- **Query param disabled in production**: Prevents tenant spoofing via URL manipulation
+- **Strict subdomain patterns**: Only accept `{tenant}.nomadkaraoke.com` or `{tenant}.gen.nomadkaraoke.com`
+- **PII protection**: Mask emails in logs (`an***@vo***.com`)
+- **Locked themes**: `locked_theme` field prevents users from changing theme even if `theme_selection` is enabled elsewhere
+- **CSS variables for branding**: Dynamic colors via `--tenant-primary`, `--tenant-secondary` etc.
+
+**Lesson**: Config-driven multitenancy scales better than code branches. New tenants require only a JSON file in GCS, not code changes. Feature flags belong in config, not environment variables.
+
+### Frontend Tab State Sync with Feature Flags
+
+**Problem**: When tenant config changes which tabs are available (e.g., audio_search disabled), the active tab state could point to a tab that no longer exists, causing UI to show nothing.
+
+**Solution**: Add useEffect to sync activeTab with available tabs:
+```typescript
+useEffect(() => {
+  if (!availableTabs.includes(activeTab)) {
+    setActiveTab(availableTabs[0])
+  }
+}, [availableTabs, activeTab])
+```
+
+**Lesson**: When feature flags control UI visibility, derived state (like "which tab is selected") must react to flag changes. Initialize state to valid values AND keep it valid as context changes.
+
+### Hydration-Safe Initialization in Next.js
+
+**Problem**: Module-level auto-initialization (e.g., `setTimeout(fetchTenantConfig, 0)`) in a Zustand store caused hydration mismatches in Next.js. Server renders with default state, client starts fetching immediately, causing React hydration errors.
+
+**Solution**: Remove module-level auto-init. Use explicit `TenantProvider` component that calls `fetchTenantConfig()` in useEffect:
+```typescript
+// TenantProvider.tsx
+useEffect(() => {
+  if (!isInitialized) {
+    fetchTenantConfig()
+  }
+}, [isInitialized, fetchTenantConfig])
+```
+
+**Lesson**: In Next.js with SSR, never auto-initialize async state at module load time. Use React lifecycle (useEffect) to trigger client-side fetches after hydration completes.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately

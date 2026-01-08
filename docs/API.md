@@ -77,7 +77,13 @@ Response includes:
 GET /api/jobs
 GET /api/jobs?status=complete
 GET /api/jobs?limit=10&offset=0
+GET /api/jobs?exclude_test=false
 ```
+
+Query parameters:
+- `exclude_test` (bool, default: true) - Admin only: filter out jobs from test users
+- `status` - Filter by job status
+- `limit` / `offset` - Pagination
 
 #### Delete Job
 
@@ -192,6 +198,70 @@ GET /api/themes
 ```
 
 No auth required. Returns available video themes.
+
+### Tenant Config
+
+```http
+GET /api/tenant/config
+GET /api/tenant/config?tenant=vocalstar
+```
+
+No auth required. Returns tenant configuration for white-label portals.
+
+**Detection priority**:
+1. `X-Tenant-ID` header (explicitly set by frontend)
+2. `tenant` query parameter (development/testing only, disabled in production)
+3. Host header subdomain detection (e.g., `vocalstar.nomadkaraoke.com`)
+
+Response:
+```json
+{
+  "tenant": {
+    "id": "vocalstar",
+    "name": "Vocal Star",
+    "subdomain": "vocalstar.nomadkaraoke.com",
+    "is_active": true,
+    "branding": {
+      "logo_url": "https://storage.googleapis.com/...",
+      "logo_height": 60,
+      "primary_color": "#ffff00",
+      "secondary_color": "#006CF9",
+      "accent_color": "#ffffff",
+      "background_color": "#000000",
+      "favicon_url": null,
+      "site_title": "Vocal Star Karaoke Generator",
+      "tagline": "Whoever You Are, Be a Vocal Star!"
+    },
+    "features": {
+      "audio_search": false,
+      "file_upload": true,
+      "youtube_url": false,
+      "youtube_upload": false,
+      "dropbox_upload": false,
+      "gdrive_upload": false,
+      "theme_selection": false,
+      "color_overrides": false,
+      "enable_cdg": true,
+      "enable_4k": true,
+      "admin_access": false
+    },
+    "defaults": {
+      "theme_id": "vocalstar",
+      "locked_theme": "vocalstar",
+      "distribution_mode": "download_only"
+    }
+  },
+  "is_default": false
+}
+```
+
+When no tenant is detected, returns `tenant: null` with `is_default: true` and the default Nomad Karaoke configuration is used.
+
+```http
+GET /api/tenant/config/{tenant_id}
+```
+
+Get specific tenant config by ID. Returns 404 if tenant not found or inactive.
 
 ### Internal (Admin Only)
 
@@ -341,10 +411,24 @@ Bonus credit for detailed feedback (50+ chars).
 
 All admin endpoints require an admin-role session token.
 
+### Test Data Filtering
+
+Most admin list/stats endpoints support an `exclude_test` query parameter (default: `true`) to filter out E2E test data:
+- Test users: email addresses ending in `@inbox.testmail.app`
+- Test jobs: jobs created by test users
+
+```http
+GET /api/admin/stats/overview?exclude_test=true   # Default - hide test data
+GET /api/admin/stats/overview?exclude_test=false  # Show all data including tests
+```
+
+The frontend admin dashboard includes a "Show test data" toggle that controls this filter globally.
+
 ### Admin Dashboard Stats
 
 ```http
 GET /api/admin/stats/overview
+GET /api/admin/stats/overview?exclude_test=false
 Authorization: Bearer ADMIN_TOKEN
 ```
 
@@ -375,8 +459,15 @@ Returns platform statistics:
 GET /api/users/admin/users
 GET /api/users/admin/users?search=user@example.com
 GET /api/users/admin/users?limit=20&offset=0&sort_by=created_at&sort_order=desc
+GET /api/users/admin/users?exclude_test=false
 Authorization: Bearer ADMIN_TOKEN
 ```
+
+Query parameters:
+- `exclude_test` (bool, default: true) - Filter out test users
+- `limit` / `offset` - Pagination
+- `search` - Email prefix search
+- `sort_by` / `sort_order` - Sorting
 
 Returns paginated user list with total count.
 
@@ -429,8 +520,12 @@ Authorization: Bearer ADMIN_TOKEN
 
 ```http
 GET /api/users/admin/beta/stats
+GET /api/users/admin/beta/stats?exclude_test=false
 Authorization: Bearer ADMIN_TOKEN
 ```
+
+Query parameters:
+- `exclude_test` (bool, default: true) - Filter out test users from beta statistics
 
 ### Beta Feedback List (Admin)
 
@@ -455,8 +550,14 @@ Admins can delete any job. Regular users can only delete their own jobs.
 ```http
 GET /api/admin/audio-searches
 GET /api/admin/audio-searches?limit=50&status_filter=awaiting_audio_selection
+GET /api/admin/audio-searches?exclude_test=false
 Authorization: Bearer ADMIN_TOKEN
 ```
+
+Query parameters:
+- `exclude_test` (bool, default: true) - Filter out searches from test users
+- `limit` - Max results to return
+- `status_filter` - Filter by job status
 
 Returns jobs with cached audio search results. Useful for:
 - Monitoring search activity
