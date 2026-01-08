@@ -32,6 +32,14 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   // Default to first available tab
   const [activeTab, setActiveTab] = useState(availableTabs[0])
+
+  // Keep activeTab in sync with availableTabs when features change
+  useEffect(() => {
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0])
+    }
+  }, [availableTabs, activeTab])
+
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 

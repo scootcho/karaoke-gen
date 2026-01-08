@@ -8,8 +8,28 @@ Handles:
 - Stripe checkout and webhooks
 - Admin user management
 """
+import hashlib
 import logging
 from typing import Optional, Tuple
+
+
+def _mask_email(email: str) -> str:
+    """Mask email for logging to avoid PII exposure.
+
+    Example: test@example.com -> te***@ex***.com
+    """
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    masked_local = local[:2] + "***" if len(local) > 2 else "***"
+    domain_parts = domain.split(".")
+    if len(domain_parts) >= 2:
+        masked_domain = domain_parts[0][:2] + "***." + domain_parts[-1]
+    else:
+        masked_domain = "***"
+    return f"{masked_local}@{masked_domain}"
+
+
 from fastapi import APIRouter, HTTPException, Depends, Request, Header
 from pydantic import BaseModel, EmailStr
 
@@ -131,7 +151,7 @@ async def send_magic_link(
     # Validate email domain for tenant if configured
     if tenant_config and tenant_config.auth.allowed_email_domains:
         if not tenant_config.is_email_allowed(email):
-            logger.warning(f"Email domain not allowed for tenant {tenant_id}: {email}")
+            logger.warning(f"Email domain not allowed for tenant {tenant_id}: {_mask_email(email)}")
             # Return success anyway to prevent email enumeration
             return SendMagicLinkResponse(
                 status="success",
