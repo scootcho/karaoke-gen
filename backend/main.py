@@ -11,6 +11,8 @@ from backend.api.routes import health, jobs, internal, file_upload, review, auth
 from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
 from backend.services.structured_logging import setup_structured_logging
 from backend.services.spacy_preloader import preload_spacy_model
+from backend.services.nltk_preloader import preload_all_nltk_resources
+from backend.services.langfuse_preloader import preload_langfuse_handler
 from backend.middleware.audit_logging import AuditLoggingMiddleware
 from backend.middleware.tenant import TenantMiddleware
 
@@ -70,12 +72,26 @@ async def lifespan(app: FastAPI):
     logger.info(f"GCS Bucket: {settings.gcs_bucket_name}")
     logger.info(f"Tracing enabled: {tracing_enabled}")
 
-    # Preload SpaCy model to avoid 60+ second delay on first request
-    # See docs/archive/2026-01-08-spacy-preload-plan.md for background
+    # Preload NLP models and resources to avoid cold start delays
+    # See docs/archive/2026-01-08-performance-investigation.md for background
+
+    # 1. SpaCy model (60+ second delay without preload)
     try:
         preload_spacy_model("en_core_web_sm")
     except Exception as e:
         logger.warning(f"SpaCy preload failed (will load lazily): {e}")
+
+    # 2. NLTK cmudict (50-100+ second delay without preload)
+    try:
+        preload_all_nltk_resources()
+    except Exception as e:
+        logger.warning(f"NLTK preload failed (will load lazily): {e}")
+
+    # 3. Langfuse callback handler (200+ second delay without preload)
+    try:
+        preload_langfuse_handler()
+    except Exception as e:
+        logger.warning(f"Langfuse preload failed (will initialize lazily): {e}")
 
     # Validate OAuth credentials (non-blocking)
     try:

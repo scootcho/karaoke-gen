@@ -33,6 +33,7 @@ from backend.services.audio_search_service import (
     NoResultsError,
     DownloadError,
 )
+from backend.services.theme_service import get_theme_service
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.api.dependencies import require_auth
@@ -543,9 +544,18 @@ async def search_audio(
         # Extract request metadata
         request_metadata = extract_request_metadata(request, created_from="audio_search")
 
+        # Apply default theme if none specified
+        # This ensures all karaoke videos use the Nomad theme by default
+        effective_theme_id = body.theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
-            body.theme_id, body.enable_cdg, body.enable_txt
+            effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
         # Use authenticated user's email
@@ -561,7 +571,7 @@ async def search_audio(
         job_create = JobCreate(
             artist=effective_display_artist,  # Display value for title screens, filenames
             title=effective_display_title,    # Display value for title screens, filenames
-            theme_id=body.theme_id,
+            theme_id=effective_theme_id,
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
@@ -602,11 +612,11 @@ async def search_audio(
         # If theme is set and no custom style files are being uploaded, prepare theme style now
         # This copies the theme's style_params.json to the job folder so LyricsTranscriber
         # can access the style configuration for preview videos
-        if body.theme_id and not body.style_files:
+        if effective_theme_id and not body.style_files:
             from backend.api.routes.file_upload import _prepare_theme_for_job
             try:
                 style_params_path, theme_style_assets, youtube_desc = _prepare_theme_for_job(
-                    job_id, body.theme_id, body.color_overrides
+                    job_id, effective_theme_id, body.color_overrides
                 )
                 theme_update = {
                     'style_params_gcs_path': style_params_path,
@@ -615,9 +625,9 @@ async def search_audio(
                 if youtube_desc and not effective_youtube_description:
                     theme_update['youtube_description_template'] = youtube_desc
                 job_manager.update_job(job_id, theme_update)
-                logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
+                logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
             except Exception as e:
-                logger.warning(f"Failed to prepare theme '{body.theme_id}' for job {job_id}: {e}")
+                logger.warning(f"Failed to prepare theme '{effective_theme_id}' for job {job_id}: {e}")
                 # Continue without theme - job can still be processed with defaults
 
         # Handle style file uploads if provided

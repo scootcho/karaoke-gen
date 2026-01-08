@@ -571,9 +571,18 @@ async def upload_and_create_job(
                     detail=f"Invalid color_overrides JSON: {e}"
                 )
 
+        # Apply default theme if none specified
+        # This ensures all karaoke videos use the Nomad theme by default
+        effective_theme_id = theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
-            theme_id, enable_cdg, enable_txt
+            effective_theme_id, enable_cdg, enable_txt
         )
 
         # Check if any custom style files are being uploaded (overrides theme)
@@ -605,7 +614,7 @@ async def upload_and_create_job(
             artist=artist,
             title=title,
             filename=file.filename,
-            theme_id=theme_id,
+            theme_id=effective_theme_id,
             color_overrides=parsed_color_overrides,
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
@@ -649,16 +658,16 @@ async def upload_and_create_job(
         theme_style_params_path = None
         theme_style_assets = {}
         theme_youtube_desc = None
-        if theme_id and not has_custom_style_files:
+        if effective_theme_id and not has_custom_style_files:
             try:
                 theme_style_params_path, theme_style_assets, theme_youtube_desc = _prepare_theme_for_job(
-                    job_id, theme_id, parsed_color_overrides or None
+                    job_id, effective_theme_id, parsed_color_overrides or None
                 )
-                logger.info(f"Applied theme '{theme_id}' to job {job_id}")
+                logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
             except HTTPException:
                 raise  # Re-raise validation errors (e.g., theme not found)
             except Exception as e:
-                logger.warning(f"Failed to prepare theme '{theme_id}' for job {job_id}: {e}")
+                logger.warning(f"Failed to prepare theme '{effective_theme_id}' for job {job_id}: {e}")
                 # Continue without theme - job can still be processed with defaults
 
         # Upload main audio file to GCS
@@ -1116,9 +1125,18 @@ async def create_job_with_upload_urls(
         # Get original audio filename
         audio_file = audio_files[0]
 
+        # Apply default theme if none specified
+        # This ensures all karaoke videos use the Nomad theme by default
+        effective_theme_id = body.theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
-            body.theme_id, body.enable_cdg, body.enable_txt
+            effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
         # Check if style_params is being uploaded (overrides theme)
@@ -1132,7 +1150,7 @@ async def create_job_with_upload_urls(
             artist=body.artist,
             title=body.title,
             filename=audio_file.filename,
-            theme_id=body.theme_id,
+            theme_id=effective_theme_id,
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
@@ -1166,9 +1184,9 @@ async def create_job_with_upload_urls(
         logger.info(f"Created job {job_id} for {body.artist} - {body.title} (signed URL upload flow)")
 
         # If theme is set and no style_params uploaded, prepare theme style now
-        if body.theme_id and not has_style_params_upload:
+        if effective_theme_id and not has_style_params_upload:
             style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
-                job_id, body.theme_id, body.color_overrides
+                job_id, effective_theme_id, body.color_overrides
             )
             # Update job with theme style data
             update_data = {
@@ -1178,7 +1196,7 @@ async def create_job_with_upload_urls(
             if youtube_desc and not body.youtube_description:
                 update_data['youtube_description_template'] = youtube_desc
             job_manager.update_job(job_id, update_data)
-            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
+            logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
         
         # Generate signed upload URLs for each file
         upload_urls = []
@@ -1550,9 +1568,18 @@ async def create_job_from_url(
         artist = body.artist
         title = body.title
 
+        # Apply default theme if none specified
+        # This ensures all karaoke videos use the Nomad theme by default
+        effective_theme_id = body.theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
-            body.theme_id, body.enable_cdg, body.enable_txt
+            effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
         # Prefer authenticated user's email over request body
@@ -1564,7 +1591,7 @@ async def create_job_from_url(
             artist=artist,
             title=title,
             filename=None,  # No file uploaded
-            theme_id=body.theme_id,
+            theme_id=effective_theme_id,
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
@@ -1595,9 +1622,9 @@ async def create_job_from_url(
         metrics.record_job_created(job_id, source="url")
 
         # If theme is set, prepare theme style now
-        if body.theme_id:
+        if effective_theme_id:
             style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
-                job_id, body.theme_id, body.color_overrides
+                job_id, effective_theme_id, body.color_overrides
             )
             # Update job with theme style data
             update_data = {
@@ -1607,7 +1634,7 @@ async def create_job_from_url(
             if youtube_desc and not body.youtube_description:
                 update_data['youtube_description_template'] = youtube_desc
             job_manager.update_job(job_id, update_data)
-            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
+            logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
         
         logger.info(f"Created URL-based job {job_id} for URL: {body.url}")
         if artist:
@@ -1807,9 +1834,18 @@ async def create_finalise_only_job(
         # Extract request metadata
         request_metadata = extract_request_metadata(request, created_from="finalise_only_upload")
 
+        # Apply default theme if none specified
+        # This ensures all karaoke videos use the Nomad theme by default
+        effective_theme_id = body.theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
-            body.theme_id, body.enable_cdg, body.enable_txt
+            effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
         # Check if style_params is being uploaded (overrides theme)
@@ -1823,7 +1859,7 @@ async def create_finalise_only_job(
             artist=body.artist,
             title=body.title,
             filename="finalise_only",  # No single audio file - using prep outputs
-            theme_id=body.theme_id,
+            theme_id=effective_theme_id,
             color_overrides=body.color_overrides or {},
             enable_cdg=resolved_cdg,
             enable_txt=resolved_txt,
@@ -1849,9 +1885,9 @@ async def create_finalise_only_job(
         logger.info(f"Created finalise-only job {job_id} for {body.artist} - {body.title}")
 
         # If theme is set and no style_params uploaded, prepare theme style now
-        if body.theme_id and not has_style_params_upload:
+        if effective_theme_id and not has_style_params_upload:
             style_params_path, style_assets, youtube_desc = _prepare_theme_for_job(
-                job_id, body.theme_id, body.color_overrides
+                job_id, effective_theme_id, body.color_overrides
             )
             # Update job with theme style data
             update_data = {
@@ -1861,7 +1897,7 @@ async def create_finalise_only_job(
             if youtube_desc and not body.youtube_description:
                 update_data['youtube_description_template'] = youtube_desc
             job_manager.update_job(job_id, update_data)
-            logger.info(f"Applied theme '{body.theme_id}' to job {job_id}")
+            logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
         
         # Generate signed upload URLs for each file
         upload_urls = []

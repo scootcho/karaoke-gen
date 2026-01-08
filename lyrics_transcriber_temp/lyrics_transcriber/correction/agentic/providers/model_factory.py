@@ -10,6 +10,14 @@ from .config import ProviderConfig
 
 logger = logging.getLogger(__name__)
 
+# Try to import Langfuse preloader (may not exist in standalone library usage)
+try:
+    from backend.services.langfuse_preloader import get_preloaded_langfuse_handler
+
+    _HAS_LANGFUSE_PRELOADER = True
+except ImportError:
+    _HAS_LANGFUSE_PRELOADER = False
+
 # Error message constant for TRY003 compliance
 GOOGLE_API_KEY_MISSING_ERROR = (
     "GOOGLE_API_KEY environment variable is required for Google/Gemini models. "
@@ -87,25 +95,38 @@ class ModelFactory:
     
     def _initialize_langfuse(self, model_spec: str) -> None:
         """Initialize Langfuse callback handler if keys are present.
-        
+
+        First tries to use a preloaded handler (to avoid 200+ second init delay
+        on Cloud Run cold starts), then falls back to creating a new one.
+
         Langfuse reads credentials from environment variables automatically:
         - LANGFUSE_PUBLIC_KEY
-        - LANGFUSE_SECRET_KEY  
+        - LANGFUSE_SECRET_KEY
         - LANGFUSE_HOST (optional)
-        
+
         Args:
             model_spec: Model specification for logging
-            
+
         Raises:
             RuntimeError: If Langfuse keys are set but initialization fails
         """
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-        
+
         if not (public_key and secret_key):
             logger.debug("🤖 Langfuse keys not found, tracing disabled")
             return
-        
+
+        # Try to use preloaded handler first (avoids 200+ second delay on Cloud Run)
+        if _HAS_LANGFUSE_PRELOADER:
+            preloaded = get_preloaded_langfuse_handler()
+            if preloaded is not None:
+                logger.info(f"🤖 Using preloaded Langfuse handler for {model_spec}")
+                self._langfuse_handler = preloaded
+                return
+
+        # Fall back to creating new handler
+        logger.info(f"🤖 Initializing Langfuse handler (not preloaded) for {model_spec}...")
         try:
             from langfuse.langchain import CallbackHandler
 
