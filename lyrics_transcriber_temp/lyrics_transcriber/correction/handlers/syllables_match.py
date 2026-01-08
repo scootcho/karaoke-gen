@@ -1,6 +1,7 @@
 from typing import List, Tuple, Dict, Any, Optional
 import spacy
 import logging
+import time
 import pyphen
 import nltk
 from nltk.corpus import cmudict
@@ -11,6 +12,14 @@ from lyrics_transcriber.types import GapSequence, WordCorrection
 from lyrics_transcriber.correction.handlers.base import GapCorrectionHandler
 from lyrics_transcriber.correction.handlers.word_operations import WordOperations
 
+# Try to import preloader (may not exist in standalone library usage)
+try:
+    from backend.services.spacy_preloader import get_preloaded_model
+
+    _HAS_PRELOADER = True
+except ImportError:
+    _HAS_PRELOADER = False
+
 
 class SyllablesMatchHandler(GapCorrectionHandler):
     """Handles gaps where number of syllables in reference text matches number of syllables in transcription."""
@@ -18,11 +27,27 @@ class SyllablesMatchHandler(GapCorrectionHandler):
     def __init__(self, logger: Optional[logging.Logger] = None):
         super().__init__(logger)
         self.logger = logger or logging.getLogger(__name__)
+        init_start = time.time()
 
         # Marking SpacySyllables as used to prevent unused import warning
         _ = SpacySyllables
 
-        # Load spacy model with syllables pipeline
+        # Try to use preloaded model first (avoids 60+ second load on Cloud Run)
+        if _HAS_PRELOADER:
+            preloaded = get_preloaded_model("en_core_web_sm")
+            if preloaded is not None:
+                self.logger.info("Using preloaded SpaCy model for syllable analysis")
+                self.nlp = preloaded
+                # Add syllables component if not already present
+                if "syllables" not in self.nlp.pipe_names:
+                    self.nlp.add_pipe("syllables", after="tagger")
+                self._init_nltk_resources()
+                init_elapsed = time.time() - init_start
+                self.logger.info(f"Initialized SyllablesMatchHandler in {init_elapsed:.2f}s (preloaded)")
+                return
+
+        # Fall back to loading model directly
+        self.logger.info("Loading SpaCy model for syllable analysis (not preloaded)...")
         try:
             self.nlp = spacy.load("en_core_web_sm")
         except OSError:
@@ -42,6 +67,13 @@ class SyllablesMatchHandler(GapCorrectionHandler):
         # Add syllables component to pipeline if not already present
         if "syllables" not in self.nlp.pipe_names:
             self.nlp.add_pipe("syllables", after="tagger")
+
+        self._init_nltk_resources()
+        init_elapsed = time.time() - init_start
+        self.logger.info(f"Initialized SyllablesMatchHandler in {init_elapsed:.2f}s (lazy loaded)")
+
+    def _init_nltk_resources(self):
+        """Initialize NLTK resources (Pyphen and CMU dictionary)."""
 
         # Initialize Pyphen for English
         self.dic = pyphen.Pyphen(lang="en_US")

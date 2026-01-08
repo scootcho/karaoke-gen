@@ -5,6 +5,14 @@ import logging
 from lyrics_transcriber.correction.text_utils import clean_text
 from lyrics_transcriber.types import PhraseType, PhraseScore
 
+# Try to import preloader (may not exist in standalone library usage)
+try:
+    from backend.services.spacy_preloader import get_preloaded_model
+
+    _HAS_PRELOADER = True
+except ImportError:
+    _HAS_PRELOADER = False
+
 
 class PhraseAnalyzer:
     """Language-agnostic phrase analyzer using spaCy"""
@@ -17,6 +25,16 @@ class PhraseAnalyzer:
             language_code: spaCy language model to use
         """
         self.logger = logger
+
+        # Try to use preloaded model first (avoids 60+ second load on Cloud Run)
+        if _HAS_PRELOADER:
+            preloaded = get_preloaded_model(language_code)
+            if preloaded is not None:
+                self.logger.info(f"Using preloaded SpaCy model: {language_code}")
+                self.nlp = preloaded
+                return
+
+        # Fall back to loading model directly
         self.logger.info(f"Initializing PhraseAnalyzer with language model: {language_code}")
         try:
             self.nlp = spacy.load(language_code)

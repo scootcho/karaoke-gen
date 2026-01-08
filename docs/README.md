@@ -34,7 +34,15 @@
 
 - CDG format generation requires additional style configuration
 
+## Pending Work
+
+(No pending work items)
+
 ## Recent Changes
+
+- **SpaCy Preloading** (2026-01-08): Implemented SpaCy model preloading at container startup to eliminate 60+ second delay during agentic correction. The `en_core_web_sm` model is now loaded during FastAPI lifespan startup, and `PhraseAnalyzer`/`SyllablesMatchHandler` reuse the preloaded model. Added timing logs to verify performance. See [archive/2026-01-08-spacy-preload-plan.md](archive/2026-01-08-spacy-preload-plan.md).
+
+- **Thread-Safe LangChain Model Initialization** (2026-01-08): Fixed race condition in `LangChainBridge` where parallel threads could all try to initialize the AI model simultaneously, causing 6+ minute delays. Added double-checked locking with `threading.Lock()`. PR #232. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#thread-safe-lazy-initialization-in-shared-components).
 
 - **Brand Consistency & Style Guide** (2026-01-07): Implemented unified brand theming across all Nomad Karaoke frontends. Primary color changed from blue to brand pink (#ff7acc). Added comprehensive [BRAND-STYLE-GUIDE.md](BRAND-STYLE-GUIDE.md) for human and LLM reference. Includes: CSS variables for light/dark mode, MUI theme updates for lyrics transcriber, email template branding, and Playwright visual tests. See [BRAND-STYLE-GUIDE.md](BRAND-STYLE-GUIDE.md).
 

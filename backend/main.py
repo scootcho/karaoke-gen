@@ -10,6 +10,7 @@ from backend.config import settings
 from backend.api.routes import health, jobs, internal, file_upload, review, auth, audio_search, themes, users, admin
 from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
 from backend.services.structured_logging import setup_structured_logging
+from backend.services.spacy_preloader import preload_spacy_model
 from backend.middleware.audit_logging import AuditLoggingMiddleware
 
 
@@ -67,7 +68,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"GCS Bucket: {settings.gcs_bucket_name}")
     logger.info(f"Tracing enabled: {tracing_enabled}")
-    
+
+    # Preload SpaCy model to avoid 60+ second delay on first request
+    # See docs/archive/2026-01-08-spacy-preload-plan.md for background
+    try:
+        preload_spacy_model("en_core_web_sm")
+    except Exception as e:
+        logger.warning(f"SpaCy preload failed (will load lazily): {e}")
+
     # Validate OAuth credentials (non-blocking)
     try:
         await validate_credentials_on_startup()
