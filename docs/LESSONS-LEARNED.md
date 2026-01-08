@@ -449,6 +449,41 @@ interface UserProfileResponse {
 
 **Lesson**: When writing E2E test mocks, check the TypeScript interface/type definition for the API response, not just what fields the UI displays. Silent failures from type mismatches are hard to debug.
 
+### Use data-testid for Robust E2E Selectors
+
+**Problem**: E2E test using `page.getByLabel('Artist')` started failing after UI changes added a second "Artist" input field (for "Display As" override).
+
+```
+Error: strict mode violation: getByLabel('Artist') resolved to 2 elements:
+  1) <input id="search-artist" ...>
+  2) <input id="display-artist" ...>
+```
+
+**Why it happened**: The test used label-based selectors (`getByLabel`) which are readable but brittle when forms evolve. Adding new fields with similar labels broke existing tests.
+
+**Solution**: Add explicit `data-testid` attributes to form inputs and use `getByTestId()` in tests:
+
+```tsx
+// Component
+<Input
+  id="search-artist"
+  data-testid="search-artist-input"
+  placeholder="Artist name"
+  ...
+/>
+
+// Test
+await page.getByTestId('search-artist-input').fill(TEST_SONG.artist);
+```
+
+**Lesson**: For E2E tests, prefer `data-testid` attributes over label/text selectors. They're:
+- Explicit about test intent
+- Immune to label text changes
+- Won't break when similar fields are added
+- Self-documenting (shows which elements are tested)
+
+Reserve `getByLabel`/`getByRole` for testing accessibility - they verify the UI is properly labeled - but use `getByTestId` for form interactions in integration tests.
+
 ### Emulator Tests Catch Real Bugs
 
 Unit tests with mocks didn't catch the `input_media_gcs_path` bug. Emulator integration tests did because they use real Firestore behavior.

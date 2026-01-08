@@ -298,22 +298,9 @@ test.describe('Production E2E - Full User Journey', () => {
     await page.getByRole('tab', { name: /search/i }).click();
     await page.waitForTimeout(1000);
 
-    // Select a theme if required
-    const themeSelect = page.locator('button[role="combobox"]').first();
-    if (await themeSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      const currentTheme = await themeSelect.textContent();
-      if (currentTheme?.toLowerCase().includes('select')) {
-        await themeSelect.click();
-        await page.waitForTimeout(500);
-        await page.locator('[role="option"]').first().click();
-        await page.waitForTimeout(500);
-        console.log('  Selected first theme');
-      }
-    }
-
-    // Fill artist and title
-    await page.getByLabel('Artist').fill(TEST_SONG.artist);
-    await page.getByLabel('Title').fill(TEST_SONG.title);
+    // Fill artist and title (using data-testid for robust selectors)
+    await page.getByTestId('search-artist-input').fill(TEST_SONG.artist);
+    await page.getByTestId('search-title-input').fill(TEST_SONG.title);
     console.log(`  Searching for: ${TEST_SONG.artist} - ${TEST_SONG.title}`);
 
     await page.screenshot({ path: 'test-results/04a-search-form.png' });

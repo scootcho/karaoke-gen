@@ -90,9 +90,9 @@ test.describe('Karaoke Generation - Search Tab', () => {
     // Click Search tab
     await page.getByRole('tab', { name: /search/i }).click();
 
-    // Verify inputs
-    await expect(page.getByLabel('Artist')).toBeVisible();
-    await expect(page.getByLabel('Title')).toBeVisible();
+    // Verify inputs (using data-testid for robust selectors)
+    await expect(page.getByTestId('search-artist-input')).toBeVisible();
+    await expect(page.getByTestId('search-title-input')).toBeVisible();
     await expect(page.getByRole('button', { name: /search.*create/i })).toBeVisible();
   });
 
@@ -134,9 +134,9 @@ test.describe('Karaoke Generation - Search Tab', () => {
 
     await page.getByRole('tab', { name: /search/i }).click();
 
-    // Fill form
-    await page.getByLabel('Artist').fill('piri');
-    await page.getByLabel('Title').fill('dog');
+    // Fill form (using data-testid for robust selectors)
+    await page.getByTestId('search-artist-input').fill('piri');
+    await page.getByTestId('search-title-input').fill('dog');
 
     // Submit
     await page.getByRole('button', { name: /search.*create/i }).click();

@@ -603,9 +603,11 @@ export const api = {
 
   /**
    * Get backend service info including version
+   * Note: Uses /backend-info in dev (proxied to production /) to avoid proxying all routes
    */
   async getBackendInfo(): Promise<{ service: string; version: string; status: string }> {
-    const response = await fetch(`${API_BASE_URL}/`, {
+    const url = API_BASE_URL ? `${API_BASE_URL}/` : '/backend-info';
+    const response = await fetch(url, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -615,7 +617,7 @@ export const api = {
    * Get encoding worker health status
    */
   async getEncodingWorkerHealth(): Promise<EncodingWorkerHealth> {
-    const response = await fetch(`${API_BASE_URL}/health/encoding-worker`);
+    const response = await fetch(`${API_BASE_URL}/api/health/encoding-worker`);
     return handleResponse(response);
   },
 

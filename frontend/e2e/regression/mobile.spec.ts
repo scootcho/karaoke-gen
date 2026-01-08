@@ -159,7 +159,7 @@ test.describe('Mobile - App Page', () => {
 
       // Should be clickable
       await searchTab.click();
-      await expect(page.getByLabel('Artist')).toBeVisible();
+      await expect(page.getByTestId('search-artist-input')).toBeVisible();
     });
 
     test(`${deviceName}: Form inputs fit viewport`, async ({ page }) => {
@@ -173,7 +173,7 @@ test.describe('Mobile - App Page', () => {
       await page.getByRole('tab', { name: /search/i }).click();
 
       // Input should fit within viewport
-      const artistInput = page.getByLabel('Artist');
+      const artistInput = page.getByTestId('search-artist-input');
       const box = await artistInput.boundingBox();
 
       if (box) {
@@ -225,7 +225,7 @@ test.describe('Mobile - Touch Targets', () => {
 
     await page.getByRole('tab', { name: /search/i }).click();
 
-    const artistInput = page.getByLabel('Artist');
+    const artistInput = page.getByTestId('search-artist-input');
     const box = await artistInput.boundingBox();
 
     if (box) {
@@ -249,7 +249,7 @@ test.describe('Mobile - Interactions', () => {
 
     await page.getByRole('tab', { name: /search/i }).click();
 
-    const artistInput = page.getByLabel('Artist');
+    const artistInput = page.getByTestId('search-artist-input');
     await artistInput.focus();
     await artistInput.fill('Test Artist');
 

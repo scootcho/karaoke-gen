@@ -94,7 +94,7 @@ export default function AppPage() {
   // Show nothing while checking auth (prevents flash)
   if (isAuthenticated === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="min-h-screen flex items-center justify-center animated-gradient">
         <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
       </div>
     )
@@ -103,19 +103,19 @@ export default function AppPage() {
   // Show warming up loader during initial job load (cold start scenario)
   if (isInitialLoad && isLoadingJobs) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="min-h-screen flex items-center justify-center animated-gradient">
         <WarmingUpLoader spinnerClassName="w-10 h-10" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
+    <div className="min-h-screen animated-gradient">
       {/* AutoProcessor - handles non-interactive mode for jobs with that flag */}
       <AutoProcessor jobs={jobs} onJobsChanged={loadJobs} />
 
       {/* Header */}
-      <header className="border-b backdrop-blur-sm sticky top-0 z-10" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--card)' }}>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-dark-900/80 backdrop-blur-md border-b border-dark-700">
         <div className="px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8 sm:h-10 shrink-0" />
@@ -164,7 +164,7 @@ export default function AppPage() {
         </div>
       </header>
 
-      <main className="px-4 py-8 space-y-6">
+      <main className="px-4 pt-24 pb-8 space-y-6">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Submit Job Card */}
           <Card className="backdrop-blur" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--card)' }}>
