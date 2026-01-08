@@ -2009,6 +2009,65 @@ useEffect(() => {
 
 **Lesson**: In Next.js with SSR, never auto-initialize async state at module load time. Use React lifecycle (useEffect) to trigger client-side fetches after hydration completes.
 
+### Zustand Getters Don't Work with Direct setState
+
+**Problem**: Unit tests for Zustand stores that use JavaScript getter properties (`get branding() {}`) fail when using `useTenant.setState()` to set up test state.
+
+```typescript
+// Store definition
+const useTenant = create<TenantStore>()((set, get) => ({
+  tenant: null,
+  get branding() {
+    const { tenant } = get()
+    return tenant?.branding ?? DEFAULT_BRANDING
+  },
+  // ...
+}))
+
+// Test that FAILS
+useTenant.setState({ tenant: SAMPLE_CONFIG })
+const state = useTenant.getState()
+expect(state.branding.primary_color).toBe("#ffff00")  // Gets default instead!
+```
+
+**Why**: Zustand's `setState` merges state using object spread, which evaluates getters once and stores static values. The getter function isn't preserved - its current value is copied.
+
+**Solution**: Use the store's action methods (like `setTenant()`) instead of direct `setState()`, or access the raw data (`state.tenant?.branding`) rather than computed properties:
+
+```typescript
+// Working test - use the store's action
+useTenant.getState().setTenant(SAMPLE_CONFIG, false)
+const state = useTenant.getState()
+expect(state.tenant?.branding.primary_color).toBe("#ffff00")  // Works!
+```
+
+**Lesson**: For Zustand stores with computed properties (getters), test through the store's actions rather than direct `setState()`. The actions update the internal state that the getters reference.
+
+### Middleware Mocking Requires Patching Multiple Locations
+
+**Problem**: API route unit tests fail with real service calls despite mocking `get_tenant_service` in the routes module.
+
+```python
+# Test that FAILS
+with patch("backend.api.routes.tenant.get_tenant_service", return_value=mock_service):
+    response = client.get("/api/tenant/config")
+    # Still calls real TenantService!
+```
+
+**Why**: FastAPI middleware runs BEFORE routes. `TenantMiddleware` also calls `get_tenant_service()` to load tenant config. The route mock doesn't affect the middleware.
+
+**Solution**: Patch in BOTH the routes AND middleware modules:
+
+```python
+# Working test
+with patch("backend.api.routes.tenant.get_tenant_service", return_value=mock_service), \
+     patch("backend.middleware.tenant.get_tenant_service", return_value=mock_service):
+    response = client.get("/api/tenant/config")
+    # Now properly mocked!
+```
+
+**Lesson**: When mocking singleton/factory functions in FastAPI, trace all call sites. Middleware often shares services with routes - mock both locations.
+
 ## What We'd Do Differently
 
 1. **Add Pydantic model fields test first** - Would have caught the silent field issue immediately

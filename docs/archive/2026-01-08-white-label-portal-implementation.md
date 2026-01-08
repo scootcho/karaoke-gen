@@ -239,6 +239,22 @@ python scripts/setup-vocalstar-tenant.py /path/to/VocalStar/Resources
 - CodeRabbit review: 3 cycles, all issues fixed
 - Manual testing with `?tenant=vocalstar` query param
 
+### Unit Tests Added
+
+**Backend tests (110 tests)**:
+- `test_tenant_models.py` - 28 tests for Pydantic models (TenantConfig, branding, features, defaults, auth, public config, `is_email_allowed()`, `get_sender_email()`, `from_config()`)
+- `test_tenant_service.py` - 30 tests for TenantService (config loading, caching, subdomain resolution)
+- `test_tenant_middleware.py` - 35 tests for TenantMiddleware (header/query param/subdomain detection, NON_TENANT_SUBDOMAINS filtering)
+- `test_tenant_api.py` - 17 tests for `/api/tenant/config` endpoints
+
+**Frontend tests (22 tests)**:
+- `tenant.test.ts` - Tests for Zustand store, `getTenantHeaders()`, `isFeatureEnabled()`
+
+**Key testing patterns**:
+- API route tests must patch `get_tenant_service` in BOTH routes AND middleware modules since middleware runs first
+- Zustand tests use `useTenant.getState().setTenant()` instead of direct `setState()` to properly handle computed properties
+- `test_job_creation_regression.py` fixed to mock `request.state.tenant_config = None`
+
 ## Next Steps
 
 1. Configure DNS: CNAME for `vocalstar.nomadkaraoke.com`
