@@ -435,6 +435,31 @@ Example: `youtube_description` vs `youtube_description_template`
 
 See `docs/archive/2025-12-30-cloud-output-structure-fix.md` for full details.
 
+### Jobs Without URLs Must Use Audio Search Flow
+
+**Problem**: Done-for-you orders submitted without a YouTube URL immediately failed because the audio worker was triggered directly, but it had no audio source to process (no URL, no uploaded file, no GCS path).
+
+**Root cause**: The webhook handler created a job with `url=None` and immediately triggered audio/lyrics workers, bypassing the audio search flow that handles artist+title-only jobs.
+
+**Symptoms**:
+- Job transitions to FAILED status within seconds
+- Error: "No input source found (no GCS path, file_urls, or URL)"
+- Works fine when customer provides YouTube URL
+
+**Solution**: When creating jobs without a URL or uploaded file:
+1. Set `audio_search_artist` and `audio_search_title` fields on the job
+2. Transition to `SEARCHING_AUDIO` status
+3. Use `audio_search_service.search()` to find sources
+4. Auto-select best result with `select_best()`
+5. Download and upload to GCS
+6. THEN trigger audio/lyrics workers
+
+**Key insight**: There are two distinct audio acquisition paths:
+- **URL/Upload path**: Audio source is known → trigger workers directly
+- **Search path**: Only artist+title known → must search, download, then trigger workers
+
+The audio search flow (`SEARCHING_AUDIO` → `AWAITING_AUDIO_SELECTION` → `DOWNLOADING_AUDIO` → `DOWNLOADING`) exists specifically for jobs where we need to find audio. Don't bypass it by triggering workers on jobs with no audio source.
+
 ## Testing Insights
 
 ### E2E Mock Responses Must Match API Types Exactly
