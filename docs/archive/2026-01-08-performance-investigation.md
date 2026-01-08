@@ -249,6 +249,88 @@ After implementing Phase 1 + Phase 2:
 
 Further optimization (Phase 3) needed to reach 10-minute target.
 
+## Implementation Status
+
+### Phase 1: Quick Fixes (Completed)
+
+1. **NLTK Preloading** - `backend/services/nltk_preloader.py`
+   - Preloads cmudict at container startup
+   - SyllablesMatchHandler now uses preloaded data
+   - Expected savings: **158s**
+
+2. **Langfuse Preloading** - `backend/services/langfuse_preloader.py`
+   - Preloads callback handler at container startup
+   - ModelFactory now uses preloaded handler
+   - Expected savings: **201s**
+
+3. **Model Warmup** - `LangChainBridge.warmup()`
+   - Added `warmup()` method for eager model initialization
+   - `AgenticCorrector.from_model()` now calls warmup by default
+   - Prevents 5+ parallel threads all hitting lazy init
+   - Expected savings: **300s+**
+
+### Phase 2: Architecture Improvements (Partial)
+
+4. **Parallel Anchor Search** - `anchor_sequence.py`
+   - N-gram lengths now processed in parallel using ThreadPoolExecutor
+   - Added `_process_ngram_length_no_state()` for thread-safe processing
+   - Configurable via `ANCHOR_SEARCH_WORKERS` env var (default: 4)
+   - Can be disabled via `ANCHOR_SEARCH_SEQUENTIAL=1`
+   - Expected savings: **~28s** (38s → ~10s)
+
+5. **GCE Lyrics Processing** - Design Only (Future PR)
+   - See design below
+
+### Phase 2.2 Design: GCE Lyrics Worker
+
+For even better performance, lyrics processing could be moved to a dedicated GCE VM
+similar to the encoding worker. This eliminates Cloud Run's ephemeral filesystem
+and cold start issues entirely.
+
+#### Architecture
+
+```text
+Cloud Run (Backend)              GCE Lyrics Worker VM
+┌────────────────────┐           ┌─────────────────────────┐
+│ Lyrics Worker      │  HTTP     │ FastAPI Service         │
+│                    │ ───────► │                         │
+│ submit_lyrics_job()│           │ - NLTK pre-downloaded   │
+│                    │           │ - SpaCy model cached    │
+│ poll_for_result()  │ ◄─────── │ - Langfuse pre-init     │
+│                    │           │ - Persistent filesystem │
+└────────────────────┘           └─────────────────────────┘
+```
+
+#### Required Components
+
+1. **Infrastructure** (Pulumi)
+   - New GCE VM: `lyrics_worker_vm.py`
+   - Service account with GCS access
+   - Startup script for dependencies
+
+2. **GCE Service** (`backend/services/gce_lyrics/main.py`)
+   - FastAPI endpoints: `/transcribe`, `/status/{job_id}`, `/health`
+   - Downloads audio from GCS, runs transcription, uploads results
+
+3. **Client Service** (`backend/services/lyrics_service.py`)
+   - Similar to `encoding_service.py`
+   - Feature flag: `USE_GCE_LYRICS=1`
+
+4. **Integration**
+   - Update `lyrics_worker.py` to dispatch to GCE when enabled
+
+#### Benefits
+
+- **No cold starts**: VM is always running
+- **Persistent filesystem**: NLTK/SpaCy models cached
+- **Dedicated CPU**: No contention with other Cloud Run instances
+- **Hot code updates**: Can pull latest wheel from GCS
+
+#### Estimated Savings
+
+With GCE lyrics worker, lyrics processing could drop from ~5 min to ~2-3 min
+by eliminating all initialization overhead.
+
 ## References
 
 - [LESSONS-LEARNED.md - Thread-Safe Lazy Initialization](../LESSONS-LEARNED.md#thread-safe-lazy-initialization-in-shared-components)
