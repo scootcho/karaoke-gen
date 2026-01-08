@@ -345,7 +345,7 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
           <DialogHeader>
             <DialogTitle>Send Completion Email</DialogTitle>
             <DialogDescription>
-              Send the job completion message to an email address. The email will be CC'd to gen@nomadkaraoke.com.
+              Send the job completion message to an email address. The email will be CC&apos;d to gen@nomadkaraoke.com.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

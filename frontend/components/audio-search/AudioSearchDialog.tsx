@@ -384,7 +384,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
                                   <span className="truncate">{formatMetadata(result)}</span>
                                 )}
                                 {result.target_file && (
-                                  <span className="font-mono truncate">"{result.target_file}"</span>
+                                  <span className="font-mono truncate">&quot;{result.target_file}&quot;</span>
                                 )}
                               </div>
                             )}

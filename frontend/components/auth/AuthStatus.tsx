@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { User, LogOut, CreditCard, Coins, KeyRound, Shield } from "lucide-react"
+import { User, LogOut, CreditCard, Coins, KeyRound, Shield, FlaskConical } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -12,7 +12,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/lib/auth"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { AuthDialog } from "./AuthDialog"
 
 interface AuthStatusProps {
@@ -21,6 +23,7 @@ interface AuthStatusProps {
 
 export function AuthStatus({ onAuthChange }: AuthStatusProps) {
   const { user, logout } = useAuth()
+  const { showTestData, setShowTestData } = useAdminSettings()
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -106,6 +109,18 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
                   <Shield className="w-4 h-4 mr-2" />
                   <span>Admin Dashboard</span>
                 </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => e.preventDefault()}
+                className="text-muted-foreground focus:text-foreground focus:bg-secondary"
+              >
+                <FlaskConical className="w-4 h-4 mr-2" />
+                <span className="flex-1">Show Test Jobs</span>
+                <Switch
+                  checked={showTestData}
+                  onCheckedChange={setShowTestData}
+                  className="ml-2"
+                />
               </DropdownMenuItem>
             </>
           )}

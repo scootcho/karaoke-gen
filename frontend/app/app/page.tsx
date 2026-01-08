@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { api, Job, getAccessToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { useJobNotifications, useVisibilityRefresh } from "@/hooks/use-notifications"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,6 +31,10 @@ export default function AppPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const { isDarkMode, toggleTheme, mounted } = useTheme()
   const { user, fetchUser } = useAuth()
+  const { showTestData } = useAdminSettings()
+
+  // Check if user is admin (for exclude_test parameter)
+  const isAdmin = user?.role === "admin" || user?.email?.endsWith("@nomadkaraoke.com")
 
   // Memoize loadJobs for use with visibility refresh
   const loadJobs = useCallback(async () => {
@@ -39,7 +44,11 @@ export default function AppPage() {
       return
     }
     try {
-      const data = await api.listJobs({ limit: 20 })
+      // Only admins can filter test jobs, and by default we hide them
+      const data = await api.listJobs({
+        limit: 20,
+        exclude_test: isAdmin ? !showTestData : undefined
+      })
       setJobs(data)
     } catch (err: any) {
       // Don't log auth errors - user just needs to authenticate
@@ -50,7 +59,7 @@ export default function AppPage() {
       setIsLoadingJobs(false)
       setIsInitialLoad(false)
     }
-  }, [])
+  }, [isAdmin, showTestData])
 
   // Enable notifications for job status changes (sound + title animation)
   useJobNotifications(jobs)
