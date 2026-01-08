@@ -8,9 +8,28 @@ This script:
 3. Creates the tenant configuration
 4. Uploads the logo
 
-Run from the project root:
+Usage:
+    # Set environment variable for resources path (optional)
+    export VOCALSTAR_RESOURCES=/path/to/VocalStar/Resources
+
+    # Run from the project root
     python scripts/setup-vocalstar-tenant.py
+
+    # Or pass path as argument
+    python scripts/setup-vocalstar-tenant.py /path/to/VocalStar/Resources
+
+Environment Variables:
+    VOCALSTAR_RESOURCES: Path to VocalStar resource files (images, fonts)
+
+Expected resource layout:
+    - vocal-star-title-background-black.4k.png
+    - blk-YT-background-wall3.fw-upscaled.jpg
+    - vocal-star-end-card-black.4k.png
+    - OswaldFont/static/Oswald-SemiBold.ttf
+    - cdg-instrumental-background-vocalstar.gif
+    - cdg-title-screen-background-vocalstar-simple.gif
 """
+import argparse
 import json
 import os
 import sys
@@ -26,11 +45,38 @@ GCS_BUCKET = "karaoke-gen-storage-nomadkaraoke"
 TENANT_ID = "vocalstar"
 THEME_ID = "vocalstar"
 
-# Source paths for Vocal Star assets
-VOCALSTAR_RESOURCES = Path(
+# Default path (developer-specific, override via env var or CLI arg)
+DEFAULT_RESOURCES_PATH = (
     "/Users/andrew/AB Dropbox/Andrew Beveridge/MediaUnsynced/Karaoke/"
     "Tracks-NonPublished/VocalStar/Resources"
 )
+
+
+def get_resources_path() -> Path:
+    """Get the VocalStar resources path from env var, CLI arg, or default."""
+    # Check CLI argument first
+    parser = argparse.ArgumentParser(description="Setup Vocal Star tenant")
+    parser.add_argument(
+        "resources_path",
+        nargs="?",
+        help="Path to VocalStar resource files"
+    )
+    args, _ = parser.parse_known_args()
+
+    if args.resources_path:
+        return Path(args.resources_path)
+
+    # Check environment variable
+    env_path = os.environ.get("VOCALSTAR_RESOURCES")
+    if env_path:
+        return Path(env_path)
+
+    # Fall back to default
+    return Path(DEFAULT_RESOURCES_PATH)
+
+
+# Source paths for Vocal Star assets (resolved at runtime)
+VOCALSTAR_RESOURCES = get_resources_path()
 
 # Asset mappings: source filename -> GCS destination
 THEME_ASSETS = {

@@ -23,11 +23,15 @@ export function TenantLogo({ className = "", size = "sm" }: TenantLogoProps) {
   const logoUrl = branding.logo_url || DEFAULT_LOGO_URL
   const logoHeight = branding.logo_height || 40
 
-  // Size classes based on size prop
+  // Size classes based on size prop - use static Tailwind classes only
+  // Dynamic height is applied via inline style
   const sizeClasses =
     size === "lg"
-      ? `max-w-[600px] max-h-[120px]`
-      : `max-w-[200px] max-h-[${logoHeight}px]`
+      ? "max-w-[600px]"
+      : "max-w-[200px]"
+
+  // Compute max height for inline style
+  const maxHeight = size === "lg" ? 120 : logoHeight
 
   // For tenant logos, use img tag since they come from GCS signed URLs
   // For default logo, use Next.js Image for optimization
@@ -39,7 +43,7 @@ export function TenantLogo({ className = "", size = "sm" }: TenantLogoProps) {
           src={logoUrl}
           alt={tenant?.name || "Logo"}
           className={`w-auto h-auto ${sizeClasses} object-contain`}
-          style={{ maxHeight: size === "lg" ? 120 : logoHeight }}
+          style={{ maxHeight }}
         />
       </div>
     )
@@ -54,6 +58,7 @@ export function TenantLogo({ className = "", size = "sm" }: TenantLogoProps) {
         width={200}
         height={106}
         className={`w-auto h-auto ${sizeClasses} object-contain`}
+        style={{ maxHeight }}
         priority
       />
     </div>

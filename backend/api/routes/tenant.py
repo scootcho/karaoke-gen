@@ -92,6 +92,11 @@ async def get_tenant_config_by_id(tenant_id: str):
     if not public_config:
         return TenantConfigResponse(tenant=None, is_default=True)
 
+    # Check if tenant is active
+    if not public_config.is_active:
+        logger.warning(f"Tenant is inactive: {tenant_id}")
+        return TenantConfigResponse(tenant=None, is_default=True)
+
     return TenantConfigResponse(tenant=public_config, is_default=False)
 
 
