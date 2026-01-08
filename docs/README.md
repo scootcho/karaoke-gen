@@ -36,9 +36,11 @@
 
 ## Pending Work
 
-- **SpaCy Preloading** (2026-01-08): Plan ready for implementation. Preload SpaCy model at container startup to avoid 60+ second delay during agentic correction. Related to job `2ccbdf6b` investigation. See [archive/2026-01-08-spacy-preload-plan.md](archive/2026-01-08-spacy-preload-plan.md).
+(No pending work items)
 
 ## Recent Changes
+
+- **SpaCy Preloading** (2026-01-08): Implemented SpaCy model preloading at container startup to eliminate 60+ second delay during agentic correction. The `en_core_web_sm` model is now loaded during FastAPI lifespan startup, and `PhraseAnalyzer`/`SyllablesMatchHandler` reuse the preloaded model. Added timing logs to verify performance. See [archive/2026-01-08-spacy-preload-plan.md](archive/2026-01-08-spacy-preload-plan.md).
 
 - **Thread-Safe LangChain Model Initialization** (2026-01-08): Fixed race condition in `LangChainBridge` where parallel threads could all try to initialize the AI model simultaneously, causing 6+ minute delays. Added double-checked locking with `threading.Lock()`. PR #232. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#thread-safe-lazy-initialization-in-shared-components).
 
