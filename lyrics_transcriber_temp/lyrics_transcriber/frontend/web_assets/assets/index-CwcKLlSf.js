@@ -36891,6 +36891,53 @@ function TimelineEditor({ words, startTime, endTime, onWordUpdate, onUnsyncWord,
     }
   );
 }
+const TapButton = reactExports.memo(function TapButton2({
+  isSpacebarPressed,
+  onTapStart,
+  onTapEnd
+}) {
+  const isPressedRef = reactExports.useRef(false);
+  const handleTapStart = reactExports.useCallback(() => {
+    isPressedRef.current = true;
+    onTapStart();
+  }, [onTapStart]);
+  const handleTapEnd = reactExports.useCallback(() => {
+    if (isPressedRef.current) {
+      isPressedRef.current = false;
+      onTapEnd();
+    }
+  }, [onTapEnd]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Button,
+    {
+      variant: "contained",
+      color: isSpacebarPressed ? "secondary" : "primary",
+      onTouchStart: (e) => {
+        e.preventDefault();
+        handleTapStart();
+      },
+      onTouchEnd: (e) => {
+        e.preventDefault();
+        handleTapEnd();
+      },
+      onMouseDown: handleTapStart,
+      onMouseUp: handleTapEnd,
+      onMouseLeave: handleTapEnd,
+      startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(TouchAppIcon, {}),
+      sx: {
+        py: 2,
+        fontSize: "1.1rem",
+        fontWeight: "bold",
+        width: "100%",
+        minHeight: "56px",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        touchAction: "manipulation"
+      },
+      children: isSpacebarPressed ? "HOLD..." : "TAP"
+    }
+  );
+});
 const TimelineControls = reactExports.memo(({
   isGlobal,
   visibleStartTime,
@@ -37278,35 +37325,11 @@ function EditTimelineSection({
           /* @__PURE__ */ jsxRuntimeExports.jsx(Typography, { variant: "caption", color: "text.secondary", children: isSpacebarPressed ? "Holding... Release when word ends" : isMobile ? "Tap the button when word starts" : "Press spacebar when word starts (tap for short words, hold for long words)" })
         ] }),
         isMobile && isManualSyncing && onTapStart && onTapEnd && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Button,
+          TapButton,
           {
-            variant: "contained",
-            color: isSpacebarPressed ? "secondary" : "primary",
-            onTouchStart: (e) => {
-              e.preventDefault();
-              onTapStart();
-            },
-            onTouchEnd: (e) => {
-              e.preventDefault();
-              onTapEnd();
-            },
-            onMouseDown: onTapStart,
-            onMouseUp: onTapEnd,
-            onMouseLeave: () => {
-              if (isSpacebarPressed) onTapEnd();
-            },
-            startIcon: /* @__PURE__ */ jsxRuntimeExports.jsx(TouchAppIcon, {}),
-            sx: {
-              py: 2,
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-              width: "100%",
-              minHeight: "56px",
-              userSelect: "none",
-              WebkitUserSelect: "none",
-              touchAction: "manipulation"
-            },
-            children: isSpacebarPressed ? "HOLD..." : "TAP"
+            isSpacebarPressed,
+            onTapStart,
+            onTapEnd
           }
         )
       ] })
@@ -44439,4 +44462,4 @@ console.log(`🎵 Lyrics Transcriber Frontend v${packageJson.version}`);
 ReactDOM$1.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
 );
-//# sourceMappingURL=index-BH-UGILD.js.map
+//# sourceMappingURL=index-CwcKLlSf.js.map

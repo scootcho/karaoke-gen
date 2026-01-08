@@ -24,6 +24,63 @@ import TimelineEditor from './TimelineEditor'
 import { Word } from '../types'
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 
+// Separate TapButton component to properly track local press state
+// This prevents issues where onMouseLeave fires before parent state updates
+const TapButton = memo(function TapButton({
+    isSpacebarPressed,
+    onTapStart,
+    onTapEnd
+}: {
+    isSpacebarPressed: boolean
+    onTapStart: () => void
+    onTapEnd: () => void
+}) {
+    const isPressedRef = useRef(false)
+
+    const handleTapStart = useCallback(() => {
+        isPressedRef.current = true
+        onTapStart()
+    }, [onTapStart])
+
+    const handleTapEnd = useCallback(() => {
+        if (isPressedRef.current) {
+            isPressedRef.current = false
+            onTapEnd()
+        }
+    }, [onTapEnd])
+
+    return (
+        <Button
+            variant="contained"
+            color={isSpacebarPressed ? "secondary" : "primary"}
+            onTouchStart={(e) => {
+                e.preventDefault()
+                handleTapStart()
+            }}
+            onTouchEnd={(e) => {
+                e.preventDefault()
+                handleTapEnd()
+            }}
+            onMouseDown={handleTapStart}
+            onMouseUp={handleTapEnd}
+            onMouseLeave={handleTapEnd}
+            startIcon={<TouchAppIcon />}
+            sx={{
+                py: 2,
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                width: '100%',
+                minHeight: '56px',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                touchAction: 'manipulation'
+            }}
+        >
+            {isSpacebarPressed ? "HOLD..." : "TAP"}
+        </Button>
+    )
+})
+
 interface EditTimelineSectionProps {
     words: Word[]
     startTime: number
@@ -522,36 +579,11 @@ export default function EditTimelineSection({
                     )}
                     {/* Mobile TAP button for manual sync */}
                     {isMobile && isManualSyncing && onTapStart && onTapEnd && (
-                        <Button
-                            variant="contained"
-                            color={isSpacebarPressed ? "secondary" : "primary"}
-                            onTouchStart={(e) => {
-                                e.preventDefault()
-                                onTapStart()
-                            }}
-                            onTouchEnd={(e) => {
-                                e.preventDefault()
-                                onTapEnd()
-                            }}
-                            onMouseDown={onTapStart}
-                            onMouseUp={onTapEnd}
-                            onMouseLeave={() => {
-                                if (isSpacebarPressed) onTapEnd()
-                            }}
-                            startIcon={<TouchAppIcon />}
-                            sx={{
-                                py: 2,
-                                fontSize: '1.1rem',
-                                fontWeight: 'bold',
-                                width: '100%',
-                                minHeight: '56px',
-                                userSelect: 'none',
-                                WebkitUserSelect: 'none',
-                                touchAction: 'manipulation'
-                            }}
-                        >
-                            {isSpacebarPressed ? "HOLD..." : "TAP"}
-                        </Button>
+                        <TapButton
+                            isSpacebarPressed={isSpacebarPressed}
+                            onTapStart={onTapStart}
+                            onTapEnd={onTapEnd}
+                        />
                     )}
                 </Box>
             </Box>
