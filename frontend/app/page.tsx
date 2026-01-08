@@ -253,7 +253,7 @@ export default function LandingPage() {
             <div className="aspect-video">
               <iframe
                 className="w-full h-full rounded-xl"
-                src="https://www.youtube.com/embed/wHiMti3xLJE?si=dij5wsaHnedaZdFg"
+                src="https://www.youtube.com/embed/uvKtLOUiqz8?si=K06hw2B-QJ81Loeo"
                 title="Nomad Karaoke Demo"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
