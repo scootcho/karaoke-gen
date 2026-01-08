@@ -393,16 +393,28 @@ async def _handle_done_for_you_order(
     """
     Handle a completed done-for-you order by creating a job and notifying Andrew.
 
+    For orders with a YouTube URL, the job is created and workers are triggered immediately.
+    For orders without a URL (search mode), the audio search flow is used to find and
+    download the best matching audio source automatically.
+
     Args:
         session_id: Stripe checkout session ID
         metadata: Order metadata from Stripe session
         user_service: User service for marking session processed
         email_service: Email service for notifications
     """
-    from backend.models.job import JobCreate
+    from backend.models.job import JobCreate, JobStatus
     from backend.services.job_manager import JobManager
     from backend.services.worker_service import get_worker_service
+    from backend.services.audio_search_service import (
+        get_audio_search_service,
+        NoResultsError,
+        AudioSearchError,
+    )
+    from backend.services.storage_service import StorageService
     import asyncio
+    import tempfile
+    import os
 
     customer_email = metadata.get("customer_email", "")
     artist = metadata.get("artist", "Unknown Artist")
@@ -413,29 +425,31 @@ async def _handle_done_for_you_order(
 
     logger.info(
         f"Processing done-for-you order: {artist} - {title} for {customer_email} "
-        f"(session: {session_id})"
+        f"(session: {session_id}, source_type: {source_type})"
     )
 
     try:
         job_manager = JobManager()
         worker_service = get_worker_service()
-
-        # Determine the URL for the job
-        # If YouTube URL provided, use it; otherwise search will be triggered
-        job_url = youtube_url if youtube_url else None
+        storage_service = StorageService()
 
         # Create job for the customer
         # Note: done-for-you jobs should NOT be non_interactive - Andrew needs to review
         job_create = JobCreate(
-            url=job_url,
+            url=youtube_url if youtube_url else None,
             artist=artist,
             title=title,
             user_email=customer_email,  # Customer owns the job
             non_interactive=False,  # Andrew will review lyrics/instrumental
+            # Set audio search fields for search-based orders
+            audio_search_artist=artist if not youtube_url else None,
+            audio_search_title=title if not youtube_url else None,
+            auto_download=True,  # Auto-select best audio source
         )
         job = job_manager.create_job(job_create)
+        job_id = job.job_id
 
-        logger.info(f"Created done-for-you job {job.job_id} for {customer_email}")
+        logger.info(f"Created done-for-you job {job_id} for {customer_email}")
 
         # Mark session as processed for idempotency
         # Note: Using internal method since this isn't a credit transaction
@@ -445,13 +459,205 @@ async def _handle_done_for_you_order(
             amount=0  # No credits, just tracking the session
         )
 
-        # Trigger workers to start processing
-        async def trigger_workers():
+        # Handle based on whether we have a YouTube URL or need to search
+        if youtube_url:
+            # URL provided - trigger workers directly
+            logger.info(f"Job {job_id}: YouTube URL provided, triggering workers")
             await asyncio.gather(
-                worker_service.trigger_audio_worker(job.job_id),
-                worker_service.trigger_lyrics_worker(job.job_id)
+                worker_service.trigger_audio_worker(job_id),
+                worker_service.trigger_lyrics_worker(job_id)
             )
-        await trigger_workers()
+        else:
+            # No URL - use audio search flow with auto_download
+            logger.info(f"Job {job_id}: No URL, using audio search for '{artist} - {title}'")
+
+            # Update job with audio search fields
+            job_manager.update_job(job_id, {
+                'audio_search_artist': artist,
+                'audio_search_title': title,
+                'auto_download': True,
+            })
+
+            # Transition to searching state
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.SEARCHING_AUDIO,
+                progress=5,
+                message=f"Searching for audio: {artist} - {title}"
+            )
+
+            # Perform audio search
+            audio_search_service = get_audio_search_service()
+
+            try:
+                search_results = audio_search_service.search(artist, title)
+            except NoResultsError as e:
+                # No results found - transition to AWAITING_AUDIO_SELECTION so Andrew can handle manually
+                logger.warning(f"Job {job_id}: No audio sources found for '{artist} - {title}'")
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.AWAITING_AUDIO_SELECTION,
+                    progress=10,
+                    message=f"No automatic audio sources found. Manual intervention required."
+                )
+                # Don't fail the job - Andrew can manually provide audio
+                search_results = None
+            except AudioSearchError as e:
+                logger.error(f"Job {job_id}: Audio search failed: {e}")
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.AWAITING_AUDIO_SELECTION,
+                    progress=10,
+                    message=f"Audio search error. Manual intervention required."
+                )
+                search_results = None
+
+            if search_results:
+                # Store search results in state_data
+                results_dicts = [r.to_dict() for r in search_results]
+                state_data_update = {
+                    'audio_search_results': results_dicts,
+                    'audio_search_count': len(results_dicts),
+                }
+                if audio_search_service.last_remote_search_id:
+                    state_data_update['remote_search_id'] = audio_search_service.last_remote_search_id
+                job_manager.update_job(job_id, {'state_data': state_data_update})
+
+                # Auto-select best result and download
+                best_index = audio_search_service.select_best(search_results)
+                selected = results_dicts[best_index]
+
+                logger.info(f"Job {job_id}: Auto-selected result {best_index}: {selected.get('provider')} - {selected.get('title')}")
+
+                # Transition to downloading state
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.DOWNLOADING_AUDIO,
+                    progress=10,
+                    message=f"Downloading from {selected.get('provider')}: {selected.get('artist')} - {selected.get('title')}",
+                    state_data_updates={
+                        'selected_audio_index': best_index,
+                        'selected_audio_provider': selected.get('provider'),
+                    }
+                )
+
+                # Download audio
+                try:
+                    is_torrent_source = selected.get('provider') in ['RED', 'OPS']
+                    is_remote_enabled = audio_search_service.is_remote_enabled()
+                    source_id = selected.get('source_id')
+                    source_name = selected.get('provider')
+                    target_file = selected.get('target_file')
+                    download_url = selected.get('url')
+                    remote_search_id = state_data_update.get('remote_search_id')
+
+                    if is_torrent_source and is_remote_enabled:
+                        # Remote torrent download - upload directly to GCS
+                        gcs_destination = f"uploads/{job_id}/audio/"
+
+                        if source_id and source_name:
+                            result = audio_search_service.download_by_id(
+                                source_name=source_name,
+                                source_id=source_id,
+                                output_dir="",
+                                target_file=target_file,
+                                download_url=download_url,
+                                gcs_path=gcs_destination,
+                            )
+                        else:
+                            result = audio_search_service.download(
+                                result_index=best_index,
+                                output_dir="",
+                                gcs_path=gcs_destination,
+                                remote_search_id=remote_search_id,
+                            )
+
+                        # Extract GCS path
+                        if result.filepath.startswith("gs://"):
+                            parts = result.filepath.replace("gs://", "").split("/", 1)
+                            audio_gcs_path = parts[1] if len(parts) == 2 else result.filepath
+                            filename = os.path.basename(result.filepath)
+                        else:
+                            filename = os.path.basename(result.filepath)
+                            audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
+                    else:
+                        # Local download (YouTube or local torrent)
+                        temp_dir = tempfile.mkdtemp(prefix=f"audio_download_{job_id}_")
+                        import shutil
+
+                        try:
+                            if source_id and source_name and is_remote_enabled:
+                                result = audio_search_service.download_by_id(
+                                    source_name=source_name,
+                                    source_id=source_id,
+                                    output_dir=temp_dir,
+                                    target_file=target_file,
+                                    download_url=download_url,
+                                )
+                            elif source_name == 'YouTube' and download_url:
+                                # YouTube download
+                                from backend.workers.audio_worker import download_from_url
+                                local_path = await download_from_url(
+                                    download_url,
+                                    temp_dir,
+                                    selected.get('artist'),
+                                    selected.get('title')
+                                )
+                                if not local_path or not os.path.exists(local_path):
+                                    raise Exception(f"Failed to download from YouTube: {download_url}")
+
+                                class DownloadResult:
+                                    def __init__(self, filepath):
+                                        self.filepath = filepath
+                                result = DownloadResult(local_path)
+                            else:
+                                result = audio_search_service.download(
+                                    result_index=best_index,
+                                    output_dir=temp_dir,
+                                    remote_search_id=remote_search_id,
+                                )
+
+                            # Upload to GCS
+                            filename = os.path.basename(result.filepath)
+                            audio_gcs_path = f"uploads/{job_id}/audio/{filename}"
+
+                            with open(result.filepath, 'rb') as f:
+                                storage_service.upload_fileobj(f, audio_gcs_path, content_type='audio/flac')
+                        finally:
+                            # Always cleanup temp directory
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+
+                    # Update job with GCS path
+                    job_manager.update_job(job_id, {
+                        'input_media_gcs_path': audio_gcs_path,
+                        'filename': filename,
+                    })
+
+                    # Transition to DOWNLOADING and trigger workers
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.DOWNLOADING,
+                        progress=15,
+                        message="Audio downloaded, starting processing"
+                    )
+
+                    # Trigger workers
+                    await asyncio.gather(
+                        worker_service.trigger_audio_worker(job_id),
+                        worker_service.trigger_lyrics_worker(job_id)
+                    )
+
+                    logger.info(f"Job {job_id}: Audio downloaded and workers triggered")
+
+                except Exception as download_error:
+                    logger.error(f"Job {job_id}: Audio download failed: {download_error}")
+                    # Don't fail job - transition to awaiting selection so Andrew can handle
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.AWAITING_AUDIO_SELECTION,
+                        progress=10,
+                        message=f"Auto-download failed: {download_error}. Manual intervention required."
+                    )
 
         # Send confirmation email to customer
         email_service.send_email(
@@ -502,9 +708,9 @@ Thanks for using Nomad Karaoke!
                 {f'<li><strong>YouTube URL:</strong> <a href="{youtube_url}">{youtube_url}</a></li>' if youtube_url else ''}
                 {f'<li><strong>Notes:</strong> {notes}</li>' if notes else ''}
             </ul>
-            <p><strong>Job ID:</strong> {job.job_id}</p>
-            <p>View job in admin: <a href="https://gen.nomadkaraoke.com/admin/jobs/{job.job_id}">Admin Link</a></p>
-            <p>View job as customer: <a href="https://gen.nomadkaraoke.com/jobs/{job.job_id}">Customer Link</a></p>
+            <p><strong>Job ID:</strong> {job_id}</p>
+            <p>View job in admin: <a href="https://gen.nomadkaraoke.com/admin/jobs/{job_id}">Admin Link</a></p>
+            <p>View job as customer: <a href="https://gen.nomadkaraoke.com/jobs/{job_id}">Customer Link</a></p>
             <p><strong>Deadline:</strong> 24 hours from now</p>
             """,
             text_content=f"""
@@ -517,15 +723,15 @@ Source: {source_type}
 {f'YouTube URL: {youtube_url}' if youtube_url else ''}
 {f'Notes: {notes}' if notes else ''}
 
-Job ID: {job.job_id}
-Admin: https://gen.nomadkaraoke.com/admin/jobs/{job.job_id}
-Customer: https://gen.nomadkaraoke.com/jobs/{job.job_id}
+Job ID: {job_id}
+Admin: https://gen.nomadkaraoke.com/admin/jobs/{job_id}
+Customer: https://gen.nomadkaraoke.com/jobs/{job_id}
 
 Deadline: 24 hours from now
             """.strip(),
         )
 
-        logger.info(f"Sent done-for-you order notifications for job {job.job_id}")
+        logger.info(f"Sent done-for-you order notifications for job {job_id}")
 
     except Exception as e:
         logger.error(f"Error processing done-for-you order: {e}", exc_info=True)
