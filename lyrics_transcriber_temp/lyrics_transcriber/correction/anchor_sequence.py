@@ -32,19 +32,24 @@ class AnchorSequenceFinder:
         progress_check_interval: int = 50,  # Check progress every N iterations
         logger: Optional[logging.Logger] = None,
     ):
+        init_start = time.time()
         self.min_sequence_length = min_sequence_length
         self.min_sources = min_sources
         self.timeout_seconds = timeout_seconds
         self.max_iterations_per_ngram = max_iterations_per_ngram
         self.progress_check_interval = progress_check_interval
         self.logger = logger or logging.getLogger(__name__)
+
+        self.logger.info("Initializing AnchorSequenceFinder...")
         self.phrase_analyzer = PhraseAnalyzer(logger=self.logger)
         self.used_positions = {}
 
         # Initialize cache directory
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Initialized AnchorSequenceFinder with cache dir: {self.cache_dir}, timeout: {timeout_seconds}s")
+
+        init_elapsed = time.time() - init_start
+        self.logger.info(f"Initialized AnchorSequenceFinder in {init_elapsed:.2f}s (cache: {self.cache_dir}, timeout: {timeout_seconds}s)")
 
     def _check_timeout(self, start_time: float, operation_name: str = "operation"):
         """Check if timeout has occurred and raise exception if so."""
