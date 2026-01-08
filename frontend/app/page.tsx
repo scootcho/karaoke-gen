@@ -230,8 +230,7 @@ export default function LandingPage() {
       <section className="pt-32 pb-16 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mb-6 leading-tight">
-            Turn Any Song Into a{' '}
-            <span className="gradient-text">Karaoke Video</span>
+            Create a <span className="gradient-text">Karaoke Video</span> for Any Song
           </h1>
           <p className="text-xl text-dark-300 mb-8 max-w-2xl mx-auto">
             Create professional karaoke videos in under 30 minutes. Real instrumentals
