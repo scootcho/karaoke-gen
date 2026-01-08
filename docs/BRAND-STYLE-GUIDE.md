@@ -26,7 +26,7 @@ This style guide is designed for both human designers and LLM agents implementin
 ## Brand Overview
 
 ### Brand Personality
-Nomad Karaoke is **approachable**, **professional**, and **modern**. We make sophisticated AI technology feel accessible and fun. Our brand bridges the gap between serious audio engineering and the joy of karaoke.
+Nomad Karaoke is **approachable**, **professional**, and **modern**. We make sophisticated technology feel accessible and fun. Our brand bridges the gap between serious audio engineering and the joy of karaoke.
 
 ### Core Values
 - **Approachable**: Technology that anyone can use

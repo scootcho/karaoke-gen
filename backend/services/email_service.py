@@ -65,6 +65,37 @@ class ConsoleEmailProvider(EmailProvider):
         return True
 
 
+class PreviewEmailProvider(EmailProvider):
+    """
+    Email provider that captures HTML content for previewing.
+
+    Instead of sending emails, stores the HTML content for later retrieval.
+    Useful for generating email previews.
+    """
+
+    def __init__(self):
+        self.last_html: Optional[str] = None
+        self.last_subject: Optional[str] = None
+        self.last_to_email: Optional[str] = None
+
+    def send_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: Optional[str] = None,
+        cc_emails: Optional[List[str]] = None,
+    ) -> bool:
+        self.last_to_email = to_email
+        self.last_subject = subject
+        self.last_html = html_content
+        return True
+
+    def get_last_html(self) -> Optional[str]:
+        """Get the HTML content from the last 'sent' email."""
+        return self.last_html
+
+
 class SendGridEmailProvider(EmailProvider):
     """
     SendGrid email provider for production.
@@ -138,6 +169,13 @@ class EmailService:
     Automatically selects the appropriate provider based on configuration.
     """
 
+    # Brand colors and assets for consistent email styling
+    BRAND_PRIMARY = "#ff7acc"  # Pink
+    BRAND_PRIMARY_HOVER = "#e066b3"  # Darker pink for hover states
+    BRAND_SECONDARY = "#ffdf6b"  # Yellow (accent)
+    BRAND_SUCCESS = "#10b981"  # Green for success states
+    LOGO_URL = "https://beveradb.github.io/public-images/Nomad-Karaoke-Logo-small-indexed-websafe-rectangle.gif"
+
     def __init__(self):
         self.settings = get_settings()
         self.provider = self._get_provider()
@@ -177,64 +215,18 @@ class EmailService:
 
         subject = "Sign in to Nomad Karaoke"
 
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
-        .button {{
-            display: inline-block;
-            background-color: #ff7acc;
-            color: white;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-        }}
-        .button:hover {{
-            background-color: #ff5bb8;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-            font-size: 12px;
-            color: #666;
-        }}
-        .warning {{
+        extra_styles = """
+        .warning {
             background-color: #fef3c7;
             border: 1px solid #fcd34d;
             border-radius: 4px;
             padding: 12px;
             margin: 20px 0;
             font-size: 14px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
+        }
+"""
 
+        content = f"""
     <p>Hi there,</p>
 
     <p>Click the button below to sign in to Nomad Karaoke:</p>
@@ -253,14 +245,9 @@ class EmailService:
     </p>
 
     <p>If you didn't request this email, you can safely ignore it.</p>
-
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
-        <p>This is an automated message, please do not reply.</p>
-    </div>
-</body>
-</html>
 """
+
+        html_content = self._build_email_html(content, extra_styles)
 
         text_content = f"""
 Sign in to Nomad Karaoke
@@ -293,32 +280,10 @@ If you didn't request this email, you can safely ignore it.
         """
         subject = f"🎉 {credits} credits added to your Nomad Karaoke account"
 
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
+        extra_styles = f"""
         .credits-box {{
             background-color: #ecfdf5;
-            border: 2px solid #10b981;
+            border: 2px solid {self.BRAND_SUCCESS};
             border-radius: 12px;
             padding: 24px;
             text-align: center;
@@ -327,33 +292,12 @@ If you didn't request this email, you can safely ignore it.
         .credits-number {{
             font-size: 48px;
             font-weight: bold;
-            color: #10b981;
+            color: {self.BRAND_SUCCESS};
         }}
-        .button {{
-            display: inline-block;
-            background-color: #ff7acc;
-            color: white;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-            font-size: 12px;
-            color: #666;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
+"""
 
-    <p>Great news! 🎉</p>
+        content = f"""
+    <p>Great news!</p>
 
     <p><strong>{credits} credits</strong> have been added to your account.</p>
 
@@ -374,13 +318,9 @@ If you didn't request this email, you can safely ignore it.
     <p style="text-align: center;">
         <a href="{self.frontend_url}" class="button">Create Karaoke Now</a>
     </p>
-
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
-    </div>
-</body>
-</html>
 """
+
+        html_content = self._build_email_html(content, extra_styles)
 
         text_content = f"""
 {credits} credits added to your Nomad Karaoke account!
@@ -412,62 +352,19 @@ Start creating: {self.frontend_url}
 
         credits_text = f"You have <strong>{credits} credits</strong> to get started!" if credits > 0 else ""
 
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
-        .button {{
-            display: inline-block;
-            background-color: #ff7acc;
-            color: white;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-        }}
-        .feature {{
+        extra_styles = """
+        .feature {
             display: flex;
             align-items: flex-start;
             margin: 16px 0;
-        }}
-        .feature-icon {{
+        }
+        .feature-icon {
             font-size: 24px;
             margin-right: 12px;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-            font-size: 12px;
-            color: #666;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
+        }
+"""
 
+        content = f"""
     <p>Welcome to Nomad Karaoke!</p>
 
     <p>Turn any song into a professional karaoke video in minutes. {credits_text}</p>
@@ -485,7 +382,7 @@ Start creating: {self.frontend_url}
     <div class="feature">
         <span class="feature-icon">✨</span>
         <div>
-            <strong>2. AI does the magic</strong><br>
+            <strong>2. Our system works its magic</strong><br>
             We separate vocals, transcribe lyrics, and sync everything perfectly.
         </div>
     </div>
@@ -509,14 +406,9 @@ Start creating: {self.frontend_url}
     <p style="text-align: center;">
         <a href="{self.frontend_url}" class="button">Get Started</a>
     </p>
-
-    <div class="footer">
-        <p>Questions? Reply to this email and we'll help you out.</p>
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
-    </div>
-</body>
-</html>
 """
+
+        html_content = self._build_email_html(content, extra_styles)
 
         text_content = f"""
 Welcome to Nomad Karaoke!
@@ -528,7 +420,7 @@ Here's how it works:
 1. Search for a song
    Enter the artist and title, and we'll find high-quality audio.
 
-2. AI does the magic
+2. Our system works its magic
    We separate vocals, transcribe lyrics, and sync everything perfectly.
 
 3. Review & customize
@@ -558,42 +450,20 @@ Get started: {self.frontend_url}
         """
         subject = "Welcome Beta Tester! Free Karaoke Credits Inside 🎤"
 
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
+        extra_styles = f"""
         .beta-badge {{
             display: inline-block;
-            background: linear-gradient(135deg, #8b5cf6, #ec4899);
-            color: white;
+            background: linear-gradient(135deg, {self.BRAND_PRIMARY}, {self.BRAND_SECONDARY});
+            color: #333;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: bold;
-            margin-left: 8px;
+            margin-top: 10px;
         }}
         .credits-box {{
             background-color: #ecfdf5;
-            border: 2px solid #10b981;
+            border: 2px solid {self.BRAND_SUCCESS};
             border-radius: 12px;
             padding: 24px;
             text-align: center;
@@ -602,7 +472,7 @@ Get started: {self.frontend_url}
         .credits-number {{
             font-size: 48px;
             font-weight: bold;
-            color: #10b981;
+            color: {self.BRAND_SUCCESS};
         }}
         .reminder {{
             background-color: #fef3c7;
@@ -611,32 +481,10 @@ Get started: {self.frontend_url}
             padding: 16px;
             margin: 20px 0;
         }}
-        .button {{
-            display: inline-block;
-            background-color: #ff7acc;
-            color: white;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-            font-size: 12px;
-            color: #666;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <span class="logo">🎤 Nomad Karaoke</span>
-        <span class="beta-badge">BETA TESTER</span>
-    </div>
+"""
 
-    <p>Thank you for joining our beta program! 🎉</p>
+        content = f"""
+    <p>Thank you for joining our beta program!</p>
 
     <p>As promised, here's your free credit to create a karaoke video:</p>
 
@@ -650,7 +498,7 @@ Get started: {self.frontend_url}
         <strong>📝 Your Promise:</strong><br>
         Remember, as a beta tester you agreed to:
         <ul style="margin: 10px 0; padding-left: 20px;">
-            <li>Review and correct any lyrics timing issues</li>
+            <li>Review and correct any lyrics transcription errors</li>
             <li>Share your honest feedback after trying the tool</li>
         </ul>
         We'll send you a quick feedback form after your job completes!
@@ -661,13 +509,10 @@ Get started: {self.frontend_url}
     </p>
 
     <p>Thanks for helping us make Nomad Karaoke better!</p>
-
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
-    </div>
-</body>
-</html>
 """
+
+        extra_header = '<div><span class="beta-badge">BETA TESTER</span></div>'
+        html_content = self._build_email_html(content, extra_styles, extra_header)
 
         text_content = f"""
 Welcome Beta Tester!
@@ -678,7 +523,7 @@ You've been granted {credits} free credit{'' if credits == 1 else 's'} to create
 
 YOUR PROMISE:
 As a beta tester, you agreed to:
-- Review and correct any lyrics timing issues
+- Review and correct any lyrics transcription errors
 - Share your honest feedback after trying the tool
 
 We'll send you a quick feedback form after your job completes!
@@ -711,32 +556,10 @@ Thanks for helping us make Nomad Karaoke better!
         safe_job_title = html.escape(job_title) if job_title else ""
         job_context = f" for <strong>{safe_job_title}</strong>" if job_title else ""
 
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
+        extra_styles = f"""
         .feedback-box {{
-            background: linear-gradient(135deg, #fff0f8, #ffe0f4);
-            border: 2px solid #ff7acc;
+            background: linear-gradient(135deg, #fff0f9, #ffe0f2);
+            border: 2px solid {self.BRAND_PRIMARY};
             border-radius: 12px;
             padding: 24px;
             text-align: center;
@@ -746,16 +569,6 @@ Thanks for helping us make Nomad Karaoke better!
             font-size: 36px;
             margin: 10px 0;
         }}
-        .button {{
-            display: inline-block;
-            background-color: #ff7acc;
-            color: white;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-            margin: 20px 0;
-        }}
         .time-note {{
             background-color: #fef3c7;
             border-radius: 8px;
@@ -763,20 +576,9 @@ Thanks for helping us make Nomad Karaoke better!
             margin: 20px 0;
             font-size: 14px;
         }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-            font-size: 12px;
-            color: #666;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
+"""
 
+        content = f"""
     <p>Hi there!</p>
 
     <p>Hope you enjoyed creating your karaoke video{job_context}! As a beta tester, your feedback is super valuable to us.</p>
@@ -803,14 +605,10 @@ Thanks for helping us make Nomad Karaoke better!
         <li>What could we improve?</li>
     </ul>
 
-    <p>Thanks for being part of making Nomad Karaoke better! 🙏</p>
-
-    <div class="footer">
-        <p>© {self._get_year()} Nomad Karaoke. All rights reserved.</p>
-    </div>
-</body>
-</html>
+    <p>Thanks for being part of making Nomad Karaoke better!</p>
 """
+
+        html_content = self._build_email_html(content, extra_styles)
 
         text_content = f"""
 Quick feedback on your karaoke experience?
@@ -841,6 +639,95 @@ Thanks for being part of making Nomad Karaoke better!
         """Get current year for copyright notices."""
         from datetime import datetime
         return datetime.now().year
+
+    def _get_email_header(self, extra_header_content: str = "") -> str:
+        """Get the standard email header with logo.
+
+        Args:
+            extra_header_content: Optional extra content to add after the logo (e.g., beta badge)
+        """
+        return f"""
+    <div class="header">
+        <a href="https://nomadkaraoke.com"><img src="{self.LOGO_URL}" alt="Nomad Karaoke" /></a>
+        {extra_header_content}
+    </div>
+"""
+
+    def _get_email_footer(self) -> str:
+        """Get the standard email footer with support message and signature."""
+        return f"""
+    <p style="margin-top: 30px; font-style: italic; color: #666;">If anything isn't perfect, just reply to this email and I'll fix it!</p>
+
+    <div class="signature">
+        {self._get_email_signature()}
+    </div>
+"""
+
+    def _get_base_styles(self) -> str:
+        """Get base CSS styles shared by all emails."""
+        return f"""
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }}
+        .header {{
+            text-align: center;
+            padding: 20px 0;
+        }}
+        .header img {{
+            max-width: 180px;
+            height: auto;
+            border-radius: 10px;
+        }}
+        .button {{
+            display: inline-block;
+            background-color: {self.BRAND_PRIMARY};
+            color: white;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 20px 0;
+        }}
+        .signature {{
+            margin-top: 30px;
+            padding-top: 20px;
+        }}
+"""
+
+    def _build_email_html(self, content: str, extra_styles: str = "", extra_header_content: str = "") -> str:
+        """Build a complete HTML email with standard header, footer, and styles.
+
+        Args:
+            content: The main body content of the email
+            extra_styles: Additional CSS styles specific to this email type
+            extra_header_content: Optional extra content to add in header (e.g., beta badge)
+
+        Returns:
+            Complete HTML email string
+        """
+        return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        {self._get_base_styles()}
+        {extra_styles}
+    </style>
+</head>
+<body>
+    {self._get_email_header(extra_header_content)}
+
+    {content}
+
+    {self._get_email_footer()}
+</body>
+</html>
+"""
 
     def _get_email_signature(self) -> str:
         """Get the HTML email signature for Nomad Karaoke."""
@@ -1110,56 +997,17 @@ Thanks for being part of making Nomad Karaoke better!
         else:
             subject = "Your karaoke video is ready!"
 
-        # Convert plain text to simple HTML (preserve line breaks)
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
+        extra_styles = """
+        .content {
             white-space: pre-wrap;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
-        .content {{
-            white-space: pre-wrap;
-            font-size: 14px;
-            margin-top: 20px;
-        }}
-        .signature {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
-
-    <div class="content">{html.escape(message_content)}</div>
-
-    <div class="signature">
-        {self._get_email_signature()}
-    </div>
-</body>
-</html>
+        }
 """
+
+        content = f"""
+    <div class="content">{html.escape(message_content)}</div>
+"""
+
+        html_content = self._build_email_html(content, extra_styles)
 
         cc_emails = ["gen@nomadkaraoke.com"] if cc_admin else None
 
@@ -1201,66 +1049,29 @@ Thanks for being part of making Nomad Karaoke better!
         else:
             subject = f"Action needed{song_info}"
 
-        # Convert plain text to simple HTML
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        .header {{
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 2px solid #ff7acc;
-        }}
-        .logo {{
-            font-size: 24px;
-            font-weight: bold;
-            color: #ff7acc;
-        }}
-        .alert {{
+        extra_styles = """
+        .alert {
             background-color: #fef3c7;
             border: 1px solid #fcd34d;
             border-radius: 8px;
             padding: 16px;
             margin: 20px 0;
             text-align: center;
-        }}
-        .content {{
+        }
+        .content {
             white-space: pre-wrap;
-            font-size: 14px;
-        }}
-        .signature {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ff7acc;
-        }}
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🎤 Nomad Karaoke</div>
-    </div>
+        }
+"""
 
+        content = f"""
     <div class="alert">
-        ⏰ Your karaoke video is waiting for you!
+        ⏰ Your karaoke video needs input from you!
     </div>
 
     <div class="content">{html.escape(message_content)}</div>
-
-    <div class="signature">
-        {self._get_email_signature()}
-    </div>
-</body>
-</html>
 """
+
+        html_content = self._build_email_html(content, extra_styles)
 
         return self.provider.send_email(
             to_email=to_email,

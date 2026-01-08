@@ -54,7 +54,7 @@ DEFAULT_ACTION_NEEDED_LYRICS_TEMPLATE = """Hi {name},
 
 Your karaoke video for "{artist} - {title}" is ready for lyrics review!
 
-The AI has transcribed and synchronized the lyrics, but they may need some corrections. Please review and approve them so we can finish generating your video.
+Our system has transcribed and synchronized the lyrics, but they may need some corrections. Please review and make any corrections necessary so we can finish generating your video.
 
 Review your lyrics here:
 {review_url}
@@ -62,7 +62,7 @@ Review your lyrics here:
 This usually takes just a few minutes.
 
 Thanks!
--Nomad Karaoke
+-Andrew
 """
 
 DEFAULT_ACTION_NEEDED_INSTRUMENTAL_TEMPLATE = """Hi {name},
@@ -75,7 +75,7 @@ Select your instrumental here:
 {instrumental_url}
 
 Thanks!
--Nomad Karaoke
+-Andrew
 """
 
 
