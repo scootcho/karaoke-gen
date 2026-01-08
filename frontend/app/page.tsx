@@ -237,10 +237,10 @@ export default function LandingPage() {
             from the original song, precise lyrics sync, and 4K video output.
           </p>
           <a
-            href="#pricing"
+            href="#beta"
             className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-8 py-4 rounded-xl transition-all btn-glow"
           >
-            Get Started
+            Try It For Free
             <ChevronDown className="w-5 h-5" />
           </a>
         </div>
@@ -390,7 +390,7 @@ export default function LandingPage() {
       </section>
 
       {/* Beta Tester Program */}
-      <section className="py-12 px-4">
+      <section id="beta" className="py-12 px-4">
         <div className="max-w-2xl mx-auto">
           <div className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-primary/30 rounded-2xl p-8 text-center">
             <div className="inline-flex items-center gap-2 bg-primary-500/20 text-primary-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
