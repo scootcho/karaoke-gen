@@ -8,7 +8,7 @@ including static IP and firewall rules.
 import pulumi
 from pulumi_gcp import compute, serviceaccount
 
-from config import REGION, ZONE, PROJECT_ID, MachineTypes, DiskSizes
+from config import REGION, ENCODING_WORKER_ZONE, PROJECT_ID, MachineTypes, DiskSizes
 from .startup_scripts import read_script
 
 
@@ -61,7 +61,7 @@ def create_encoding_worker_vm(
         "encoding-worker",
         name="encoding-worker",
         machine_type=MachineTypes.ENCODING_WORKER,
-        zone=ZONE,
+        zone=ENCODING_WORKER_ZONE,
         boot_disk=compute.InstanceBootDiskArgs(
             initialize_params=compute.InstanceBootDiskInitializeParamsArgs(
                 image=custom_image,
