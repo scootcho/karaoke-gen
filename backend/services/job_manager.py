@@ -34,10 +34,21 @@ class JobManager:
     def create_job(self, job_create: JobCreate) -> Job:
         """
         Create a new job with initial state PENDING.
-        
+
         Jobs start in PENDING state and transition to DOWNLOADING
         when a worker picks them up.
+
+        Raises:
+            ValueError: If theme_id is not provided (all jobs require a theme)
         """
+        # Enforce theme requirement - all jobs must have a theme
+        # This prevents unstyled videos from ever being generated
+        if not job_create.theme_id:
+            raise ValueError(
+                "theme_id is required for all jobs. "
+                "Use get_theme_service().get_default_theme_id() to get the default theme."
+            )
+
         job_id = str(uuid.uuid4())[:8]
         
         now = datetime.utcnow()

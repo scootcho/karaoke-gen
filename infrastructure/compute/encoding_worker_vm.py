@@ -8,7 +8,7 @@ including static IP and firewall rules.
 import pulumi
 from pulumi_gcp import compute, serviceaccount
 
-from config import REGION, ZONE, PROJECT_ID, MachineTypes, DiskSizes
+from config import REGION, ENCODING_WORKER_ZONE, PROJECT_ID, MachineTypes, DiskSizes
 from .startup_scripts import read_script
 
 
@@ -36,7 +36,8 @@ def create_encoding_worker_vm(
     Create the encoding worker VM instance.
 
     This VM runs video encoding jobs with high CPU/memory resources.
-    Uses hyperdisk-balanced for fast I/O during encoding.
+    Uses c4d-highcpu-32 (AMD EPYC 9B45 Turin, 32 vCPU) for 4.92x faster
+    encoding vs c4-standard-8. Uses hyperdisk-balanced for fast I/O.
 
     Uses a custom Packer-built image with Python 3.13, FFmpeg, and fonts
     pre-installed to reduce startup time from ~10 minutes to ~30 seconds.
@@ -60,7 +61,7 @@ def create_encoding_worker_vm(
         "encoding-worker",
         name="encoding-worker",
         machine_type=MachineTypes.ENCODING_WORKER,
-        zone=ZONE,
+        zone=ENCODING_WORKER_ZONE,
         boot_disk=compute.InstanceBootDiskArgs(
             initialize_params=compute.InstanceBootDiskInitializeParamsArgs(
                 image=custom_image,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { adminApi, AudioSearchJobSummary, CacheStatsResponse } from "@/lib/api"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -58,6 +59,7 @@ const statusOptions = [
 
 export default function AdminSearchesPage() {
   const { toast } = useToast()
+  const { showTestData } = useAdminSettings()
   const [searches, setSearches] = useState<AudioSearchJobSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
@@ -81,6 +83,7 @@ export default function AdminSearchesPage() {
       const data = await adminApi.listAudioSearches({
         limit: 100,
         status_filter: statusFilter !== "all" ? statusFilter : undefined,
+        exclude_test: !showTestData,
       })
       setSearches(data.jobs)
     } catch (err: any) {
@@ -93,7 +96,7 @@ export default function AdminSearchesPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, toast])
+  }, [statusFilter, showTestData, toast])
 
   const loadCacheStats = useCallback(async () => {
     try {

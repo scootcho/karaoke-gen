@@ -52,8 +52,11 @@ from backend.models.user import (
 from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
+from backend.services.theme_service import get_theme_service
 from backend.api.dependencies import require_admin
+from backend.api.routes.file_upload import _prepare_theme_for_job
 from backend.services.auth_service import UserType
+from backend.utils.test_data import is_test_email
 
 
 logger = logging.getLogger(__name__)
@@ -483,6 +486,12 @@ async def _handle_done_for_you_order(
         worker_service = get_worker_service()
         storage_service = StorageService()
 
+        # Apply default theme (Nomad) - same as audio_search endpoint
+        theme_service = get_theme_service()
+        effective_theme_id = theme_service.get_default_theme_id()
+        if effective_theme_id:
+            logger.info(f"Applying default theme '{effective_theme_id}' for done-for-you order")
+
         # Create job for the customer
         # Note: done-for-you jobs should NOT be non_interactive - Andrew needs to review
         job_create = JobCreate(
@@ -490,6 +499,7 @@ async def _handle_done_for_you_order(
             artist=artist,
             title=title,
             user_email=customer_email,  # Customer owns the job
+            theme_id=effective_theme_id,  # Apply default theme
             non_interactive=False,  # Andrew will review lyrics/instrumental
             # Set audio search fields for search-based orders
             audio_search_artist=artist if not youtube_url else None,
@@ -500,6 +510,23 @@ async def _handle_done_for_you_order(
         job_id = job.job_id
 
         logger.info(f"Created done-for-you job {job_id} for {customer_email}")
+
+        # Prepare theme style assets for the job (same as audio_search endpoint)
+        if effective_theme_id:
+            try:
+                style_params_path, theme_style_assets, youtube_desc = _prepare_theme_for_job(
+                    job_id, effective_theme_id, None  # No color overrides for done-for-you
+                )
+                theme_update = {
+                    'style_params_gcs_path': style_params_path,
+                    'style_assets': theme_style_assets,
+                }
+                if youtube_desc:
+                    theme_update['youtube_description_template'] = youtube_desc
+                job_manager.update_job(job_id, theme_update)
+                logger.info(f"Applied theme '{effective_theme_id}' to done-for-you job {job_id}")
+            except Exception as e:
+                logger.warning(f"Failed to prepare theme for done-for-you job {job_id}: {e}")
 
         # Mark session as processed for idempotency
         # Note: Using internal method since this isn't a credit transaction
@@ -1159,6 +1186,7 @@ async def list_users(
     sort_by: str = "created_at",
     sort_order: str = "desc",
     include_inactive: bool = False,
+    exclude_test: bool = True,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin),
     user_service: UserService = Depends(get_user_service),
 ):
@@ -1172,6 +1200,7 @@ async def list_users(
         sort_by: Field to sort by (created_at, last_login_at, credits, email)
         sort_order: Sort direction (asc, desc)
         include_inactive: Include disabled users
+        exclude_test: If True (default), exclude test users (e.g., @inbox.testmail.app)
     """
     from google.cloud import firestore
     from google.cloud.firestore_v1 import FieldFilter
@@ -1200,9 +1229,14 @@ async def list_users(
     else:
         query = query.order_by("created_at", direction=direction)
 
-    # Get total count (without pagination) for has_more calculation
+    # Get all docs and filter in Python
     # Note: This is expensive for large datasets, consider caching
     all_docs = list(query.stream())
+
+    # Filter out test users if exclude_test is True
+    if exclude_test:
+        all_docs = [d for d in all_docs if not is_test_email(d.to_dict().get('email', ''))]
+
     total_count = len(all_docs)
 
     # Apply pagination manually (Firestore doesn't support offset well)
@@ -1438,44 +1472,64 @@ async def list_beta_feedback(
 
 @router.get("/admin/beta/stats")
 async def get_beta_stats(
+    exclude_test: bool = True,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin),
     user_service: UserService = Depends(get_user_service),
 ):
     """
     Get beta tester program statistics (admin only).
+
+    Args:
+        exclude_test: If True (default), exclude test users from beta stats
     """
     from google.cloud.firestore_v1 import FieldFilter
     from google.cloud.firestore_v1 import aggregation
 
-    # Count beta testers by status using efficient aggregation queries
     users_collection = user_service.db.collection(USERS_COLLECTION)
 
-    # Helper function to get count using aggregation
-    def get_count(query) -> int:
-        agg_query = aggregation.AggregationQuery(query)
-        agg_query.count(alias="count")
-        results = agg_query.get()
-        return results[0][0].value if results else 0
+    if exclude_test:
+        # Stream and filter in Python since Firestore doesn't support "not ends with"
+        all_beta_users = []
+        for doc in users_collection.where(filter=FieldFilter("is_beta_tester", "==", True)).stream():
+            data = doc.to_dict()
+            if not is_test_email(data.get("email", "")):
+                all_beta_users.append(data)
 
-    total_beta_testers = get_count(
-        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
-    )
+        total_beta_testers = len(all_beta_users)
+        active_testers = sum(1 for u in all_beta_users if u.get("beta_tester_status") == "active")
+        pending_feedback = sum(1 for u in all_beta_users if u.get("beta_tester_status") == "pending_feedback")
+        completed_feedback = sum(1 for u in all_beta_users if u.get("beta_tester_status") == "completed")
 
-    active_testers = get_count(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active"))
-    )
+        # Filter feedback by non-test users
+        all_feedback = []
+        for doc in user_service.db.collection("beta_feedback").stream():
+            data = doc.to_dict()
+            if not is_test_email(data.get("user_email", "")):
+                all_feedback.append(data)
+        feedback_docs = all_feedback
+    else:
+        # Use efficient aggregation queries when including test data
+        def get_count(query) -> int:
+            agg_query = aggregation.AggregationQuery(query)
+            agg_query.count(alias="count")
+            results = agg_query.get()
+            return results[0][0].value if results else 0
 
-    pending_feedback = get_count(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback"))
-    )
+        total_beta_testers = get_count(
+            users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
+        )
+        active_testers = get_count(
+            users_collection.where(filter=FieldFilter("beta_tester_status", "==", "active"))
+        )
+        pending_feedback = get_count(
+            users_collection.where(filter=FieldFilter("beta_tester_status", "==", "pending_feedback"))
+        )
+        completed_feedback = get_count(
+            users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed"))
+        )
+        feedback_docs = [doc.to_dict() for doc in user_service.db.collection("beta_feedback").stream()]
 
-    completed_feedback = get_count(
-        users_collection.where(filter=FieldFilter("beta_tester_status", "==", "completed"))
-    )
-
-    # Get average ratings from feedback
-    feedback_docs = list(user_service.db.collection("beta_feedback").stream())
-
+    # Calculate average ratings from feedback
     avg_overall = 0
     avg_ease = 0
     avg_accuracy = 0
@@ -1483,8 +1537,7 @@ async def get_beta_stats(
 
     if feedback_docs:
         total = len(feedback_docs)
-        for doc in feedback_docs:
-            data = doc.to_dict()
+        for data in feedback_docs:
             avg_overall += data.get("overall_rating", 0)
             avg_ease += data.get("ease_of_use_rating", 0)
             avg_accuracy += data.get("lyrics_accuracy_rating", 0)

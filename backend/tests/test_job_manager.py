@@ -33,13 +33,28 @@ def job_manager(mock_firestore_service):
 
 class TestJobCreation:
     """Test job creation logic."""
-    
+
+    def test_create_job_requires_theme_id(self, job_manager, mock_firestore_service):
+        """Test that jobs without theme_id are rejected."""
+        job_create = JobCreate(
+            artist="Test Artist",
+            title="Test Song"
+            # No theme_id - should fail
+        )
+
+        with pytest.raises(ValueError, match="theme_id is required"):
+            job_manager.create_job(job_create)
+
+        # Verify Firestore was NOT called
+        mock_firestore_service.create_job.assert_not_called()
+
     def test_create_job_with_url(self, job_manager, mock_firestore_service):
         """Test creating a job with YouTube URL."""
         job_create = JobCreate(
             url="https://youtube.com/watch?v=test",
             artist="Test Artist",
-            title="Test Song"
+            title="Test Song",
+            theme_id="nomad"  # Required for all jobs
         )
         
         # The actual create_job method creates the job and returns it
@@ -59,7 +74,8 @@ class TestJobCreation:
         """Test creating a job without URL (for file upload)."""
         job_create = JobCreate(
             artist="Test Artist",
-            title="Test Song"
+            title="Test Song",
+            theme_id="nomad"  # Required for all jobs
         )
         
         job = job_manager.create_job(job_create)
@@ -70,8 +86,8 @@ class TestJobCreation:
     
     def test_create_job_generates_unique_id(self, job_manager, mock_firestore_service):
         """Test that each job gets a unique ID."""
-        job_create = JobCreate()
-        
+        job_create = JobCreate(theme_id="nomad")  # Required for all jobs
+
         # Create multiple jobs
         ids = []
         for i in range(5):
@@ -89,8 +105,8 @@ class TestJobCreation:
     
     def test_create_job_sets_initial_status(self, job_manager, mock_firestore_service):
         """Test that new jobs start with PENDING status."""
-        job_create = JobCreate()
-        
+        job_create = JobCreate(theme_id="nomad")  # Required for all jobs
+
         mock_firestore_service.create_job.return_value = Job(
             job_id="test123",
             status=JobStatus.PENDING,
@@ -105,13 +121,14 @@ class TestJobCreation:
     
     def test_create_job_with_distribution_settings(self, job_manager, mock_firestore_service):
         """Test that distribution settings are passed from JobCreate to Job.
-        
+
         This was a bug where brand_prefix, dropbox_path, gdrive_folder_id, and
         discord_webhook_url were NOT being passed to the Job constructor.
         """
         job_create = JobCreate(
             artist="Test Artist",
             title="Test Song",
+            theme_id="nomad",  # Required for all jobs
             brand_prefix="NOMAD",
             discord_webhook_url="https://discord.com/webhook/test",
             dropbox_path="/Karaoke/Tracks-Organized",

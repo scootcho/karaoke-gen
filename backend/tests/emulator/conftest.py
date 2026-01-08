@@ -39,6 +39,24 @@ os.environ["ADMIN_TOKENS"] = "test-admin-token"
 
 # Only import app if emulators are running
 if emulators_running():
+    from unittest.mock import Mock
+
+    # Mock theme service BEFORE importing app to ensure all jobs get theme_id="nomad"
+    _mock_theme_service = Mock()
+    _mock_theme_service.get_default_theme_id.return_value = "nomad"
+    _mock_theme_service.get_theme.return_value = None
+
+    # Apply patch at module load time (before app imports the service)
+    _theme_patches = [
+        patch("backend.services.theme_service.get_theme_service", return_value=_mock_theme_service),
+        patch("backend.api.routes.audio_search.get_theme_service", return_value=_mock_theme_service),
+        patch("backend.api.routes.file_upload.get_theme_service", return_value=_mock_theme_service),
+        patch("backend.api.routes.users.get_theme_service", return_value=_mock_theme_service),
+        patch("backend.api.routes.jobs.get_theme_service", return_value=_mock_theme_service),
+    ]
+    for p in _theme_patches:
+        p.start()
+
     from fastapi.testclient import TestClient
     from backend.main import app
 else:
@@ -76,7 +94,10 @@ def mock_worker_service():
 
 @pytest.fixture(scope="session")
 def client(mock_worker_service):
-    """Create FastAPI test client with mocked workers."""
+    """Create FastAPI test client with mocked workers.
+
+    Theme service is mocked at module load time (see above).
+    """
     with patch("backend.api.routes.file_upload.worker_service", mock_worker_service):
         return TestClient(app)
 

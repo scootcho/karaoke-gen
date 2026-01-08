@@ -866,8 +866,13 @@ export const adminApi = {
   /**
    * Get admin dashboard statistics
    */
-  async getStats(): Promise<AdminStatsOverview> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/stats/overview`, {
+  async getStats(params?: { exclude_test?: boolean }): Promise<AdminStatsOverview> {
+    const searchParams = new URLSearchParams();
+    if (params?.exclude_test !== undefined) {
+      searchParams.set('exclude_test', String(params.exclude_test));
+    }
+    const url = `${API_BASE_URL}/api/admin/stats/overview${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    const response = await fetch(url, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -883,6 +888,7 @@ export const adminApi = {
     sort_by?: 'created_at' | 'last_login_at' | 'credits' | 'email';
     sort_order?: 'asc' | 'desc';
     include_inactive?: boolean;
+    exclude_test?: boolean;
   }): Promise<AdminUserListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.set('limit', String(params.limit));
@@ -891,6 +897,7 @@ export const adminApi = {
     if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
     if (params?.sort_order) searchParams.set('sort_order', params.sort_order);
     if (params?.include_inactive) searchParams.set('include_inactive', 'true');
+    if (params?.exclude_test !== undefined) searchParams.set('exclude_test', String(params.exclude_test));
 
     const url = `${API_BASE_URL}/api/users/admin/users${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
     const response = await fetch(url, {
@@ -966,7 +973,7 @@ export const adminApi = {
   /**
    * List all jobs (admin view)
    */
-  async listAllJobs(params?: AdminJobListParams): Promise<Job[]> {
+  async listAllJobs(params?: AdminJobListParams & { exclude_test?: boolean }): Promise<Job[]> {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set('status', params.status);
     if (params?.user_email) searchParams.set('user_email', params.user_email);
@@ -974,6 +981,7 @@ export const adminApi = {
     if (params?.created_after) searchParams.set('created_after', params.created_after);
     if (params?.created_before) searchParams.set('created_before', params.created_before);
     if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.exclude_test !== undefined) searchParams.set('exclude_test', String(params.exclude_test));
 
     const url = `${API_BASE_URL}/api/jobs${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
     const response = await fetch(url, {
@@ -985,8 +993,13 @@ export const adminApi = {
   /**
    * Get beta program statistics
    */
-  async getBetaStats(): Promise<AdminBetaStats> {
-    const response = await fetch(`${API_BASE_URL}/api/users/admin/beta/stats`, {
+  async getBetaStats(params?: { exclude_test?: boolean }): Promise<AdminBetaStats> {
+    const searchParams = new URLSearchParams();
+    if (params?.exclude_test !== undefined) {
+      searchParams.set('exclude_test', String(params.exclude_test));
+    }
+    const url = `${API_BASE_URL}/api/users/admin/beta/stats${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+    const response = await fetch(url, {
       headers: getAuthHeaders()
     });
     return handleResponse(response);
@@ -1019,10 +1032,12 @@ export const adminApi = {
   async listAudioSearches(params?: {
     limit?: number;
     status_filter?: string;
+    exclude_test?: boolean;
   }): Promise<AudioSearchListResponse> {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.status_filter) searchParams.set('status_filter', params.status_filter);
+    if (params?.exclude_test !== undefined) searchParams.set('exclude_test', String(params.exclude_test));
 
     const url = `${API_BASE_URL}/api/admin/audio-searches${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
     const response = await fetch(url, {

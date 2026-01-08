@@ -28,7 +28,7 @@
 | Beta tester program | Working |
 | Admin dashboard | Working |
 | CI/CD self-hosted runner | Working (GCP) |
-| E2E happy path test | Working (38 min full pipeline) |
+| E2E happy path test | Working (~20-25 min full pipeline) |
 | **White-label B2B portals** | Working (Vocal Star first tenant) |
 
 ## Known Issues
@@ -42,6 +42,10 @@
 ## Recent Changes
 
 - **White-Label B2B Portal Infrastructure** (2026-01-08): Added multi-tenant support for white-label karaoke portals. Vocal Star is the first tenant at `vocalstar.nomadkaraoke.com`. Features: subdomain-based tenant detection (frontend and backend), GCS-backed tenant config storage, per-tenant feature flags (audio search, file upload, YouTube, theme selection, etc.), dynamic branding (logo, colors, site title via CSS variables), locked themes per tenant, email domain restrictions for auth, and tenant-scoped jobs/users in Firestore. Backend: `TenantMiddleware` extracts tenant from X-Tenant-ID header, query param (dev only), or Host subdomain; `TenantService` loads config from GCS with caching. Frontend: Zustand store for tenant state, `TenantProvider` for initialization, `TenantLogo` component. Setup script: `scripts/setup-vocalstar-tenant.py`. See [ARCHITECTURE.md](ARCHITECTURE.md#multitenancy) and [API.md](API.md#tenant-config).
+
+- **Encoding Worker Infrastructure Upgrade** (2026-01-08): Upgraded GCE encoding worker from c4-standard-8 (Intel) to c4d-highcpu-32 (AMD EPYC 9B45 Turin). Benchmarking showed **4.92x faster encoding** (135s vs 666s total). Key improvements: With Vocals 4K rendering 6x faster (54s vs 324s), 720p downscale 4.6x faster (11s vs 50s). Reduces total encoding time from ~11 min to ~2.3 min per job. See [archive/2026-01-08-performance-investigation.md](archive/2026-01-08-performance-investigation.md) for full benchmark methodology and results.
+
+- **Theme Enforcement & Encoding Resilience** (2026-01-08): Added defense-in-depth theme enforcement - jobs without theme_id are now rejected at creation (JobManager) with a safety net at processing time (screens_worker). Fixed done-for-you webhook to apply default theme. Added retry logic with exponential backoff (3 retries, 2s→4s→8s) to GCE encoding service for transient connection failures during worker restarts. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#defense-in-depth-enforce-critical-requirements-at-multiple-layers).
 
 - **Comprehensive Performance Optimization** (2026-01-08): Reduced lyrics processing from **16+ minutes to ~5 minutes** through multiple optimizations. Key changes: (1) NLTK cmudict preloading at startup saves 100-150s, (2) Langfuse callback handler preloading saves 200s, (3) Model warmup in `AgenticCorrector.from_model()` prevents parallel initialization race, (4) Parallel anchor sequence search (4 workers) reduces n-gram processing from 38s to ~10s. Added `/health/preload-status` endpoint for deployment verification. PR #236. See [archive/2026-01-08-performance-investigation.md](archive/2026-01-08-performance-investigation.md) and [LESSONS-LEARNED.md](LESSONS-LEARNED.md#preloading-heavy-resources-at-container-startup).
 

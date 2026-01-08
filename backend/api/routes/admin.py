@@ -20,6 +20,7 @@ from backend.services.user_service import get_user_service, UserService, USERS_C
 from backend.services.job_manager import JobManager
 from backend.services.flacfetch_client import get_flacfetch_client, FlacfetchServiceError
 from backend.models.job import JobStatus
+from backend.utils.test_data import is_test_email
 from karaoke_gen.utils import sanitize_filename
 
 
@@ -61,11 +62,16 @@ class AdminStatsOverview(BaseModel):
 
 @router.get("/stats/overview", response_model=AdminStatsOverview)
 async def get_admin_stats_overview(
+    exclude_test: bool = True,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin),
     user_service: UserService = Depends(get_user_service),
 ):
     """
     Get overview statistics for admin dashboard.
+
+    Args:
+        exclude_test: If True (default), exclude test data (users with @inbox.testmail.app emails
+                     and jobs created by test users) from all counts.
 
     Includes:
     - User counts (total, active in 7d, active in 30d)
@@ -81,48 +87,10 @@ async def get_admin_stats_overview(
     seven_days_ago = now - timedelta(days=7)
     thirty_days_ago = now - timedelta(days=30)
 
-    # Helper function to get count using aggregation
-    def get_count(query) -> int:
-        try:
-            agg_query = aggregation.AggregationQuery(query)
-            agg_query.count(alias="count")
-            results = agg_query.get()
-            return results[0][0].value if results else 0
-        except Exception as e:
-            logger.warning(f"Aggregation query failed: {e}")
-            return 0
-
-    # User statistics
     users_collection = db.collection(USERS_COLLECTION)
-
-    total_users = get_count(users_collection)
-
-    active_users_7d = get_count(
-        users_collection.where(filter=FieldFilter("last_login_at", ">=", seven_days_ago))
-    )
-
-    active_users_30d = get_count(
-        users_collection.where(filter=FieldFilter("last_login_at", ">=", thirty_days_ago))
-    )
-
-    total_beta_testers = get_count(
-        users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
-    )
-
-    # Job statistics
     jobs_collection = db.collection("jobs")
 
-    total_jobs = get_count(jobs_collection)
-
-    jobs_last_7d = get_count(
-        jobs_collection.where(filter=FieldFilter("created_at", ">=", seven_days_ago))
-    )
-
-    jobs_last_30d = get_count(
-        jobs_collection.where(filter=FieldFilter("created_at", ">=", thirty_days_ago))
-    )
-
-    # Jobs by status - map multiple statuses to simplified categories
+    # Jobs by status category mapping
     processing_statuses = [
         "downloading", "downloading_audio", "searching_audio", "awaiting_audio_selection",
         "separating_stage1", "separating_stage2", "transcribing", "correcting",
@@ -131,63 +99,166 @@ async def get_admin_stats_overview(
         "uploading", "notifying"
     ]
 
-    jobs_by_status = JobsByStatusResponse(
-        pending=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "pending"))
-        ),
-        processing=sum(
-            get_count(jobs_collection.where(filter=FieldFilter("status", "==", status)))
-            for status in processing_statuses
-        ),
-        awaiting_review=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "awaiting_review"))
-        ) + get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "in_review"))
-        ),
-        awaiting_instrumental=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "awaiting_instrumental_selection"))
-        ),
-        complete=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "complete"))
-        ) + get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "prep_complete"))
-        ),
-        failed=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "failed"))
-        ),
-        cancelled=get_count(
-            jobs_collection.where(filter=FieldFilter("status", "==", "cancelled"))
-        ),
-    )
+    # Limits for streaming queries - these are safety limits to prevent memory issues
+    # If hit, stats may be incomplete so we log a warning
+    USERS_STREAM_LIMIT = 2000
+    JOBS_STREAM_LIMIT = 10000
 
-    # Credit statistics - sum credits added in last 30 days
-    # This is more expensive, so we'll just estimate from users
-    total_credits_issued_30d = 0
-    try:
-        # Get all users and sum recent credit transactions
-        users_docs = users_collection.limit(500).stream()
-        for user_doc in users_docs:
-            user_data = user_doc.to_dict()
+    if exclude_test:
+        # When excluding test data, we must stream and filter in Python
+        # because Firestore doesn't support "not ends with" queries
+
+        # Stream all users and filter
+        all_users = []
+        users_fetched = 0
+        for doc in users_collection.limit(USERS_STREAM_LIMIT).stream():
+            users_fetched += 1
+            user_data = doc.to_dict()
+            email = user_data.get("email", "")
+            if not is_test_email(email):
+                all_users.append(user_data)
+
+        if users_fetched >= USERS_STREAM_LIMIT:
+            logger.warning(f"Users stream hit limit ({USERS_STREAM_LIMIT}), stats may be incomplete")
+
+        # Calculate user stats from filtered list
+        total_users = len(all_users)
+        active_users_7d = sum(
+            1 for u in all_users
+            if u.get("last_login_at") and _normalize_datetime(u["last_login_at"]) >= seven_days_ago
+        )
+        active_users_30d = sum(
+            1 for u in all_users
+            if u.get("last_login_at") and _normalize_datetime(u["last_login_at"]) >= thirty_days_ago
+        )
+        total_beta_testers = sum(1 for u in all_users if u.get("is_beta_tester"))
+
+        # Calculate credits from filtered users
+        total_credits_issued_30d = 0
+        for user_data in all_users:
             transactions = user_data.get("credit_transactions", [])
             for txn in transactions:
-                txn_date = txn.get("created_at")
-                if txn_date:
-                    # Handle both datetime and string formats
-                    if isinstance(txn_date, str):
-                        try:
-                            txn_date = datetime.fromisoformat(txn_date.replace("Z", "+00:00"))
-                        except Exception:
-                            continue
-                    if isinstance(txn_date, datetime):
-                        txn_date = txn_date.replace(tzinfo=None)
-                    else:
-                        continue
-                    if txn_date >= thirty_days_ago:
+                txn_date = _normalize_datetime(txn.get("created_at"))
+                if txn_date and txn_date >= thirty_days_ago:
+                    amount = txn.get("amount", 0)
+                    if amount > 0:
+                        total_credits_issued_30d += amount
+
+        # Stream all jobs and filter by user_email
+        all_jobs = []
+        jobs_fetched = 0
+        for doc in jobs_collection.limit(JOBS_STREAM_LIMIT).stream():
+            jobs_fetched += 1
+            job_data = doc.to_dict()
+            user_email = job_data.get("user_email", "")
+            if not is_test_email(user_email):
+                all_jobs.append(job_data)
+
+        if jobs_fetched >= JOBS_STREAM_LIMIT:
+            logger.warning(f"Jobs stream hit limit ({JOBS_STREAM_LIMIT}), stats may be incomplete")
+
+        # Calculate job stats from filtered list
+        total_jobs = len(all_jobs)
+        jobs_last_7d = sum(
+            1 for j in all_jobs
+            if j.get("created_at") and _normalize_datetime(j["created_at"]) >= seven_days_ago
+        )
+        jobs_last_30d = sum(
+            1 for j in all_jobs
+            if j.get("created_at") and _normalize_datetime(j["created_at"]) >= thirty_days_ago
+        )
+
+        # Jobs by status
+        jobs_by_status = JobsByStatusResponse(
+            pending=sum(1 for j in all_jobs if j.get("status") == "pending"),
+            processing=sum(1 for j in all_jobs if j.get("status") in processing_statuses),
+            awaiting_review=sum(1 for j in all_jobs if j.get("status") in ["awaiting_review", "in_review"]),
+            awaiting_instrumental=sum(1 for j in all_jobs if j.get("status") == "awaiting_instrumental_selection"),
+            complete=sum(1 for j in all_jobs if j.get("status") in ["complete", "prep_complete"]),
+            failed=sum(1 for j in all_jobs if j.get("status") == "failed"),
+            cancelled=sum(1 for j in all_jobs if j.get("status") == "cancelled"),
+        )
+    else:
+        # When including test data, use efficient aggregation queries
+        def get_count(query) -> int:
+            try:
+                agg_query = aggregation.AggregationQuery(query)
+                agg_query.count(alias="count")
+                results = agg_query.get()
+                return results[0][0].value if results else 0
+            except Exception as e:
+                logger.warning(f"Aggregation query failed: {e}")
+                return 0
+
+        # User statistics
+        total_users = get_count(users_collection)
+        active_users_7d = get_count(
+            users_collection.where(filter=FieldFilter("last_login_at", ">=", seven_days_ago))
+        )
+        active_users_30d = get_count(
+            users_collection.where(filter=FieldFilter("last_login_at", ">=", thirty_days_ago))
+        )
+        total_beta_testers = get_count(
+            users_collection.where(filter=FieldFilter("is_beta_tester", "==", True))
+        )
+
+        # Job statistics
+        total_jobs = get_count(jobs_collection)
+        jobs_last_7d = get_count(
+            jobs_collection.where(filter=FieldFilter("created_at", ">=", seven_days_ago))
+        )
+        jobs_last_30d = get_count(
+            jobs_collection.where(filter=FieldFilter("created_at", ">=", thirty_days_ago))
+        )
+
+        # Jobs by status
+        jobs_by_status = JobsByStatusResponse(
+            pending=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "pending"))
+            ),
+            processing=sum(
+                get_count(jobs_collection.where(filter=FieldFilter("status", "==", status)))
+                for status in processing_statuses
+            ),
+            awaiting_review=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "awaiting_review"))
+            ) + get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "in_review"))
+            ),
+            awaiting_instrumental=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "awaiting_instrumental_selection"))
+            ),
+            complete=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "complete"))
+            ) + get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "prep_complete"))
+            ),
+            failed=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "failed"))
+            ),
+            cancelled=get_count(
+                jobs_collection.where(filter=FieldFilter("status", "==", "cancelled"))
+            ),
+        )
+
+        # Credit statistics - sum credits added in last 30 days
+        total_credits_issued_30d = 0
+        try:
+            users_fetched = 0
+            for user_doc in users_collection.limit(USERS_STREAM_LIMIT).stream():
+                users_fetched += 1
+                user_data = user_doc.to_dict()
+                transactions = user_data.get("credit_transactions", [])
+                for txn in transactions:
+                    txn_date = _normalize_datetime(txn.get("created_at"))
+                    if txn_date and txn_date >= thirty_days_ago:
                         amount = txn.get("amount", 0)
-                        if amount > 0:  # Only count additions, not deductions
+                        if amount > 0:
                             total_credits_issued_30d += amount
-    except Exception as e:
-        logger.warning(f"Error calculating credits: {e}")
+            if users_fetched >= USERS_STREAM_LIMIT:
+                logger.warning(f"Credit calculation hit user limit ({USERS_STREAM_LIMIT}), total may be incomplete")
+        except Exception as e:
+            logger.warning(f"Error calculating credits: {e}")
 
     return AdminStatsOverview(
         total_users=total_users,
@@ -200,6 +271,21 @@ async def get_admin_stats_overview(
         total_credits_issued_30d=total_credits_issued_30d,
         total_beta_testers=total_beta_testers,
     )
+
+
+def _normalize_datetime(dt_value) -> Optional[datetime]:
+    """Normalize datetime values from Firestore (can be datetime or ISO string)."""
+    if dt_value is None:
+        return None
+    if isinstance(dt_value, datetime):
+        return dt_value.replace(tzinfo=None)
+    if isinstance(dt_value, str):
+        try:
+            parsed = datetime.fromisoformat(dt_value.replace("Z", "+00:00"))
+            return parsed.replace(tzinfo=None)
+        except Exception:
+            return None
+    return None
 
 
 # =============================================================================
@@ -273,6 +359,7 @@ class CacheStatsResponse(BaseModel):
 async def list_audio_searches(
     limit: int = 50,
     status_filter: Optional[str] = None,
+    exclude_test: bool = True,
     auth_data: Tuple[str, UserType, int] = Depends(require_admin),
     user_service: UserService = Depends(get_user_service),
 ):
@@ -287,6 +374,7 @@ async def list_audio_searches(
     Args:
         limit: Maximum number of jobs to return (default 50)
         status_filter: Optional filter by job status (e.g., 'awaiting_audio_selection')
+        exclude_test: If True (default), exclude jobs from test users
     """
     from google.cloud.firestore_v1 import FieldFilter
 
@@ -306,6 +394,11 @@ async def list_audio_searches(
 
     for doc in query.stream():
         data = doc.to_dict()
+
+        # Filter out test users if exclude_test is True
+        if exclude_test and is_test_email(data.get("user_email", "")):
+            continue
+
         state_data = data.get("state_data", {})
         audio_results = state_data.get("audio_search_results", [])
 
