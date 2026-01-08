@@ -81,7 +81,7 @@ class EncodingService:
         json_payload: Optional[Dict[str, Any]] = None,
         timeout: float = 30.0,
         job_id: str = "unknown",
-    ) -> aiohttp.ClientResponse:
+    ) -> Dict[str, Any]:
         """
         Make an HTTP request with retry logic for transient failures.
 
@@ -97,10 +97,15 @@ class EncodingService:
             job_id: Job ID for logging
 
         Returns:
-            aiohttp ClientResponse
+            Dict with keys:
+                - status (int): HTTP status code
+                - json (Any): Parsed JSON response body (if status 200, else None)
+                - text (str): Raw response text (if status != 200, else None)
 
         Raises:
-            aiohttp.ClientError: If all retries fail
+            aiohttp.ClientConnectorError: If all retries fail due to connection errors
+            aiohttp.ServerDisconnectedError: If all retries fail due to server disconnect
+            asyncio.TimeoutError: If all retries fail due to timeout
         """
         last_exception = None
         backoff = INITIAL_BACKOFF_SECONDS

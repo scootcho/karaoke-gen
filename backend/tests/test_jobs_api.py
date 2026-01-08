@@ -50,7 +50,16 @@ def mock_worker_service():
 
 
 @pytest.fixture
-def client(mock_job_manager, mock_worker_service):
+def mock_theme_service():
+    """Create a mock ThemeService that returns 'nomad' as default theme."""
+    service = MagicMock()
+    service.get_default_theme_id.return_value = "nomad"
+    service.get_theme.return_value = None
+    return service
+
+
+@pytest.fixture
+def client(mock_job_manager, mock_worker_service, mock_theme_service):
     """Create TestClient with mocked dependencies."""
     mock_creds = MagicMock()
     mock_creds.universe_domain = 'googleapis.com'
@@ -63,6 +72,7 @@ def client(mock_job_manager, mock_worker_service):
     # Also patch JobManager class used in dependencies.py for auth checks
     with patch('backend.api.routes.jobs.job_manager', mock_job_manager), \
          patch('backend.api.routes.jobs.worker_service', mock_worker_service), \
+         patch('backend.api.routes.jobs.get_theme_service', return_value=mock_theme_service), \
          patch('backend.services.job_manager.JobManager', mock_job_manager_factory), \
          patch('backend.services.firestore_service.firestore'), \
          patch('backend.services.storage_service.storage'), \

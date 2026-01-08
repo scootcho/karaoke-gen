@@ -97,8 +97,12 @@ async def create_job(
         # Apply default theme - all jobs require a theme
         theme_service = get_theme_service()
         effective_theme_id = theme_service.get_default_theme_id()
-        if effective_theme_id:
-            logger.info(f"Applying default theme: {effective_theme_id}")
+        if not effective_theme_id:
+            raise HTTPException(
+                status_code=422,
+                detail="No default theme configured. Please contact support or specify a theme_id."
+            )
+        logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Create job with all preferences
         job_create = JobCreate(
