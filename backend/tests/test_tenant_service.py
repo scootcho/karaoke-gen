@@ -308,7 +308,8 @@ class TestTenantService:
 
         sender = tenant_service.get_tenant_sender_email("nonexistent")
 
-        assert sender == "noreply@nomadkaraoke.com"
+        # Should match DEFAULT_SENDER_EMAIL constant (consistent with EmailService)
+        assert sender == "gen@nomadkaraoke.com"
 
     # Tests for invalidate_cache()
     def test_invalidate_cache_specific_tenant(self, tenant_service, mock_storage):
@@ -325,6 +326,22 @@ class TestTenantService:
 
         assert "vocalstar" not in tenant_service._config_cache
         assert "vocalstar" not in tenant_service._cache_times
+
+    def test_invalidate_cache_specific_tenant_clears_subdomain_map(self, tenant_service, mock_storage):
+        """Test invalidating specific tenant also clears its subdomain map entry."""
+        mock_storage.file_exists.return_value = True
+        mock_storage.download_json.return_value = SAMPLE_VOCALSTAR_CONFIG
+
+        # Load into cache (this also populates subdomain map)
+        tenant_service.get_tenant_config("vocalstar")
+        assert "vocalstar.nomadkaraoke.com" in tenant_service._subdomain_map
+        assert tenant_service._subdomain_map["vocalstar.nomadkaraoke.com"] == "vocalstar"
+
+        # Invalidate specific tenant
+        tenant_service.invalidate_cache("vocalstar")
+
+        # Subdomain map entry should also be removed
+        assert "vocalstar.nomadkaraoke.com" not in tenant_service._subdomain_map
 
     def test_invalidate_cache_all(self, tenant_service, mock_storage):
         """Test invalidating all caches."""

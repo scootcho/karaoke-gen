@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 # GCS paths for tenant configs
 TENANTS_PREFIX = "tenants"
 
+# Default sender email (shared with EmailService for consistency)
+DEFAULT_SENDER_EMAIL = "gen@nomadkaraoke.com"
+
 
 class TenantService:
     """Service for managing tenant configurations from GCS."""
@@ -88,8 +91,9 @@ class TenantService:
             self._config_cache[tenant_id] = config
             self._cache_times[tenant_id] = datetime.now()
 
-            # Update subdomain map
+            # Update subdomain map and its timestamp
             self._subdomain_map[config.subdomain.lower()] = tenant_id
+            self._subdomain_map_time = datetime.now()
 
             logger.info(f"Loaded tenant config: {tenant_id}")
             return config
@@ -219,8 +223,8 @@ class TenantService:
         config = self.get_tenant_config(tenant_id)
         if config:
             return config.get_sender_email()
-        # Default fallback
-        return "noreply@nomadkaraoke.com"
+        # Default fallback (consistent with EmailService)
+        return DEFAULT_SENDER_EMAIL
 
     def invalidate_cache(self, tenant_id: Optional[str] = None) -> None:
         """
@@ -232,6 +236,14 @@ class TenantService:
         if tenant_id:
             self._config_cache.pop(tenant_id, None)
             self._cache_times.pop(tenant_id, None)
+            # Also remove any subdomain map entries pointing to this tenant
+            subdomains_to_remove = [
+                subdomain
+                for subdomain, tid in self._subdomain_map.items()
+                if tid == tenant_id
+            ]
+            for subdomain in subdomains_to_remove:
+                self._subdomain_map.pop(subdomain, None)
             logger.info(f"Tenant config cache invalidated: {tenant_id}")
         else:
             self._config_cache.clear()
