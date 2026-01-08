@@ -452,15 +452,17 @@ export default function Header({
                             </Button>
                         )}
                         {!isReadOnly && onUnCorrectAll && (
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={onUnCorrectAll}
-                                startIcon={<RestoreIcon />}
-                                sx={{ minWidth: 'fit-content', height: '32px' }}
-                            >
-                                Undo Auto Corrections
-                            </Button>
+                            <Tooltip title="Revert only automatic AI corrections (keeps your manual edits)">
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={onUnCorrectAll}
+                                    startIcon={<RestoreIcon />}
+                                    sx={{ minWidth: 'fit-content', height: '32px' }}
+                                >
+                                    Undo Auto Corrections
+                                </Button>
+                            </Tooltip>
                         )}
                         {!isReadOnly && onTimingOffset && (
                             <Box sx={{ display: 'flex', alignItems: 'center' }}>

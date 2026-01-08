@@ -42098,7 +42098,7 @@ function Header({
           children: "Edit All"
         }
       ),
-      !isReadOnly && onUnCorrectAll && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      !isReadOnly && onUnCorrectAll && /* @__PURE__ */ jsxRuntimeExports.jsx(Tooltip, { title: "Revert only automatic AI corrections (keeps your manual edits)", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         Button,
         {
           variant: "outlined",
@@ -42108,7 +42108,7 @@ function Header({
           sx: { minWidth: "fit-content", height: "32px" },
           children: "Undo Auto Corrections"
         }
-      ),
+      ) }),
       !isReadOnly && onTimingOffset && /* @__PURE__ */ jsxRuntimeExports.jsxs(Box, { sx: { display: "flex", alignItems: "center" }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           Button,
@@ -44462,4 +44462,4 @@ console.log(`🎵 Lyrics Transcriber Frontend v${packageJson.version}`);
 ReactDOM$1.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
 );
-//# sourceMappingURL=index-CwcKLlSf.js.map
+//# sourceMappingURL=index-BSMgOq4Z.js.map
