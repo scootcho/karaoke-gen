@@ -40,6 +40,8 @@
 
 ## Recent Changes
 
+- **Comprehensive Performance Optimization** (2026-01-08): Reduced lyrics processing from **16+ minutes to ~5 minutes** through multiple optimizations. Key changes: (1) NLTK cmudict preloading at startup saves 100-150s, (2) Langfuse callback handler preloading saves 200s, (3) Model warmup in `AgenticCorrector.from_model()` prevents parallel initialization race, (4) Parallel anchor sequence search (4 workers) reduces n-gram processing from 38s to ~10s. Added `/health/preload-status` endpoint for deployment verification. PR #236. See [archive/2026-01-08-performance-investigation.md](archive/2026-01-08-performance-investigation.md) and [LESSONS-LEARNED.md](LESSONS-LEARNED.md#preloading-heavy-resources-at-container-startup).
+
 - **SpaCy Preloading** (2026-01-08): Implemented SpaCy model preloading at container startup to eliminate 60+ second delay during agentic correction. The `en_core_web_sm` model is now loaded during FastAPI lifespan startup, and `PhraseAnalyzer`/`SyllablesMatchHandler` reuse the preloaded model. Added timing logs to verify performance. See [archive/2026-01-08-spacy-preload-plan.md](archive/2026-01-08-spacy-preload-plan.md).
 
 - **Thread-Safe LangChain Model Initialization** (2026-01-08): Fixed race condition in `LangChainBridge` where parallel threads could all try to initialize the AI model simultaneously, causing 6+ minute delays. Added double-checked locking with `threading.Lock()`. PR #232. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#thread-safe-lazy-initialization-in-shared-components).
