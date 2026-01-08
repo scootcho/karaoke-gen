@@ -993,6 +993,70 @@ class LangChainBridge:
 
 **Testing**: Write tests that use `threading.Barrier` to ensure multiple threads hit the initialization check simultaneously, then assert the initialization function was called exactly once.
 
+### Preloading Heavy Resources at Container Startup
+
+**Problem**: Lazy-loading heavy resources (like SpaCy NLP models) during request processing can cause 60+ second delays on Cloud Run due to slow filesystem I/O during cold starts. The first request after deployment/scaling pays the full load penalty.
+
+**Example bug**: `PhraseAnalyzer` loaded SpaCy's `en_core_web_sm` model lazily on first use during agentic lyrics correction. On Cloud Run, this took 63 seconds due to container filesystem being slower than local SSD. Job `2ccbdf6b` showed 73-second gap between "Initializing PhraseAnalyzer" and "Initialized AnchorSequenceFinder" logs.
+
+**Symptoms**:
+- First job after deployment is extremely slow
+- Large time gaps in logs between "loading X" and "using X"
+- Same code runs much faster locally (where filesystem is faster)
+- Subsequent requests (warm container) are fast
+
+**Solution**: Preload heavy resources at container startup using FastAPI's lifespan handler:
+
+```python
+# backend/services/spacy_preloader.py - singleton storage
+_preloaded_models: dict = {}
+
+def preload_spacy_model(model_name: str = "en_core_web_sm") -> None:
+    if model_name not in _preloaded_models:
+        _preloaded_models[model_name] = spacy.load(model_name)
+
+def get_preloaded_model(model_name: str) -> Optional[object]:
+    return _preloaded_models.get(model_name)
+
+# backend/main.py - load at startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    preload_spacy_model("en_core_web_sm")  # Pay cost once at startup
+    yield
+```
+
+Then modify consumers to check for preloaded model:
+```python
+class PhraseAnalyzer:
+    def __init__(self):
+        preloaded = get_preloaded_model("en_core_web_sm")
+        if preloaded:
+            self.nlp = preloaded  # Fast path
+        else:
+            self.nlp = spacy.load("en_core_web_sm")  # Fallback
+```
+
+**Key insight**: On Cloud Run, container startup time doesn't directly impact users (they don't see the startup delay), but request processing time does. Moving heavy initialization from request-time to startup-time improves user experience even if total work is the same.
+
+**Good candidates for preloading**:
+- ML model files (SpaCy, transformers, etc.)
+- Large data files
+- Expensive-to-initialize clients
+- Anything that touches the filesystem heavily
+
+**Not worth preloading**:
+- Fast in-memory operations
+- Resources that vary per-request
+- Rarely-used code paths
+
+**Logging**: Add timing logs to both startup preload and usage paths so you can verify the optimization is working:
+```
+# At startup: "SpaCy model 'en_core_web_sm' preloaded in 2.34s"
+# During request: "Using preloaded SpaCy model: en_core_web_sm"
+```
+
+See `docs/archive/2026-01-08-spacy-preload-plan.md` for full implementation details.
+
 ## Performance Observations
 
 | Operation | Duration |
