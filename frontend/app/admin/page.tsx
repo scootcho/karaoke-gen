@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { adminApi, AdminStatsOverview } from "@/lib/api"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { StatsCard, StatsGrid } from "@/components/admin/stats-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,12 +24,13 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<AdminStatsOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { showTestData } = useAdminSettings()
 
   const loadStats = async () => {
     try {
       setLoading(true)
       setError(null)
-      const data = await adminApi.getStats()
+      const data = await adminApi.getStats({ exclude_test: !showTestData })
       setStats(data)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load statistics"
@@ -41,7 +43,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadStats()
-  }, [])
+  }, [showTestData])
 
   if (error) {
     return (

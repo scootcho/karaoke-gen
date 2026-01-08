@@ -29,6 +29,7 @@ from backend.config import get_settings
 from backend.api.dependencies import require_admin, require_auth, require_instrumental_auth
 from backend.services.auth_service import UserType, AuthResult
 from backend.services.metrics import metrics
+from backend.utils.test_data import is_test_email
 
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,7 @@ async def list_jobs(
     client_id: Optional[str] = None,
     created_after: Optional[str] = None,
     created_before: Optional[str] = None,
+    exclude_test: bool = True,
     limit: int = 100,
     auth_result: AuthResult = Depends(require_auth)
 ) -> List[Job]:
@@ -196,6 +198,7 @@ async def list_jobs(
         client_id: Filter by request_metadata.client_id (customer identifier)
         created_after: Filter jobs created after this ISO datetime (e.g., 2024-01-01T00:00:00Z)
         created_before: Filter jobs created before this ISO datetime
+        exclude_test: If True (default), exclude jobs from test users (admin only)
         limit: Maximum number of jobs to return (default 100)
 
     Returns:
@@ -241,6 +244,10 @@ async def list_jobs(
             user_email=user_email_filter,
             limit=limit
         )
+
+        # Filter out test user jobs if exclude_test is True (admin only)
+        if exclude_test and auth_result.is_admin:
+            jobs = [j for j in jobs if not is_test_email(j.user_email or "")]
 
         logger.debug(f"Listed {len(jobs)} jobs for user={auth_result.user_email}, admin={auth_result.is_admin}")
         return jobs

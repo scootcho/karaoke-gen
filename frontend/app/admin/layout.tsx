@@ -4,10 +4,13 @@ import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getAccessToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { Loader2 } from "lucide-react"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -124,6 +127,8 @@ export default function AdminLayout({
     )
   }
 
+  const { showTestData, setShowTestData } = useAdminSettings()
+
   return (
     <SidebarProvider>
       <AdminSidebar />
@@ -132,6 +137,16 @@ export default function AdminLayout({
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <AdminBreadcrumb />
+          <div className="ml-auto flex items-center gap-2">
+            <Switch
+              id="show-test-data"
+              checked={showTestData}
+              onCheckedChange={setShowTestData}
+            />
+            <Label htmlFor="show-test-data" className="text-sm text-muted-foreground cursor-pointer">
+              Show test data
+            </Label>
+          </div>
         </header>
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>

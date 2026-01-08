@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { adminApi, Job } from "@/lib/api"
+import { useAdminSettings } from "@/lib/admin-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +63,7 @@ const statusOptions = [
 export default function AdminJobsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { showTestData } = useAdminSettings()
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
@@ -80,6 +82,7 @@ export default function AdminJobsPage() {
         status: statusFilter !== "all" ? statusFilter : undefined,
         user_email: userEmailFilter || undefined,
         limit: 100,
+        exclude_test: !showTestData,
       })
       setJobs(data)
     } catch (err: any) {
@@ -92,7 +95,7 @@ export default function AdminJobsPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, userEmailFilter, toast])
+  }, [statusFilter, userEmailFilter, showTestData, toast])
 
   useEffect(() => {
     loadJobs()
