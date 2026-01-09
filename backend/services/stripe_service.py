@@ -116,7 +116,7 @@ class StripeService:
 
             # Create checkout session
             session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
+                # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
@@ -205,21 +205,15 @@ class StripeService:
                 # Truncate notes to fit Stripe's 500 char limit per metadata value
                 metadata['notes'] = notes[:500] if len(notes) > 500 else notes
 
-            # Build product description with song info and service details
-            product_description = (
-                f"Song: {artist} - {title}\n\n"
-                f"{MADE_FOR_YOU_PACKAGE['description']}"
-            )
-
             # Create checkout session
             session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
+                # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
-                            'name': MADE_FOR_YOU_PACKAGE['name'],
-                            'description': product_description,
+                            'name': f"Karaoke Video: {artist} - {title}",
+                            'description': MADE_FOR_YOU_PACKAGE['description'],
                             'images': MADE_FOR_YOU_PACKAGE['images'],
                         },
                         'unit_amount': MADE_FOR_YOU_PACKAGE['price_cents'],
