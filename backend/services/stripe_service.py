@@ -50,7 +50,8 @@ CREDIT_PACKAGES = {
 MADE_FOR_YOU_PACKAGE = {
     "price_cents": 1500,  # $15.00
     "name": "Made For You Karaoke Video",
-    "description": "Full-service karaoke video creation with 24-hour delivery",
+    "description": "Professional 4K karaoke video with perfectly synced lyrics, delivered to your email within 24 hours",
+    "images": ["https://nomadkaraoke.com/nomad-karaoke-logo.png"],
 }
 
 
@@ -204,6 +205,12 @@ class StripeService:
                 # Truncate notes to fit Stripe's 500 char limit per metadata value
                 metadata['notes'] = notes[:500] if len(notes) > 500 else notes
 
+            # Build product description with song info and service details
+            product_description = (
+                f"Song: {artist} - {title}\n\n"
+                f"{MADE_FOR_YOU_PACKAGE['description']}"
+            )
+
             # Create checkout session
             session = stripe.checkout.Session.create(
                 payment_method_types=['card'],
@@ -212,7 +219,8 @@ class StripeService:
                         'currency': 'usd',
                         'product_data': {
                             'name': MADE_FOR_YOU_PACKAGE['name'],
-                            'description': f"{artist} - {title}",
+                            'description': product_description,
+                            'images': MADE_FOR_YOU_PACKAGE['images'],
                         },
                         'unit_amount': MADE_FOR_YOU_PACKAGE['price_cents'],
                     },
