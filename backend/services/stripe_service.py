@@ -51,7 +51,7 @@ MADE_FOR_YOU_PACKAGE = {
     "price_cents": 1500,  # $15.00
     "name": "Made For You Karaoke Video",
     "description": "Professional 4K karaoke video with perfectly synced lyrics, delivered to your email within 24 hours",
-    "images": ["https://nomadkaraoke.com/nomad-karaoke-logo.png"],
+    "images": ["https://gen.nomadkaraoke.com/nomad-logo.png"],
 }
 
 
