@@ -913,6 +913,145 @@ class TestJobWithFullTwoPhaseConfig:
         assert "title" in job.file_urls["screens"]
 
 
+class TestMadeForYouFields:
+    """Tests for made-for-you order tracking fields."""
+
+    def test_job_has_made_for_you_field(self):
+        """Test Job model has made_for_you field with default False."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        assert hasattr(job, 'made_for_you')
+        assert job.made_for_you is False
+
+    def test_job_made_for_you_true(self):
+        """Test Job model can set made_for_you to True."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            made_for_you=True,
+        )
+        assert job.made_for_you is True
+
+    def test_job_has_customer_email_field(self):
+        """Test Job model has customer_email field with default None."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        assert hasattr(job, 'customer_email')
+        assert job.customer_email is None
+
+    def test_job_customer_email_set(self):
+        """Test Job model can set customer_email."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            customer_email="customer@example.com",
+        )
+        assert job.customer_email == "customer@example.com"
+
+    def test_job_has_customer_notes_field(self):
+        """Test Job model has customer_notes field with default None."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        assert hasattr(job, 'customer_notes')
+        assert job.customer_notes is None
+
+    def test_job_customer_notes_set(self):
+        """Test Job model can set customer_notes."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            customer_notes="Please make it extra special!",
+        )
+        assert job.customer_notes == "Please make it extra special!"
+
+    def test_job_create_has_made_for_you_fields(self):
+        """Test JobCreate model has all made-for-you fields."""
+        job_create = JobCreate(
+            artist="Test Artist",
+            title="Test Song",
+        )
+        assert hasattr(job_create, 'made_for_you')
+        assert hasattr(job_create, 'customer_email')
+        assert hasattr(job_create, 'customer_notes')
+        assert job_create.made_for_you is False
+        assert job_create.customer_email is None
+        assert job_create.customer_notes is None
+
+    def test_job_create_with_made_for_you_config(self):
+        """Test JobCreate with full made-for-you configuration."""
+        job_create = JobCreate(
+            artist="Seether",
+            title="Tonight",
+            user_email="admin@nomadkaraoke.com",
+            made_for_you=True,
+            customer_email="customer@example.com",
+            customer_notes="Wedding anniversary!",
+        )
+        assert job_create.made_for_you is True
+        assert job_create.customer_email == "customer@example.com"
+        assert job_create.customer_notes == "Wedding anniversary!"
+        assert job_create.user_email == "admin@nomadkaraoke.com"
+
+    def test_made_for_you_serialization_roundtrip(self):
+        """Test made-for-you fields survive dict serialization."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.AWAITING_AUDIO_SELECTION,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            made_for_you=True,
+            customer_email="customer@example.com",
+            customer_notes="Test notes",
+            user_email="admin@nomadkaraoke.com",
+        )
+
+        job_dict = job.model_dump()
+
+        assert job_dict['made_for_you'] is True
+        assert job_dict['customer_email'] == "customer@example.com"
+        assert job_dict['customer_notes'] == "Test notes"
+
+    def test_made_for_you_job_with_distribution_settings(self):
+        """Test made-for-you job with distribution settings."""
+        job = Job(
+            job_id="test123",
+            status=JobStatus.AWAITING_AUDIO_SELECTION,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            made_for_you=True,
+            customer_email="customer@example.com",
+            user_email="admin@nomadkaraoke.com",
+            enable_youtube_upload=True,
+            dropbox_path="/Production/Ready To Upload",
+            gdrive_folder_id="1ABC123",
+            brand_prefix="NOMAD",
+        )
+
+        assert job.made_for_you is True
+        assert job.enable_youtube_upload is True
+        assert job.dropbox_path == "/Production/Ready To Upload"
+        assert job.gdrive_folder_id == "1ABC123"
+        assert job.brand_prefix == "NOMAD"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

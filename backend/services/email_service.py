@@ -1107,6 +1107,211 @@ Thanks for being part of making Nomad Karaoke better!
             text_content=message_content,
         )
 
+    def send_made_for_you_order_confirmation(
+        self,
+        to_email: str,
+        artist: str,
+        title: str,
+        notes: Optional[str] = None,
+    ) -> bool:
+        """
+        Send order confirmation email to customer for made-for-you orders.
+
+        Args:
+            to_email: Customer's email address
+            artist: Artist name
+            title: Song title
+            notes: Optional customer notes
+
+        Returns:
+            True if email was sent successfully
+        """
+        subject = f"Order Confirmed: {artist} - {title} | Nomad Karaoke"
+
+        extra_styles = """
+        .order-details {
+            background-color: #f8fafc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .order-details h3 {
+            margin-top: 0;
+            color: #1e293b;
+        }
+        .order-details p {
+            margin: 8px 0;
+            color: #475569;
+        }
+        .highlight {
+            color: #059669;
+            font-weight: bold;
+        }
+"""
+
+        notes_html = ""
+        notes_text = ""
+        if notes:
+            notes_html = f"<p><strong>Your Notes:</strong> {html.escape(notes)}</p>"
+            notes_text = f"\nYour Notes: {notes}"
+
+        content = f"""
+    <h2>Thank You for Your Order!</h2>
+
+    <div class="order-details">
+        <h3>Order Details</h3>
+        <p><strong>Artist:</strong> {html.escape(artist)}</p>
+        <p><strong>Title:</strong> {html.escape(title)}</p>
+        {notes_html}
+    </div>
+
+    <p>Our team will create your custom karaoke video within <span class="highlight">24 hours</span>.</p>
+
+    <p>You'll receive an email with download links as soon as your video is ready.</p>
+
+    <p><strong>No action needed</strong> - sit back and we'll take care of everything!</p>
+"""
+
+        text_content = f"""Thank You for Your Order!
+
+Order Details:
+Artist: {artist}
+Title: {title}{notes_text}
+
+Our team will create your custom karaoke video within 24 hours.
+
+You'll receive an email with download links as soon as your video is ready.
+
+No action needed - sit back and we'll take care of everything!
+"""
+
+        html_content = self._build_email_html(content, extra_styles)
+
+        return self.provider.send_email(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+        )
+
+    def send_made_for_you_admin_notification(
+        self,
+        to_email: str,
+        customer_email: str,
+        artist: str,
+        title: str,
+        job_id: str,
+        notes: Optional[str] = None,
+        audio_source_count: int = 0,
+    ) -> bool:
+        """
+        Send notification email to admin for new made-for-you orders.
+
+        Args:
+            to_email: Admin email address
+            customer_email: Customer's email address
+            artist: Artist name
+            title: Song title
+            job_id: Job ID for linking to admin page
+            notes: Optional customer notes
+            audio_source_count: Number of audio sources found
+
+        Returns:
+            True if email was sent successfully
+        """
+        subject = f"[Made For You] New Order: {artist} - {title}"
+
+        extra_styles = """
+        .alert-box {
+            background-color: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .order-info {
+            background-color: #f8fafc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .order-info p {
+            margin: 8px 0;
+        }
+        .action-button {
+            display: inline-block;
+            background-color: #2563eb;
+            color: white !important;
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .deadline {
+            color: #dc2626;
+            font-weight: bold;
+        }
+"""
+
+        notes_html = ""
+        notes_text = ""
+        if notes:
+            notes_html = f"<p><strong>Customer Notes:</strong> {html.escape(notes)}</p>"
+            notes_text = f"\nCustomer Notes: {notes}"
+
+        job_url = f"{self.frontend_url.rstrip('/')}/admin/jobs/{job_id}"
+
+        content = f"""
+    <div class="alert-box">
+        <strong>🎤 New Made-For-You Order Received!</strong>
+    </div>
+
+    <div class="order-info">
+        <p><strong>Customer:</strong> {html.escape(customer_email)}</p>
+        <p><strong>Artist:</strong> {html.escape(artist)}</p>
+        <p><strong>Title:</strong> {html.escape(title)}</p>
+        <p><strong>Audio Sources Found:</strong> {audio_source_count}</p>
+        {notes_html}
+    </div>
+
+    <p><strong>Action Required:</strong> Select an audio source to start processing.</p>
+
+    <p style="text-align: center;">
+        <a href="{job_url}" class="action-button">Open Job in Admin</a>
+    </p>
+
+    <p class="deadline">⏰ Deadline: 24 hours from now</p>
+
+    <p><small>Job ID: {job_id}</small></p>
+"""
+
+        text_content = f"""New Made-For-You Order Received!
+
+Customer: {customer_email}
+Artist: {artist}
+Title: {title}
+Audio Sources Found: {audio_source_count}{notes_text}
+
+Action Required: Select an audio source to start processing.
+
+Open Job in Admin: {job_url}
+
+Deadline: 24 hours from now
+
+Job ID: {job_id}
+"""
+
+        html_content = self._build_email_html(content, extra_styles)
+
+        return self.provider.send_email(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+        )
+
 
 # Global instance
 _email_service = None

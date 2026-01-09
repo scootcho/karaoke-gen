@@ -371,6 +371,12 @@ async def check_idle_reminder(
         add_span_event("already_sent")
         return {"status": "already_sent", "job_id": job_id, "message": "Reminder already sent"}
 
+    # Skip reminders for made-for-you jobs (admin handles these directly, no intermediate customer emails)
+    if getattr(job, 'made_for_you', False):
+        logger.info(f"[job:{job_id}] Made-for-you job, skipping customer reminder (admin handles)")
+        add_span_event("made_for_you_skip")
+        return {"status": "skipped", "job_id": job_id, "message": "Made-for-you job - admin handles directly"}
+
     # Check if user has an email
     if not job.user_email:
         logger.warning(f"[job:{job_id}] No user email, cannot send reminder")

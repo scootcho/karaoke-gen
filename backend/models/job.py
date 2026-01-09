@@ -279,7 +279,12 @@ class Job(BaseModel):
     review_token_expires_at: Optional[datetime] = None  # Token expiry time (optional, for extra security)
     instrumental_token: Optional[str] = None     # Job-scoped token for instrumental review UI access (generated when entering AWAITING_INSTRUMENTAL_SELECTION)
     instrumental_token_expires_at: Optional[datetime] = None  # Token expiry time
-    
+
+    # Made-for-you order tracking
+    made_for_you: bool = False                   # Flag indicating this is a made-for-you customer order
+    customer_email: Optional[str] = None         # Customer email for final delivery (job owned by admin during processing)
+    customer_notes: Optional[str] = None         # Notes provided by customer with their order
+
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
@@ -477,7 +482,12 @@ class JobCreate(BaseModel):
     prep_only: bool = False                      # Stop after review, don't run finalisation
     finalise_only: bool = False                  # Skip prep, run only finalisation
     keep_brand_code: Optional[str] = None        # Preserve existing brand code instead of generating new one
-    
+
+    # Made-for-you order tracking
+    made_for_you: bool = False                   # Flag indicating this is a made-for-you customer order
+    customer_email: Optional[str] = None         # Customer email for final delivery (job owned by admin during processing)
+    customer_notes: Optional[str] = None         # Notes provided by customer with their order
+
     # Request metadata (set by API endpoint from request headers)
     request_metadata: Dict[str, Any] = Field(default_factory=dict)
     """

@@ -379,9 +379,30 @@ Content-Type: application/json
 }
 ```
 
-Creates a $15 checkout for the full-service "Made For You" karaoke video. After payment, a job is automatically created and the customer receives email updates. Supports all enabled payment methods.
+Creates a $15 checkout for the full-service "Made For You" karaoke video. Supports all enabled payment methods.
 
 **source_type**: `search` (find audio automatically), `youtube` (use provided URL)
+
+#### Made-For-You Order Flow
+
+After payment completes via Stripe webhook:
+
+1. **Job Creation**: Job is created with `made_for_you=true`, owned by admin during processing
+2. **Audio Search**: System searches for audio sources automatically
+3. **Admin Notification**: Admin receives email with link to select audio source
+4. **Customer Confirmation**: Customer receives order confirmation email
+5. **Pause at Audio Selection**: Job enters `AWAITING_AUDIO_SELECTION` state
+6. **Admin Selects Audio**: Admin reviews and selects audio source in admin UI
+7. **Processing**: Job processes through normal pipeline (admin handles any intermediate steps)
+8. **Completion**: On completion, ownership transfers to customer (`user_email` = `customer_email`)
+9. **Delivery Email**: Customer receives completion email with download links
+
+**Key fields on job document:**
+- `made_for_you: bool` - Flag for made-for-you orders (default: false)
+- `customer_email: str` - Customer's email for final delivery
+- `customer_notes: str` - Optional notes from customer
+
+**Email suppression**: Intermediate reminder emails (lyrics review, instrumental selection) are suppressed for made-for-you jobs since admin handles these directly. Only order confirmation and final delivery emails go to customer
 
 ### Stripe Webhook
 
