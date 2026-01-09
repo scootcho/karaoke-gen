@@ -434,7 +434,7 @@ async def create_made_for_you_checkout(
 # =============================================================================
 
 # Admin email for made-for-you order notifications
-ADMIN_EMAIL = "andrew@nomadkaraoke.com"
+ADMIN_EMAIL = "madeforyou@nomadkaraoke.com"
 
 
 async def _handle_made_for_you_order(
@@ -649,11 +649,18 @@ async def _handle_made_for_you_order(
         # (search_results may be set from the search flow above, or None for YouTube URL orders)
         audio_source_count = len(search_results) if search_results else 0
 
+        # Generate admin login token for one-click email access (24hr expiry)
+        admin_login = user_service.create_admin_login_token(
+            email=ADMIN_EMAIL,
+            expiry_hours=24,
+        )
+
         # Send confirmation email to customer using professional template
         email_service.send_made_for_you_order_confirmation(
             to_email=customer_email,
             artist=artist,
             title=title,
+            job_id=job_id,
             notes=notes,
         )
 
@@ -664,6 +671,7 @@ async def _handle_made_for_you_order(
             artist=artist,
             title=title,
             job_id=job_id,
+            admin_login_token=admin_login.token,
             notes=notes,
             audio_source_count=audio_source_count,
         )

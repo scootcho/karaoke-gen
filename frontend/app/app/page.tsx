@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback, Suspense, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { api, Job, getAccessToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useAdminSettings } from "@/lib/admin-settings"
@@ -23,14 +23,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-export default function AppPage() {
+function AppPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [jobs, setJobs] = useState<Job[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [isVerifyingToken, setIsVerifyingToken] = useState(false)
+  const adminTokenHandled = useRef(false) // Track if admin_token was already processed
   const { isDarkMode, toggleTheme, mounted } = useTheme()
-  const { user, fetchUser } = useAuth()
+  const { user, fetchUser, verifyMagicLink } = useAuth()
   const { showTestData } = useAdminSettings()
 
   // Check if user is admin (for exclude_test parameter)
@@ -67,8 +70,31 @@ export default function AppPage() {
   // Refresh jobs immediately when tab becomes visible (after returning from review UIs)
   useVisibilityRefresh(loadJobs, isAuthenticated === true)
 
-  // Check auth status on mount and redirect if not authenticated
+  // Handle admin_token URL parameter for one-click login from email
   useEffect(() => {
+    const adminToken = searchParams.get("admin_token")
+
+    // Only process admin_token once (use ref to prevent repeated calls)
+    if (adminToken && !adminTokenHandled.current) {
+      adminTokenHandled.current = true
+      setIsVerifyingToken(true)
+
+      verifyMagicLink(adminToken).then((success) => {
+        // Clean URL by removing the token
+        window.history.replaceState({}, '', '/app')
+        setIsVerifyingToken(false)
+        if (success) {
+          setIsAuthenticated(true)
+        } else {
+          router.replace('/')
+        }
+      })
+      return
+    }
+
+    // Normal auth check (skip if admin_token is being processed)
+    if (adminToken || isVerifyingToken) return
+
     const token = getAccessToken()
     if (!token) {
       // Redirect to landing page if not authenticated
@@ -76,7 +102,7 @@ export default function AppPage() {
       return
     }
     setIsAuthenticated(true)
-  }, [router])
+  }, [router, searchParams, verifyMagicLink, isVerifyingToken])
 
   // Ensure user data is loaded after authentication
   // This handles the case where user navigates via client-side navigation
@@ -100,8 +126,8 @@ export default function AppPage() {
     return () => clearInterval(interval)
   }, [isAuthenticated, loadJobs])
 
-  // Show nothing while checking auth (prevents flash)
-  if (isAuthenticated === null) {
+  // Show nothing while checking auth or verifying admin token (prevents flash)
+  if (isAuthenticated === null || isVerifyingToken) {
     return (
       <div className="min-h-screen flex items-center justify-center animated-gradient">
         <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
@@ -219,5 +245,18 @@ export default function AppPage() {
 
       <VersionFooter />
     </div>
+  )
+}
+
+// Wrap with Suspense for useSearchParams
+export default function AppPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center animated-gradient">
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--text-muted)' }} />
+      </div>
+    }>
+      <AppPageContent />
+    </Suspense>
   )
 }

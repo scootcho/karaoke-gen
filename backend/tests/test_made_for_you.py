@@ -170,6 +170,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-123",
         )
 
         assert result is True
@@ -185,6 +186,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="Seether",
             title="Tonight",
+            job_id="test-job-123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -203,6 +205,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-123",
             notes="Wedding anniversary!",
         )
 
@@ -220,6 +223,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -238,6 +242,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="<script>alert('xss')</script>",
             title="Test Song",
+            job_id="test-job-123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -254,6 +259,7 @@ class TestMadeForYouOrderConfirmationEmail:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -270,11 +276,12 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         result = service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
         )
 
         assert result is True
@@ -287,38 +294,42 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Seether",
             title="Tonight",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
         subject = call_kwargs.get('subject')
-        assert "[Made For You]" in subject
+        # New subject format: "Karaoke Order: {artist} - {title} [ID: {job_id}]"
+        assert "Karaoke Order:" in subject
         assert "Seether" in subject
         assert "Tonight" in subject
+        assert "[ID: test-job-123]" in subject
 
-    def test_send_admin_notification_includes_job_link(self):
-        """Test admin notification includes job link."""
+    def test_send_admin_notification_includes_admin_token_link(self):
+        """Test admin notification includes link with admin_token for one-click login."""
         service = EmailService()
         service.provider = Mock()
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="abc123",
+            admin_login_token="secure-admin-token-xyz",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
         html_content = call_kwargs.get('html_content')
-        # Should include link to admin job page
-        assert "abc123" in html_content
-        assert "admin/jobs" in html_content or "jobs/abc123" in html_content
+        # Should include link to /app/ with admin_token for one-click login
+        assert "admin_token=secure-admin-token-xyz" in html_content
+        assert "/app/" in html_content
 
     def test_send_admin_notification_includes_customer_email(self):
         """Test admin notification shows customer email."""
@@ -327,11 +338,12 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="vip.customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -345,11 +357,12 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
             notes="Urgent - needed for wedding!",
         )
 
@@ -364,11 +377,12 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
             audio_source_count=5,
         )
 
@@ -376,25 +390,27 @@ class TestMadeForYouAdminNotificationEmail:
         html_content = call_kwargs.get('html_content')
         assert "5" in html_content
 
-    def test_send_admin_notification_deadline_reminder(self):
-        """Test admin notification includes deadline reminder."""
+    def test_send_admin_notification_includes_deliver_by_est(self):
+        """Test admin notification includes Deliver By deadline in EST."""
         service = EmailService()
         service.provider = Mock()
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
         html_content = call_kwargs.get('html_content')
         text_content = call_kwargs.get('text_content')
-        # Should mention 24-hour deadline
-        assert "24" in html_content or "24" in text_content
+        # Should include "Deliver By" label and EST timezone
+        assert "Deliver By" in html_content or "Deliver By" in text_content
+        assert "EST" in html_content or "EST" in text_content
 
     def test_send_admin_notification_escapes_html(self):
         """Test admin notification escapes HTML in user input."""
@@ -403,11 +419,12 @@ class TestMadeForYouAdminNotificationEmail:
         service.provider.send_email.return_value = True
 
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="test-job-123",
+            admin_login_token="test-token-abc123",
             notes="<script>alert('xss')</script>",
         )
 
@@ -717,16 +734,18 @@ class TestMadeForYouIntegrationScenarios:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="job123",
             notes="Test notes",
         )
 
         # Step 2: Admin notification
         service.send_made_for_you_admin_notification(
-            to_email="admin@nomadkaraoke.com",
+            to_email="madeforyou@nomadkaraoke.com",
             customer_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
             job_id="job123",
+            admin_login_token="test-admin-token-xyz",
             audio_source_count=3,
         )
 
@@ -739,7 +758,7 @@ class TestMadeForYouIntegrationScenarios:
 
         # Second call should be to admin
         second_call = service.provider.send_email.call_args_list[1]
-        assert second_call.kwargs['to_email'] == "admin@nomadkaraoke.com"
+        assert second_call.kwargs['to_email'] == "madeforyou@nomadkaraoke.com"
 
     def test_awaiting_audio_selection_state(self):
         """Test that made-for-you jobs use AWAITING_AUDIO_SELECTION state."""
@@ -909,6 +928,10 @@ class TestHandleMadeForYouOrder:
         """Create mock user service."""
         service = MagicMock()
         service._mark_stripe_session_processed.return_value = None
+        # Mock create_admin_login_token to return a MagicMock with .token attribute
+        mock_admin_login = MagicMock()
+        mock_admin_login.token = "test-admin-login-token-123"
+        service.create_admin_login_token.return_value = mock_admin_login
         return service
 
     @pytest.fixture
@@ -1256,14 +1279,16 @@ class TestHandleMadeForYouOrder:
             call_kwargs = mock_email_service.send_made_for_you_order_confirmation.call_args.kwargs
             assert call_kwargs['to_email'] == order_metadata["customer_email"], \
                 "Customer must receive order confirmation email"
+            assert call_kwargs['job_id'] == "test-job-123", \
+                "Customer email must include job ID (order reference)"
 
     @pytest.mark.asyncio
-    async def test_admin_email_includes_job_link(
+    async def test_admin_email_includes_admin_login_token(
         self, mock_job_manager, mock_email_service, mock_user_service,
         mock_theme_service, order_metadata
     ):
         """
-        Admin notification email must include link to job for audio selection.
+        Admin notification email must include admin_login_token for one-click login.
         """
         from backend.api.routes.users import _handle_made_for_you_order, ADMIN_EMAIL
 
@@ -1285,13 +1310,21 @@ class TestHandleMadeForYouOrder:
                 email_service=mock_email_service,
             )
 
-            # Check email_service.send_made_for_you_admin_notification was called with job_id
+            # Verify create_admin_login_token was called to generate the token
+            mock_user_service.create_admin_login_token.assert_called_once_with(
+                email=ADMIN_EMAIL,
+                expiry_hours=24,
+            )
+
+            # Check email_service.send_made_for_you_admin_notification was called with admin_login_token
             mock_email_service.send_made_for_you_admin_notification.assert_called_once()
             call_kwargs = mock_email_service.send_made_for_you_admin_notification.call_args.kwargs
 
-            # The template method builds the link using job_id, so verify job_id was passed
+            # Verify job_id and admin_login_token are passed
             assert call_kwargs.get('job_id') == "test-job-123", \
-                "Admin email must include job ID for linking"
+                "Admin email must include job ID for reference"
+            assert call_kwargs.get('admin_login_token') == "test-admin-login-token-123", \
+                "Admin email must include admin_login_token for one-click login"
 
     @pytest.mark.asyncio
     async def test_youtube_url_order_skips_search(
@@ -1436,6 +1469,10 @@ class TestMadeForYouDistributionSettings:
         """Create mock user service."""
         service = MagicMock()
         service._mark_stripe_session_processed.return_value = None
+        # Mock create_admin_login_token to return a MagicMock with .token attribute
+        mock_admin_login = MagicMock()
+        mock_admin_login.token = "test-admin-login-token-123"
+        service.create_admin_login_token.return_value = mock_admin_login
         return service
 
     @pytest.fixture
@@ -1716,6 +1753,10 @@ class TestMadeForYouWebhookEmailTemplates:
         """Create mock user service."""
         service = MagicMock()
         service._mark_stripe_session_processed.return_value = None
+        # Mock create_admin_login_token to return a MagicMock with .token attribute
+        mock_admin_login = MagicMock()
+        mock_admin_login.token = "test-admin-login-token-123"
+        service.create_admin_login_token.return_value = mock_admin_login
         return service
 
     @pytest.fixture
@@ -1783,6 +1824,7 @@ class TestMadeForYouWebhookEmailTemplates:
             assert call_kwargs['to_email'] == order_metadata["customer_email"]
             assert call_kwargs['artist'] == order_metadata["artist"]
             assert call_kwargs['title'] == order_metadata["title"]
+            assert call_kwargs['job_id'] == "test-job-123"
             assert call_kwargs['notes'] == order_metadata["notes"]
 
     @pytest.mark.asyncio
@@ -1793,8 +1835,8 @@ class TestMadeForYouWebhookEmailTemplates:
         CRITICAL: Webhook must use send_made_for_you_admin_notification() template.
 
         The template method provides:
-        - Alert styling for urgency
-        - Link to admin job page
+        - Deadline in EST
+        - Link with admin_token for one-click login
         - Audio source count
         - Professional formatting
         """
@@ -1832,6 +1874,7 @@ class TestMadeForYouWebhookEmailTemplates:
             assert call_kwargs['artist'] == order_metadata["artist"]
             assert call_kwargs['title'] == order_metadata["title"]
             assert call_kwargs['job_id'] == "test-job-123"
+            assert call_kwargs['admin_login_token'] == "test-admin-login-token-123"
 
     @pytest.mark.asyncio
     async def test_webhook_does_not_use_generic_send_email_for_notifications(

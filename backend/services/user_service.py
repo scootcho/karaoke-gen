@@ -214,6 +214,45 @@ class UserService:
         logger.info(f"Created magic link for {email}")
         return magic_link
 
+    def create_admin_login_token(
+        self,
+        email: str,
+        expiry_hours: int = 24,
+    ) -> MagicLinkToken:
+        """
+        Create an admin login token for email-embedded authentication links.
+
+        Similar to magic links but with configurable expiry (default 24 hours).
+        Used for made-for-you order notification emails to allow admin one-click login.
+
+        Args:
+            email: Admin's email address to authenticate as
+            expiry_hours: Hours until token expires (default: 24)
+
+        Returns:
+            MagicLinkToken object containing the token
+        """
+        email = email.lower()
+
+        # Ensure user exists
+        self.get_or_create_user(email)
+
+        # Generate secure token
+        token = secrets.token_urlsafe(32)
+
+        admin_login = MagicLinkToken(
+            token=token,
+            email=email,
+            expires_at=datetime.utcnow() + timedelta(hours=expiry_hours),
+        )
+
+        # Save to Firestore (same collection as magic links for unified verification)
+        doc_ref = self.db.collection(MAGIC_LINKS_COLLECTION).document(token)
+        doc_ref.set(admin_login.model_dump(mode='json'))
+
+        logger.info(f"Created admin login token for {email} (expires in {expiry_hours}h)")
+        return admin_login
+
     def verify_magic_link(self, token: str) -> Tuple[bool, Optional[User], str]:
         """
         Verify a magic link token using a Firestore transaction to prevent race conditions.
