@@ -352,7 +352,7 @@ GET /api/users/credits/packages
 
 No auth required. Returns available packages and prices.
 
-### Create Checkout Session
+### Create Checkout Session (Credits)
 
 ```http
 POST /api/users/credits/checkout
@@ -361,7 +361,27 @@ Content-Type: application/json
 {"package_id": "5_credits", "email": "user@example.com"}
 ```
 
-Returns Stripe checkout URL.
+Returns Stripe checkout URL. Supports Apple Pay, Google Pay, Link, and other payment methods based on customer device.
+
+### Create Checkout Session (Made For You)
+
+```http
+POST /api/users/made-for-you/checkout
+Content-Type: application/json
+
+{
+  "email": "customer@example.com",
+  "artist": "Queen",
+  "title": "Bohemian Rhapsody",
+  "source_type": "search",
+  "youtube_url": null,
+  "notes": "Optional special requests"
+}
+```
+
+Creates a $15 checkout for the full-service "Made For You" karaoke video. After payment, a job is automatically created and the customer receives email updates. Supports all enabled payment methods.
+
+**source_type**: `search` (find audio automatically), `youtube` (use provided URL)
 
 ### Stripe Webhook
 
