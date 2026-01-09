@@ -490,3 +490,220 @@ class TestCCFunctionality:
 
                 # Verify add_cc was called
                 mock_mail.add_cc.assert_called()
+
+
+class TestMadeForYouOrderConfirmation:
+    """Tests for send_made_for_you_order_confirmation method."""
+
+    def test_send_order_confirmation_success(self):
+        """Test successful order confirmation email."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        result = service.send_made_for_you_order_confirmation(
+            to_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+        )
+
+        assert result is True
+        service.provider.send_email.assert_called_once()
+
+    def test_send_order_confirmation_subject_format(self):
+        """Test order confirmation has correct subject format."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_order_confirmation(
+            to_email="customer@example.com",
+            artist="Seether",
+            title="Tonight",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        subject = call_kwargs.get('subject')
+        assert "Order Confirmed" in subject
+        assert "Seether" in subject
+        assert "Tonight" in subject
+
+    def test_send_order_confirmation_with_notes(self):
+        """Test order confirmation includes notes."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_order_confirmation(
+            to_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            notes="Wedding anniversary!",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content')
+        assert "Wedding anniversary!" in html_content
+
+    def test_send_order_confirmation_includes_delivery_promise(self):
+        """Test order confirmation mentions delivery timeframe."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_order_confirmation(
+            to_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content', '')
+        text_content = call_kwargs.get('text_content', '')
+        # Should mention delivery timeline
+        assert "24" in html_content or "24" in text_content
+
+    def test_send_order_confirmation_failure(self):
+        """Test handling of email send failure."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = False
+
+        result = service.send_made_for_you_order_confirmation(
+            to_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+        )
+
+        assert result is False
+
+
+class TestMadeForYouAdminNotification:
+    """Tests for send_made_for_you_admin_notification method."""
+
+    def test_send_admin_notification_success(self):
+        """Test successful admin notification email."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        result = service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="job-123",
+        )
+
+        assert result is True
+        service.provider.send_email.assert_called_once()
+
+    def test_send_admin_notification_subject_format(self):
+        """Test admin notification has correct subject format."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Seether",
+            title="Tonight",
+            job_id="job-123",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        subject = call_kwargs.get('subject')
+        assert "[Made For You]" in subject
+        assert "Seether" in subject
+        assert "Tonight" in subject
+
+    def test_send_admin_notification_includes_customer_email(self):
+        """Test admin notification includes customer email."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="vip@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="job-123",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content')
+        assert "vip@example.com" in html_content
+
+    def test_send_admin_notification_includes_job_link(self):
+        """Test admin notification includes job link."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="abc-def-123",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content')
+        assert "abc-def-123" in html_content
+
+    def test_send_admin_notification_includes_audio_count(self):
+        """Test admin notification includes audio source count."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="job-123",
+            audio_source_count=5,
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content')
+        assert "5" in html_content
+
+    def test_send_admin_notification_includes_notes(self):
+        """Test admin notification includes customer notes."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = True
+
+        service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="job-123",
+            notes="Rush order please!",
+        )
+
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        html_content = call_kwargs.get('html_content')
+        assert "Rush order please!" in html_content
+
+    def test_send_admin_notification_failure(self):
+        """Test handling of email send failure."""
+        service = EmailService()
+        service.provider = Mock()
+        service.provider.send_email.return_value = False
+
+        result = service.send_made_for_you_admin_notification(
+            to_email="admin@nomadkaraoke.com",
+            customer_email="customer@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            job_id="job-123",
+        )
+
+        assert result is False

@@ -592,6 +592,34 @@ See `docs/archive/2025-12-30-cloud-output-structure-fix.md` for full details.
 
 The audio search flow (`SEARCHING_AUDIO` → `AWAITING_AUDIO_SELECTION` → `DOWNLOADING_AUDIO` → `DOWNLOADING`) exists specifically for jobs where we need to find audio. Don't bypass it by triggering workers on jobs with no audio source.
 
+### Admin-Owned Jobs with Ownership Transfer
+
+**Problem**: Made-for-you orders need to be processed by admin but delivered to customers. Initially, jobs were created under customer ownership, causing intermediate notification emails (lyrics review, instrumental selection) to go to customers who shouldn't see them.
+
+**Solution**: Use a two-phase ownership model:
+
+1. **During processing**: Job owned by admin (`user_email = "admin@nomadkaraoke.com"`)
+2. **On completion**: Transfer ownership to customer (`user_email = customer_email`)
+
+**Implementation pattern**:
+```python
+# Job model fields
+made_for_you: bool = False           # Flag for special handling
+customer_email: Optional[str] = None  # Store customer for later transfer
+
+# On completion (before COMPLETE transition)
+if job.made_for_you and job.customer_email:
+    job_manager.update_job(job_id, {'user_email': job.customer_email})
+```
+
+**Email suppression**: Check `made_for_you` flag before sending intermediate reminder emails:
+```python
+if getattr(job, 'made_for_you', False):
+    return  # Skip intermediate emails for admin-handled jobs
+```
+
+**Key insight**: When a workflow requires human-in-the-loop processing by someone other than the end user, use separate fields for "current owner" (for visibility/permissions) and "final recipient" (for delivery). Transfer ownership only at the delivery point.
+
 ## Testing Insights
 
 ### E2E Mock Responses Must Match API Types Exactly
