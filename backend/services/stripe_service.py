@@ -66,12 +66,21 @@ class StripeService:
         self.frontend_url = os.getenv("FRONTEND_URL", "https://gen.nomadkaraoke.com")
         # After consolidation, buy URL is the same as frontend URL
         self.buy_url = os.getenv("BUY_URL", self.frontend_url)
+        # Payment method configuration ID from Stripe Dashboard
+        # Enables Google Pay, Apple Pay, Link, and other wallet methods
+        # Get this from: Dashboard > Settings > Payment methods > [Your Config] > Copy ID
+        self.payment_method_config = os.getenv("STRIPE_PAYMENT_METHOD_CONFIG")
 
         if self.secret_key:
             stripe.api_key = self.secret_key
             logger.info("Stripe initialized with API key")
         else:
             logger.warning("STRIPE_SECRET_KEY not set - payments disabled")
+
+        if self.payment_method_config:
+            logger.info(f"Using payment method config: {self.payment_method_config}")
+        else:
+            logger.info("No STRIPE_PAYMENT_METHOD_CONFIG set - using Stripe defaults")
 
     def is_configured(self) -> bool:
         """Check if Stripe is properly configured."""
@@ -114,10 +123,10 @@ class StripeService:
             if not cancel_url:
                 cancel_url = f"{self.buy_url}?cancelled=true"
 
-            # Create checkout session
-            session = stripe.checkout.Session.create(
+            # Build checkout session params
+            session_params = {
                 # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
-                line_items=[{
+                'line_items': [{
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
@@ -129,18 +138,25 @@ class StripeService:
                     },
                     'quantity': 1,
                 }],
-                mode='payment',
-                success_url=success_url,
-                cancel_url=cancel_url,
-                customer_email=user_email,
-                metadata={
+                'mode': 'payment',
+                'success_url': success_url,
+                'cancel_url': cancel_url,
+                'customer_email': user_email,
+                'metadata': {
                     'package_id': package_id,
                     'credits': str(package['credits']),
                     'user_email': user_email,
                 },
                 # Allow promotion codes
-                allow_promotion_codes=True,
-            )
+                'allow_promotion_codes': True,
+            }
+
+            # Add payment method configuration if set (enables Google Pay, Link, etc.)
+            if self.payment_method_config:
+                session_params['payment_method_configuration'] = self.payment_method_config
+
+            # Create checkout session
+            session = stripe.checkout.Session.create(**session_params)
 
             logger.info(f"Created checkout session {session.id} for {user_email}, package {package_id}")
             return True, session.url, "Checkout session created"
@@ -206,10 +222,10 @@ class StripeService:
                 # Truncate notes to fit Stripe's 500 char limit per metadata value
                 metadata['notes'] = notes[:500] if len(notes) > 500 else notes
 
-            # Create checkout session
-            session = stripe.checkout.Session.create(
+            # Build checkout session params
+            session_params = {
                 # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
-                line_items=[{
+                'line_items': [{
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
@@ -221,13 +237,20 @@ class StripeService:
                     },
                     'quantity': 1,
                 }],
-                mode='payment',
-                success_url=success_url,
-                cancel_url=cancel_url,
-                customer_email=customer_email,
-                metadata=metadata,
-                allow_promotion_codes=True,
-            )
+                'mode': 'payment',
+                'success_url': success_url,
+                'cancel_url': cancel_url,
+                'customer_email': customer_email,
+                'metadata': metadata,
+                'allow_promotion_codes': True,
+            }
+
+            # Add payment method configuration if set (enables Google Pay, Link, etc.)
+            if self.payment_method_config:
+                session_params['payment_method_configuration'] = self.payment_method_config
+
+            # Create checkout session
+            session = stripe.checkout.Session.create(**session_params)
 
             logger.info(
                 f"Created made-for-you checkout session {session.id} for {customer_email}, "

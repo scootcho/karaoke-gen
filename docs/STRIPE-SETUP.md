@@ -61,7 +61,23 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 # Optional (defaults shown)
 FRONTEND_URL=https://gen.nomadkaraoke.com
 # BUY_URL defaults to FRONTEND_URL after site consolidation
+
+# Payment Method Configuration (enables Google Pay, Apple Pay, Link)
+# Get this from: Dashboard > Settings > Payment methods > [Your Config] > Copy ID
+STRIPE_PAYMENT_METHOD_CONFIG=pmc_your_config_id_here
 ```
+
+### Payment Method Configuration
+
+To enable Google Pay, Apple Pay, Link, and other wallet payment methods in your checkout:
+
+1. Go to **Stripe Dashboard** > **Settings** > **Payment methods**
+2. Create or select a configuration (e.g., "Default")
+3. Enable the payment methods you want (Google Pay, Apple Pay, Link, etc.)
+4. Copy the configuration ID (starts with `pmc_`)
+5. Set it as `STRIPE_PAYMENT_METHOD_CONFIG`
+
+Without this setting, checkout sessions will only show basic payment methods (cards, some regional methods). With it, customers will see Google Pay, Apple Pay, and Link options when available on their device.
 
 ### For Cloud Run deployment:
 
