@@ -46,11 +46,12 @@ CREDIT_PACKAGES = {
     },
 }
 
-# Done-for-you service package (not a credit package - creates a job directly)
-DONE_FOR_YOU_PACKAGE = {
+# Made-for-you service package (not a credit package - creates a job directly)
+MADE_FOR_YOU_PACKAGE = {
     "price_cents": 1500,  # $15.00
-    "name": "Done For You Karaoke Video",
-    "description": "Full-service karaoke video creation with 24-hour delivery",
+    "name": "Made For You Karaoke Video",
+    "description": "Professional 4K karaoke video with perfectly synced lyrics, delivered to your email within 24 hours",
+    "images": ["https://gen.nomadkaraoke.com/nomad-logo.png"],
 }
 
 
@@ -115,13 +116,14 @@ class StripeService:
 
             # Create checkout session
             session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
+                # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
                             'name': package['name'],
                             'description': package['description'],
+                            'images': ['https://gen.nomadkaraoke.com/nomad-logo.png'],
                         },
                         'unit_amount': package['price_cents'],
                     },
@@ -150,7 +152,7 @@ class StripeService:
             logger.error(f"Error creating checkout session: {e}")
             return False, None, "Failed to create checkout session"
 
-    def create_done_for_you_checkout_session(
+    def create_made_for_you_checkout_session(
         self,
         customer_email: str,
         artist: str,
@@ -162,7 +164,7 @@ class StripeService:
         cancel_url: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], str]:
         """
-        Create a Stripe Checkout session for a done-for-you order.
+        Create a Stripe Checkout session for a made-for-you order.
 
         This is for the full-service karaoke video creation where Nomad Karaoke
         handles all the work (lyrics review, instrumental selection, etc.).
@@ -192,7 +194,7 @@ class StripeService:
 
             # Build metadata for job creation after payment
             metadata = {
-                'order_type': 'done_for_you',
+                'order_type': 'made_for_you',
                 'customer_email': customer_email,
                 'artist': artist,
                 'title': title,
@@ -206,15 +208,16 @@ class StripeService:
 
             # Create checkout session
             session = stripe.checkout.Session.create(
-                payment_method_types=['card'],
+                # Omit payment_method_types to auto-enable Apple Pay, Google Pay, Link, etc.
                 line_items=[{
                     'price_data': {
                         'currency': 'usd',
                         'product_data': {
-                            'name': DONE_FOR_YOU_PACKAGE['name'],
-                            'description': f"{artist} - {title}",
+                            'name': f"Karaoke Video: {artist} - {title}",
+                            'description': MADE_FOR_YOU_PACKAGE['description'],
+                            'images': MADE_FOR_YOU_PACKAGE['images'],
                         },
-                        'unit_amount': DONE_FOR_YOU_PACKAGE['price_cents'],
+                        'unit_amount': MADE_FOR_YOU_PACKAGE['price_cents'],
                     },
                     'quantity': 1,
                 }],
@@ -227,16 +230,16 @@ class StripeService:
             )
 
             logger.info(
-                f"Created done-for-you checkout session {session.id} for {customer_email}, "
+                f"Created made-for-you checkout session {session.id} for {customer_email}, "
                 f"song: {artist} - {title}"
             )
             return True, session.url, "Checkout session created"
 
         except stripe.error.StripeError as e:
-            logger.error(f"Stripe error creating done-for-you checkout session: {e}")
+            logger.error(f"Stripe error creating made-for-you checkout session: {e}")
             return False, None, f"Payment error: {str(e)}"
         except Exception as e:
-            logger.error(f"Error creating done-for-you checkout session: {e}")
+            logger.error(f"Error creating made-for-you checkout session: {e}")
             return False, None, "Failed to create checkout session"
 
     def verify_webhook_signature(self, payload: bytes, signature: str) -> Tuple[bool, Optional[Dict], str]:

@@ -80,8 +80,8 @@ class CreateCheckoutResponse(BaseModel):
     message: str
 
 
-class DoneForYouCheckoutRequest(BaseModel):
-    """Request to create a done-for-you karaoke video order."""
+class MadeForYouCheckoutRequest(BaseModel):
+    """Request to create a made-for-you karaoke video order."""
     email: EmailStr
     artist: str
     title: str
@@ -390,13 +390,13 @@ async def create_checkout(
     )
 
 
-@router.post("/done-for-you/checkout", response_model=CreateCheckoutResponse)
-async def create_done_for_you_checkout(
-    request: DoneForYouCheckoutRequest,
+@router.post("/made-for-you/checkout", response_model=CreateCheckoutResponse)
+async def create_made_for_you_checkout(
+    request: MadeForYouCheckoutRequest,
     stripe_service: StripeService = Depends(get_stripe_service),
 ):
     """
-    Create a Stripe checkout session for a done-for-you karaoke video order.
+    Create a Stripe checkout session for a made-for-you karaoke video order.
 
     This is the full-service option where Nomad Karaoke handles everything:
     - Finding or processing the audio
@@ -410,7 +410,7 @@ async def create_done_for_you_checkout(
     if not stripe_service.is_configured():
         raise HTTPException(status_code=503, detail="Payment processing is not available")
 
-    success, checkout_url, message = stripe_service.create_done_for_you_checkout_session(
+    success, checkout_url, message = stripe_service.create_made_for_you_checkout_session(
         customer_email=request.email,
         artist=request.artist,
         title=request.title,
@@ -433,18 +433,18 @@ async def create_done_for_you_checkout(
 # Stripe Webhooks
 # =============================================================================
 
-# Admin email for done-for-you order notifications
+# Admin email for made-for-you order notifications
 ADMIN_EMAIL = "andrew@nomadkaraoke.com"
 
 
-async def _handle_done_for_you_order(
+async def _handle_made_for_you_order(
     session_id: str,
     metadata: dict,
     user_service: UserService,
     email_service: EmailService,
 ) -> None:
     """
-    Handle a completed done-for-you order by creating a job and notifying Andrew.
+    Handle a completed made-for-you order by creating a job and notifying Andrew.
 
     For orders with a YouTube URL, the job is created and workers are triggered immediately.
     For orders without a URL (search mode), the audio search flow is used to find and
@@ -477,7 +477,7 @@ async def _handle_done_for_you_order(
     notes = metadata.get("notes", "")
 
     logger.info(
-        f"Processing done-for-you order: {artist} - {title} for {customer_email} "
+        f"Processing made-for-you order: {artist} - {title} for {customer_email} "
         f"(session: {session_id}, source_type: {source_type})"
     )
 
@@ -490,10 +490,10 @@ async def _handle_done_for_you_order(
         theme_service = get_theme_service()
         effective_theme_id = theme_service.get_default_theme_id()
         if effective_theme_id:
-            logger.info(f"Applying default theme '{effective_theme_id}' for done-for-you order")
+            logger.info(f"Applying default theme '{effective_theme_id}' for made-for-you order")
 
         # Create job for the customer
-        # Note: done-for-you jobs should NOT be non_interactive - Andrew needs to review
+        # Note: made-for-you jobs should NOT be non_interactive - Andrew needs to review
         job_create = JobCreate(
             url=youtube_url if youtube_url else None,
             artist=artist,
@@ -509,13 +509,13 @@ async def _handle_done_for_you_order(
         job = job_manager.create_job(job_create)
         job_id = job.job_id
 
-        logger.info(f"Created done-for-you job {job_id} for {customer_email}")
+        logger.info(f"Created made-for-you job {job_id} for {customer_email}")
 
         # Prepare theme style assets for the job (same as audio_search endpoint)
         if effective_theme_id:
             try:
                 style_params_path, theme_style_assets, youtube_desc = _prepare_theme_for_job(
-                    job_id, effective_theme_id, None  # No color overrides for done-for-you
+                    job_id, effective_theme_id, None  # No color overrides for made-for-you
                 )
                 theme_update = {
                     'style_params_gcs_path': style_params_path,
@@ -524,9 +524,9 @@ async def _handle_done_for_you_order(
                 if youtube_desc:
                     theme_update['youtube_description_template'] = youtube_desc
                 job_manager.update_job(job_id, theme_update)
-                logger.info(f"Applied theme '{effective_theme_id}' to done-for-you job {job_id}")
+                logger.info(f"Applied theme '{effective_theme_id}' to made-for-you job {job_id}")
             except Exception as e:
-                logger.warning(f"Failed to prepare theme for done-for-you job {job_id}: {e}")
+                logger.warning(f"Failed to prepare theme for made-for-you job {job_id}: {e}")
 
         # Mark session as processed for idempotency
         # Note: Using internal method since this isn't a credit transaction
@@ -773,9 +773,9 @@ Thanks for using Nomad Karaoke!
         # Send notification email to Andrew
         email_service.send_email(
             to_email=ADMIN_EMAIL,
-            subject=f"[Done For You Order] {artist} - {title}",
+            subject=f"[Made For You Order] {artist} - {title}",
             html_content=f"""
-            <h2>New Done-For-You Order</h2>
+            <h2>New Made-For-You Order</h2>
             <p>A customer has ordered a karaoke video:</p>
             <ul>
                 <li><strong>Customer:</strong> {customer_email}</li>
@@ -791,7 +791,7 @@ Thanks for using Nomad Karaoke!
             <p><strong>Deadline:</strong> 24 hours from now</p>
             """,
             text_content=f"""
-New Done-For-You Order
+New Made-For-You Order
 
 Customer: {customer_email}
 Artist: {artist}
@@ -808,17 +808,17 @@ Deadline: 24 hours from now
             """.strip(),
         )
 
-        logger.info(f"Sent done-for-you order notifications for job {job_id}")
+        logger.info(f"Sent made-for-you order notifications for job {job_id}")
 
     except Exception as e:
-        logger.error(f"Error processing done-for-you order: {e}", exc_info=True)
+        logger.error(f"Error processing made-for-you order: {e}", exc_info=True)
         # Still try to notify Andrew of the failure
         try:
             email_service.send_email(
                 to_email=ADMIN_EMAIL,
-                subject=f"[FAILED] Done For You Order: {artist} - {title}",
+                subject=f"[FAILED] Made For You Order: {artist} - {title}",
                 html_content=f"""
-                <h2>Done-For-You Order Failed</h2>
+                <h2>Made-For-You Order Failed</h2>
                 <p>An error occurred processing this order:</p>
                 <ul>
                     <li><strong>Customer:</strong> {customer_email}</li>
@@ -829,7 +829,7 @@ Deadline: 24 hours from now
                 <p>Please manually create this job and notify the customer.</p>
                 """,
                 text_content=f"""
-Done-For-You Order Failed
+Made-For-You Order Failed
 
 Customer: {customer_email}
 Artist: {artist}
@@ -884,10 +884,10 @@ async def stripe_webhook(
             logger.info(f"Skipping already processed session: {session_id}")
             return {"status": "received", "type": event_type, "note": "already_processed"}
 
-        # Check if this is a done-for-you order
-        if metadata.get("order_type") == "done_for_you":
-            # Handle done-for-you order - create a job
-            await _handle_done_for_you_order(
+        # Check if this is a made-for-you order
+        if metadata.get("order_type") == "made_for_you":
+            # Handle made-for-you order - create a job
+            await _handle_made_for_you_order(
                 session_id=session_id,
                 metadata=metadata,
                 user_service=user_service,

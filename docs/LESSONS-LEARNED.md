@@ -194,11 +194,11 @@ The backend approach is more robust - it ensures correct behavior regardless of 
 
 ### Defense in Depth: Enforce Critical Requirements at Multiple Layers
 
-**Problem**: Despite backend logic to apply a default theme, a job created via the done-for-you webhook was created without a theme_id. The webhook handler didn't include the theme application logic that other endpoints had.
+**Problem**: Despite backend logic to apply a default theme, a job created via the made-for-you webhook was created without a theme_id. The webhook handler didn't include the theme application logic that other endpoints had.
 
 **Symptoms**:
 - Job had `theme_id: None` and generated unstyled videos (black background, no branding)
-- Only affected one code path (done-for-you webhook), others worked correctly
+- Only affected one code path (made-for-you webhook), others worked correctly
 - Discovered only after customer received output
 
 **Root cause**: Multiple job creation endpoints (POST /jobs, audio search, file upload, webhook) all needed to apply the default theme, but the logic was duplicated rather than centralized. The webhook endpoint was added later and missed this requirement.
@@ -569,7 +569,7 @@ See `docs/archive/2025-12-30-cloud-output-structure-fix.md` for full details.
 
 ### Jobs Without URLs Must Use Audio Search Flow
 
-**Problem**: Done-for-you orders submitted without a YouTube URL immediately failed because the audio worker was triggered directly, but it had no audio source to process (no URL, no uploaded file, no GCS path).
+**Problem**: Made-for-you orders submitted without a YouTube URL immediately failed because the audio worker was triggered directly, but it had no audio source to process (no URL, no uploaded file, no GCS path).
 
 **Root cause**: The webhook handler created a job with `url=None` and immediately triggered audio/lyrics workers, bypassing the audio search flow that handles artist+title-only jobs.
 
