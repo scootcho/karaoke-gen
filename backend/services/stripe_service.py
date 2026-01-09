@@ -123,6 +123,7 @@ class StripeService:
                         'product_data': {
                             'name': package['name'],
                             'description': package['description'],
+                            'images': ['https://gen.nomadkaraoke.com/nomad-logo.png'],
                         },
                         'unit_amount': package['price_cents'],
                     },
