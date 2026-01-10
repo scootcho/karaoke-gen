@@ -1503,6 +1503,8 @@ class TestMadeForYouDistributionSettings:
         settings.default_brand_prefix = "NOMAD"
         settings.default_discord_webhook_url = None
         settings.default_youtube_description = None
+        settings.default_enable_cdg = True
+        settings.default_enable_txt = True
         return settings
 
     @pytest.mark.asyncio
@@ -1522,7 +1524,7 @@ class TestMadeForYouDistributionSettings:
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
-             patch('backend.config.get_settings', return_value=mock_settings):
+             patch('backend.services.job_defaults_service.get_settings', return_value=mock_settings):
 
             from backend.services.audio_search_service import NoResultsError
             mock_audio_service = MagicMock()
@@ -1558,7 +1560,7 @@ class TestMadeForYouDistributionSettings:
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
-             patch('backend.config.get_settings', return_value=mock_settings):
+             patch('backend.services.job_defaults_service.get_settings', return_value=mock_settings):
 
             from backend.services.audio_search_service import NoResultsError
             mock_audio_service = MagicMock()
@@ -1594,7 +1596,7 @@ class TestMadeForYouDistributionSettings:
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
-             patch('backend.config.get_settings', return_value=mock_settings):
+             patch('backend.services.job_defaults_service.get_settings', return_value=mock_settings):
 
             from backend.services.audio_search_service import NoResultsError
             mock_audio_service = MagicMock()
@@ -1628,7 +1630,7 @@ class TestMadeForYouDistributionSettings:
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
-             patch('backend.config.get_settings', return_value=mock_settings):
+             patch('backend.services.job_defaults_service.get_settings', return_value=mock_settings):
 
             from backend.services.audio_search_service import NoResultsError
             mock_audio_service = MagicMock()

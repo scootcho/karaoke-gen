@@ -36,6 +36,9 @@ Search for ALL non-theme-aware color patterns (`text-slate-*`, `bg-gray-*`) and 
 ### Backend Must Apply Defaults
 When UI removes options, backend must apply sensible defaults. Don't rely on each endpoint to remember - centralize in core data layer.
 
+### Centralize Job Creation Logic
+When multiple code paths create jobs (file upload, audio search, webhooks), use a shared service for default resolution. The made-for-you webhook handler diverged from regular job creation, missing CDG/TXT defaults because it didn't call the shared `resolve_cdg_txt_defaults()` function. Fix: Create `job_defaults_service.py` with centralized helpers used by ALL job creation paths.
+
 ### Defense in Depth
 Enforce critical requirements at multiple layers (e.g., reject at creation in JobManager + safety net at processing time).
 

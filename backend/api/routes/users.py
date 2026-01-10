@@ -53,6 +53,10 @@ from backend.services.user_service import get_user_service, UserService, USERS_C
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
 from backend.services.theme_service import get_theme_service
+from backend.services.job_defaults_service import (
+    get_effective_distribution_settings,
+    resolve_cdg_txt_defaults,
+)
 from backend.api.dependencies import require_admin
 from backend.api.routes.file_upload import _prepare_theme_for_job
 from backend.services.auth_service import UserType
@@ -475,7 +479,6 @@ async def _handle_made_for_you_order(
         AudioSearchError,
     )
     from backend.services.storage_service import StorageService
-    from backend.config import get_settings
     import asyncio
     import tempfile
     import os
@@ -496,7 +499,6 @@ async def _handle_made_for_you_order(
         job_manager = JobManager()
         worker_service = get_worker_service()
         storage_service = StorageService()
-        settings = get_settings()
 
         # Apply default theme (Nomad) - same as audio_search endpoint
         theme_service = get_theme_service()
@@ -504,13 +506,12 @@ async def _handle_made_for_you_order(
         if effective_theme_id:
             logger.info(f"Applying default theme '{effective_theme_id}' for made-for-you order")
 
-        # Get distribution defaults from settings (same as audio_search endpoint)
-        effective_dropbox_path = settings.default_dropbox_path
-        effective_gdrive_folder_id = settings.default_gdrive_folder_id
-        effective_enable_youtube_upload = settings.default_enable_youtube_upload
-        effective_brand_prefix = settings.default_brand_prefix
-        effective_discord_webhook_url = settings.default_discord_webhook_url
-        effective_youtube_description = settings.default_youtube_description
+        # Get distribution defaults using centralized service
+        dist = get_effective_distribution_settings()
+
+        # Resolve CDG/TXT defaults based on theme (uses centralized service)
+        # This ensures made-for-you jobs get the same CDG/TXT defaults as regular jobs
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(effective_theme_id)
 
         # Create job with admin ownership during processing
         # CRITICAL: made_for_you=True, user_email=ADMIN_EMAIL, customer_email for delivery
@@ -530,13 +531,16 @@ async def _handle_made_for_you_order(
             audio_search_artist=artist if not youtube_url else None,
             audio_search_title=title if not youtube_url else None,
             auto_download=False,  # Pause at audio selection for admin to choose
-            # Distribution settings from server defaults
-            enable_youtube_upload=effective_enable_youtube_upload,
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
-            brand_prefix=effective_brand_prefix,
-            discord_webhook_url=effective_discord_webhook_url,
-            youtube_description=effective_youtube_description,
+            # CDG/TXT settings (resolved via centralized service)
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
+            # Distribution settings from centralized defaults
+            enable_youtube_upload=dist.enable_youtube_upload,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
+            brand_prefix=dist.brand_prefix,
+            discord_webhook_url=dist.discord_webhook_url,
+            youtube_description=dist.youtube_description,
         )
         # Made-for-you jobs are created by admin (via Stripe webhook) - bypass rate limits
         job = job_manager.create_job(job_create, is_admin=True)
