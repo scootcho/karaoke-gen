@@ -23,7 +23,8 @@ test.describe('Landing Page', () => {
     // Check hero content
     await expect(page.locator('h1')).toContainText('Karaoke Video');
     await expect(page.locator('nav')).toBeVisible();
-    await expect(page.getByRole('navigation').getByText('Nomad Karaoke')).toBeVisible();
+    // Logo is an image with alt text, not visible text
+    await expect(page.getByRole('navigation').getByAltText('Nomad Karaoke')).toBeVisible();
   });
 
   test('displays pricing section with 4 packages', async ({ page }) => {
