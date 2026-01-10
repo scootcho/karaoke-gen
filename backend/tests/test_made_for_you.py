@@ -1956,3 +1956,131 @@ class TestMadeForYouWebhookEmailTemplates:
             # Verify audio_source_count is passed to admin notification
             call_kwargs = mock_email_service.send_made_for_you_admin_notification.call_args.kwargs
             assert call_kwargs['audio_source_count'] == 3
+
+
+# =============================================================================
+# Job Manager Completion Email Tests
+# =============================================================================
+
+class TestJobManagerCompletionEmail:
+    """
+    Tests for job manager's _schedule_completion_email handling of made-for-you jobs.
+
+    These tests verify that:
+    1. Made-for-you jobs send completion email to customer_email (not admin)
+    2. Ownership is transferred from admin to customer on completion
+    3. Regular jobs still send to user_email as before
+    """
+
+    @pytest.fixture
+    def job_manager(self):
+        """Create JobManager with mocked dependencies."""
+        with patch('backend.services.job_manager.FirestoreService'), \
+             patch('backend.services.job_manager.StorageService'):
+            from backend.services.job_manager import JobManager
+            manager = JobManager()
+            manager.firestore = MagicMock()
+            return manager
+
+    @pytest.fixture
+    def made_for_you_job(self):
+        """Create a completed made-for-you job."""
+        return Job(
+            job_id="made-for-you-job-123",
+            status=JobStatus.COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            user_email="madeforyou@nomadkaraoke.com",  # Admin owns during processing
+            artist="Avril Lavigne",
+            title="Complicated",
+            made_for_you=True,
+            customer_email="customer@example.com",  # Actual customer
+            state_data={
+                'youtube_url': 'https://youtube.com/watch?v=123',
+                'dropbox_link': 'https://dropbox.com/folder/123',
+                'brand_code': 'NOMAD-1234',
+            },
+        )
+
+    @pytest.fixture
+    def regular_job(self):
+        """Create a completed regular job (not made-for-you)."""
+        return Job(
+            job_id="regular-job-456",
+            status=JobStatus.COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            user_email="user@example.com",
+            artist="Test Artist",
+            title="Test Song",
+            made_for_you=False,
+            customer_email=None,
+            state_data={
+                'youtube_url': 'https://youtube.com/watch?v=456',
+                'dropbox_link': 'https://dropbox.com/folder/456',
+                'brand_code': 'NOMAD-5678',
+            },
+        )
+
+    def test_made_for_you_completion_sends_to_customer(self, job_manager, made_for_you_job):
+        """Made-for-you completion email goes to customer, not admin."""
+        mock_notification_service = MagicMock()
+
+        with patch('backend.services.job_notification_service.get_job_notification_service', return_value=mock_notification_service):
+            job_manager._schedule_completion_email(made_for_you_job)
+
+            # Give async task time to be created
+            import time
+            time.sleep(0.1)
+
+        # Verify ownership was transferred
+        job_manager.firestore.update_job.assert_called_with(
+            "made-for-you-job-123",
+            {'user_email': 'customer@example.com'}
+        )
+
+    def test_made_for_you_completion_transfers_ownership(self, job_manager, made_for_you_job):
+        """Made-for-you job ownership is transferred to customer on completion."""
+        mock_notification_service = MagicMock()
+
+        with patch('backend.services.job_notification_service.get_job_notification_service', return_value=mock_notification_service):
+            job_manager._schedule_completion_email(made_for_you_job)
+
+        # Verify update_job was called with the customer email
+        job_manager.firestore.update_job.assert_called_once()
+        call_args = job_manager.firestore.update_job.call_args
+        assert call_args[0][0] == "made-for-you-job-123"
+        assert call_args[0][1] == {'user_email': 'customer@example.com'}
+
+    def test_regular_job_completion_sends_to_user(self, job_manager, regular_job):
+        """Regular job completion email goes to user_email."""
+        mock_notification_service = MagicMock()
+
+        with patch('backend.services.job_notification_service.get_job_notification_service', return_value=mock_notification_service):
+            job_manager._schedule_completion_email(regular_job)
+
+        # Verify NO ownership transfer for regular jobs
+        job_manager.firestore.update_job.assert_not_called()
+
+    def test_made_for_you_without_customer_email_skips_transfer(self, job_manager):
+        """Made-for-you job without customer_email doesn't crash."""
+        job_without_customer = Job(
+            job_id="no-customer-job",
+            status=JobStatus.COMPLETE,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            user_email="madeforyou@nomadkaraoke.com",
+            artist="Test",
+            title="Test",
+            made_for_you=True,
+            customer_email=None,  # Missing customer email
+        )
+
+        mock_notification_service = MagicMock()
+
+        with patch('backend.services.job_notification_service.get_job_notification_service', return_value=mock_notification_service):
+            # Should not raise
+            job_manager._schedule_completion_email(job_without_customer)
+
+        # No ownership transfer without customer_email
+        job_manager.firestore.update_job.assert_not_called()

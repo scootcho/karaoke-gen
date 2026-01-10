@@ -23,6 +23,16 @@ from backend.services.storage_service import StorageService
 logger = logging.getLogger(__name__)
 
 
+def _mask_email(email: str) -> str:
+    """Mask email for logging to protect PII. Shows first char + domain."""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    if len(local) <= 1:
+        return f"*@{domain}"
+    return f"{local[0]}***@{domain}"
+
+
 class JobManager:
     """Manager for job lifecycle and state."""
     
@@ -422,6 +432,7 @@ class JobManager:
         """
         Schedule sending a job completion email.
 
+        For made-for-you orders, also transfers ownership from admin to customer.
         Uses asyncio to fire-and-forget the email sending.
         """
         import asyncio
@@ -438,11 +449,19 @@ class JobManager:
             dropbox_url = state_data.get('dropbox_link')
             brand_code = state_data.get('brand_code')
 
+            # For made-for-you orders, send to customer and transfer ownership
+            recipient_email = job.user_email
+            if job.made_for_you and job.customer_email:
+                recipient_email = job.customer_email
+                # Transfer ownership from admin to customer
+                self.update_job(job.job_id, {'user_email': job.customer_email})
+                logger.info(f"Transferred ownership of made-for-you job {job.job_id} to {_mask_email(job.customer_email)}")
+
             # Create async task (fire-and-forget)
             async def send_email():
                 await notification_service.send_job_completion_email(
                     job_id=job.job_id,
-                    user_email=job.user_email,
+                    user_email=recipient_email,
                     user_name=None,  # Could fetch from user service if needed
                     artist=job.artist,
                     title=job.title,
