@@ -42,6 +42,8 @@
 
 ## Recent Changes
 
+- **Admin Delete Outputs** (2026-01-10): Added admin button to delete all distributed outputs (YouTube, Dropbox, Google Drive) for a job while preserving the job record. Use case: fix quality issues by deleting outputs, resetting to `awaiting_review`, correcting lyrics, and re-generating. The brand code is freed for reuse when Dropbox folder is deleted. New endpoint: `POST /api/admin/jobs/{job_id}/delete-outputs`. UI: Delete Outputs button in admin job detail page, "Outputs Deleted" badge when flag is set. See [API.md](API.md#delete-job-outputs).
+
 - **Rate Limiting & Abuse Prevention** (2026-01-09): Added per-user rate limiting (5 jobs/day default), system-wide YouTube upload limits (10/day), and beta enrollment abuse prevention. Features: email normalization (Gmail alias detection), disposable domain blocklist (130+ domains), blocked email/IP lists, IP-based enrollment rate limiting (1 per 24h), and admin UI for managing blocklists and user overrides at `/admin/rate-limits`. Admins can grant users bypass permissions or custom limits. All limits configurable via environment variables. See [API.md](API.md#rate-limits).
 
 - **Fast Preview Video Option** (2026-01-10): Added toggle in lyrics review UI to render preview videos with black background (~10s) instead of theme background image (~30-60s). Default is now black background for faster iteration during review. Users can enable theme background via checkbox when they want to verify the final look. See [API.md](API.md#generate-preview).
