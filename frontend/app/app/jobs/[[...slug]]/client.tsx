@@ -1,0 +1,362 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth"
+import { api, Job, createLyricsReviewApiClient, lyricsReviewApi } from "@/lib/api"
+import { Spinner } from "@/components/ui/spinner"
+import { Button } from "@/components/ui/button"
+import { ArrowLeft, AlertCircle } from "lucide-react"
+import Link from "next/link"
+import { InstrumentalSelector } from "@/components/instrumental-review"
+import { LyricsAnalyzer } from "@/components/lyrics-review"
+import type { CorrectionData } from "@/lib/lyrics-review/types"
+
+type RouteType = "review" | "instrumental" | "unknown"
+
+type AccessState =
+  | { status: "loading" }
+  | { status: "not_authenticated" }
+  | { status: "not_authorized"; reason: string }
+  | { status: "job_not_found" }
+  | { status: "wrong_state"; currentState: string; expectedStates: string[] }
+  | { status: "invalid_route" }
+  | { status: "authorized"; job: Job; routeType: RouteType }
+
+function parseRoute(slug: string[] | undefined): { jobId: string | null; routeType: RouteType } {
+  if (!slug || slug.length === 0) {
+    return { jobId: null, routeType: "unknown" }
+  }
+
+  // Expected formats:
+  // [jobId, "review"] -> /app/jobs/{jobId}/review
+  // [jobId, "instrumental"] -> /app/jobs/{jobId}/instrumental
+  if (slug.length === 2) {
+    const [jobId, action] = slug
+    if (action === "review") {
+      return { jobId, routeType: "review" }
+    }
+    if (action === "instrumental") {
+      return { jobId, routeType: "instrumental" }
+    }
+  }
+
+  return { jobId: null, routeType: "unknown" }
+}
+
+function getExpectedStates(routeType: RouteType): string[] {
+  switch (routeType) {
+    case "review":
+      return ["awaiting_review", "in_review"]
+    case "instrumental":
+      return ["awaiting_instrumental_selection"]
+    default:
+      return []
+  }
+}
+
+export function JobRouterClient() {
+  const params = useParams()
+  const router = useRouter()
+  const slug = params.slug as string[] | undefined
+
+  const { jobId, routeType } = parseRoute(slug)
+
+  const { user, isLoading: authLoading } = useAuth()
+  const [accessState, setAccessState] = useState<AccessState>({ status: "loading" })
+
+  useEffect(() => {
+    async function checkAccess() {
+      // Invalid route
+      if (!jobId || routeType === "unknown") {
+        setAccessState({ status: "invalid_route" })
+        return
+      }
+
+      // Wait for auth to finish loading
+      if (authLoading) return
+
+      // Must be authenticated
+      if (!user) {
+        setAccessState({ status: "not_authenticated" })
+        return
+      }
+
+      try {
+        // Fetch job details
+        const job = await api.getJob(jobId)
+
+        // Check ownership: user must own the job or be admin
+        const isOwner = job.user_email === user.email
+        const isAdmin = user.role === "admin"
+
+        if (!isOwner && !isAdmin) {
+          setAccessState({
+            status: "not_authorized",
+            reason: "You don't have permission to access this job"
+          })
+          return
+        }
+
+        // Check job is in correct state
+        const expectedStates = getExpectedStates(routeType)
+        if (!expectedStates.includes(job.status)) {
+          setAccessState({
+            status: "wrong_state",
+            currentState: job.status,
+            expectedStates
+          })
+          return
+        }
+
+        // All checks passed
+        setAccessState({ status: "authorized", job, routeType })
+      } catch (error: unknown) {
+        // Job not found or API error
+        if (error && typeof error === "object" && "status" in error && error.status === 404) {
+          setAccessState({ status: "job_not_found" })
+        } else {
+          setAccessState({
+            status: "not_authorized",
+            reason: "Failed to load job details"
+          })
+        }
+      }
+    }
+
+    checkAccess()
+  }, [jobId, routeType, user, authLoading])
+
+  // Loading state
+  if (accessState.status === "loading") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Spinner className="w-8 h-8 mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Invalid route
+  if (accessState.status === "invalid_route") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <h1 className="text-xl font-semibold mb-2">Page not found</h1>
+          <p className="text-muted-foreground mb-4">
+            The page you&apos;re looking for doesn&apos;t exist.
+          </p>
+          <Button variant="outline" asChild>
+            <Link href="/app">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to dashboard
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Not authenticated
+  if (accessState.status === "not_authenticated") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-amber-500" />
+          <h1 className="text-xl font-semibold mb-2">Sign in required</h1>
+          <p className="text-muted-foreground mb-4">
+            You need to sign in to access this page.
+          </p>
+          <Button asChild>
+            <Link href="/app">Sign in</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Not authorized
+  if (accessState.status === "not_authorized") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <h1 className="text-xl font-semibold mb-2">Access denied</h1>
+          <p className="text-muted-foreground mb-4">{accessState.reason}</p>
+          <Button variant="outline" asChild>
+            <Link href="/app">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to dashboard
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Job not found
+  if (accessState.status === "job_not_found") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <h1 className="text-xl font-semibold mb-2">Job not found</h1>
+          <p className="text-muted-foreground mb-4">
+            The job you&apos;re looking for doesn&apos;t exist or has been deleted.
+          </p>
+          <Button variant="outline" asChild>
+            <Link href="/app">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to dashboard
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Wrong state
+  if (accessState.status === "wrong_state") {
+    const actionName = routeType === "review" ? "lyrics review" : "instrumental selection"
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-amber-500" />
+          <h1 className="text-xl font-semibold mb-2">Not available</h1>
+          <p className="text-muted-foreground mb-4">
+            This job is currently in &quot;{accessState.currentState}&quot; state and is not ready for {actionName}.
+          </p>
+          <Button variant="outline" asChild>
+            <Link href="/app">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to dashboard
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Authorized - render the appropriate UI
+  const { job, routeType: authorizedRouteType } = accessState
+
+  if (authorizedRouteType === "review") {
+    return <LyricsReviewWrapper job={job} />
+  }
+
+  if (authorizedRouteType === "instrumental") {
+    return <InstrumentalSelector job={job} />
+  }
+
+  return null
+}
+
+// Lyrics Review Component Wrapper
+function LyricsReviewWrapper({ job }: { job: Job }) {
+  const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Create the API client for this job
+  const apiClient = createLyricsReviewApiClient(job.job_id)
+
+  // Load correction data
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const data = await lyricsReviewApi.getCorrectionData(job.job_id)
+        setCorrectionData(data)
+      } catch (err) {
+        console.error("Failed to load correction data:", err)
+        setError(err instanceof Error ? err.message : "Failed to load lyrics data")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
+  }, [job.job_id])
+
+  // File load handler (opens file picker for local file)
+  const handleFileLoad = useCallback(() => {
+    // For now, this is a no-op since we load from API
+    // Could be extended to allow loading from local files
+    console.log("File load requested")
+  }, [])
+
+  // Metadata handler
+  const handleShowMetadata = useCallback(() => {
+    // Could show a modal with job metadata
+    console.log("Show metadata requested", job)
+  }, [job])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Spinner className="w-8 h-8 mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading lyrics data...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !correctionData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md p-6">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <h1 className="text-xl font-semibold mb-2">Failed to load lyrics</h1>
+          <p className="text-muted-foreground mb-4">
+            {error || "Could not load lyrics data for this job."}
+          </p>
+          <Button variant="outline" asChild>
+            <Link href="/app">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to dashboard
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b bg-card">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/app">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Link>
+            </Button>
+            <div>
+              <h1 className="font-semibold">
+                {job.artist} - {job.title}
+              </h1>
+              <p className="text-sm text-muted-foreground">Lyrics Review</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6">
+        <LyricsAnalyzer
+          data={correctionData}
+          onFileLoad={handleFileLoad}
+          onShowMetadata={handleShowMetadata}
+          apiClient={apiClient}
+          isReadOnly={false}
+          audioHash={job.audio_hash || job.job_id}
+        />
+      </main>
+    </div>
+  )
+}
+

@@ -226,4 +226,13 @@
   .animate-fade-in {
     animation: fade-in 0.3s ease-out forwards;
   }
+
+  /* Lyrics review flash animation for highlighted words */
+  @keyframes lyrics-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; background-color: rgba(251, 191, 36, 0.4); }
+  }
+  .animate-lyrics-flash {
+    animation: lyrics-flash 0.5s ease-in-out;
+  }
 }
