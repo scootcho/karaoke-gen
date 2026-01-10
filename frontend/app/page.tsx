@@ -747,7 +747,7 @@ export default function LandingPage() {
                     <Youtube className="w-5 h-5 text-red-400" />
                   </div>
                   <div>
-                    <h4 className="font-medium group-hover:text-red-400 transition-colors">See 1000+ Examples</h4>
+                    <h4 className="font-medium group-hover:text-red-400 transition-colors">1000+ Real Examples on YouTube</h4>
                     <p className="text-dark-400 text-sm mt-1">
                       Browse our YouTube channel to see exactly what you&apos;ll get
                     </p>
