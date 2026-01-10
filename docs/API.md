@@ -884,7 +884,63 @@ Called by Cloud Tasks 5 minutes after a job enters a blocking state (awaiting_re
 
 ## Rate Limits
 
-No rate limits currently implemented.
+### User Limits
+
+- **Jobs per day**: 5 (configurable via `RATE_LIMIT_JOBS_PER_DAY`)
+- **YouTube uploads per day**: 10 system-wide (configurable via `RATE_LIMIT_YOUTUBE_UPLOADS_PER_DAY`)
+- **Beta enrollment per IP**: 1 per 24 hours (configurable via `RATE_LIMIT_BETA_IP_PER_DAY`)
+
+Rate limiting can be disabled via `ENABLE_RATE_LIMITING=false`.
+
+### 429 Response
+
+When rate limit is exceeded, the API returns:
+
+```json
+{
+  "detail": "Daily job limit exceeded (5/5). Resets in 14 hours.",
+  "error_type": "rate_limit_exceeded",
+  "limit_type": "jobs_per_day",
+  "current_count": 5,
+  "limit_value": 5,
+  "remaining_seconds": 50400,
+  "retry_after": "2026-01-10T00:00:00Z"
+}
+```
+
+### Admin Override
+
+Admins can grant users bypass permissions or custom limits via the admin UI at `/admin/rate-limits`.
+
+### Admin Rate Limits API
+
+```http
+GET /api/admin/rate-limits/stats
+```
+Returns current rate limit statistics (usage, blocklist counts, override counts).
+
+```http
+GET /api/admin/rate-limits/users/{email}
+```
+Returns rate limit status for a specific user.
+
+```http
+GET /api/admin/rate-limits/blocklists
+POST /api/admin/rate-limits/blocklists/disposable-domains
+DELETE /api/admin/rate-limits/blocklists/disposable-domains/{domain}
+POST /api/admin/rate-limits/blocklists/blocked-emails
+DELETE /api/admin/rate-limits/blocklists/blocked-emails/{email}
+POST /api/admin/rate-limits/blocklists/blocked-ips
+DELETE /api/admin/rate-limits/blocklists/blocked-ips/{ip}
+```
+Manage blocklists for disposable email domains, blocked emails, and blocked IPs.
+
+```http
+GET /api/admin/rate-limits/overrides
+PUT /api/admin/rate-limits/overrides/{email}
+DELETE /api/admin/rate-limits/overrides/{email}
+```
+Manage user overrides (bypass or custom limits).
 
 ## Webhooks
 

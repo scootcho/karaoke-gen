@@ -483,6 +483,17 @@ class VideoWorkerOrchestrator:
         """Upload video to YouTube."""
         self.job_log.info("Uploading to YouTube")
 
+        # Check YouTube upload rate limit (system-wide)
+        try:
+            from backend.services.rate_limit_service import get_rate_limit_service
+            rate_limit_service = get_rate_limit_service()
+            allowed, remaining, message = rate_limit_service.check_youtube_upload_limit()
+            if not allowed:
+                self.job_log.warning(f"YouTube upload skipped: {message}")
+                return
+        except Exception as e:
+            self.job_log.warning(f"Rate limit check failed, proceeding with upload: {e}")
+
         # Find the best video file to upload (prefer MKV for FLAC audio, then lossless MP4)
         video_to_upload = None
         if self.result.final_video_mkv and os.path.isfile(self.result.final_video_mkv):
@@ -520,6 +531,21 @@ class VideoWorkerOrchestrator:
             if video_url:
                 self.result.youtube_url = video_url
                 self.job_log.info(f"Uploaded to YouTube: {video_url}")
+
+                # Record the upload for rate limiting
+                try:
+                    # Get user_email from job if available
+                    user_email = "unknown"
+                    if self.job_manager:
+                        job = self.job_manager.get_job(self.config.job_id)
+                        if job and job.user_email:
+                            user_email = job.user_email
+                    rate_limit_service.record_youtube_upload(
+                        job_id=self.config.job_id,
+                        user_email=user_email
+                    )
+                except Exception as e:
+                    self.job_log.warning(f"Failed to record YouTube upload for rate limiting: {e}")
             else:
                 self.job_log.warning("YouTube upload did not return a URL")
 

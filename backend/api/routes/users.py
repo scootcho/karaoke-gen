@@ -542,7 +542,8 @@ async def _handle_made_for_you_order(
             discord_webhook_url=dist.discord_webhook_url,
             youtube_description=dist.youtube_description,
         )
-        job = job_manager.create_job(job_create)
+        # Made-for-you jobs are created by admin (via Stripe webhook) - bypass rate limits
+        job = job_manager.create_job(job_create, is_admin=True)
         job_id = job.job_id
 
         logger.info(f"Created made-for-you job {job_id} for {_mask_email(customer_email)} (owned by {_mask_email(ADMIN_EMAIL)})")
@@ -822,6 +823,9 @@ async def enroll_beta_tester(
 
     Returns free credits and optionally a session token for new users.
     """
+    from backend.services.email_validation_service import get_email_validation_service
+    from backend.services.rate_limit_service import get_rate_limit_service
+
     # Check if email service is configured
     if not email_service.is_configured():
         logger.error("Email service not configured - cannot send beta welcome emails")
@@ -831,6 +835,52 @@ async def enroll_beta_tester(
         )
 
     email = request.email.lower()
+    email_validation = get_email_validation_service()
+    rate_limit_service = get_rate_limit_service()
+
+    # ----- ABUSE PREVENTION CHECKS -----
+
+    # 1. Validate email (disposable domain, blocked email checks)
+    is_valid, error_message = email_validation.validate_email_for_beta(email)
+    if not is_valid:
+        logger.warning(f"Beta enrollment rejected - email validation failed: {email} - {error_message}")
+        raise HTTPException(
+            status_code=400,
+            detail=error_message
+        )
+
+    # 2. Check IP blocking
+    ip_address = http_request.client.host if http_request.client else None
+    if ip_address and email_validation.is_ip_blocked(ip_address):
+        logger.warning(f"Beta enrollment rejected - IP blocked: {ip_address}")
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied from this location"
+        )
+
+    # 3. Check IP-based enrollment rate limit (1 per 24h per IP)
+    if ip_address:
+        allowed, remaining, message = rate_limit_service.check_beta_ip_limit(ip_address)
+        if not allowed:
+            logger.warning(f"Beta enrollment rejected - IP rate limit: {ip_address} - {message}")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many beta enrollments from your location. Please try again tomorrow."
+            )
+
+    # 4. Check for duplicate enrollment via normalized email
+    normalized_email = email_validation.normalize_email(email)
+    if normalized_email != email:
+        # Check if normalized version is already enrolled
+        normalized_user = user_service.get_user(normalized_email)
+        if normalized_user and normalized_user.is_beta_tester:
+            logger.warning(f"Beta enrollment rejected - normalized email already enrolled: {email} -> {normalized_email}")
+            raise HTTPException(
+                status_code=400,
+                detail="An account with this email address is already enrolled in the beta program"
+            )
+
+    # ----- END ABUSE PREVENTION CHECKS -----
 
     # Validate acceptance
     if not request.accept_corrections_work:
@@ -855,8 +905,7 @@ async def enroll_beta_tester(
             detail="You are already enrolled in the beta program"
         )
 
-    # Get client info
-    ip_address = http_request.client.host if http_request.client else None
+    # Get client info (ip_address already set above in abuse prevention)
     user_agent = http_request.headers.get("user-agent")
 
     # Enroll as beta tester
@@ -875,6 +924,13 @@ async def enroll_beta_tester(
         amount=BETA_TESTER_FREE_CREDITS,
         reason="beta_tester_enrollment",
     )
+
+    # Record IP enrollment for rate limiting
+    if ip_address:
+        try:
+            rate_limit_service.record_beta_enrollment(ip_address, email)
+        except Exception as e:
+            logger.warning(f"Failed to record beta IP enrollment: {e}")
 
     # Create session for the user (so they can start using the service immediately)
     session = user_service.create_session(email, ip_address=ip_address, user_agent=user_agent)
