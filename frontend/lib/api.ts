@@ -1113,6 +1113,53 @@ export const adminApi = {
     );
     return handleResponse(response);
   },
+
+  /**
+   * Get all files for a job with signed download URLs
+   */
+  async getJobFiles(jobId: string): Promise<JobFilesResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/files`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Update editable fields of a job (admin only)
+   */
+  async updateJob(jobId: string, updates: JobUpdateRequest): Promise<JobUpdateResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(updates),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Reset a job to a specific state for re-processing (admin only)
+   */
+  async resetJob(jobId: string, targetState: string): Promise<JobResetResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/reset`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({ target_state: targetState }),
+      }
+    );
+    return handleResponse(response);
+  },
 };
 
 // Types for admin completion message API
@@ -1129,6 +1176,57 @@ export interface SendCompletionEmailResponse {
   job_id: string;
   to_email: string;
   message: string;
+}
+
+// Types for admin job files API
+export interface FileInfo {
+  name: string;
+  path: string;
+  download_url: string;
+  category: string;
+  file_key: string;
+}
+
+export interface JobFilesResponse {
+  job_id: string;
+  artist?: string;
+  title?: string;
+  files: FileInfo[];
+  total_files: number;
+}
+
+export interface JobUpdateRequest {
+  artist?: string;
+  title?: string;
+  user_email?: string;
+  theme_id?: string;
+  brand_prefix?: string;
+  discord_webhook_url?: string;
+  youtube_description?: string;
+  youtube_description_template?: string;
+  customer_email?: string;
+  customer_notes?: string;
+  enable_cdg?: boolean;
+  enable_txt?: boolean;
+  enable_youtube_upload?: boolean;
+  non_interactive?: boolean;
+  prep_only?: boolean;
+}
+
+export interface JobUpdateResponse {
+  status: string;
+  job_id: string;
+  updated_fields: string[];
+  message: string;
+}
+
+export interface JobResetResponse {
+  status: string;
+  job_id: string;
+  previous_status: string;
+  new_status: string;
+  message: string;
+  cleared_data: string[];
 }
 
 export { ApiError };

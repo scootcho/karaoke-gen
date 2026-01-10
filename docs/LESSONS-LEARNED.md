@@ -620,6 +620,26 @@ if getattr(job, 'made_for_you', False):
 
 **Key insight**: When a workflow requires human-in-the-loop processing by someone other than the end user, use separate fields for "current owner" (for visibility/permissions) and "final recipient" (for delivery). Transfer ownership only at the delivery point.
 
+### AuthResult Has Tuple Unpacking But Not Subscripting
+
+**Problem**: The `AuthResult` class returned by `require_admin` supports tuple unpacking via `__iter__` but NOT subscript access via `__getitem__`. Using `auth_data[0]` raises `TypeError: 'AuthResult' object is not subscriptable`.
+
+**Misleading code**: Existing admin.py endpoints had incorrect type hints:
+```python
+auth_data: Tuple[str, UserType, int] = Depends(require_admin)  # WRONG type hint
+admin_email = auth_data[0]  # Would get is_valid (bool), NOT email!
+```
+
+**Correct approach**: Access attributes directly:
+```python
+auth_data: AuthResult = Depends(require_admin)  # Correct type hint
+admin_email = auth_data.user_email or "unknown"  # Use attribute access
+```
+
+**Why `auth_data[0]` appeared to work**: The `__iter__` method returns `(is_valid, user_type, remaining_uses, message)` - NOT email. Code using `auth_data[0]` was silently getting a boolean, not the admin email. This likely never caused visible failures because the value was only used in logs.
+
+**Key insight**: When a class has `__iter__` for backward-compatible tuple unpacking but not `__getitem__`, prefer attribute access over index access. Type hints can be misleading if the codebase hasn't been updated consistently.
+
 ## Testing Insights
 
 ### Test Webhook Handlers with Unit Tests, Not Just Integration Tests
