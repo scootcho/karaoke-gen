@@ -53,14 +53,14 @@ class TestMadeForYouJobModel:
     def test_job_model_has_made_for_you_fields(self):
         """Job model includes made_for_you and customer_email fields."""
         from backend.models.job import Job, JobStatus
-        from datetime import datetime, UTC
+        from datetime import datetime, timezone
 
         # Create a made-for-you job directly
         job = Job(
             job_id="test-mfy-model",
             status=JobStatus.PENDING,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             user_email="admin@nomadkaraoke.com",
             made_for_you=True,
             customer_email="customer@example.com",
@@ -74,13 +74,13 @@ class TestMadeForYouJobModel:
     def test_job_model_defaults_made_for_you_false(self):
         """Regular jobs default made_for_you to False."""
         from backend.models.job import Job, JobStatus
-        from datetime import datetime, UTC
+        from datetime import datetime, timezone
 
         job = Job(
             job_id="test-regular-model",
             status=JobStatus.PENDING,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             user_email="user@example.com",
         )
 

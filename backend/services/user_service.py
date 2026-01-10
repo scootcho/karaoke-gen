@@ -227,11 +227,18 @@ class UserService:
 
         Args:
             email: Admin's email address to authenticate as
-            expiry_hours: Hours until token expires (default: 24)
+            expiry_hours: Hours until token expires (default: 24, max: 168)
 
         Returns:
             MagicLinkToken object containing the token
+
+        Raises:
+            ValueError: If expiry_hours is out of valid range (1-168)
         """
+        # Validate expiry_hours (1 hour to 7 days)
+        if not 1 <= expiry_hours <= 168:
+            raise ValueError(f"expiry_hours must be between 1 and 168, got {expiry_hours}")
+
         email = email.lower()
 
         # Ensure user exists
@@ -250,7 +257,9 @@ class UserService:
         doc_ref = self.db.collection(MAGIC_LINKS_COLLECTION).document(token)
         doc_ref.set(admin_login.model_dump(mode='json'))
 
-        logger.info(f"Created admin login token for {email} (expires in {expiry_hours}h)")
+        # Log with redacted email (show only domain) for PII protection
+        domain = email.split('@')[-1] if '@' in email else 'unknown'
+        logger.info(f"Created admin login token for ***@{domain} (expires in {expiry_hours}h)")
         return admin_login
 
     def verify_magic_link(self, token: str) -> Tuple[bool, Optional[User], str]:
