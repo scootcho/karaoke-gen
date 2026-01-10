@@ -869,6 +869,39 @@ Response:
 }
 ```
 
+#### Delete Job Outputs
+
+```http
+POST /api/admin/jobs/{job_id}/delete-outputs
+Authorization: Bearer ADMIN_TOKEN
+```
+
+Deletes all distributed outputs (YouTube, Dropbox, Google Drive) for a job while preserving the job record. Use this to fix quality issues: delete outputs, reset to `awaiting_review`, correct lyrics, and re-process.
+
+Requirements:
+- Job must be in terminal state (`complete`, `prep_complete`, `failed`, or `cancelled`)
+- Outputs must not already be deleted (checks `outputs_deleted_at`)
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "message": "Outputs deleted successfully",
+  "deleted_services": {
+    "youtube": {"status": "success", "video_id": "dQw4w9WgXcQ"},
+    "dropbox": {"status": "success", "path": "/Karaoke/NOMAD-1234 - Artist - Title"},
+    "gdrive": {"status": "success", "files": {"mp4": true, "mp4_720p": true}}
+  },
+  "cleared_state_data": ["youtube_url", "brand_code", "dropbox_link", "gdrive_files"],
+  "outputs_deleted_at": "2026-01-10T12:00:00Z"
+}
+```
+
+Service statuses: `success`, `failed`, `skipped` (not configured or no data), `partial` (some files failed), `error` (exception).
+
+The brand code is freed for reuse when the Dropbox folder is deleted. When the job is re-processed and outputs are re-uploaded, the `outputs_deleted_at` flag is automatically cleared.
+
 ### Internal Email Endpoints
 
 These endpoints are used by Cloud Tasks for automated notifications.
