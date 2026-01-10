@@ -118,8 +118,8 @@ async def create_job(
             webhook_url=request.webhook_url,
             user_email=user_email
         )
-        job = job_manager.create_job(job_create)
-        
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
+
         # Record job creation metric
         metrics.record_job_created(job.job_id, source="url")
         

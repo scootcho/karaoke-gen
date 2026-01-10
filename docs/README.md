@@ -27,6 +27,7 @@
 | Payment flow (Stripe) | Working |
 | Beta tester program | Working |
 | Admin dashboard | Working |
+| Rate limiting & abuse prevention | Working |
 | CI/CD self-hosted runner | Working (GCP) |
 | E2E happy path test | Working (~20-25 min full pipeline) |
 | **White-label B2B portals** | Working (Vocal Star first tenant) |
@@ -40,6 +41,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Rate Limiting & Abuse Prevention** (2026-01-09): Added per-user rate limiting (5 jobs/day default), system-wide YouTube upload limits (10/day), and beta enrollment abuse prevention. Features: email normalization (Gmail alias detection), disposable domain blocklist (130+ domains), blocked email/IP lists, IP-based enrollment rate limiting (1 per 24h), and admin UI for managing blocklists and user overrides at `/admin/rate-limits`. Admins can grant users bypass permissions or custom limits. All limits configurable via environment variables. See [API.md](API.md#rate-limits).
 
 - **Fast Preview Video Option** (2026-01-10): Added toggle in lyrics review UI to render preview videos with black background (~10s) instead of theme background image (~30-60s). Default is now black background for faster iteration during review. Users can enable theme background via checkbox when they want to verify the final look. See [API.md](API.md#generate-preview).
 

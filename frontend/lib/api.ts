@@ -1192,6 +1192,158 @@ export const adminApi = {
     );
     return handleResponse(response);
   },
+
+  // =========================================================================
+  // Rate Limits API
+  // =========================================================================
+
+  /**
+   * Get rate limit statistics
+   */
+  async getRateLimitStats(): Promise<RateLimitStatsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/stats`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get rate limit status for a specific user
+   */
+  async getUserRateLimitStatus(email: string): Promise<UserRateLimitStatusResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/users/${encodeURIComponent(email)}`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all blocklists
+   */
+  async getBlocklists(): Promise<BlocklistsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a disposable domain
+   */
+  async addDisposableDomain(domain: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/disposable-domains`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ domain }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a disposable domain
+   */
+  async removeDisposableDomain(domain: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/disposable-domains/${encodeURIComponent(domain)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a blocked email
+   */
+  async addBlockedEmail(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-emails`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ email }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a blocked email
+   */
+  async removeBlockedEmail(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-emails/${encodeURIComponent(email)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a blocked IP
+   */
+  async addBlockedIP(ipAddress: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-ips`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ ip_address: ipAddress }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a blocked IP
+   */
+  async removeBlockedIP(ipAddress: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-ips/${encodeURIComponent(ipAddress)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all user overrides
+   */
+  async getUserOverrides(): Promise<UserOverridesListResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Set user override
+   */
+  async setUserOverride(email: string, override: UserOverrideRequest): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides/${encodeURIComponent(email)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(override),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove user override
+   */
+  async removeUserOverride(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides/${encodeURIComponent(email)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
 };
 
 // Types for admin completion message API
@@ -1259,6 +1411,63 @@ export interface JobResetResponse {
   new_status: string;
   message: string;
   cleared_data: string[];
+}
+
+// Rate Limits API Types
+export interface RateLimitStatsResponse {
+  jobs_per_day_limit: number;
+  youtube_uploads_per_day_limit: number;
+  beta_ip_per_day_limit: number;
+  rate_limiting_enabled: boolean;
+  youtube_uploads_today: number;
+  youtube_uploads_remaining: number;
+  disposable_domains_count: number;
+  blocked_emails_count: number;
+  blocked_ips_count: number;
+  total_overrides: number;
+}
+
+export interface UserRateLimitStatusResponse {
+  email: string;
+  jobs_today: number;
+  jobs_limit: number;
+  jobs_remaining: number;
+  has_bypass: boolean;
+  custom_limit?: number;
+  bypass_reason?: string;
+}
+
+export interface BlocklistsResponse {
+  disposable_domains: string[];
+  blocked_emails: string[];
+  blocked_ips: string[];
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface SuccessResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UserOverride {
+  email: string;
+  bypass_job_limit: boolean;
+  custom_daily_job_limit?: number;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface UserOverrideRequest {
+  bypass_job_limit: boolean;
+  custom_daily_job_limit?: number;
+  reason: string;
+}
+
+export interface UserOverridesListResponse {
+  overrides: UserOverride[];
+  total: number;
 }
 
 export { ApiError };
