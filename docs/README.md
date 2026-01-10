@@ -27,6 +27,7 @@
 | Payment flow (Stripe) | Working |
 | Beta tester program | Working |
 | Admin dashboard | Working |
+| Rate limiting & abuse prevention | Working |
 | CI/CD self-hosted runner | Working (GCP) |
 | E2E happy path test | Working (~20-25 min full pipeline) |
 | **White-label B2B portals** | Working (Vocal Star first tenant) |
@@ -40,6 +41,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Rate Limiting & Abuse Prevention** (2026-01-09): Added per-user rate limiting (5 jobs/day default), system-wide YouTube upload limits (10/day), and beta enrollment abuse prevention. Features: email normalization (Gmail alias detection), disposable domain blocklist (130+ domains), blocked email/IP lists, IP-based enrollment rate limiting (1 per 24h), and admin UI for managing blocklists and user overrides at `/admin/rate-limits`. Admins can grant users bypass permissions or custom limits. All limits configurable via environment variables. See [API.md](API.md#rate-limits).
 
 - **Admin Login Token for Made-For-You Orders** (2026-01-10): Added one-click admin login via email. When a made-for-you order is placed, the admin notification email now includes a direct link with an embedded login token (`?admin_token=TOKEN`). Clicking this link auto-authenticates the admin and opens the job directly - no manual login required. Tokens expire after 24 hours. Also added: BCC to `done@nomadkaraoke.com` on all job completion emails, fixed timezone display (EST→ET for DST correctness). See [API.md](API.md#verify-magic-link).
 
