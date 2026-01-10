@@ -486,10 +486,10 @@ class VideoWorkerOrchestrator:
             self.result.dropbox_link or
             self.result.gdrive_files
         )
-        if uploads_happened:
-            job = self.job_manager.get_job(self.job_id)
+        if uploads_happened and self.job_manager:
+            job = self.job_manager.get_job(self.config.job_id)
             if job and job.outputs_deleted_at:
-                self.job_manager.update_job(self.job_id, {
+                self.job_manager.update_job(self.config.job_id, {
                     "outputs_deleted_at": None,
                     "outputs_deleted_by": None,
                 })
