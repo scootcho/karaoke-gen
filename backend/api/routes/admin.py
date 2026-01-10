@@ -1326,6 +1326,24 @@ async def delete_job_outputs(
 
     job_ref.update(update_payload)
 
+    # Determine overall status based on per-service results
+    error_services = [s for s, r in results.items() if r["status"] == "error"]
+    failed_services = [s for s, r in results.items() if r["status"] == "failed"]
+    success_services = [s for s, r in results.items() if r["status"] == "success"]
+
+    if error_services:
+        overall_status = "partial_success" if success_services else "error"
+        error_details = "; ".join(
+            f"{s}: {results[s].get('error', 'unknown error')}" for s in error_services
+        )
+        message = f"Some services failed: {error_details}"
+    elif failed_services:
+        overall_status = "partial_success" if success_services else "failed"
+        message = f"Some deletions failed: {', '.join(failed_services)}"
+    else:
+        overall_status = "success"
+        message = "Outputs deleted successfully"
+
     logger.info(
         f"Admin {admin_email} deleted outputs for job {job_id}. "
         f"YouTube: {results['youtube']['status']}, "
@@ -1335,9 +1353,9 @@ async def delete_job_outputs(
     )
 
     return DeleteOutputsResponse(
-        status="success",
+        status=overall_status,
         job_id=job_id,
-        message="Outputs deleted successfully",
+        message=message,
         deleted_services=results,
         cleared_state_data=cleared_keys,
         outputs_deleted_at=deletion_timestamp.isoformat(),

@@ -339,10 +339,26 @@ function AdminJobsPageContent() {
     try {
       setDeletingOutputs(true)
       const result = await adminApi.deleteJobOutputs(selectedJobId)
-      toast({
-        title: "Outputs Deleted",
-        description: `${result.message}. Cleared: ${result.cleared_state_data.join(", ") || "none"}`,
-      })
+
+      // Check for errors in individual services
+      const hasErrors = result.status === "error" || result.status === "partial_success"
+      const serviceResults = Object.entries(result.deleted_services)
+        .map(([service, r]: [string, any]) => `${service}: ${r.status}${r.error ? ` (${r.error})` : ''}`)
+        .join(", ")
+
+      if (hasErrors) {
+        toast({
+          title: result.status === "error" ? "Delete Failed" : "Partial Success",
+          description: `${result.message}. Services: ${serviceResults}`,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Outputs Deleted",
+          description: `${result.message}. Cleared: ${result.cleared_state_data.join(", ") || "none"}`,
+        })
+      }
+
       setDeleteOutputsDialogOpen(false)
       // Refresh job details
       loadJobDetail(selectedJobId)
