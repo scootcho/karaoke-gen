@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from backend.config import settings
+from backend.exceptions import RateLimitExceededError
 from backend.models.job import Job, JobStatus, JobCreate, STATE_TRANSITIONS
 from backend.models.worker_log import WorkerLogEntry
 from backend.services.firestore_service import FirestoreService
@@ -41,16 +42,42 @@ class JobManager:
         self.firestore = FirestoreService()
         self.storage = StorageService()
     
-    def create_job(self, job_create: JobCreate) -> Job:
+    def create_job(self, job_create: JobCreate, is_admin: bool = False) -> Job:
         """
         Create a new job with initial state PENDING.
 
         Jobs start in PENDING state and transition to DOWNLOADING
         when a worker picks them up.
 
+        Args:
+            job_create: Job creation parameters
+            is_admin: Whether the requesting user is an admin (bypasses rate limits)
+
         Raises:
             ValueError: If theme_id is not provided (all jobs require a theme)
+            RateLimitExceededError: If user has exceeded their daily job limit
         """
+        # Check rate limit FIRST (before any other validation)
+        # This prevents wasted work if user is rate limited
+        if job_create.user_email:
+            from backend.services.rate_limit_service import get_rate_limit_service
+
+            rate_limit_service = get_rate_limit_service()
+            allowed, remaining, message = rate_limit_service.check_user_job_limit(
+                user_email=job_create.user_email,
+                is_admin=is_admin
+            )
+            if not allowed:
+                from backend.services.rate_limit_service import _seconds_until_midnight_utc
+
+                raise RateLimitExceededError(
+                    message=message,
+                    limit_type="jobs_per_day",
+                    remaining_seconds=_seconds_until_midnight_utc(),
+                    current_count=settings.rate_limit_jobs_per_day - remaining,
+                    limit_value=settings.rate_limit_jobs_per_day
+                )
+
         # Enforce theme requirement - all jobs must have a theme
         # This prevents unstyled videos from ever being generated
         if not job_create.theme_id:
@@ -105,7 +132,17 @@ class JobManager:
         
         self.firestore.create_job(job)
         logger.info(f"Created new job {job_id} with status PENDING")
-        
+
+        # Record job creation for rate limiting (after successful persistence)
+        if job_create.user_email:
+            try:
+                from backend.services.rate_limit_service import get_rate_limit_service
+                rate_limit_service = get_rate_limit_service()
+                rate_limit_service.record_job_creation(job_create.user_email, job_id)
+            except Exception as e:
+                # Don't fail job creation if rate limit recording fails
+                logger.warning(f"Failed to record job creation for rate limiting: {e}")
+
         return job
     
     def get_job(self, job_id: str) -> Optional[Job]:

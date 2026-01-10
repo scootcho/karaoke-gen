@@ -644,7 +644,7 @@ async def upload_and_create_job(
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
-        job = job_manager.create_job(job_create)
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
         job_id = job.job_id
 
         # Record job creation metric
@@ -1175,7 +1175,7 @@ async def create_job_with_upload_urls(
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
-        job = job_manager.create_job(job_create)
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
         job_id = job.job_id
 
         # Record job creation metric
@@ -1615,7 +1615,7 @@ async def create_job_from_url(
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
-        job = job_manager.create_job(job_create)
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
         job_id = job.job_id
 
         # Record job creation metric
@@ -1635,7 +1635,7 @@ async def create_job_from_url(
                 update_data['youtube_description_template'] = youtube_desc
             job_manager.update_job(job_id, update_data)
             logger.info(f"Applied theme '{effective_theme_id}' to job {job_id}")
-        
+
         logger.info(f"Created URL-based job {job_id} for URL: {body.url}")
         if artist:
             logger.info(f"  Artist: {artist}")
@@ -1876,7 +1876,7 @@ async def create_finalise_only_job(
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
-        job = job_manager.create_job(job_create)
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
         job_id = job.job_id
 
         # Record job creation metric

@@ -597,7 +597,7 @@ async def search_audio(
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
-        job = job_manager.create_job(job_create)
+        job = job_manager.create_job(job_create, is_admin=auth_result.is_admin)
         job_id = job.job_id
 
         logger.info(f"Created job {job_id} for audio search: {body.artist} - {body.title}")
