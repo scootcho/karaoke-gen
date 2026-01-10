@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Settings,
   Search,
+  ShieldAlert,
 } from "lucide-react"
 
 import {
@@ -51,6 +52,11 @@ const navItems = [
     title: "Beta Program",
     href: "/admin/beta",
     icon: TestTube2,
+  },
+  {
+    title: "Rate Limits",
+    href: "/admin/rate-limits",
+    icon: ShieldAlert,
   },
 ]
 

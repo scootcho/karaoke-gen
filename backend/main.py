@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.api.routes import health, jobs, internal, file_upload, review, auth, audio_search, themes, users, admin, tenant
+from backend.api.routes import health, jobs, internal, file_upload, review, auth, audio_search, themes, users, admin, tenant, rate_limits
 from backend.services.tracing import setup_tracing, instrument_app, get_current_trace_id
 from backend.services.structured_logging import setup_structured_logging
 from backend.services.spacy_preloader import preload_spacy_model
@@ -143,7 +143,31 @@ app.include_router(audio_search.router, prefix="/api")  # Audio search (artist+t
 app.include_router(themes.router, prefix="/api")  # Theme selection for styles
 app.include_router(users.router, prefix="/api")  # User auth, credits, and Stripe webhooks
 app.include_router(admin.router, prefix="/api")  # Admin dashboard and management
+app.include_router(rate_limits.router, prefix="/api")  # Rate limits admin management
 app.include_router(tenant.router)  # Tenant/white-label configuration (no /api prefix, router has it)
+
+
+# Exception handler for rate limiting
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from backend.exceptions import RateLimitExceededError
+
+
+@app.exception_handler(RateLimitExceededError)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceededError):
+    """Handle rate limit exceeded errors with 429 status."""
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": exc.message,
+            "limit_type": exc.limit_type,
+            "current_count": exc.current_count,
+            "limit_value": exc.limit_value,
+        },
+        headers={
+            "Retry-After": str(exc.remaining_seconds),
+        } if exc.remaining_seconds > 0 else None,
+    )
 
 
 @app.get("/")

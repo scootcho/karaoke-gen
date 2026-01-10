@@ -516,3 +516,24 @@ class FirestoreService:
             logger.error(f"Error listing tokens: {e}")
             return []
 
+
+# Singleton client instance
+_firestore_client: Optional[firestore.Client] = None
+
+
+def get_firestore_client() -> firestore.Client:
+    """
+    Get a shared Firestore client instance.
+
+    This returns a raw Firestore client (not the FirestoreService) for use
+    in services that need direct Firestore access without the job-specific
+    abstractions provided by FirestoreService.
+
+    Returns:
+        Firestore client instance
+    """
+    global _firestore_client
+    if _firestore_client is None:
+        _firestore_client = firestore.Client(project=settings.google_cloud_project)
+    return _firestore_client
+
