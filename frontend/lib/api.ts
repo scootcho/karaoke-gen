@@ -653,6 +653,38 @@ export const api = {
     return data.checkout_url;
   },
 
+  /**
+   * Create a Made For You checkout session ($15 full-service)
+   */
+  async createMadeForYouCheckout(data: {
+    email: string;
+    artist: string;
+    title: string;
+    source_type: 'search' | 'youtube' | 'upload';
+    youtube_url?: string;
+    notes?: string;
+  }): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/api/users/made-for-you/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: data.email.toLowerCase(),
+        artist: data.artist,
+        title: data.title,
+        source_type: data.source_type,
+        youtube_url: data.youtube_url,
+        notes: data.notes,
+      }),
+    });
+    const result = await handleResponse<{ checkout_url: string; status: string; message: string }>(response);
+    if (!result.checkout_url) {
+      throw new Error('No checkout URL received');
+    }
+    return result.checkout_url;
+  },
+
   // ==========================================================================
   // Beta Tester API endpoints
   // ==========================================================================
