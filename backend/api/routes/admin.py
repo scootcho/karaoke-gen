@@ -1240,7 +1240,6 @@ async def delete_job_outputs(
                     finalise = KaraokeFinalise(
                         dry_run=False,
                         non_interactive=True,
-                        enable_youtube=True,
                         user_youtube_credentials=youtube_service.get_credentials_dict()
                     )
                     success = finalise.delete_youtube_video(video_id)
