@@ -769,6 +769,99 @@ Response:
 }
 ```
 
+### Job Files (Admin)
+
+#### Get Job Files
+
+```http
+GET /api/admin/jobs/{job_id}/files
+Authorization: Bearer ADMIN_TOKEN
+```
+
+Returns all files associated with a job with signed download URLs (2-hour expiry).
+
+Response:
+```json
+{
+  "job_id": "abc123",
+  "artist": "Artist Name",
+  "title": "Song Title",
+  "files": [
+    {
+      "name": "input.flac",
+      "path": "jobs/abc123/input.flac",
+      "download_url": "https://storage.googleapis.com/signed-url...",
+      "category": "input",
+      "file_key": "input"
+    }
+  ],
+  "total_files": 1
+}
+```
+
+Categories: `input`, `stems`, `lyrics`, `screens`, `videos`, `finals`, `packages`
+
+### Job Updates (Admin)
+
+#### Update Job Fields
+
+```http
+PATCH /api/admin/jobs/{job_id}
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "artist": "New Artist",
+  "title": "New Title"
+}
+```
+
+Updates editable job fields. Allowed fields: `artist`, `title`, `user_email`, `theme_id`, `brand_prefix`, `discord_webhook_url`, `youtube_description`, `youtube_description_template`, `customer_email`, `customer_notes`, `enable_cdg`, `enable_txt`, `enable_youtube_upload`, `non_interactive`, `prep_only`.
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "updated_fields": ["artist", "title"],
+  "message": "Successfully updated 2 field(s)"
+}
+```
+
+Non-editable fields (job_id, status, created_at, file_urls, state_data) return 400.
+
+#### Reset Job State
+
+```http
+POST /api/admin/jobs/{job_id}/reset
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "target_state": "awaiting_review"
+}
+```
+
+Resets a job to a specific workflow checkpoint for re-processing.
+
+Allowed target states:
+- `pending` - Restart from beginning (clears all processing data)
+- `awaiting_audio_selection` - Re-select audio source
+- `awaiting_review` - Re-review lyrics (preserves audio stems)
+- `awaiting_instrumental_selection` - Re-select instrumental (preserves review)
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "previous_status": "complete",
+  "new_status": "awaiting_review",
+  "message": "Job reset from complete to awaiting_review",
+  "cleared_data": ["review_complete", "corrected_lyrics", "instrumental_selection"]
+}
+```
+
 ### Internal Email Endpoints
 
 These endpoints are used by Cloud Tasks for automated notifications.
