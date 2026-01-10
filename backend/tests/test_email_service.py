@@ -505,10 +505,14 @@ class TestMadeForYouOrderConfirmation:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-123",
         )
 
         assert result is True
         service.provider.send_email.assert_called_once()
+        # Verify BCC is set
+        call_kwargs = service.provider.send_email.call_args.kwargs
+        assert call_kwargs.get('bcc_emails') == ["done@nomadkaraoke.com"]
 
     def test_send_order_confirmation_subject_format(self):
         """Test order confirmation has correct subject format."""
@@ -520,6 +524,7 @@ class TestMadeForYouOrderConfirmation:
             to_email="customer@example.com",
             artist="Seether",
             title="Tonight",
+            job_id="test-job-456",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -538,6 +543,7 @@ class TestMadeForYouOrderConfirmation:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-789",
             notes="Wedding anniversary!",
         )
 
@@ -555,6 +561,7 @@ class TestMadeForYouOrderConfirmation:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-abc",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -573,6 +580,7 @@ class TestMadeForYouOrderConfirmation:
             to_email="customer@example.com",
             artist="Test Artist",
             title="Test Song",
+            job_id="test-job-def",
         )
 
         assert result is False
@@ -593,6 +601,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="job-123",
+            admin_login_token="test-token-abc",
         )
 
         assert result is True
@@ -610,11 +619,13 @@ class TestMadeForYouAdminNotification:
             artist="Seether",
             title="Tonight",
             job_id="job-123",
+            admin_login_token="test-token-abc",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
         subject = call_kwargs.get('subject')
-        assert "[Made For You]" in subject
+        # Subject format: "Karaoke Order: {artist} - {title} [ID: {job_id}]"
+        assert "Karaoke Order" in subject
         assert "Seether" in subject
         assert "Tonight" in subject
 
@@ -630,6 +641,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="job-123",
+            admin_login_token="test-token-abc",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -648,6 +660,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="abc-def-123",
+            admin_login_token="test-token-abc",
         )
 
         call_kwargs = service.provider.send_email.call_args.kwargs
@@ -666,6 +679,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="job-123",
+            admin_login_token="test-token-abc",
             audio_source_count=5,
         )
 
@@ -685,6 +699,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="job-123",
+            admin_login_token="test-token-abc",
             notes="Rush order please!",
         )
 
@@ -704,6 +719,7 @@ class TestMadeForYouAdminNotification:
             artist="Test Artist",
             title="Test Song",
             job_id="job-123",
+            admin_login_token="test-token-abc",
         )
 
         assert result is False
