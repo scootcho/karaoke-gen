@@ -15,7 +15,6 @@ import json
 import logging
 import tempfile
 import os
-from dataclasses import dataclass
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Request, Body, Depends
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
@@ -29,6 +28,11 @@ from backend.services.storage_service import StorageService
 from backend.services.worker_service import get_worker_service
 from backend.services.credential_manager import get_credential_manager, CredentialStatus
 from backend.services.theme_service import get_theme_service
+from backend.services.job_defaults_service import (
+    get_effective_distribution_settings,
+    resolve_cdg_txt_defaults,
+    EffectiveDistributionSettings,
+)
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.services.metrics import metrics
@@ -264,75 +268,6 @@ async def _trigger_audio_worker_only(job_id: str) -> None:
     await worker_service.trigger_audio_worker(job_id)
 
 
-def _resolve_cdg_txt_defaults(
-    theme_id: Optional[str],
-    enable_cdg: Optional[bool],
-    enable_txt: Optional[bool]
-) -> Tuple[bool, bool]:
-    """
-    Resolve CDG/TXT settings based on theme and explicit settings.
-
-    When a theme is selected, CDG and TXT are enabled by default.
-    Explicit True/False values always override the default.
-
-    Args:
-        theme_id: Theme identifier (if any)
-        enable_cdg: Explicit CDG setting (None means use default)
-        enable_txt: Explicit TXT setting (None means use default)
-
-    Returns:
-        Tuple of (resolved_enable_cdg, resolved_enable_txt)
-    """
-    # Default based on whether theme is set
-    default_enabled = theme_id is not None
-
-    # Resolve with explicit override taking precedence
-    resolved_cdg = enable_cdg if enable_cdg is not None else default_enabled
-    resolved_txt = enable_txt if enable_txt is not None else default_enabled
-
-    return resolved_cdg, resolved_txt
-
-
-@dataclass
-class EffectiveDistributionSettings:
-    """Settings with defaults applied from environment variables."""
-    dropbox_path: Optional[str]
-    gdrive_folder_id: Optional[str]
-    discord_webhook_url: Optional[str]
-    brand_prefix: Optional[str]
-
-
-def _get_effective_distribution_settings(
-    dropbox_path: Optional[str] = None,
-    gdrive_folder_id: Optional[str] = None,
-    discord_webhook_url: Optional[str] = None,
-    brand_prefix: Optional[str] = None,
-) -> EffectiveDistributionSettings:
-    """
-    Get distribution settings with defaults applied from environment variables.
-
-    This ensures consistent handling of defaults across all job creation endpoints.
-    Each parameter, if not provided (None), falls back to the corresponding
-    environment variable configured in settings.
-
-    Args:
-        dropbox_path: Explicit Dropbox path or None for default
-        gdrive_folder_id: Explicit Google Drive folder ID or None for default
-        discord_webhook_url: Explicit Discord webhook URL or None for default
-        brand_prefix: Explicit brand prefix or None for default
-
-    Returns:
-        EffectiveDistributionSettings with defaults applied
-    """
-    settings = get_settings()
-    return EffectiveDistributionSettings(
-        dropbox_path=dropbox_path or settings.default_dropbox_path,
-        gdrive_folder_id=gdrive_folder_id or settings.default_gdrive_folder_id,
-        discord_webhook_url=discord_webhook_url or settings.default_discord_webhook_url,
-        brand_prefix=brand_prefix or settings.default_brand_prefix,
-    )
-
-
 def _prepare_theme_for_job(
     job_id: str,
     theme_id: str,
@@ -503,7 +438,7 @@ async def upload_and_create_job(
                 )
         
         # Apply default distribution settings from environment if not provided
-        dist = _get_effective_distribution_settings(
+        dist = get_effective_distribution_settings(
             dropbox_path=dropbox_path,
             gdrive_folder_id=gdrive_folder_id,
             discord_webhook_url=discord_webhook_url,
@@ -581,7 +516,7 @@ async def upload_and_create_job(
                 logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             effective_theme_id, enable_cdg, enable_txt
         )
 
@@ -1077,7 +1012,7 @@ async def create_job_with_upload_urls(
                 )
 
         # Apply default distribution settings from environment if not provided
-        dist = _get_effective_distribution_settings(
+        dist = get_effective_distribution_settings(
             dropbox_path=body.dropbox_path,
             gdrive_folder_id=body.gdrive_folder_id,
             discord_webhook_url=body.discord_webhook_url,
@@ -1135,7 +1070,7 @@ async def create_job_with_upload_urls(
                 logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
@@ -1519,7 +1454,7 @@ async def create_job_from_url(
             )
 
         # Apply default distribution settings from environment if not provided
-        dist = _get_effective_distribution_settings(
+        dist = get_effective_distribution_settings(
             dropbox_path=body.dropbox_path,
             gdrive_folder_id=body.gdrive_folder_id,
             discord_webhook_url=body.discord_webhook_url,
@@ -1578,7 +1513,7 @@ async def create_job_from_url(
                 logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             effective_theme_id, body.enable_cdg, body.enable_txt
         )
 
@@ -1789,7 +1724,7 @@ async def create_finalise_only_job(
                 )
         
         # Apply default distribution settings
-        dist = _get_effective_distribution_settings(
+        dist = get_effective_distribution_settings(
             dropbox_path=body.dropbox_path,
             gdrive_folder_id=body.gdrive_folder_id,
             discord_webhook_url=body.discord_webhook_url,
@@ -1844,7 +1779,7 @@ async def create_finalise_only_job(
                 logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             effective_theme_id, body.enable_cdg, body.enable_txt
         )
 

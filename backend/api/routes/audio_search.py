@@ -15,7 +15,7 @@ import asyncio
 import logging
 import os
 import tempfile
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
 from pydantic import BaseModel, Field, validator
@@ -34,6 +34,7 @@ from backend.services.audio_search_service import (
     DownloadError,
 )
 from backend.services.theme_service import get_theme_service
+from backend.services.job_defaults_service import resolve_cdg_txt_defaults
 from backend.config import get_settings
 from backend.version import VERSION
 from backend.api.dependencies import require_auth
@@ -199,35 +200,6 @@ class AudioSelectResponse(BaseModel):
     selected_title: str
     selected_artist: str
     selected_provider: str
-
-
-def _resolve_cdg_txt_defaults(
-    theme_id: Optional[str],
-    enable_cdg: Optional[bool],
-    enable_txt: Optional[bool]
-) -> Tuple[bool, bool]:
-    """
-    Resolve CDG/TXT settings based on theme and explicit settings.
-
-    When a theme is selected, CDG and TXT are enabled by default.
-    Explicit True/False values always override the default.
-
-    Args:
-        theme_id: Theme identifier (if any)
-        enable_cdg: Explicit CDG setting (None means use default)
-        enable_txt: Explicit TXT setting (None means use default)
-
-    Returns:
-        Tuple of (resolved_enable_cdg, resolved_enable_txt)
-    """
-    # Default based on whether theme is set
-    default_enabled = theme_id is not None
-
-    # Explicit values override defaults, None uses default
-    resolved_cdg = enable_cdg if enable_cdg is not None else default_enabled
-    resolved_txt = enable_txt if enable_txt is not None else default_enabled
-
-    return resolved_cdg, resolved_txt
 
 
 def extract_request_metadata(request: Request, created_from: str = "audio_search") -> Dict[str, Any]:
@@ -554,7 +526,7 @@ async def search_audio(
                 logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             effective_theme_id, body.enable_cdg, body.enable_txt
         )
 

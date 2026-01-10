@@ -1681,16 +1681,17 @@ class TestUploadEndpointThemeSupport:
         )
 
     def test_upload_endpoint_uses_resolve_cdg_txt_defaults(self):
-        """Verify the upload endpoint uses _resolve_cdg_txt_defaults for theme-based defaults."""
+        """Verify the upload endpoint uses resolve_cdg_txt_defaults for theme-based defaults."""
         from backend.api.routes import file_upload as file_upload_module
 
         with open(file_upload_module.__file__, 'r') as f:
             source_code = f.read()
 
-        has_resolve_call = '_resolve_cdg_txt_defaults(' in source_code
+        # Check for the centralized resolve_cdg_txt_defaults function (imported from job_defaults_service)
+        has_resolve_call = 'resolve_cdg_txt_defaults(' in source_code
 
         assert has_resolve_call, (
-            "file_upload.py does not call _resolve_cdg_txt_defaults(). "
+            "file_upload.py does not call resolve_cdg_txt_defaults(). "
             "When theme_id is set, enable_cdg and enable_txt should default to True."
         )
 
