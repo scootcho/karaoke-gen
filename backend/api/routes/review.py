@@ -412,7 +412,10 @@ async def generate_preview_video(
 
     # Check if GCE preview encoding is enabled
     use_gce_preview = encoding_service.is_preview_enabled
-    logger.info(f"Job {job_id}: Generating preview video (GCE preview: {use_gce_preview})")
+
+    # Check if user wants theme background image (slower) or black background (faster, default)
+    use_background_image = updated_data.get("use_background_image", False)
+    logger.info(f"Job {job_id}: Generating preview video (GCE: {use_gce_preview}, background image: {use_background_image})")
 
     # Use tracing and job_log_context for full observability
     with create_span("generate-preview-video", {"job_id": job_id, "use_gce": use_gce_preview}) as span:
@@ -498,12 +501,16 @@ async def generate_preview_video(
                                 # Get background image and font from style assets if available
                                 style_assets = job.style_assets or {}
 
+                                # Only use background image if user explicitly requested it
+                                # Default is black background for faster preview generation (~10s vs ~30-60s)
                                 background_image_gcs_path = None
-                                for key in ["karaoke_background", "style_karaoke_background"]:
-                                    if key in style_assets:
-                                        background_image_gcs_path = f"gs://{bucket_name}/{style_assets[key]}"
-                                        gce_span.set_attribute("background_image", background_image_gcs_path)
-                                        break
+                                if use_background_image:
+                                    for key in ["karaoke_background", "style_karaoke_background"]:
+                                        if key in style_assets:
+                                            background_image_gcs_path = f"gs://{bucket_name}/{style_assets[key]}"
+                                            gce_span.set_attribute("background_image", background_image_gcs_path)
+                                            break
+                                gce_span.set_attribute("use_background_image", use_background_image)
 
                                 font_gcs_path = None
                                 for key in ["font", "style_font"]:

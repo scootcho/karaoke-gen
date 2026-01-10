@@ -119,9 +119,16 @@ Saves corrections and triggers video rendering.
 
 ```http
 POST /api/review/{job_id}/preview-video
+Content-Type: application/json
+
+{
+  "corrections": [...],
+  "corrected_segments": [...],
+  "use_background_image": false  // optional, default: false
+}
 ```
 
-Generates preview video during review.
+Generates preview video during review. The `use_background_image` option controls whether the preview renders with the theme's background image (slower, ~30-60s) or a solid black background (faster, ~10s). Defaults to black background for speed.
 
 #### Stream Audio
 

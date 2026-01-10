@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { api, adminApi } from "@/lib/api"
 import { useTenant } from "@/lib/tenant"
 import { Button } from "@/components/ui/button"
-import { Download, Loader2, ExternalLink, FolderOpen, Copy, Mail, MessageSquare } from "lucide-react"
+import { Download, Loader2, ExternalLink, FolderOpen, Copy, Mail, Settings } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
   Dialog,
@@ -188,150 +188,158 @@ export function OutputLinks({ jobId }: OutputLinksProps) {
   const hasExternalLinks = showYoutubeLink || showDropboxLink
 
   return (
-    <div className="space-y-3">
-      {/* Downloads Section */}
-      {hasDownloads && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Downloads</p>
-          <div className="flex flex-wrap gap-1.5">
-            {downloadUrls?.finals?.lossy_4k_mp4 && (
-              <a
-                href={api.getDownloadUrl(jobId, "finals", "lossy_4k_mp4")}
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="w-3 h-3" />
-                4K Video
-              </a>
-            )}
-            {downloadUrls?.finals?.lossy_720p_mp4 && (
-              <a
-                href={api.getDownloadUrl(jobId, "finals", "lossy_720p_mp4")}
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="w-3 h-3" />
-                720p Video
-              </a>
-            )}
-            {downloadUrls?.videos?.with_vocals && (
-              <a
-                href={api.getDownloadUrl(jobId, "videos", "with_vocals")}
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="w-3 h-3" />
-                With Vocals
-              </a>
-            )}
-            {downloadUrls?.packages?.cdg_zip && (
-              <a
-                href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="w-3 h-3" />
-                CDG+MP3
-              </a>
-            )}
-            {downloadUrls?.packages?.txt_zip && (
-              <a
-                href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
-                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Download className="w-3 h-3" />
-                TXT+MP3
-              </a>
-            )}
-          </div>
-        </div>
-      )}
+    <div className="space-y-2">
+      {/* Links, Downloads, and Admin Tools - all in one row */}
+      {(hasDownloads || hasExternalLinks) && (
+        <div className="flex flex-wrap gap-1.5">
+          {/* Links first */}
+          {hasExternalLinks && (
+            <>
+                {showYoutubeLink && youtubeUrl && (
+                  <div className="flex">
+                    <a
+                      href={youtubeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-red-600 hover:bg-red-500 text-white transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      YouTube
+                    </a>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); copyToClipboard(youtubeUrl) }}
+                      className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-red-700 hover:bg-red-600 text-white transition-colors"
+                      title="Copy YouTube URL"
+                      aria-label={copiedUrl === youtubeUrl ? "YouTube URL copied" : "Copy YouTube URL"}
+                    >
+                      {copiedUrl === youtubeUrl ? <span className="text-[10px]">Copied!</span> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )}
+                {showDropboxLink && dropboxUrl && (
+                  <div className="flex">
+                    <a
+                      href={dropboxUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-[#0061FE] hover:bg-[#0052d6] text-white transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <FolderOpen className="w-3 h-3" />
+                      Dropbox
+                    </a>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); copyToClipboard(dropboxUrl) }}
+                      className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-[#0052d6] hover:bg-[#0047ba] text-white transition-colors"
+                      title="Copy Dropbox URL"
+                      aria-label={copiedUrl === dropboxUrl ? "Dropbox URL copied" : "Copy Dropbox URL"}
+                    >
+                      {copiedUrl === dropboxUrl ? <span className="text-[10px]">Copied!</span> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )}
+            </>
+          )}
 
-      {/* Actions Section - only show links enabled for tenant */}
-      {hasExternalLinks && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Links</p>
-          <div className="flex flex-wrap gap-1.5">
-            {showYoutubeLink && youtubeUrl && (
-              <div className="flex">
-                <a
-                  href={youtubeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-red-600 hover:bg-red-500 text-white transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  YouTube
-                </a>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); copyToClipboard(youtubeUrl) }}
-                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-red-700 hover:bg-red-600 text-white transition-colors"
-                  title="Copy YouTube URL"
-                  aria-label={copiedUrl === youtubeUrl ? "YouTube URL copied" : "Copy YouTube URL"}
-                >
-                  {copiedUrl === youtubeUrl ? <span className="text-[10px]">Copied!</span> : <Copy className="w-3 h-3" />}
-                </button>
-              </div>
-            )}
-            {showDropboxLink && dropboxUrl && (
-              <div className="flex">
-                <a
-                  href={dropboxUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-[#0061FE] hover:bg-[#0052d6] text-white transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <FolderOpen className="w-3 h-3" />
-                  Dropbox
-                </a>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); copyToClipboard(dropboxUrl) }}
-                  className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-[#0052d6] hover:bg-[#0047ba] text-white transition-colors"
-                  title="Copy Dropbox URL"
-                  aria-label={copiedUrl === dropboxUrl ? "Dropbox URL copied" : "Copy Dropbox URL"}
-                >
-                  {copiedUrl === dropboxUrl ? <span className="text-[10px]">Copied!</span> : <Copy className="w-3 h-3" />}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          {/* Downloads */}
+          {hasDownloads && (
+            <>
+                {downloadUrls?.finals?.lossy_4k_mp4 && (
+                  <a
+                    href={api.getDownloadUrl(jobId, "finals", "lossy_4k_mp4")}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    4K Video
+                  </a>
+                )}
+                {downloadUrls?.finals?.lossy_720p_mp4 && (
+                  <a
+                    href={api.getDownloadUrl(jobId, "finals", "lossy_720p_mp4")}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    720p Video
+                  </a>
+                )}
+                {downloadUrls?.videos?.with_vocals && (
+                  <a
+                    href={api.getDownloadUrl(jobId, "videos", "with_vocals")}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    With Vocals
+                  </a>
+                )}
+                {downloadUrls?.packages?.cdg_zip && (
+                  <a
+                    href={api.getDownloadUrl(jobId, "packages", "cdg_zip")}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    CDG
+                  </a>
+                )}
+                {downloadUrls?.packages?.txt_zip && (
+                  <a
+                    href={api.getDownloadUrl(jobId, "packages", "txt_zip")}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-3 h-3" />
+                    TXT
+                  </a>
+                )}
+            </>
+          )}
 
-      {/* Admin-only tools */}
-      {isAdmin && hasOutputs && (
-        <div className="space-y-1.5 pt-2 border-t border-[var(--card-border)]">
-          <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Admin Tools</p>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); copyCompletionMessage() }}
-              disabled={isLoadingMessage}
-              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] disabled:opacity-50 transition-colors"
-              title="Copy completion message to clipboard"
-            >
-              {isLoadingMessage ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <MessageSquare className="w-3 h-3" />
-              )}
-              {copiedMessage ? "Copied!" : "Copy Message"}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowEmailDialog(true) }}
-              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
-              title="Send completion email"
-            >
-              <Mail className="w-3 h-3" />
-              Send Email
-            </button>
-          </div>
+          {/* Admin Tools */}
+          {isAdmin && hasOutputs && (
+            <>
+                <div className="flex">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowEmailDialog(true) }}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-l bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] border-r-0 transition-colors"
+                    title="Send completion email"
+                  >
+                    <Mail className="w-3 h-3" />
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); copyCompletionMessage() }}
+                    disabled={isLoadingMessage}
+                    className="inline-flex items-center text-xs px-2 py-1.5 rounded-r bg-[#1a1a1a] hover:bg-[#2a2a2a] text-[var(--text)] border border-[var(--card-border)] disabled:opacity-50 transition-colors"
+                    title="Copy completion message to clipboard"
+                  >
+                    {isLoadingMessage ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : copiedMessage ? (
+                      <span className="text-[10px]">Copied!</span>
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+                <a
+                  href={`/admin/jobs/?id=${jobId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
+                  title="View job details in admin"
+                >
+                  <Settings className="w-3 h-3" />
+                  Admin
+                </a>
+            </>
+          )}
         </div>
       )}
 
