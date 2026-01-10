@@ -17,6 +17,19 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_email(email: str) -> str:
+    """Mask an email address for privacy-safe logging."""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked_local = "*" * len(local)
+    else:
+        masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{masked_local}@{domain}"
+
+
 # Firestore collection for blocklist data
 BLOCKLISTS_COLLECTION = "blocklists"
 BLOCKLIST_CONFIG_DOC = "config"
@@ -376,12 +389,12 @@ class EmailValidationService:
 
         # Check disposable domain
         if self.is_disposable_domain(email):
-            logger.warning(f"Beta enrollment blocked - disposable domain: {email}")
+            logger.warning(f"Beta enrollment blocked - disposable domain: {_mask_email(email)}")
             return False, "Disposable email addresses are not allowed"
 
         # Check blocked email
         if self.is_email_blocked(email):
-            logger.warning(f"Beta enrollment blocked - email blocked: {email}")
+            logger.warning(f"Beta enrollment blocked - email blocked: {_mask_email(email)}")
             return False, "This email address is not allowed"
 
         return True, ""
@@ -440,23 +453,32 @@ class EmailValidationService:
         domain = domain.lower().strip()
 
         doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
-        doc = doc_ref.get()
+        result = {"found": False}
 
-        if not doc.exists:
+        @firestore.transactional
+        def remove_in_transaction(transaction, doc_ref):
+            doc = doc_ref.get(transaction=transaction)
+            if not doc.exists:
+                return
+
+            data = doc.to_dict()
+            domains = set(data.get("disposable_domains", []))
+
+            if domain not in domains:
+                return
+
+            result["found"] = True
+            domains.discard(domain)
+            data["disposable_domains"] = list(domains)
+            data["updated_at"] = datetime.now(timezone.utc)
+            data["updated_by"] = admin_email
+            transaction.set(doc_ref, data, merge=True)
+
+        transaction = self.db.transaction()
+        remove_in_transaction(transaction, doc_ref)
+
+        if not result["found"]:
             return False
-
-        data = doc.to_dict()
-        domains = set(data.get("disposable_domains", []))
-
-        if domain not in domains:
-            return False
-
-        domains.discard(domain)
-        doc_ref.update({
-            "disposable_domains": list(domains),
-            "updated_at": datetime.now(timezone.utc),
-            "updated_by": admin_email,
-        })
 
         # Invalidate cache
         EmailValidationService._blocklist_cache = None
@@ -502,23 +524,32 @@ class EmailValidationService:
         email = email.lower().strip()
 
         doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
-        doc = doc_ref.get()
+        result = {"found": False}
 
-        if not doc.exists:
+        @firestore.transactional
+        def remove_in_transaction(transaction, doc_ref):
+            doc = doc_ref.get(transaction=transaction)
+            if not doc.exists:
+                return
+
+            data = doc.to_dict()
+            emails = set(data.get("blocked_emails", []))
+
+            if email not in emails:
+                return
+
+            result["found"] = True
+            emails.discard(email)
+            data["blocked_emails"] = list(emails)
+            data["updated_at"] = datetime.now(timezone.utc)
+            data["updated_by"] = admin_email
+            transaction.set(doc_ref, data, merge=True)
+
+        transaction = self.db.transaction()
+        remove_in_transaction(transaction, doc_ref)
+
+        if not result["found"]:
             return False
-
-        data = doc.to_dict()
-        emails = set(data.get("blocked_emails", []))
-
-        if email not in emails:
-            return False
-
-        emails.discard(email)
-        doc_ref.update({
-            "blocked_emails": list(emails),
-            "updated_at": datetime.now(timezone.utc),
-            "updated_by": admin_email,
-        })
 
         # Invalidate cache
         EmailValidationService._blocklist_cache = None
@@ -564,23 +595,32 @@ class EmailValidationService:
         ip_address = ip_address.strip()
 
         doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
-        doc = doc_ref.get()
+        result = {"found": False}
 
-        if not doc.exists:
+        @firestore.transactional
+        def remove_in_transaction(transaction, doc_ref):
+            doc = doc_ref.get(transaction=transaction)
+            if not doc.exists:
+                return
+
+            data = doc.to_dict()
+            ips = set(data.get("blocked_ips", []))
+
+            if ip_address not in ips:
+                return
+
+            result["found"] = True
+            ips.discard(ip_address)
+            data["blocked_ips"] = list(ips)
+            data["updated_at"] = datetime.now(timezone.utc)
+            data["updated_by"] = admin_email
+            transaction.set(doc_ref, data, merge=True)
+
+        transaction = self.db.transaction()
+        remove_in_transaction(transaction, doc_ref)
+
+        if not result["found"]:
             return False
-
-        data = doc.to_dict()
-        ips = set(data.get("blocked_ips", []))
-
-        if ip_address not in ips:
-            return False
-
-        ips.discard(ip_address)
-        doc_ref.update({
-            "blocked_ips": list(ips),
-            "updated_at": datetime.now(timezone.utc),
-            "updated_by": admin_email,
-        })
 
         # Invalidate cache
         EmailValidationService._blocklist_cache = None

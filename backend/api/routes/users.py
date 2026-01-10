@@ -821,7 +821,6 @@ async def enroll_beta_tester(
     """
     from backend.services.email_validation_service import get_email_validation_service
     from backend.services.rate_limit_service import get_rate_limit_service
-    from backend.exceptions import IPBlockedError
 
     # Check if email service is configured
     if not email_service.is_configured():

@@ -70,11 +70,13 @@ class JobManager:
             if not allowed:
                 from backend.services.rate_limit_service import _seconds_until_midnight_utc
 
+                # Get actual current count - remaining is clamped to 0 which loses info
+                current_count = rate_limit_service.get_user_job_count_today(job_create.user_email)
                 raise RateLimitExceededError(
                     message=message,
                     limit_type="jobs_per_day",
                     remaining_seconds=_seconds_until_midnight_utc(),
-                    current_count=settings.rate_limit_jobs_per_day - remaining,
+                    current_count=current_count,
                     limit_value=settings.rate_limit_jobs_per_day
                 )
 
