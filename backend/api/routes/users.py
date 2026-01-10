@@ -205,6 +205,10 @@ async def verify_magic_link(
     Returns a session token that should be stored and used for subsequent requests.
     The session will be associated with the tenant from the magic link.
     """
+    # Reject empty tokens early to avoid invalid Firestore document paths
+    if not token or not token.strip():
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     # Get client info
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
