@@ -46,12 +46,16 @@
 
 **Before committing**, run all tests:
 ```bash
-# Backend (10 min timeout, limit output)
 make test 2>&1 | tail -n 500
-
-# Frontend
-cd frontend && npm run test:all 2>&1 | tail -n 200
 ```
+
+This single command:
+- Installs dependencies automatically (backend + frontend)
+- Runs all backend tests (unit, integration, emulator)
+- Runs all frontend tests (Jest unit + Playwright E2E)
+- Takes ~5-10 minutes
+
+**All tests must pass.** Don't dismiss failures as "pre-existing" - investigate and fix them.
 
 ### Version Bumping
 - Bump `tool.poetry.version` in `pyproject.toml` for code changes

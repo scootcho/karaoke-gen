@@ -14,7 +14,9 @@ import html
 import logging
 import os
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
+from zoneinfo import ZoneInfo
 
 from backend.config import get_settings
 from karaoke_gen.utils import sanitize_filename
@@ -34,6 +36,7 @@ class EmailProvider(ABC):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         """
@@ -45,6 +48,7 @@ class EmailProvider(ABC):
             html_content: HTML content
             text_content: Plain text content (optional)
             cc_emails: CC recipients (optional)
+            bcc_emails: BCC recipients (optional)
             from_email_override: Override the default sender email (optional, for multi-tenant)
         """
         pass
@@ -64,6 +68,7 @@ class ConsoleEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         logger.info("=" * 60)
@@ -72,6 +77,8 @@ class ConsoleEmailProvider(EmailProvider):
         logger.info(f"EMAIL TO: {to_email}")
         if cc_emails:
             logger.info(f"CC: {', '.join(cc_emails)}")
+        if bcc_emails:
+            logger.info(f"BCC: {', '.join(bcc_emails)}")
         logger.info(f"SUBJECT: {subject}")
         logger.info("-" * 60)
         logger.info(text_content or html_content)
@@ -99,6 +106,7 @@ class PreviewEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         self.last_to_email = to_email
@@ -130,12 +138,13 @@ class SendGridEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         try:
             # Import here to avoid requiring sendgrid in all environments
             from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail, Email, To, Content, Cc
+            from sendgrid.helpers.mail import Mail, Email, To, Content, Cc, Bcc
 
             sg = SendGridAPIClient(api_key=self.api_key)
 
@@ -163,6 +172,19 @@ class SendGridEmailProvider(EmailProvider):
                 for cc_email in unique_cc_emails:
                     message.add_cc(Cc(cc_email))
 
+            # Add BCC recipients if provided (deduplicated and normalized)
+            if bcc_emails:
+                seen = set()
+                unique_bcc_emails = []
+                for bcc_email in bcc_emails:
+                    normalized = bcc_email.strip().lower()
+                    if normalized and normalized not in seen:
+                        seen.add(normalized)
+                        unique_bcc_emails.append(bcc_email.strip())
+
+                for bcc_email in unique_bcc_emails:
+                    message.add_bcc(Bcc(bcc_email))
+
             if text_content:
                 message.add_content(Content("text/plain", text_content))
 
@@ -170,7 +192,8 @@ class SendGridEmailProvider(EmailProvider):
 
             if response.status_code >= 200 and response.status_code < 300:
                 cc_info = f" (CC: {', '.join(cc_emails)})" if cc_emails else ""
-                logger.info(f"Email sent to {to_email}{cc_info} via SendGrid")
+                bcc_info = f" (BCC: {', '.join(bcc_emails)})" if bcc_emails else ""
+                logger.info(f"Email sent to {to_email}{cc_info}{bcc_info} via SendGrid")
                 return True
             else:
                 logger.error(f"SendGrid returned status {response.status_code}")
@@ -1044,6 +1067,7 @@ Thanks for being part of making Nomad Karaoke better!
             html_content=html_content,
             text_content=message_content,
             cc_emails=cc_emails,
+            bcc_emails=["done@nomadkaraoke.com"],
         )
 
     def send_action_reminder(
@@ -1112,6 +1136,7 @@ Thanks for being part of making Nomad Karaoke better!
         to_email: str,
         artist: str,
         title: str,
+        job_id: str,
         notes: Optional[str] = None,
     ) -> bool:
         """
@@ -1121,6 +1146,7 @@ Thanks for being part of making Nomad Karaoke better!
             to_email: Customer's email address
             artist: Artist name
             title: Song title
+            job_id: Order/job ID for reference
             notes: Optional customer notes
 
         Returns:
@@ -1160,6 +1186,7 @@ Thanks for being part of making Nomad Karaoke better!
 
     <div class="order-details">
         <h3>Order Details</h3>
+        <p><strong>Order ID:</strong> {html.escape(job_id)}</p>
         <p><strong>Artist:</strong> {html.escape(artist)}</p>
         <p><strong>Title:</strong> {html.escape(title)}</p>
         {notes_html}
@@ -1175,6 +1202,7 @@ Thanks for being part of making Nomad Karaoke better!
         text_content = f"""Thank You for Your Order!
 
 Order Details:
+Order ID: {job_id}
 Artist: {artist}
 Title: {title}{notes_text}
 
@@ -1192,6 +1220,7 @@ No action needed - sit back and we'll take care of everything!
             subject=subject,
             html_content=html_content,
             text_content=text_content,
+            bcc_emails=["done@nomadkaraoke.com"],
         )
 
     def send_made_for_you_admin_notification(
@@ -1201,6 +1230,7 @@ No action needed - sit back and we'll take care of everything!
         artist: str,
         title: str,
         job_id: str,
+        admin_login_token: str,
         notes: Optional[str] = None,
         audio_source_count: int = 0,
     ) -> bool:
@@ -1212,24 +1242,17 @@ No action needed - sit back and we'll take care of everything!
             customer_email: Customer's email address
             artist: Artist name
             title: Song title
-            job_id: Job ID for linking to admin page
+            job_id: Job ID for reference
+            admin_login_token: Token for one-click admin login
             notes: Optional customer notes
             audio_source_count: Number of audio sources found
 
         Returns:
             True if email was sent successfully
         """
-        subject = f"[Made For You] New Order: {artist} - {title}"
+        subject = f"Karaoke Order: {artist} - {title} [ID: {job_id}]"
 
         extra_styles = """
-        .alert-box {
-            background-color: #fef3c7;
-            border: 2px solid #f59e0b;
-            border-radius: 8px;
-            padding: 16px;
-            margin: 20px 0;
-            text-align: center;
-        }
         .order-info {
             background-color: #f8fafc;
             border-radius: 8px;
@@ -1247,11 +1270,7 @@ No action needed - sit back and we'll take care of everything!
             border-radius: 6px;
             text-decoration: none;
             font-weight: bold;
-            margin: 20px 0;
-        }
-        .deadline {
-            color: #dc2626;
-            font-weight: bold;
+            margin-top: 16px;
         }
 """
 
@@ -1261,46 +1280,42 @@ No action needed - sit back and we'll take care of everything!
             notes_html = f"<p><strong>Customer Notes:</strong> {html.escape(notes)}</p>"
             notes_text = f"\nCustomer Notes: {notes}"
 
-        job_url = f"{self.frontend_url.rstrip('/')}/admin/jobs/{job_id}"
+        # Calculate deadline (24 hours from now, converted to Eastern Time)
+        deadline_utc = datetime.now(timezone.utc) + timedelta(hours=24)
+        eastern_tz = ZoneInfo("America/New_York")
+        deadline_eastern = deadline_utc.astimezone(eastern_tz)
+        # Use "ET" (Eastern Time) to be correct for both EST and EDT
+        deadline_str = deadline_eastern.strftime("%B %d, %Y at %I:%M %p") + " ET"
+
+        # Link to /app/ with admin login token for one-click access
+        app_url = f"{self.frontend_url.rstrip('/')}/app/?admin_token={admin_login_token}"
 
         content = f"""
-    <div class="alert-box">
-        <strong>🎤 New Made-For-You Order Received!</strong>
-    </div>
-
     <div class="order-info">
+        <p><strong>Order / Job ID:</strong> {html.escape(job_id)}</p>
         <p><strong>Customer:</strong> {html.escape(customer_email)}</p>
         <p><strong>Artist:</strong> {html.escape(artist)}</p>
         <p><strong>Title:</strong> {html.escape(title)}</p>
         <p><strong>Audio Sources Found:</strong> {audio_source_count}</p>
         {notes_html}
+        <p><strong>Deliver By:</strong> {deadline_str}</p>
+        <p style="margin-top: 16px;"><strong>Action Required:</strong> Select an audio source to start processing.</p>
+        <a href="{app_url}" class="action-button">Open Job</a>
     </div>
-
-    <p><strong>Action Required:</strong> Select an audio source to start processing.</p>
-
-    <p style="text-align: center;">
-        <a href="{job_url}" class="action-button">Open Job in Admin</a>
-    </p>
-
-    <p class="deadline">⏰ Deadline: 24 hours from now</p>
-
-    <p><small>Job ID: {job_id}</small></p>
 """
 
-        text_content = f"""New Made-For-You Order Received!
+        text_content = f"""New Karaoke Order
 
+Order / Job ID: {job_id}
 Customer: {customer_email}
 Artist: {artist}
 Title: {title}
 Audio Sources Found: {audio_source_count}{notes_text}
+Deliver By: {deadline_str}
 
 Action Required: Select an audio source to start processing.
 
-Open Job in Admin: {job_url}
-
-Deadline: 24 hours from now
-
-Job ID: {job_id}
+Open Job: {app_url}
 """
 
         html_content = self._build_email_html(content, extra_styles)

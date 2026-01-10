@@ -205,6 +205,10 @@ async def verify_magic_link(
     Returns a session token that should be stored and used for subsequent requests.
     The session will be associated with the tenant from the magic link.
     """
+    # Reject empty tokens early to avoid invalid Firestore document paths
+    if not token or not token.strip():
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     # Get client info
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
@@ -434,7 +438,7 @@ async def create_made_for_you_checkout(
 # =============================================================================
 
 # Admin email for made-for-you order notifications
-ADMIN_EMAIL = "andrew@nomadkaraoke.com"
+ADMIN_EMAIL = "madeforyou@nomadkaraoke.com"
 
 
 async def _handle_made_for_you_order(
@@ -649,11 +653,18 @@ async def _handle_made_for_you_order(
         # (search_results may be set from the search flow above, or None for YouTube URL orders)
         audio_source_count = len(search_results) if search_results else 0
 
+        # Generate admin login token for one-click email access (24hr expiry)
+        admin_login = user_service.create_admin_login_token(
+            email=ADMIN_EMAIL,
+            expiry_hours=24,
+        )
+
         # Send confirmation email to customer using professional template
         email_service.send_made_for_you_order_confirmation(
             to_email=customer_email,
             artist=artist,
             title=title,
+            job_id=job_id,
             notes=notes,
         )
 
@@ -664,6 +675,7 @@ async def _handle_made_for_you_order(
             artist=artist,
             title=title,
             job_id=job_id,
+            admin_login_token=admin_login.token,
             notes=notes,
             audio_source_count=audio_source_count,
         )
