@@ -36,6 +36,7 @@ class EmailProvider(ABC):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         """
@@ -47,6 +48,7 @@ class EmailProvider(ABC):
             html_content: HTML content
             text_content: Plain text content (optional)
             cc_emails: CC recipients (optional)
+            bcc_emails: BCC recipients (optional)
             from_email_override: Override the default sender email (optional, for multi-tenant)
         """
         pass
@@ -66,6 +68,7 @@ class ConsoleEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         logger.info("=" * 60)
@@ -74,6 +77,8 @@ class ConsoleEmailProvider(EmailProvider):
         logger.info(f"EMAIL TO: {to_email}")
         if cc_emails:
             logger.info(f"CC: {', '.join(cc_emails)}")
+        if bcc_emails:
+            logger.info(f"BCC: {', '.join(bcc_emails)}")
         logger.info(f"SUBJECT: {subject}")
         logger.info("-" * 60)
         logger.info(text_content or html_content)
@@ -101,6 +106,7 @@ class PreviewEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         self.last_to_email = to_email
@@ -132,12 +138,13 @@ class SendGridEmailProvider(EmailProvider):
         html_content: str,
         text_content: Optional[str] = None,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         from_email_override: Optional[str] = None,
     ) -> bool:
         try:
             # Import here to avoid requiring sendgrid in all environments
             from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail, Email, To, Content, Cc
+            from sendgrid.helpers.mail import Mail, Email, To, Content, Cc, Bcc
 
             sg = SendGridAPIClient(api_key=self.api_key)
 
@@ -165,6 +172,19 @@ class SendGridEmailProvider(EmailProvider):
                 for cc_email in unique_cc_emails:
                     message.add_cc(Cc(cc_email))
 
+            # Add BCC recipients if provided (deduplicated and normalized)
+            if bcc_emails:
+                seen = set()
+                unique_bcc_emails = []
+                for bcc_email in bcc_emails:
+                    normalized = bcc_email.strip().lower()
+                    if normalized and normalized not in seen:
+                        seen.add(normalized)
+                        unique_bcc_emails.append(bcc_email.strip())
+
+                for bcc_email in unique_bcc_emails:
+                    message.add_bcc(Bcc(bcc_email))
+
             if text_content:
                 message.add_content(Content("text/plain", text_content))
 
@@ -172,7 +192,8 @@ class SendGridEmailProvider(EmailProvider):
 
             if response.status_code >= 200 and response.status_code < 300:
                 cc_info = f" (CC: {', '.join(cc_emails)})" if cc_emails else ""
-                logger.info(f"Email sent to {to_email}{cc_info} via SendGrid")
+                bcc_info = f" (BCC: {', '.join(bcc_emails)})" if bcc_emails else ""
+                logger.info(f"Email sent to {to_email}{cc_info}{bcc_info} via SendGrid")
                 return True
             else:
                 logger.error(f"SendGrid returned status {response.status_code}")
@@ -1046,6 +1067,7 @@ Thanks for being part of making Nomad Karaoke better!
             html_content=html_content,
             text_content=message_content,
             cc_emails=cc_emails,
+            bcc_emails=["done@nomadkaraoke.com"],
         )
 
     def send_action_reminder(
@@ -1198,6 +1220,7 @@ No action needed - sit back and we'll take care of everything!
             subject=subject,
             html_content=html_content,
             text_content=text_content,
+            bcc_emails=["done@nomadkaraoke.com"],
         )
 
     def send_made_for_you_admin_notification(
