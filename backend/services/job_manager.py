@@ -453,9 +453,12 @@ class JobManager:
             recipient_email = job.user_email
             if job.made_for_you and job.customer_email:
                 recipient_email = job.customer_email
-                # Transfer ownership from admin to customer
-                self.update_job(job.job_id, {'user_email': job.customer_email})
-                logger.info(f"Transferred ownership of made-for-you job {job.job_id} to {_mask_email(job.customer_email)}")
+                # Transfer ownership from admin to customer (non-blocking - email still goes out if this fails)
+                try:
+                    self.update_job(job.job_id, {'user_email': job.customer_email})
+                    logger.info(f"Transferred ownership of made-for-you job {job.job_id} to {_mask_email(job.customer_email)}")
+                except Exception as e:
+                    logger.error(f"Failed to transfer ownership for job {job.job_id}: {e}")
 
             # Create async task (fire-and-forget)
             async def send_email():

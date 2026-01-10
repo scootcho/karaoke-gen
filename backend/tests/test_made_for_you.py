@@ -390,8 +390,8 @@ class TestMadeForYouAdminNotificationEmail:
         html_content = call_kwargs.get('html_content')
         assert "5" in html_content
 
-    def test_send_admin_notification_includes_deliver_by_est(self):
-        """Test admin notification includes Deliver By deadline in EST."""
+    def test_send_admin_notification_includes_deliver_by_eastern(self):
+        """Test admin notification includes Deliver By deadline in Eastern Time."""
         service = EmailService()
         service.provider = Mock()
         service.provider.send_email.return_value = True
@@ -408,9 +408,9 @@ class TestMadeForYouAdminNotificationEmail:
         call_kwargs = service.provider.send_email.call_args.kwargs
         html_content = call_kwargs.get('html_content')
         text_content = call_kwargs.get('text_content')
-        # Should include "Deliver By" label and EST timezone
+        # Should include "Deliver By" label and ET (Eastern Time) timezone
         assert "Deliver By" in html_content or "Deliver By" in text_content
-        assert "EST" in html_content or "EST" in text_content
+        assert "ET" in html_content or "ET" in text_content
 
     def test_send_admin_notification_escapes_html(self):
         """Test admin notification escapes HTML in user input."""

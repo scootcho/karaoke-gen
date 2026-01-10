@@ -1280,11 +1280,12 @@ No action needed - sit back and we'll take care of everything!
             notes_html = f"<p><strong>Customer Notes:</strong> {html.escape(notes)}</p>"
             notes_text = f"\nCustomer Notes: {notes}"
 
-        # Calculate deadline (24 hours from now, converted to EST)
+        # Calculate deadline (24 hours from now, converted to Eastern Time)
         deadline_utc = datetime.now(timezone.utc) + timedelta(hours=24)
-        est_tz = ZoneInfo("America/New_York")
-        deadline_est = deadline_utc.astimezone(est_tz)
-        deadline_str = deadline_est.strftime("%B %d, %Y at %I:%M %p") + " EST"
+        eastern_tz = ZoneInfo("America/New_York")
+        deadline_eastern = deadline_utc.astimezone(eastern_tz)
+        # Use "ET" (Eastern Time) to be correct for both EST and EDT
+        deadline_str = deadline_eastern.strftime("%B %d, %Y at %I:%M %p") + " ET"
 
         # Link to /app/ with admin login token for one-click access
         app_url = f"{self.frontend_url.rstrip('/')}/app/?admin_token={admin_login_token}"
