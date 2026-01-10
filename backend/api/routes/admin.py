@@ -15,10 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.api.dependencies import require_admin
-from backend.services.auth_service import UserType
+from backend.services.auth_service import UserType, AuthResult
 from backend.services.user_service import get_user_service, UserService, USERS_COLLECTION
 from backend.services.job_manager import JobManager
 from backend.services.flacfetch_client import get_flacfetch_client, FlacfetchServiceError
+from backend.services.storage_service import StorageService
 from backend.models.job import JobStatus
 from backend.utils.test_data import is_test_email
 from karaoke_gen.utils import sanitize_filename
@@ -54,6 +55,74 @@ class AdminStatsOverview(BaseModel):
     jobs_by_status: JobsByStatusResponse
     total_credits_issued_30d: int
     total_beta_testers: int
+
+
+class FileInfo(BaseModel):
+    """Information about a single file with signed download URL."""
+    name: str
+    path: str  # GCS path (gs://bucket/...)
+    download_url: str  # Signed URL for download
+    category: str  # e.g., "stems", "lyrics", "finals"
+    file_key: str  # e.g., "instrumental_clean", "lrc"
+
+
+class JobFilesResponse(BaseModel):
+    """Response containing all files for a job with signed download URLs."""
+    job_id: str
+    artist: Optional[str]
+    title: Optional[str]
+    files: List[FileInfo]
+    total_files: int
+
+
+class JobUpdateRequest(BaseModel):
+    """Request model for updating job fields."""
+    # Editable text fields
+    artist: Optional[str] = None
+    title: Optional[str] = None
+    user_email: Optional[str] = None
+    theme_id: Optional[str] = None
+    brand_prefix: Optional[str] = None
+    discord_webhook_url: Optional[str] = None
+    youtube_description: Optional[str] = None
+    youtube_description_template: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_notes: Optional[str] = None
+
+    # Editable boolean fields
+    enable_cdg: Optional[bool] = None
+    enable_txt: Optional[bool] = None
+    enable_youtube_upload: Optional[bool] = None
+    non_interactive: Optional[bool] = None
+    prep_only: Optional[bool] = None
+
+
+class JobUpdateResponse(BaseModel):
+    """Response from job update endpoint."""
+    status: str
+    job_id: str
+    updated_fields: List[str]
+    message: str
+
+
+# Fields that are allowed to be updated via PATCH endpoint
+EDITABLE_JOB_FIELDS = {
+    "artist",
+    "title",
+    "user_email",
+    "theme_id",
+    "brand_prefix",
+    "discord_webhook_url",
+    "youtube_description",
+    "youtube_description_template",
+    "customer_email",
+    "customer_notes",
+    "enable_cdg",
+    "enable_txt",
+    "enable_youtube_upload",
+    "non_interactive",
+    "prep_only",
+}
 
 
 # =============================================================================
@@ -700,6 +769,374 @@ class SendCompletionEmailResponse(BaseModel):
     job_id: str
     to_email: str
     message: str
+
+
+# =============================================================================
+# Job Files Endpoint
+# =============================================================================
+
+def _extract_files_recursive(
+    file_urls: Dict[str, Any],
+    storage: StorageService,
+    category: str = "",
+    expiration_minutes: int = 120,
+) -> List[FileInfo]:
+    """
+    Recursively extract files from nested file_urls structure.
+
+    Only includes entries that are GCS paths (gs://...).
+    Skips non-GCS entries like YouTube URLs.
+
+    Args:
+        file_urls: Dictionary of file URLs (may be nested)
+        storage: StorageService instance for generating signed URLs
+        category: Current category name (for nested calls)
+        expiration_minutes: How long signed URLs should be valid
+
+    Returns:
+        List of FileInfo objects with signed download URLs
+    """
+    files = []
+
+    for key, value in file_urls.items():
+        if isinstance(value, dict):
+            # Nested structure - recurse with key as category
+            nested_files = _extract_files_recursive(
+                value,
+                storage,
+                category=key if not category else f"{category}.{key}",
+                expiration_minutes=expiration_minutes,
+            )
+            files.extend(nested_files)
+        elif isinstance(value, str) and value.startswith("gs://"):
+            # GCS path - generate signed URL
+            try:
+                signed_url = storage.generate_signed_url(value, expiration_minutes=expiration_minutes)
+                # Extract filename from path
+                name = value.split("/")[-1] if "/" in value else value
+                files.append(FileInfo(
+                    name=name,
+                    path=value,
+                    download_url=signed_url,
+                    category=category,
+                    file_key=key,
+                ))
+            except Exception as e:
+                # Log but don't fail - file might not exist
+                logger.warning(f"Failed to generate signed URL for {value}: {e}")
+        # Skip non-GCS values (e.g., youtube URLs, video IDs)
+
+    return files
+
+
+@router.get("/jobs/{job_id}/files", response_model=JobFilesResponse)
+async def get_job_files(
+    job_id: str,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+):
+    """
+    Get all files for a job with signed download URLs.
+
+    Returns a list of all files associated with the job, including:
+    - Input audio file
+    - Stem separation results (vocals, instrumentals, etc.)
+    - Lyrics files (LRC, ASS, corrections JSON)
+    - Screen files (title, end screens)
+    - Video files (with/without vocals)
+    - Final output files (various formats)
+    - Package files (CDG, TXT zips)
+
+    Each file includes a signed URL that's valid for 2 hours.
+    Non-GCS entries (like YouTube URLs) are excluded.
+
+    Requires admin authentication.
+    """
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Extract all files with signed URLs
+    storage = StorageService()
+    file_urls = job.file_urls or {}
+
+    files = _extract_files_recursive(file_urls, storage)
+
+    return JobFilesResponse(
+        job_id=job.job_id,
+        artist=job.artist,
+        title=job.title,
+        files=files,
+        total_files=len(files),
+    )
+
+
+@router.patch("/jobs/{job_id}", response_model=JobUpdateResponse)
+async def update_job(
+    job_id: str,
+    request: Dict[str, Any],
+    auth_data: AuthResult = Depends(require_admin),
+):
+    """
+    Update editable fields of a job (admin only).
+
+    This endpoint allows admins to update certain job fields without
+    affecting the job's processing state. It's useful for:
+    - Correcting artist/title typos
+    - Changing user assignment
+    - Updating delivery settings (email, theme, etc.)
+
+    Editable fields:
+    - artist, title: Track metadata
+    - user_email: Job owner
+    - theme_id: Visual theme
+    - enable_cdg, enable_txt, enable_youtube_upload: Output options
+    - customer_email, customer_notes: Made-for-you order info
+    - brand_prefix: Brand code prefix
+    - non_interactive, prep_only: Workflow options
+    - discord_webhook_url: Notification URL
+    - youtube_description, youtube_description_template: YouTube settings
+
+    Non-editable fields (will return 400 error):
+    - job_id, status, progress: System-managed
+    - created_at, updated_at: Timestamps
+    - state_data, file_urls, timeline: Processing state
+    - worker_logs, worker_ids: Audit/tracking data
+
+    For status changes, use the reset endpoint instead.
+    """
+    admin_email = auth_data.user_email or "unknown"
+
+    # Check for non-editable fields in request
+    non_editable_fields = set(request.keys()) - EDITABLE_JOB_FIELDS
+    if non_editable_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The following fields are not editable: {', '.join(sorted(non_editable_fields))}. "
+            f"Editable fields are: {', '.join(sorted(EDITABLE_JOB_FIELDS))}"
+        )
+
+    # Filter to only include provided fields (non-None values)
+    updates = {k: v for k, v in request.items() if v is not None}
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid fields provided for update. "
+            f"Editable fields are: {', '.join(sorted(EDITABLE_JOB_FIELDS))}"
+        )
+
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Perform the update
+    success = job_manager.update_job(job_id, updates)
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update job. Please try again."
+        )
+
+    # Log the admin action
+    logger.info(
+        f"Admin {admin_email} updated job {job_id}. "
+        f"Updated fields: {list(updates.keys())}"
+    )
+
+    return JobUpdateResponse(
+        status="success",
+        job_id=job_id,
+        updated_fields=list(updates.keys()),
+        message=f"Successfully updated {len(updates)} field(s)",
+    )
+
+
+# =============================================================================
+# Job Reset Endpoint
+# =============================================================================
+
+class JobResetRequest(BaseModel):
+    """Request model for resetting a job to a specific state."""
+    target_state: str
+
+
+class JobResetResponse(BaseModel):
+    """Response from job reset endpoint."""
+    status: str
+    job_id: str
+    previous_status: str
+    new_status: str
+    message: str
+    cleared_data: List[str]
+
+
+# States that are allowed as reset targets
+ALLOWED_RESET_STATES = {
+    "pending",
+    "awaiting_audio_selection",
+    "awaiting_review",
+    "awaiting_instrumental_selection",
+}
+
+# State data keys to clear for each reset target
+# Keys not in this mapping are preserved
+STATE_DATA_CLEAR_KEYS = {
+    "pending": [
+        "audio_search_results",
+        "audio_search_count",
+        "remote_search_id",
+        "audio_selection",
+        "review_complete",
+        "corrected_lyrics",
+        "instrumental_selection",
+        "video_progress",
+        "render_progress",
+        "screens_progress",
+    ],
+    "awaiting_audio_selection": [
+        "audio_selection",
+        "review_complete",
+        "corrected_lyrics",
+        "instrumental_selection",
+        "video_progress",
+        "render_progress",
+        "screens_progress",
+    ],
+    "awaiting_review": [
+        "review_complete",
+        "corrected_lyrics",
+        "instrumental_selection",
+        "video_progress",
+        "render_progress",
+        "screens_progress",
+    ],
+    "awaiting_instrumental_selection": [
+        "instrumental_selection",
+        "video_progress",
+        "render_progress",
+        "screens_progress",
+    ],
+}
+
+
+@router.post("/jobs/{job_id}/reset", response_model=JobResetResponse)
+async def reset_job(
+    job_id: str,
+    request: JobResetRequest,
+    auth_data: AuthResult = Depends(require_admin),
+    user_service: UserService = Depends(get_user_service),
+):
+    """
+    Reset a job to a specific state for re-processing (admin only).
+
+    This endpoint allows admins to reset a job back to specific workflow
+    checkpoints to re-do parts of the processing. This is useful for:
+    - Re-running audio search after flacfetch updates
+    - Re-reviewing lyrics after corrections
+    - Re-selecting instrumental after hearing the result
+    - Restarting a failed job from the beginning
+
+    Allowed target states:
+    - pending: Restart from the beginning (clears all processing data)
+    - awaiting_audio_selection: Re-select audio source
+    - awaiting_review: Re-review lyrics (preserves audio stems)
+    - awaiting_instrumental_selection: Re-select instrumental (preserves review)
+
+    State data is cleared based on the target state to ensure a clean
+    re-processing from that point forward.
+    """
+    admin_email = auth_data.user_email or "unknown"
+    target_state = request.target_state.lower()
+
+    # Validate target state
+    if target_state not in ALLOWED_RESET_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid target state '{target_state}'. "
+            f"Allowed states are: {', '.join(sorted(ALLOWED_RESET_STATES))}"
+        )
+
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    previous_status = job.status
+
+    # Build update payload
+    updates = {
+        "status": target_state,
+        "progress": 0,
+        "message": f"Job reset to {target_state} by admin",
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+    # Clear state data keys based on target state
+    keys_to_clear = STATE_DATA_CLEAR_KEYS.get(target_state, [])
+    cleared_keys = []
+    current_state_data = job.state_data or {}
+
+    for key in keys_to_clear:
+        if key in current_state_data:
+            cleared_keys.append(key)
+
+    # Add timeline event
+    timeline_event = {
+        "status": target_state,
+        "timestamp": datetime.utcnow().isoformat(),
+        "message": f"Admin reset from {previous_status} to {target_state}",
+    }
+
+    # Perform the update with state_data clearing
+    # We need to set the cleared keys to DELETE_FIELD
+    success = job_manager.update_job(job_id, updates)
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to reset job. Please try again."
+        )
+
+    # Clear the state data keys separately using direct Firestore update
+    from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
+
+    job_ref = user_service.db.collection("jobs").document(job_id)
+
+    if cleared_keys:
+        clear_updates = {}
+        for key in cleared_keys:
+            clear_updates[f"state_data.{key}"] = DELETE_FIELD
+
+        # Add timeline event
+        clear_updates["timeline"] = ArrayUnion([timeline_event])
+
+        job_ref.update(clear_updates)
+    else:
+        # Just add timeline event
+        job_ref.update({
+            "timeline": ArrayUnion([timeline_event])
+        })
+
+    # Log the admin action
+    logger.info(
+        f"Admin {admin_email} reset job {job_id} from {previous_status} to {target_state}. "
+        f"Cleared state_data keys: {cleared_keys}"
+    )
+
+    return JobResetResponse(
+        status="success",
+        job_id=job_id,
+        previous_status=previous_status,
+        new_status=target_state,
+        message=f"Job reset from {previous_status} to {target_state}",
+        cleared_data=cleared_keys,
+    )
 
 
 @router.get("/jobs/{job_id}/completion-message", response_model=CompletionMessageResponse)
