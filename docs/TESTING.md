@@ -2,6 +2,29 @@
 
 This document defines testing standards, code quality principles, and CI requirements for Nomad Karaoke Gen.
 
+## Critical: All Tests Must Pass
+
+**All tests must pass before merging.** If tests fail:
+
+1. **Fix them** - Don't assume failures are "pre-existing issues"
+2. **Investigate** - Understand why the test is failing
+3. **Don't dismiss** - If a test fails, either the code or test needs fixing
+
+CI blocks merging if tests fail. If you encounter failures locally, fix them as part of your work.
+
+### Running Tests
+
+```bash
+# Run ALL tests (backend + frontend) - installs deps automatically
+make test
+
+# Run subsets for faster iteration
+make test-backend   # Backend only (~2 min)
+make test-frontend  # Frontend only (~3 min)
+```
+
+Dependencies are installed automatically when needed.
+
 ## Core Principles
 
 ### SOLID Principles
@@ -96,18 +119,24 @@ make emulators-stop
 **Locations:**
 - `frontend/e2e/regression/` - Mocked API tests (CI-safe, fast)
 - `frontend/e2e/production/` - Real backend tests (comprehensive, slower)
+- `frontend/e2e/manual/` - Tests requiring manual setup (not in CI)
 
 **Tool:** Playwright
 
 **Regression tests** run on every PR:
 - Mock API responses via fixtures
 - Test UI behavior in isolation
-- ~1-2 min total runtime
+- Playwright auto-starts dev server via `webServer` config
+- ~3 min total runtime
 
 **Production tests** run on-demand or daily:
 - Hit real `https://gen.nomadkaraoke.com` and `https://api.nomadkaraoke.com`
 - Full user journeys (20-40 min for happy path)
 - Require authentication tokens
+
+**Manual tests** are NOT included in CI:
+- Require separate dev servers (e.g., LyricsTranscriber frontend on port 5173)
+- See `frontend/e2e/manual/README.md` for setup instructions
 
 ## Playwright Usage
 
@@ -353,10 +382,13 @@ karaoke-gen/
     │   │   ├── authentication.spec.ts
     │   │   ├── karaoke-generation.spec.ts
     │   │   └── ...
-    │   └── production/              # Real backend E2E
-    │       ├── happy-path-real-user.spec.ts
-    │       ├── lyrics-review-only.spec.ts
-    │       └── admin-dashboard.spec.ts
+    │   ├── production/              # Real backend E2E
+    │   │   ├── happy-path-real-user.spec.ts
+    │   │   ├── lyrics-review-only.spec.ts
+    │   │   └── admin-dashboard.spec.ts
+    │   └── manual/                  # Manual setup required (NOT in CI)
+    │       ├── README.md            # Setup instructions
+    │       └── lyrics-review-mobile.spec.ts  # LyricsTranscriber frontend
     ├── jest.config.js
     ├── jest.setup.js
     ├── playwright.config.ts         # Default (regression)
@@ -489,13 +521,13 @@ When adding a new feature:
 
 | Task | Command |
 |------|---------|
-| All tests | `make test` |
-| Package unit | `make test-unit` |
+| **All tests (before commit)** | `make test` |
 | Backend only | `make test-backend` |
-| With emulators | `make test-e2e` |
-| Frontend unit | `cd frontend && npm run test:unit` |
-| Frontend E2E (regression) | `cd frontend && npm run test:e2e` |
+| Frontend only | `make test-frontend` |
+| Package unit | `make test-unit` |
+| Emulator tests | `make test-e2e` |
 | Frontend E2E (production) | `cd frontend && npm run test:e2e:prod` |
 | Coverage HTML | `poetry run pytest tests/unit --cov=karaoke_gen --cov-report=html` |
+| Install deps | `make install` |
 | Start emulators | `make emulators-start` |
 | Stop emulators | `make emulators-stop` |

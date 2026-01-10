@@ -60,45 +60,21 @@ npm run dev
 
 ## Testing
 
-### Backend Tests
+**See [TESTING.md](TESTING.md) for complete testing guidance.**
+
+Quick reference (run before committing):
 
 ```bash
-# Run all tests (required before commit)
 make test 2>&1 | tail -n 500
-
-# This runs in order:
-# 1. Unit tests with coverage
-# 2. Backend unit tests
-# 3. E2E integration tests with emulators
 ```
 
-**Important**: Set 10 minute timeout. Tests can take a while with emulators.
+This runs ALL tests (backend + frontend) and installs dependencies automatically.
 
-### Frontend Tests
+For faster iteration, run subsets:
+- `make test-backend` - Backend only (~2 min)
+- `make test-frontend` - Frontend only (~3 min)
 
-```bash
-cd frontend
-npm run test:all 2>&1 | tail -n 200
-
-# Individual commands:
-npm run test:unit   # Jest unit tests
-npm run test:e2e    # Playwright E2E tests
-```
-
-### Test Architecture
-
-```
-┌─────────────────────────────────┐
-│   Unit Tests (Mocked)           │  Fast, isolated
-│   ~62 tests, <1s                │
-├─────────────────────────────────┤
-│   Emulator Integration Tests    │  Local Firestore/GCS
-│   ~11 tests, ~2s                │
-├─────────────────────────────────┤
-│   E2E Tests                     │  Full API + Frontend
-│   Requires deployed backend     │
-└─────────────────────────────────┘
-```
+TESTING.md covers: test types, CI requirements, Playwright usage, mocking guidelines, and coverage enforcement.
 
 ## Deployment
 
@@ -231,10 +207,6 @@ lsof -i :4443  # GCS
 ./scripts/stop-emulators.sh
 ```
 
-### Tests Fail with Auth Errors
-
-Ensure `ADMIN_TOKENS` is set in environment or `.env` file.
-
 ### Docker Issues
 
 ```bash
@@ -245,6 +217,6 @@ docker info
 docker pull fsouza/fake-gcs-server
 ```
 
-### Coverage Below Target
+### Test Failures
 
-Run `./scripts/run-tests.sh --coverage` and check `htmlcov/index.html` to see uncovered lines.
+See [TESTING.md](TESTING.md#debugging-failed-tests) for debugging test failures, coverage issues, and CI troubleshooting.
