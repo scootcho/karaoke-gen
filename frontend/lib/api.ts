@@ -67,6 +67,8 @@ export interface Job {
   audio_hash?: string;
   non_interactive?: boolean;
   user_email?: string;
+  outputs_deleted_at?: string;
+  outputs_deleted_by?: string;
 }
 
 export interface UploadJobResponse {
@@ -1193,6 +1195,22 @@ export const adminApi = {
     return handleResponse(response);
   },
 
+  /**
+   * Delete all distributed outputs for a job (admin only).
+   * Deletes YouTube video, Dropbox folder, and Google Drive files.
+   * Job record is preserved with outputs_deleted_at timestamp.
+   */
+  async deleteJobOutputs(jobId: string): Promise<DeleteOutputsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/delete-outputs`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders()
+      }
+    );
+    return handleResponse(response);
+  },
+
   // =========================================================================
   // Rate Limits API
   // =========================================================================
@@ -1411,6 +1429,19 @@ export interface JobResetResponse {
   new_status: string;
   message: string;
   cleared_data: string[];
+}
+
+export interface DeleteOutputsResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  deleted_services: {
+    youtube: { status: string; video_id?: string; reason?: string; error?: string };
+    dropbox: { status: string; path?: string; reason?: string; error?: string };
+    gdrive: { status: string; files?: Record<string, boolean>; reason?: string; error?: string };
+  };
+  cleared_state_data: string[];
+  outputs_deleted_at: string;
 }
 
 // Rate Limits API Types

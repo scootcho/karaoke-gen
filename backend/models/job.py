@@ -285,6 +285,10 @@ class Job(BaseModel):
     customer_email: Optional[str] = None         # Customer email for final delivery (job owned by admin during processing)
     customer_notes: Optional[str] = None         # Notes provided by customer with their order
 
+    # Output deletion tracking (for admin cleanup without deleting job)
+    outputs_deleted_at: Optional[datetime] = None  # Timestamp when outputs were deleted by admin
+    outputs_deleted_by: Optional[str] = None       # Admin email who deleted outputs
+
     # Processing state
     track_output_dir: Optional[str] = None       # Local output directory (temp)
     audio_hash: Optional[str] = None             # Hash for deduplication
