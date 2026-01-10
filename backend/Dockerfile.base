@@ -54,6 +54,7 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE /app/
 COPY karaoke_gen /app/karaoke_gen
 COPY lyrics_transcriber_temp /app/lyrics_transcriber_temp
+COPY backend /app/backend
 
 # Install all Python dependencies (the slow part - cached in base image)
 RUN pip install --no-cache-dir --upgrade pip && \
