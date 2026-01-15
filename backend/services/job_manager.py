@@ -374,22 +374,22 @@ class JobManager:
             updates['progress'] = progress
         
         # Generate review token when entering AWAITING_REVIEW state
+        # Tokens don't expire - they're job-scoped so low risk, and natural expiry happens when job completes
         if new_status == JobStatus.AWAITING_REVIEW:
-            from backend.api.dependencies import generate_review_token, get_review_token_expiry
+            from backend.api.dependencies import generate_review_token
             review_token = generate_review_token()
-            review_token_expires = get_review_token_expiry(hours=48)  # 48 hour expiry
             updates['review_token'] = review_token
-            updates['review_token_expires_at'] = review_token_expires
-            logger.info(f"Generated review token for job {job_id}, expires in 48 hours")
-        
+            updates['review_token_expires_at'] = None  # No expiry - token is job-scoped
+            logger.info(f"Generated review token for job {job_id} (no expiry)")
+
         # Generate instrumental token when entering AWAITING_INSTRUMENTAL_SELECTION state
+        # Tokens don't expire - they're job-scoped so low risk, and natural expiry happens when job completes
         if new_status == JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
-            from backend.api.dependencies import generate_review_token, get_review_token_expiry
+            from backend.api.dependencies import generate_review_token
             instrumental_token = generate_review_token()  # Reuse same token generator
-            instrumental_token_expires = get_review_token_expiry(hours=48)  # 48 hour expiry
             updates['instrumental_token'] = instrumental_token
-            updates['instrumental_token_expires_at'] = instrumental_token_expires
-            logger.info(f"Generated instrumental token for job {job_id}, expires in 48 hours")
+            updates['instrumental_token_expires_at'] = None  # No expiry - token is job-scoped
+            logger.info(f"Generated instrumental token for job {job_id} (no expiry)")
         
         # If we have state_data_updates, merge them with existing state_data
         merged_state_data = None

@@ -760,8 +760,16 @@
             ? decodeURIComponent(encodedBaseApiUrl)
             : '/api/jobs/local';
 
-        // Helper to add instrumental token to URL (fallback when no full auth)
+        // Helper to add auth token to URL
+        // Priority: fullAuthToken (doesn't expire) > instrumentalToken (expires after 48h)
+        // This is essential for audio elements which can't use Bearer headers
         function addTokenToUrl(url) {
+            // Prefer full auth token - it doesn't have the short expiry that magic link tokens have
+            if (fullAuthToken) {
+                const separator = url.includes('?') ? '&' : '?';
+                return `${url}${separator}token=${encodeURIComponent(fullAuthToken)}`;
+            }
+            // Fall back to instrumental token for non-logged-in users
             if (!instrumentalToken) return url;
             const separator = url.includes('?') ? '&' : '?';
             return `${url}${separator}instrumental_token=${encodeURIComponent(instrumentalToken)}`;
