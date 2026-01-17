@@ -8,7 +8,7 @@ Handles:
 - Audio search cache management
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Tuple, List, Optional, Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -1139,6 +1139,229 @@ async def reset_job(
     )
 
 
+# =============================================================================
+# Delete Job Outputs Endpoint
+# =============================================================================
+
+class DeleteOutputsResponse(BaseModel):
+    """Response from delete job outputs endpoint."""
+    status: str
+    job_id: str
+    message: str
+    deleted_services: Dict[str, Any]  # youtube, dropbox, gdrive results
+    cleared_state_data: List[str]
+    outputs_deleted_at: str
+
+
+# State data keys to clear when deleting outputs
+OUTPUT_STATE_DATA_KEYS = [
+    "youtube_url",
+    "youtube_video_id",
+    "dropbox_link",
+    "brand_code",
+    "gdrive_files",
+]
+
+
+# Terminal states that allow output deletion
+TERMINAL_STATES = {"complete", "prep_complete", "failed", "cancelled"}
+
+
+@router.post("/jobs/{job_id}/delete-outputs", response_model=DeleteOutputsResponse)
+async def delete_job_outputs(
+    job_id: str,
+    auth_data: AuthResult = Depends(require_admin),
+):
+    """
+    Delete all distributed outputs for a job (admin only).
+
+    This endpoint deletes:
+    1. YouTube video (if uploaded)
+    2. Dropbox folder (if uploaded) - frees brand code for reuse
+    3. Google Drive files (if uploaded)
+
+    The job record is preserved with outputs_deleted_at timestamp set.
+    State data related to distribution is cleared.
+
+    Use case: Delete outputs for quality issues, then reset job to
+    awaiting_review or awaiting_instrumental_selection to re-process.
+
+    Args:
+        job_id: Job ID to delete outputs for
+
+    Returns:
+        Deletion results for each service
+    """
+    import re
+    from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
+
+    admin_email = auth_data.user_email or "unknown"
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Verify job is in a terminal state
+    if job.status not in TERMINAL_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only delete outputs from jobs in terminal states. "
+            f"Current status: {job.status}. Allowed: {', '.join(sorted(TERMINAL_STATES))}"
+        )
+
+    # Check if outputs already deleted
+    if job.outputs_deleted_at:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Outputs were already deleted at {job.outputs_deleted_at}"
+        )
+
+    state_data = job.state_data or {}
+    results = {
+        "youtube": {"status": "skipped", "reason": "no youtube_url in state_data"},
+        "dropbox": {"status": "skipped", "reason": "no brand_code or dropbox_path"},
+        "gdrive": {"status": "skipped", "reason": "no gdrive_files in state_data"},
+    }
+
+    # Clean up YouTube
+    youtube_url = state_data.get('youtube_url')
+    if youtube_url:
+        try:
+            video_id_match = re.search(r'(?:youtu\.be/|youtube\.com/watch\?v=)([^&\s]+)', youtube_url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+
+                from karaoke_gen.karaoke_finalise.karaoke_finalise import KaraokeFinalise
+                from backend.services.youtube_service import get_youtube_service
+
+                youtube_service = get_youtube_service()
+                if youtube_service.is_configured:
+                    finalise = KaraokeFinalise(
+                        dry_run=False,
+                        non_interactive=True,
+                        user_youtube_credentials=youtube_service.get_credentials_dict()
+                    )
+                    success = finalise.delete_youtube_video(video_id)
+                    results["youtube"] = {
+                        "status": "success" if success else "failed",
+                        "video_id": video_id
+                    }
+                else:
+                    results["youtube"] = {"status": "skipped", "reason": "YouTube credentials not configured"}
+            else:
+                results["youtube"] = {"status": "failed", "reason": f"Could not extract video ID from {youtube_url}"}
+        except Exception as e:
+            logger.error(f"Error deleting YouTube video for job {job_id}: {e}", exc_info=True)
+            results["youtube"] = {"status": "error", "error": str(e)}
+
+    # Clean up Dropbox
+    brand_code = state_data.get('brand_code')
+    dropbox_path = getattr(job, 'dropbox_path', None)
+    if brand_code and dropbox_path:
+        try:
+            from backend.services.dropbox_service import get_dropbox_service
+            dropbox = get_dropbox_service()
+            if dropbox.is_configured:
+                base_name = f"{job.artist} - {job.title}"
+                folder_name = f"{brand_code} - {base_name}"
+                full_path = f"{dropbox_path}/{folder_name}"
+                success = dropbox.delete_folder(full_path)
+                results["dropbox"] = {
+                    "status": "success" if success else "failed",
+                    "path": full_path
+                }
+            else:
+                results["dropbox"] = {"status": "skipped", "reason": "Dropbox credentials not configured"}
+        except Exception as e:
+            logger.error(f"Error deleting Dropbox folder for job {job_id}: {e}", exc_info=True)
+            results["dropbox"] = {"status": "error", "error": str(e)}
+
+    # Clean up Google Drive
+    gdrive_files = state_data.get('gdrive_files')
+    if gdrive_files:
+        try:
+            from backend.services.gdrive_service import get_gdrive_service
+            gdrive = get_gdrive_service()
+            if gdrive.is_configured:
+                file_ids = list(gdrive_files.values()) if isinstance(gdrive_files, dict) else []
+                delete_results = gdrive.delete_files(file_ids)
+                all_success = all(delete_results.values())
+                results["gdrive"] = {
+                    "status": "success" if all_success else "partial",
+                    "files": delete_results
+                }
+            else:
+                results["gdrive"] = {"status": "skipped", "reason": "Google Drive credentials not configured"}
+        except Exception as e:
+            logger.error(f"Error deleting Google Drive files for job {job_id}: {e}", exc_info=True)
+            results["gdrive"] = {"status": "error", "error": str(e)}
+
+    # Update job record
+    deletion_timestamp = datetime.now(timezone.utc)
+    user_service = get_user_service()
+    db = user_service.db
+    job_ref = db.collection("jobs").document(job_id)
+
+    update_payload = {
+        "outputs_deleted_at": deletion_timestamp,
+        "outputs_deleted_by": admin_email,
+        "updated_at": deletion_timestamp,
+    }
+
+    # Clear distribution-related state_data keys
+    cleared_keys = []
+    for key in OUTPUT_STATE_DATA_KEYS:
+        if key in state_data:
+            update_payload[f"state_data.{key}"] = DELETE_FIELD
+            cleared_keys.append(key)
+
+    # Add timeline event
+    timeline_event = {
+        "status": job.status,  # Keep current status
+        "timestamp": deletion_timestamp.isoformat(),
+        "message": f"Outputs deleted by admin ({admin_email})",
+    }
+    update_payload["timeline"] = ArrayUnion([timeline_event])
+
+    job_ref.update(update_payload)
+
+    # Determine overall status based on per-service results
+    error_services = [s for s, r in results.items() if r["status"] == "error"]
+    failed_services = [s for s, r in results.items() if r["status"] == "failed"]
+    success_services = [s for s, r in results.items() if r["status"] == "success"]
+
+    if error_services:
+        overall_status = "partial_success" if success_services else "error"
+        error_details = "; ".join(
+            f"{s}: {results[s].get('error', 'unknown error')}" for s in error_services
+        )
+        message = f"Some services failed: {error_details}"
+    elif failed_services:
+        overall_status = "partial_success" if success_services else "failed"
+        message = f"Some deletions failed: {', '.join(failed_services)}"
+    else:
+        overall_status = "success"
+        message = "Outputs deleted successfully"
+
+    logger.info(
+        f"Admin {admin_email} deleted outputs for job {job_id}. "
+        f"YouTube: {results['youtube']['status']}, "
+        f"Dropbox: {results['dropbox']['status']}, "
+        f"GDrive: {results['gdrive']['status']}. "
+        f"Cleared state_data keys: {cleared_keys}"
+    )
+
+    return DeleteOutputsResponse(
+        status=overall_status,
+        job_id=job_id,
+        message=message,
+        deleted_services=results,
+        cleared_state_data=cleared_keys,
+        outputs_deleted_at=deletion_timestamp.isoformat(),
+    )
+
+
 @router.get("/jobs/{job_id}/completion-message", response_model=CompletionMessageResponse)
 async def get_job_completion_message(
     job_id: str,
@@ -1286,7 +1509,7 @@ class ImpersonateUserResponse(BaseModel):
 @router.post("/users/{email}/impersonate", response_model=ImpersonateUserResponse)
 async def impersonate_user(
     email: str,
-    auth_data: Tuple[str, UserType, int] = Depends(require_admin),
+    auth_data: AuthResult = Depends(require_admin),
     user_service: UserService = Depends(get_user_service),
 ):
     """
@@ -1308,7 +1531,7 @@ async def impersonate_user(
         user_email: The impersonated user's email
         message: Success message
     """
-    admin_email = auth_data[0]
+    admin_email = auth_data.user_email or "unknown"
     target_email = email.lower()
 
     # Cannot impersonate yourself

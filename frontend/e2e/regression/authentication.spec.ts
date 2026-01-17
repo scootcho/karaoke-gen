@@ -122,7 +122,7 @@ test.describe('Authentication - Beta Enrollment', () => {
     // Fill form with short promise
     await page.locator('#beta-email').fill('test@example.com');
     await page.locator('input[type="checkbox"]').check();
-    await page.locator('textarea').fill('ok');
+    await page.locator('#beta-promise').fill('ok');
 
     await page.getByRole('button', { name: /get my free credit/i }).click();
 
@@ -160,7 +160,7 @@ test.describe('Authentication - Beta Enrollment', () => {
 
     // Fill valid form
     await page.locator('#beta-email').fill('test@example.com');
-    await page.locator('textarea').fill(
+    await page.locator('#beta-promise').fill(
       'I want to create karaoke videos for my favorite songs!'
     );
     await page.locator('input[type="checkbox"]').check();
@@ -223,7 +223,7 @@ test.describe('Authentication - Beta Enrollment', () => {
     // Complete beta enrollment
     await page.getByRole('button', { name: /join beta program/i }).click();
     await page.locator('#beta-email').fill('beta-tester@example.com');
-    await page.locator('textarea').fill(
+    await page.locator('#beta-promise').fill(
       'I want to create a karaoke video for my favorite song!'
     );
     await page.locator('input[type="checkbox"]').check();

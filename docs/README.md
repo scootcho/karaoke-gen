@@ -27,6 +27,7 @@
 | Payment flow (Stripe) | Working |
 | Beta tester program | Working |
 | Admin dashboard | Working |
+| Rate limiting & abuse prevention | Working |
 | CI/CD self-hosted runner | Working (GCP) |
 | E2E happy path test | Working (~20-25 min full pipeline) |
 | **White-label B2B portals** | Working (Vocal Star first tenant) |
@@ -40,6 +41,12 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Admin Delete Outputs** (2026-01-10): Added admin button to delete all distributed outputs (YouTube, Dropbox, Google Drive) for a job while preserving the job record. Use case: fix quality issues by deleting outputs, resetting to `awaiting_review`, correcting lyrics, and re-generating. The brand code is freed for reuse when Dropbox folder is deleted. New endpoint: `POST /api/admin/jobs/{job_id}/delete-outputs`. UI: Delete Outputs button in admin job detail page, "Outputs Deleted" badge when flag is set. See [API.md](API.md#delete-job-outputs).
+
+- **Rate Limiting & Abuse Prevention** (2026-01-09): Added per-user rate limiting (5 jobs/day default), system-wide YouTube upload limits (10/day), and beta enrollment abuse prevention. Features: email normalization (Gmail alias detection), disposable domain blocklist (130+ domains), blocked email/IP lists, IP-based enrollment rate limiting (1 per 24h), and admin UI for managing blocklists and user overrides at `/admin/rate-limits`. Admins can grant users bypass permissions or custom limits. All limits configurable via environment variables. See [API.md](API.md#rate-limits).
+
+- **Fast Preview Video Option** (2026-01-10): Added toggle in lyrics review UI to render preview videos with black background (~10s) instead of theme background image (~30-60s). Default is now black background for faster iteration during review. Users can enable theme background via checkbox when they want to verify the final look. See [API.md](API.md#generate-preview).
 
 - **Frontend Consolidation** (2026-01-09): Consolidated three separate frontends into a single Next.js application. Previously: (1) Main frontend (Next.js + Tailwind), (2) Lyrics Review (React + Vite + MUI, ~14k lines), and (3) Instrumental Review (vanilla HTML/JS, ~1.7k lines) were deployed separately. Now all UIs are unified in the main frontend at `/app/jobs/{id}/review` and `/app/jobs/{id}/instrumental`. Benefits: single deployment to Cloudflare Pages, no external redirects during user workflows, unified design system (Radix/Tailwind), simpler authentication via job ownership model. See [archive/2026-01-09-frontend-consolidation-plan.md](archive/2026-01-09-frontend-consolidation-plan.md) and [tasks/](tasks/).
 

@@ -6,7 +6,7 @@ export interface ApiClient {
     getCorrectionData: () => Promise<CorrectionData>;
     submitCorrections: (data: CorrectionData) => Promise<void>;
     getAudioUrl: (audioHash: string) => string;
-    generatePreviewVideo: (data: CorrectionData) => Promise<PreviewVideoResponse>;
+    generatePreviewVideo: (data: CorrectionData, options?: PreviewOptions) => Promise<PreviewVideoResponse>;
     getPreviewVideoUrl: (previewHash: string) => string;
     updateHandlers: (enabledHandlers: string[]) => Promise<CorrectionData>;
     isUpdatingHandlers?: boolean;
@@ -19,6 +19,11 @@ export interface ApiClient {
 interface CorrectionUpdate {
     corrections: CorrectionData['corrections'];
     corrected_segments: CorrectionData['corrected_segments'];
+}
+
+// Add interface for preview generation options
+export interface PreviewOptions {
+    use_background_image?: boolean;
 }
 
 // Add new interface for preview response
@@ -96,11 +101,13 @@ export class LiveApiClient implements ApiClient {
         return this.buildUrl(`/audio/${audioHash}`)
     }
 
-    async generatePreviewVideo(data: CorrectionData): Promise<PreviewVideoResponse> {
+    async generatePreviewVideo(data: CorrectionData, options?: PreviewOptions): Promise<PreviewVideoResponse> {
         // Extract only the needed fields, just like in submitCorrections
-        const updatePayload: CorrectionUpdate = {
+        // Include use_background_image option (defaults to false for fast black background)
+        const updatePayload = {
             corrections: data.corrections,
-            corrected_segments: data.corrected_segments
+            corrected_segments: data.corrected_segments,
+            use_background_image: options?.use_background_image ?? false,
         };
 
         const response = await fetch(this.buildUrl('/preview-video'), {
@@ -224,7 +231,8 @@ export class FileOnlyClient implements ApiClient {
         throw new Error('Not supported in file-only mode');
     }
 
-    async generatePreviewVideo(): Promise<PreviewVideoResponse> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async generatePreviewVideo(_data: CorrectionData, _options?: PreviewOptions): Promise<PreviewVideoResponse> {
         throw new Error('Not supported in file-only mode');
     }
 

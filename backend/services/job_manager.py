@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from backend.config import settings
+from backend.exceptions import RateLimitExceededError
 from backend.models.job import Job, JobStatus, JobCreate, STATE_TRANSITIONS
 from backend.models.worker_log import WorkerLogEntry
 from backend.services.firestore_service import FirestoreService
@@ -41,16 +42,44 @@ class JobManager:
         self.firestore = FirestoreService()
         self.storage = StorageService()
     
-    def create_job(self, job_create: JobCreate) -> Job:
+    def create_job(self, job_create: JobCreate, is_admin: bool = False) -> Job:
         """
         Create a new job with initial state PENDING.
 
         Jobs start in PENDING state and transition to DOWNLOADING
         when a worker picks them up.
 
+        Args:
+            job_create: Job creation parameters
+            is_admin: Whether the requesting user is an admin (bypasses rate limits)
+
         Raises:
             ValueError: If theme_id is not provided (all jobs require a theme)
+            RateLimitExceededError: If user has exceeded their daily job limit
         """
+        # Check rate limit FIRST (before any other validation)
+        # This prevents wasted work if user is rate limited
+        if job_create.user_email:
+            from backend.services.rate_limit_service import get_rate_limit_service
+
+            rate_limit_service = get_rate_limit_service()
+            allowed, remaining, message = rate_limit_service.check_user_job_limit(
+                user_email=job_create.user_email,
+                is_admin=is_admin
+            )
+            if not allowed:
+                from backend.services.rate_limit_service import _seconds_until_midnight_utc
+
+                # Get actual current count - remaining is clamped to 0 which loses info
+                current_count = rate_limit_service.get_user_job_count_today(job_create.user_email)
+                raise RateLimitExceededError(
+                    message=message,
+                    limit_type="jobs_per_day",
+                    remaining_seconds=_seconds_until_midnight_utc(),
+                    current_count=current_count,
+                    limit_value=settings.rate_limit_jobs_per_day
+                )
+
         # Enforce theme requirement - all jobs must have a theme
         # This prevents unstyled videos from ever being generated
         if not job_create.theme_id:
@@ -105,7 +134,17 @@ class JobManager:
         
         self.firestore.create_job(job)
         logger.info(f"Created new job {job_id} with status PENDING")
-        
+
+        # Record job creation for rate limiting (after successful persistence)
+        if job_create.user_email:
+            try:
+                from backend.services.rate_limit_service import get_rate_limit_service
+                rate_limit_service = get_rate_limit_service()
+                rate_limit_service.record_job_creation(job_create.user_email, job_id)
+            except Exception as e:
+                # Don't fail job creation if rate limit recording fails
+                logger.warning(f"Failed to record job creation for rate limiting: {e}")
+
         return job
     
     def get_job(self, job_id: str) -> Optional[Job]:
@@ -335,22 +374,22 @@ class JobManager:
             updates['progress'] = progress
         
         # Generate review token when entering AWAITING_REVIEW state
+        # Tokens don't expire - they're job-scoped so low risk, and natural expiry happens when job completes
         if new_status == JobStatus.AWAITING_REVIEW:
-            from backend.api.dependencies import generate_review_token, get_review_token_expiry
+            from backend.api.dependencies import generate_review_token
             review_token = generate_review_token()
-            review_token_expires = get_review_token_expiry(hours=48)  # 48 hour expiry
             updates['review_token'] = review_token
-            updates['review_token_expires_at'] = review_token_expires
-            logger.info(f"Generated review token for job {job_id}, expires in 48 hours")
-        
+            updates['review_token_expires_at'] = None  # No expiry - token is job-scoped
+            logger.info(f"Generated review token for job {job_id} (no expiry)")
+
         # Generate instrumental token when entering AWAITING_INSTRUMENTAL_SELECTION state
+        # Tokens don't expire - they're job-scoped so low risk, and natural expiry happens when job completes
         if new_status == JobStatus.AWAITING_INSTRUMENTAL_SELECTION:
-            from backend.api.dependencies import generate_review_token, get_review_token_expiry
+            from backend.api.dependencies import generate_review_token
             instrumental_token = generate_review_token()  # Reuse same token generator
-            instrumental_token_expires = get_review_token_expiry(hours=48)  # 48 hour expiry
             updates['instrumental_token'] = instrumental_token
-            updates['instrumental_token_expires_at'] = instrumental_token_expires
-            logger.info(f"Generated instrumental token for job {job_id}, expires in 48 hours")
+            updates['instrumental_token_expires_at'] = None  # No expiry - token is job-scoped
+            logger.info(f"Generated instrumental token for job {job_id} (no expiry)")
         
         # If we have state_data_updates, merge them with existing state_data
         merged_state_data = None
@@ -399,7 +438,7 @@ class JobManager:
 
     def _trigger_state_notifications(self, job_id: str, new_status: JobStatus) -> None:
         """
-        Trigger email notifications based on state transitions.
+        Trigger email and push notifications based on state transitions.
 
         This is fire-and-forget - notification failures don't affect job processing.
 
@@ -419,10 +458,14 @@ class JobManager:
             # Job completion notification
             if new_status == JobStatus.COMPLETE:
                 self._schedule_completion_email(job)
+                self._send_push_notification(job, "complete")
 
             # Idle reminder scheduling for blocking states
             elif new_status in [JobStatus.AWAITING_REVIEW, JobStatus.AWAITING_INSTRUMENTAL_SELECTION]:
                 self._schedule_idle_reminder(job, new_status)
+                # Send push notification for blocking states
+                action_type = "lyrics" if new_status == JobStatus.AWAITING_REVIEW else "instrumental"
+                self._send_push_notification(job, action_type)
 
         except Exception as e:
             # Never let notification failures affect job processing
@@ -542,7 +585,60 @@ class JobManager:
 
         except Exception as e:
             logger.error(f"Failed to schedule idle reminder for job {job.job_id}: {e}")
-    
+
+    def _send_push_notification(self, job: Job, action_type: str) -> None:
+        """
+        Send a push notification for job state changes.
+
+        Fire-and-forget - failures don't affect job processing.
+
+        Args:
+            job: Job object
+            action_type: Type of notification ("lyrics", "instrumental", or "complete")
+        """
+        import asyncio
+        import threading
+
+        try:
+            from backend.services.push_notification_service import get_push_notification_service
+
+            push_service = get_push_notification_service()
+
+            # Skip if push notifications not enabled
+            if not push_service.is_enabled():
+                logger.debug("Push notifications not enabled, skipping")
+                return
+
+            # Build job dict for notification service
+            job_dict = {
+                "job_id": job.job_id,
+                "user_email": job.user_email,
+                "artist": job.artist,
+                "title": job.title,
+            }
+
+            async def send_notification():
+                if action_type == "complete":
+                    await push_service.send_completion_notification(job_dict)
+                else:
+                    await push_service.send_blocking_notification(job_dict, action_type)
+
+            # Try to get existing event loop, create new one if none exists
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(send_notification())
+            except RuntimeError:
+                # No event loop - we're in a sync context
+                def run_in_thread():
+                    asyncio.run(send_notification())
+                thread = threading.Thread(target=run_in_thread, daemon=True)
+                thread.start()
+
+            logger.debug(f"Scheduled push notification for job {job.job_id} ({action_type})")
+
+        except Exception as e:
+            logger.error(f"Failed to send push notification for job {job.job_id}: {e}")
+
     def update_state_data(self, job_id: str, key: str, value: Any) -> None:
         """
         Update a specific key in the job's state_data field.

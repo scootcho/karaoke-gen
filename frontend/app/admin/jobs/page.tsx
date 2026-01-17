@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { adminApi, api, Job, FileInfo, JobFilesResponse, JobUpdateRequest, JobResetResponse } from "@/lib/api"
+import { adminApi, api, Job, FileInfo, JobFilesResponse, JobUpdateRequest, JobResetResponse, DeleteOutputsResponse } from "@/lib/api"
 import { useAdminSettings } from "@/lib/admin-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,6 +60,7 @@ import {
   Settings,
   RotateCcw,
   Wrench,
+  CloudOff,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -123,6 +124,10 @@ function AdminJobsPageContent() {
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetTarget, setResetTarget] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
+
+  // Delete outputs state
+  const [deleteOutputsDialogOpen, setDeleteOutputsDialogOpen] = useState(false)
+  const [deletingOutputs, setDeletingOutputs] = useState(false)
 
   const loadJobs = useCallback(async () => {
     try {
@@ -324,6 +329,48 @@ function AdminJobsPageContent() {
       })
     } finally {
       setResetting(false)
+    }
+  }
+
+  // Handle delete outputs
+  const handleDeleteOutputs = async () => {
+    if (!selectedJobId) return
+
+    try {
+      setDeletingOutputs(true)
+      const result = await adminApi.deleteJobOutputs(selectedJobId)
+
+      // Check for errors in individual services
+      const hasErrors = result.status === "error" || result.status === "partial_success"
+      const serviceResults = Object.entries(result.deleted_services)
+        .map(([service, r]: [string, any]) => `${service}: ${r.status}${r.error ? ` (${r.error})` : ''}`)
+        .join(", ")
+
+      if (hasErrors) {
+        toast({
+          title: result.status === "error" ? "Delete Failed" : "Partial Success",
+          description: `${result.message}. Services: ${serviceResults}`,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Outputs Deleted",
+          description: `${result.message}. Cleared: ${result.cleared_state_data.join(", ") || "none"}`,
+        })
+      }
+
+      setDeleteOutputsDialogOpen(false)
+      // Refresh job details
+      loadJobDetail(selectedJobId)
+      loadLogs(selectedJobId)
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete outputs",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingOutputs(false)
     }
   }
 
@@ -540,6 +587,12 @@ function AdminJobsPageContent() {
                 <Badge variant={getStatusVariant(selectedJob.status)}>
                   {selectedJob.status.replace(/_/g, " ")}
                 </Badge>
+                {selectedJob.outputs_deleted_at && (
+                  <Badge variant="outline" className="text-orange-600 border-orange-600">
+                    <CloudOff className="w-3 h-3 mr-1" />
+                    Outputs Deleted
+                  </Badge>
+                )}
               </h1>
               {selectedJob.artist && selectedJob.title && (
                 <p className="text-muted-foreground">{selectedJob.artist} - {selectedJob.title}</p>
@@ -865,6 +918,44 @@ function AdminJobsPageContent() {
                     })}
                   </div>
                 </div>
+
+                {/* Delete Outputs Section */}
+                <div className="mt-6 pt-4 border-t">
+                  <h4 className="text-sm font-medium mb-2">Delete Distributed Outputs</h4>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Delete YouTube video, Dropbox folder, and Google Drive files.
+                    The job record is preserved. Use this to fix quality issues before re-processing.
+                  </p>
+
+                  {selectedJob.outputs_deleted_at ? (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md">
+                      <p className="text-sm text-orange-700 dark:text-orange-300">
+                        Outputs were deleted at {formatDate(selectedJob.outputs_deleted_at)}
+                        {selectedJob.outputs_deleted_by && ` by ${selectedJob.outputs_deleted_by}`}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                        onClick={() => setDeleteOutputsDialogOpen(true)}
+                        disabled={
+                          deletingOutputs ||
+                          !["complete", "prep_complete", "failed", "cancelled"].includes(selectedJob.status)
+                        }
+                      >
+                        <CloudOff className="w-4 h-4 mr-2" />
+                        Delete All Outputs
+                      </Button>
+                      {!["complete", "prep_complete", "failed", "cancelled"].includes(selectedJob.status) && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Only available for jobs in terminal states (complete, prep_complete, failed, cancelled)
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -1166,6 +1257,41 @@ function AdminJobsPageContent() {
               >
                 {resetting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Reset
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Outputs Confirmation Dialog */}
+        <AlertDialog open={deleteOutputsDialogOpen} onOpenChange={setDeleteOutputsDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <CloudOff className="w-5 h-5 text-orange-500" />
+                Delete Job Outputs
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>YouTube video (if uploaded)</li>
+                  <li>Dropbox folder (frees brand code for reuse)</li>
+                  <li>Google Drive files (if uploaded)</li>
+                </ul>
+                <br />
+                The job record will be preserved with a timestamp marking when outputs were deleted.
+                <br /><br />
+                <strong>This action cannot be undone.</strong>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteOutputs}
+                disabled={deletingOutputs}
+                className="bg-orange-500 hover:bg-orange-600"
+              >
+                {deletingOutputs && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Delete Outputs
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -14,6 +14,12 @@ import {
   MessageSquare,
   Mail,
   Loader2,
+  Search,
+  Link as LinkIcon,
+  Upload,
+  Clock,
+  FileVideo,
+  CreditCard,
 } from 'lucide-react';
 import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
 import { AuthDialog } from '@/components/auth/AuthDialog';
@@ -70,6 +76,15 @@ export default function LandingPage() {
   const [betaSuccess, setBetaSuccess] = useState(false);
   const [betaWillRedirect, setBetaWillRedirect] = useState(false);
 
+  // Made For You form state
+  const [mfyArtist, setMfyArtist] = useState('');
+  const [mfyTitle, setMfyTitle] = useState('');
+  const [mfySourceType, setMfySourceType] = useState<'search' | 'youtube' | 'upload'>('search');
+  const [mfyYoutubeUrl, setMfyYoutubeUrl] = useState('');
+  const [mfyEmail, setMfyEmail] = useState('');
+  const [mfyNotes, setMfyNotes] = useState('');
+  const [mfyLoading, setMfyLoading] = useState(false);
+  const [mfyError, setMfyError] = useState<string | null>(null);
 
   // Auth dialog state
   const [showAuthDialog, setShowAuthDialog] = useState(false);
@@ -193,6 +208,49 @@ export default function LandingPage() {
     }
   };
 
+  // Handle Made For You checkout
+  const handleMadeForYouSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMfyError(null);
+
+    // Validation
+    if (!mfyArtist.trim()) {
+      setMfyError('Please enter the artist name');
+      return;
+    }
+    if (!mfyTitle.trim()) {
+      setMfyError('Please enter the song title');
+      return;
+    }
+    if (!mfyEmail.trim()) {
+      setMfyError('Please enter your email address');
+      return;
+    }
+    if (mfySourceType === 'youtube' && !mfyYoutubeUrl.trim()) {
+      setMfyError('Please enter a YouTube URL');
+      return;
+    }
+
+    setMfyLoading(true);
+
+    try {
+      const checkoutUrl = await api.createMadeForYouCheckout({
+        email: mfyEmail,
+        artist: mfyArtist,
+        title: mfyTitle,
+        source_type: mfySourceType,
+        youtube_url: mfySourceType === 'youtube' ? mfyYoutubeUrl : undefined,
+        notes: mfyNotes || undefined,
+      });
+
+      // Redirect to Stripe Checkout
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      setMfyError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setMfyLoading(false);
+    }
+  };
+
   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
   const pricePerVideo = (pkg: CreditPackage) =>
     `$${(pkg.price_cents / 100 / pkg.credits).toFixed(2)}`;
@@ -236,12 +294,39 @@ export default function LandingPage() {
             Create professional karaoke videos in under 30 minutes. Real instrumentals
             from the original song, precise lyrics sync, and 4K video output.
           </p>
+
+          {/* Two pricing options */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-6">
+            <div className="flex flex-col items-center gap-2">
+              <a
+                href="#pricing"
+                className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-8 py-4 rounded-xl transition-all btn-glow"
+              >
+                <Video className="w-5 h-5" />
+                Create It Yourself
+                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-sm">$5</span>
+              </a>
+              <span className="text-dark-400 text-sm">Review lyrics yourself in ~10 min</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <a
+                href="#made-for-you"
+                className="inline-flex items-center gap-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/40 font-semibold px-8 py-4 rounded-xl transition-all"
+              >
+                <Gift className="w-5 h-5" />
+                We&apos;ll Make It For You
+                <span className="ml-1 px-2 py-0.5 bg-yellow-500/20 rounded-full text-sm">$15</span>
+              </a>
+              <span className="text-yellow-400/70 text-sm">We handle everything, delivered in 24h</span>
+            </div>
+          </div>
+
           <a
             href="#beta"
-            className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-8 py-4 rounded-xl transition-all btn-glow"
+            className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors"
           >
-            Try It For Free
-            <ChevronDown className="w-5 h-5" />
+            Or try it free as a beta tester
+            <ChevronDown className="w-4 h-4" />
           </a>
         </div>
       </section>
@@ -590,6 +675,277 @@ export default function LandingPage() {
             <div className="mt-4 flex items-center justify-center gap-4 text-xs text-dark-500">
               <span>Secure checkout</span>
               <span>powered by Stripe</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Made For You Section */}
+      <section id="made-for-you" className="py-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 bg-yellow-500/20 text-yellow-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
+              <Gift className="w-4 h-4" />
+              Full-Service Option
+            </div>
+            <h2 className="text-3xl font-bold mb-4">We&apos;ll Make It For You</h2>
+            <p className="text-dark-400 max-w-2xl mx-auto mb-4">
+              Don&apos;t want to use the Generator and review the lyrics yourself? No problem.
+              Tell us the song, pay $15, and we&apos;ll deliver your karaoke video within 24 hours.
+            </p>
+            <p className="text-dark-500 text-sm max-w-xl mx-auto">
+              Don&apos;t want to spend 10 minutes reviewing lyrics? For just $10 more than DIY, we handle everything.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-12 items-start">
+            {/* Benefits */}
+            <div>
+              <h3 className="text-xl font-semibold mb-6">What You Get</h3>
+              <div className="space-y-4">
+                <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 flex items-start gap-4">
+                  <div className="w-10 h-10 bg-primary-500/20 rounded-lg flex items-center justify-center shrink-0">
+                    <FileVideo className="w-5 h-5 text-primary-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium">Professional 4K Video</h4>
+                    <p className="text-dark-400 text-sm mt-1">
+                      High-quality karaoke video with perfectly synced lyrics
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 flex items-start gap-4">
+                  <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium">24-Hour Delivery</h4>
+                    <p className="text-dark-400 text-sm mt-1">
+                      We handle everything — just wait for your video to arrive
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 flex items-start gap-4">
+                  <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center shrink-0">
+                    <Gift className="w-5 h-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium">All Formats Included</h4>
+                    <p className="text-dark-400 text-sm mt-1">
+                      MP4 video, CDG+MP3 for karaoke machines, audio stems
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href="https://www.youtube.com/@nomadkaraoke"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-dark-800 border border-dark-700 rounded-xl p-4 flex items-start gap-4 hover:border-red-500/40 transition-colors group"
+                >
+                  <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center shrink-0">
+                    <Youtube className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium group-hover:text-red-400 transition-colors">1000+ Real Examples on YouTube</h4>
+                    <p className="text-dark-400 text-sm mt-1">
+                      Browse our YouTube channel to see exactly what you&apos;ll get
+                    </p>
+                  </div>
+                </a>
+              </div>
+
+              {/* Delivery includes */}
+              <div className="mt-8 p-4 bg-dark-800 border border-dark-700 rounded-xl">
+                <h4 className="font-medium mb-3">Your delivery includes:</h4>
+                <ul className="space-y-2 text-sm text-dark-400">
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-400" />
+                    4K lossless MP4 video with title screen
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-400" />
+                    720p web-optimized version
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-400" />
+                    CDG+MP3 for karaoke machines
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-400" />
+                    Instrumental audio (with or without backing vocals)
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-green-400" />
+                    &quot;Sing along&quot; version with original vocals
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Order Form */}
+            <div className="bg-dark-800 border border-dark-700 rounded-2xl p-6 sm:p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold">Order a Video</h3>
+                <div className="text-2xl font-bold text-primary-400">$15</div>
+              </div>
+
+              <form onSubmit={handleMadeForYouSubmit} className="space-y-5">
+                {/* Artist */}
+                <div>
+                  <label htmlFor="mfy-artist" className="block text-sm font-medium text-dark-300 mb-2">
+                    Artist <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="mfy-artist"
+                    value={mfyArtist}
+                    onChange={(e) => setMfyArtist(e.target.value)}
+                    placeholder="e.g. Taylor Swift"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label htmlFor="mfy-title" className="block text-sm font-medium text-dark-300 mb-2">
+                    Song Title <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="mfy-title"
+                    value={mfyTitle}
+                    onChange={(e) => setMfyTitle(e.target.value)}
+                    placeholder="e.g. Anti-Hero"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                {/* Source Type */}
+                <div>
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
+                    Audio Source
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMfySourceType('search')}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                        mfySourceType === 'search'
+                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                          : 'border-dark-700 text-dark-400 hover:border-dark-500'
+                      }`}
+                    >
+                      <Search className="w-5 h-5" />
+                      <span className="text-xs">Auto Search</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMfySourceType('youtube')}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                        mfySourceType === 'youtube'
+                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                          : 'border-dark-700 text-dark-400 hover:border-dark-500'
+                      }`}
+                    >
+                      <LinkIcon className="w-5 h-5" />
+                      <span className="text-xs">YouTube URL</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMfySourceType('upload')}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                        mfySourceType === 'upload'
+                          ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                          : 'border-dark-700 text-dark-400 hover:border-dark-500'
+                      }`}
+                    >
+                      <Upload className="w-5 h-5" />
+                      <span className="text-xs">File Upload</span>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-dark-500">
+                    {mfySourceType === 'search' && "We'll automatically find the best quality audio for your song."}
+                    {mfySourceType === 'youtube' && 'Provide a YouTube link to the song you want.'}
+                    {mfySourceType === 'upload' && 'Upload your own audio file (contact us after ordering).'}
+                  </p>
+                </div>
+
+                {/* YouTube URL (conditional) */}
+                {mfySourceType === 'youtube' && (
+                  <div>
+                    <label htmlFor="mfy-youtube" className="block text-sm font-medium text-dark-300 mb-2">
+                      YouTube URL
+                    </label>
+                    <input
+                      type="url"
+                      id="mfy-youtube"
+                      value={mfyYoutubeUrl}
+                      onChange={(e) => setMfyYoutubeUrl(e.target.value)}
+                      placeholder="https://youtube.com/watch?v=..."
+                      className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
+                    />
+                  </div>
+                )}
+
+                {/* Email */}
+                <div>
+                  <label htmlFor="mfy-email" className="block text-sm font-medium text-dark-300 mb-2">
+                    Your Email <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    id="mfy-email"
+                    value={mfyEmail}
+                    onChange={(e) => setMfyEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground"
+                  />
+                  <p className="mt-1 text-xs text-dark-500">
+                    We&apos;ll send your video files to this address
+                  </p>
+                </div>
+
+                {/* Notes (optional) */}
+                <div>
+                  <label htmlFor="mfy-notes" className="block text-sm font-medium text-dark-300 mb-2">
+                    Special Requests <span className="text-dark-500">(optional)</span>
+                  </label>
+                  <textarea
+                    id="mfy-notes"
+                    value={mfyNotes}
+                    onChange={(e) => setMfyNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Any special requests or notes about the song..."
+                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground placeholder:text-muted-foreground resize-none"
+                  />
+                </div>
+
+                {mfyError && <p className="text-red-400 text-sm">{mfyError}</p>}
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={mfyLoading}
+                  className="w-full bg-primary-500 hover:bg-primary-600 disabled:bg-primary-500/50 text-white font-semibold py-4 rounded-xl transition-all btn-glow flex items-center justify-center gap-2"
+                >
+                  {mfyLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-5 h-5" />
+                      Pay $15 &amp; Order
+                    </>
+                  )}
+                </button>
+
+                <p className="text-xs text-center text-dark-500">
+                  Secure payment via Stripe. 24-hour delivery guaranteed or your money back.
+                </p>
+              </form>
             </div>
           </div>
         </div>

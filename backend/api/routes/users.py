@@ -53,6 +53,10 @@ from backend.services.user_service import get_user_service, UserService, USERS_C
 from backend.services.email_service import get_email_service, EmailService
 from backend.services.stripe_service import get_stripe_service, StripeService, CREDIT_PACKAGES
 from backend.services.theme_service import get_theme_service
+from backend.services.job_defaults_service import (
+    get_effective_distribution_settings,
+    resolve_cdg_txt_defaults,
+)
 from backend.api.dependencies import require_admin
 from backend.api.routes.file_upload import _prepare_theme_for_job
 from backend.services.auth_service import UserType
@@ -475,7 +479,6 @@ async def _handle_made_for_you_order(
         AudioSearchError,
     )
     from backend.services.storage_service import StorageService
-    from backend.config import get_settings
     import asyncio
     import tempfile
     import os
@@ -496,7 +499,6 @@ async def _handle_made_for_you_order(
         job_manager = JobManager()
         worker_service = get_worker_service()
         storage_service = StorageService()
-        settings = get_settings()
 
         # Apply default theme (Nomad) - same as audio_search endpoint
         theme_service = get_theme_service()
@@ -504,13 +506,12 @@ async def _handle_made_for_you_order(
         if effective_theme_id:
             logger.info(f"Applying default theme '{effective_theme_id}' for made-for-you order")
 
-        # Get distribution defaults from settings (same as audio_search endpoint)
-        effective_dropbox_path = settings.default_dropbox_path
-        effective_gdrive_folder_id = settings.default_gdrive_folder_id
-        effective_enable_youtube_upload = settings.default_enable_youtube_upload
-        effective_brand_prefix = settings.default_brand_prefix
-        effective_discord_webhook_url = settings.default_discord_webhook_url
-        effective_youtube_description = settings.default_youtube_description
+        # Get distribution defaults using centralized service
+        dist = get_effective_distribution_settings()
+
+        # Resolve CDG/TXT defaults based on theme (uses centralized service)
+        # This ensures made-for-you jobs get the same CDG/TXT defaults as regular jobs
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(effective_theme_id)
 
         # Create job with admin ownership during processing
         # CRITICAL: made_for_you=True, user_email=ADMIN_EMAIL, customer_email for delivery
@@ -530,15 +531,19 @@ async def _handle_made_for_you_order(
             audio_search_artist=artist if not youtube_url else None,
             audio_search_title=title if not youtube_url else None,
             auto_download=False,  # Pause at audio selection for admin to choose
-            # Distribution settings from server defaults
-            enable_youtube_upload=effective_enable_youtube_upload,
-            dropbox_path=effective_dropbox_path,
-            gdrive_folder_id=effective_gdrive_folder_id,
-            brand_prefix=effective_brand_prefix,
-            discord_webhook_url=effective_discord_webhook_url,
-            youtube_description=effective_youtube_description,
+            # CDG/TXT settings (resolved via centralized service)
+            enable_cdg=resolved_cdg,
+            enable_txt=resolved_txt,
+            # Distribution settings from centralized defaults
+            enable_youtube_upload=dist.enable_youtube_upload,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
+            brand_prefix=dist.brand_prefix,
+            discord_webhook_url=dist.discord_webhook_url,
+            youtube_description=dist.youtube_description,
         )
-        job = job_manager.create_job(job_create)
+        # Made-for-you jobs are created by admin (via Stripe webhook) - bypass rate limits
+        job = job_manager.create_job(job_create, is_admin=True)
         job_id = job.job_id
 
         logger.info(f"Created made-for-you job {job_id} for {_mask_email(customer_email)} (owned by {_mask_email(ADMIN_EMAIL)})")
@@ -818,6 +823,9 @@ async def enroll_beta_tester(
 
     Returns free credits and optionally a session token for new users.
     """
+    from backend.services.email_validation_service import get_email_validation_service
+    from backend.services.rate_limit_service import get_rate_limit_service
+
     # Check if email service is configured
     if not email_service.is_configured():
         logger.error("Email service not configured - cannot send beta welcome emails")
@@ -827,6 +835,52 @@ async def enroll_beta_tester(
         )
 
     email = request.email.lower()
+    email_validation = get_email_validation_service()
+    rate_limit_service = get_rate_limit_service()
+
+    # ----- ABUSE PREVENTION CHECKS -----
+
+    # 1. Validate email (disposable domain, blocked email checks)
+    is_valid, error_message = email_validation.validate_email_for_beta(email)
+    if not is_valid:
+        logger.warning(f"Beta enrollment rejected - email validation failed: {email} - {error_message}")
+        raise HTTPException(
+            status_code=400,
+            detail=error_message
+        )
+
+    # 2. Check IP blocking
+    ip_address = http_request.client.host if http_request.client else None
+    if ip_address and email_validation.is_ip_blocked(ip_address):
+        logger.warning(f"Beta enrollment rejected - IP blocked: {ip_address}")
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied from this location"
+        )
+
+    # 3. Check IP-based enrollment rate limit (1 per 24h per IP)
+    if ip_address:
+        allowed, remaining, message = rate_limit_service.check_beta_ip_limit(ip_address)
+        if not allowed:
+            logger.warning(f"Beta enrollment rejected - IP rate limit: {ip_address} - {message}")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many beta enrollments from your location. Please try again tomorrow."
+            )
+
+    # 4. Check for duplicate enrollment via normalized email
+    normalized_email = email_validation.normalize_email(email)
+    if normalized_email != email:
+        # Check if normalized version is already enrolled
+        normalized_user = user_service.get_user(normalized_email)
+        if normalized_user and normalized_user.is_beta_tester:
+            logger.warning(f"Beta enrollment rejected - normalized email already enrolled: {email} -> {normalized_email}")
+            raise HTTPException(
+                status_code=400,
+                detail="An account with this email address is already enrolled in the beta program"
+            )
+
+    # ----- END ABUSE PREVENTION CHECKS -----
 
     # Validate acceptance
     if not request.accept_corrections_work:
@@ -851,8 +905,7 @@ async def enroll_beta_tester(
             detail="You are already enrolled in the beta program"
         )
 
-    # Get client info
-    ip_address = http_request.client.host if http_request.client else None
+    # Get client info (ip_address already set above in abuse prevention)
     user_agent = http_request.headers.get("user-agent")
 
     # Enroll as beta tester
@@ -871,6 +924,13 @@ async def enroll_beta_tester(
         amount=BETA_TESTER_FREE_CREDITS,
         reason="beta_tester_enrollment",
     )
+
+    # Record IP enrollment for rate limiting
+    if ip_address:
+        try:
+            rate_limit_service.record_beta_enrollment(ip_address, email)
+        except Exception as e:
+            logger.warning(f"Failed to record beta IP enrollment: {e}")
 
     # Create session for the user (so they can start using the service immediately)
     session = user_service.create_session(email, ip_address=ip_address, user_agent=user_agent)

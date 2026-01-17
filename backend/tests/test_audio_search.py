@@ -845,7 +845,8 @@ class TestAudioSearchThemeSupport:
         This is the key behavior: selecting a theme should automatically
         enable CDG and TXT output formats.
         """
-        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+        from backend.api.routes.audio_search import AudioSearchRequest
+        from backend.services.job_defaults_service import resolve_cdg_txt_defaults
 
         # When theme_id is set, enable_cdg/enable_txt should default to True
         request = AudioSearchRequest(
@@ -855,7 +856,7 @@ class TestAudioSearchThemeSupport:
             # enable_cdg and enable_txt are None (not specified)
         )
 
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             request.theme_id, request.enable_cdg, request.enable_txt
         )
 
@@ -864,7 +865,8 @@ class TestAudioSearchThemeSupport:
 
     def test_audio_search_request_no_theme_no_cdg_txt(self):
         """Test that without theme_id, CDG/TXT defaults to disabled."""
-        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+        from backend.api.routes.audio_search import AudioSearchRequest
+        from backend.services.job_defaults_service import resolve_cdg_txt_defaults
 
         request = AudioSearchRequest(
             artist="Test Artist",
@@ -872,7 +874,7 @@ class TestAudioSearchThemeSupport:
             # No theme_id, no enable_cdg, no enable_txt
         )
 
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             request.theme_id, request.enable_cdg, request.enable_txt
         )
 
@@ -881,7 +883,8 @@ class TestAudioSearchThemeSupport:
 
     def test_explicit_cdg_txt_overrides_theme_default(self):
         """Test that explicit enable_cdg/enable_txt values override theme defaults."""
-        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+        from backend.api.routes.audio_search import AudioSearchRequest
+        from backend.services.job_defaults_service import resolve_cdg_txt_defaults
 
         # Theme set (would default to True), but explicitly disabled
         request = AudioSearchRequest(
@@ -892,7 +895,7 @@ class TestAudioSearchThemeSupport:
             enable_txt=False,
         )
 
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             request.theme_id, request.enable_cdg, request.enable_txt
         )
 
@@ -901,7 +904,8 @@ class TestAudioSearchThemeSupport:
 
     def test_explicit_cdg_txt_enables_without_theme(self):
         """Test that explicit True enables CDG/TXT even without theme."""
-        from backend.api.routes.audio_search import AudioSearchRequest, _resolve_cdg_txt_defaults
+        from backend.api.routes.audio_search import AudioSearchRequest
+        from backend.services.job_defaults_service import resolve_cdg_txt_defaults
 
         # No theme (would default to False), but explicitly enabled
         request = AudioSearchRequest(
@@ -911,7 +915,7 @@ class TestAudioSearchThemeSupport:
             enable_txt=True,
         )
 
-        resolved_cdg, resolved_txt = _resolve_cdg_txt_defaults(
+        resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
             request.theme_id, request.enable_cdg, request.enable_txt
         )
 

@@ -91,7 +91,14 @@ def mock_auth_dependency(request):
     if 'emulator' in test_path or 'integration' in test_path:
         yield
         return
-    
+
+    # Skip for service-only unit tests that don't need the FastAPI app
+    # Also skip tests that manage their own auth mocks (e.g., push tests use AuthResult objects)
+    service_only_tests = ['test_rate_limit_service', 'test_email_validation_service', 'test_rate_limits_api', 'test_gce_encoding_worker', 'test_push_routes', 'test_push_notification_service']
+    if any(test_name in test_path for test_name in service_only_tests):
+        yield
+        return
+
     # Skip if FIRESTORE_EMULATOR_HOST is set (running in emulator environment)
     import os
     if os.environ.get('FIRESTORE_EMULATOR_HOST'):

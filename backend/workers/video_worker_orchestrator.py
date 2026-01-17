@@ -69,6 +69,9 @@ class OrchestratorConfig:
     # Keep existing brand code (for re-processing)
     keep_brand_code: Optional[str] = None
 
+    # Instrumental selection (clean, with_backing, or custom)
+    instrumental_selection: str = "clean"
+
     # Encoding backend preference
     encoding_backend: str = "auto"  # "auto", "local", "gce"
 
@@ -347,6 +350,7 @@ class VideoWorkerOrchestrator:
             title=self.config.title,
             brand_code=self.config.keep_brand_code,
             output_dir=self.config.output_dir,
+            instrumental_selection=self.config.instrumental_selection,
             options={
                 "job_id": self.config.job_id,
                 "input_gcs_path": input_gcs_path,
@@ -479,9 +483,36 @@ class VideoWorkerOrchestrator:
         if self.config.gdrive_folder_id:
             await self._upload_to_gdrive()
 
+        # Clear outputs_deleted_at if set (job was re-processed after output deletion)
+        # Only clear if we actually uploaded something
+        uploads_happened = (
+            self.result.youtube_url or
+            self.result.dropbox_link or
+            self.result.gdrive_files
+        )
+        if uploads_happened and self.job_manager:
+            job = self.job_manager.get_job(self.config.job_id)
+            if job and job.outputs_deleted_at:
+                self.job_manager.update_job(self.config.job_id, {
+                    "outputs_deleted_at": None,
+                    "outputs_deleted_by": None,
+                })
+                self.job_log.info("Cleared outputs_deleted_at flag (job was re-processed)")
+
     async def _upload_to_youtube(self):
         """Upload video to YouTube."""
         self.job_log.info("Uploading to YouTube")
+
+        # Check YouTube upload rate limit (system-wide)
+        try:
+            from backend.services.rate_limit_service import get_rate_limit_service
+            rate_limit_service = get_rate_limit_service()
+            allowed, remaining, message = rate_limit_service.check_youtube_upload_limit()
+            if not allowed:
+                self.job_log.warning(f"YouTube upload skipped: {message}")
+                return
+        except Exception as e:
+            self.job_log.warning(f"Rate limit check failed, proceeding with upload: {e}")
 
         # Find the best video file to upload (prefer MKV for FLAC audio, then lossless MP4)
         video_to_upload = None
@@ -520,6 +551,21 @@ class VideoWorkerOrchestrator:
             if video_url:
                 self.result.youtube_url = video_url
                 self.job_log.info(f"Uploaded to YouTube: {video_url}")
+
+                # Record the upload for rate limiting
+                try:
+                    # Get user_email from job if available
+                    user_email = "unknown"
+                    if self.job_manager:
+                        job = self.job_manager.get_job(self.config.job_id)
+                        if job and job.user_email:
+                            user_email = job.user_email
+                    rate_limit_service.record_youtube_upload(
+                        job_id=self.config.job_id,
+                        user_email=user_email
+                    )
+                except Exception as e:
+                    self.job_log.warning(f"Failed to record YouTube upload for rate limiting: {e}")
             else:
                 self.job_log.warning("YouTube upload did not return a URL")
 
@@ -691,6 +737,9 @@ def create_orchestrator_config_from_job(
 
         # Keep existing brand code
         keep_brand_code=getattr(job, 'keep_brand_code', None),
+
+        # Instrumental selection (for GCE encoding)
+        instrumental_selection=instrumental_selection,
 
         # Encoding backend - auto selects GCE if available
         encoding_backend="auto",

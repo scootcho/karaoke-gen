@@ -43,6 +43,9 @@
 - Where tests should be placed
 - What mocking approach to use
 - Coverage expectations
+- **Production E2E tests for user-facing features** - see below
+
+**Critical:** If your plan includes "Manual Testing" steps, convert them to automated Playwright E2E tests. Production E2E tests (in `frontend/e2e/production/`) are valuable even if only run once after deployment - they codify expected behavior and verify the deployed code works. See `docs/TESTING.md` for details.
 
 **Before committing**, run all tests:
 ```bash
@@ -102,11 +105,11 @@ EOF
 ### GCE Encoding Worker
 ```bash
 # SSH to restart service (clears in-memory job queue)
-gcloud compute ssh encoding-worker --zone=us-central1-a --project=nomadkaraoke \
+gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
   --command="sudo systemctl restart encoding-worker"
 
 # Check health
-gcloud compute ssh encoding-worker --zone=us-central1-a --project=nomadkaraoke \
+gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
   --command="curl -s http://localhost:8080/health"
 ```
 

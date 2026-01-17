@@ -36,6 +36,12 @@ Search for ALL non-theme-aware color patterns (`text-slate-*`, `bg-gray-*`) and 
 ### Backend Must Apply Defaults
 When UI removes options, backend must apply sensible defaults. Don't rely on each endpoint to remember - centralize in core data layer.
 
+### Centralize Job Creation Logic
+When multiple code paths create jobs (file upload, audio search, webhooks), use a shared service for default resolution. The made-for-you webhook handler diverged from regular job creation, missing CDG/TXT defaults because it didn't call the shared `resolve_cdg_txt_defaults()` function. Fix: Create `job_defaults_service.py` with centralized helpers used by ALL job creation paths.
+
+### Fix Both Sides of Dual Code Paths
+When fixing a bug in a system with multiple code paths (e.g., legacy vs orchestrator, local vs cloud), verify ALL paths are fixed. PR #271 fixed the GCE worker to READ `instrumental_selection` but only checked the legacy path which was already SENDING it. The orchestrator path (production default) wasn't sending it. **Pattern**: If a component receives config from multiple callers, check ALL callers when fixing the receiving side. Write integration tests that cover each path.
+
 ### Defense in Depth
 Enforce critical requirements at multiple layers (e.g., reject at creation in JobManager + safety net at processing time).
 
@@ -44,6 +50,9 @@ HTTP calls to services that can restart (VMs, containers) need retry logic with 
 
 ### Cross-Domain localStorage
 Auth tokens in localStorage are domain-isolated. Keep auth on a single domain or use cookies with `domain=.example.com`.
+
+### Standalone HTML Pages Need Auth Fallback
+Standalone HTML pages (like instrumental review) that use magic link tokens should also check localStorage for user auth tokens. Priority: full auth token (doesn't expire) > magic link token (expires). This prevents logged-in users from being blocked when their magic link expires.
 
 ### Tab Visibility Refresh
 Use `visibilitychange` event for immediate refresh when user returns to tab, not just polling intervals.
@@ -145,6 +154,9 @@ Use `pulumi up --skip-preview --yes` when CI service account can't run preview. 
 ### Docker Disk Management
 Self-hosted runners need aggressive disk cleanup. Use threshold-based (70%) not age-based cleanup.
 
+### Version Sort for Artifact Selection
+When downloading multiple versioned files (wheels, tarballs), use `sort -V | tail -1` not `ls -t | head -1`. Files downloaded simultaneously have the same timestamp, so time-based sorting picks arbitrarily. Version sorting (`sort -V`) correctly identifies the highest semantic version.
+
 ---
 
 ## Performance Patterns
@@ -237,3 +249,4 @@ When mocking tenant middleware, patch both the middleware import path AND the se
 3. **Design for async human review upfront** - Avoided rearchitecting later
 4. **Keep docs minimal and current** - Less documentation, always accurate
 5. **Check gitignore early for new directories** - Especially frontend `lib/` dirs
+

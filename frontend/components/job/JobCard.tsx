@@ -6,7 +6,6 @@ import { Job } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Zap } from "lucide-react"
 import { JobActions } from "./JobActions"
-import { JobLogs } from "./JobLogs"
 import { OutputLinks } from "./OutputLinks"
 import { AudioSearchDialog } from "../audio-search/AudioSearchDialog"
 import { getJobStep, formatStepIndicator, getJobProgressPercent } from "@/lib/job-status"
@@ -75,7 +74,6 @@ interface JobCardProps {
 }
 
 export function JobCard({ job, onRefresh }: JobCardProps) {
-  const [showLogs, setShowLogs] = useState(false)
   const [showAudioSearch, setShowAudioSearch] = useState(false)
 
   const createdAt = new Date(job.created_at).toLocaleString()
@@ -179,29 +177,15 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
       {/* Output links for completed jobs */}
       {isComplete && (
         <div className="mt-2">
-          <OutputLinks jobId={job.job_id} />
+          <OutputLinks job={job} />
         </div>
       )}
 
       {/* Actions row: Cancel/secondary on left, primary action on right */}
       <div className="mt-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <JobActions
-            job={job}
-            onRefresh={onRefresh}
-            showLogs={showLogs}
-            onToggleLogs={() => setShowLogs(!showLogs)}
-          />
-        </div>
+        <JobActions job={job} onRefresh={onRefresh} />
         {renderPrimaryAction()}
       </div>
-
-      {/* Expandable logs */}
-      {showLogs && (
-        <div className="mt-2">
-          <JobLogs jobId={job.job_id} />
-        </div>
-      )}
 
       <AudioSearchDialog
         jobId={job.job_id}

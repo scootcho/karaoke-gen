@@ -68,6 +68,8 @@ export interface Job {
   audio_hash?: string;
   non_interactive?: boolean;
   user_email?: string;
+  outputs_deleted_at?: string;
+  outputs_deleted_by?: string;
 }
 
 export interface UploadJobResponse {
@@ -756,6 +758,38 @@ export const api = {
     return data.checkout_url;
   },
 
+  /**
+   * Create a Made For You checkout session ($15 full-service)
+   */
+  async createMadeForYouCheckout(data: {
+    email: string;
+    artist: string;
+    title: string;
+    source_type: 'search' | 'youtube' | 'upload';
+    youtube_url?: string;
+    notes?: string;
+  }): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/api/users/made-for-you/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: data.email.toLowerCase(),
+        artist: data.artist,
+        title: data.title,
+        source_type: data.source_type,
+        youtube_url: data.youtube_url,
+        notes: data.notes,
+      }),
+    });
+    const result = await handleResponse<{ checkout_url: string; status: string; message: string }>(response);
+    if (!result.checkout_url) {
+      throw new Error('No checkout URL received');
+    }
+    return result.checkout_url;
+  },
+
   // ==========================================================================
   // Beta Tester API endpoints
   // ==========================================================================
@@ -781,6 +815,67 @@ export const api = {
     });
     return handleResponse(response);
   },
+
+  // ==========================================================================
+  // Push Notifications API endpoints
+  // ==========================================================================
+
+  /**
+   * Get VAPID public key for push subscription
+   * Returns whether push is enabled and the public key if so
+   */
+  async getVapidPublicKey(): Promise<{ enabled: boolean; vapid_public_key: string | null }> {
+    const response = await fetch(`${API_BASE_URL}/api/push/vapid-public-key`);
+    return handleResponse(response);
+  },
+
+  /**
+   * Subscribe to push notifications
+   */
+  async subscribePush(
+    endpoint: string,
+    keys: { p256dh: string; auth: string },
+    deviceName?: string
+  ): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({
+        endpoint,
+        keys,
+        device_name: deviceName,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Unsubscribe from push notifications
+   */
+  async unsubscribePush(endpoint: string): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/push/unsubscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ endpoint }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * List user's push notification subscriptions
+   */
+  async listPushSubscriptions(): Promise<PushSubscriptionsListResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/push/subscriptions`, {
+      headers: getAuthHeaders()
+    });
+    return handleResponse(response);
+  },
 };
 
 // Types for credits/payment
@@ -797,6 +892,19 @@ export interface BetaEnrollResponse {
   message: string;
   credits_granted: number;
   session_token: string | null;
+}
+
+// Types for push notifications
+export interface PushSubscriptionInfo {
+  endpoint: string;
+  device_name: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface PushSubscriptionsListResponse {
+  subscriptions: PushSubscriptionInfo[];
+  count: number;
 }
 
 // ==========================================================================
@@ -1263,6 +1371,174 @@ export const adminApi = {
     );
     return handleResponse(response);
   },
+
+  /**
+   * Delete all distributed outputs for a job (admin only).
+   * Deletes YouTube video, Dropbox folder, and Google Drive files.
+   * Job record is preserved with outputs_deleted_at timestamp.
+   */
+  async deleteJobOutputs(jobId: string): Promise<DeleteOutputsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/delete-outputs`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders()
+      }
+    );
+    return handleResponse(response);
+  },
+
+  // =========================================================================
+  // Rate Limits API
+  // =========================================================================
+
+  /**
+   * Get rate limit statistics
+   */
+  async getRateLimitStats(): Promise<RateLimitStatsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/stats`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get rate limit status for a specific user
+   */
+  async getUserRateLimitStatus(email: string): Promise<UserRateLimitStatusResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/users/${encodeURIComponent(email)}`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all blocklists
+   */
+  async getBlocklists(): Promise<BlocklistsResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a disposable domain
+   */
+  async addDisposableDomain(domain: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/disposable-domains`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ domain }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a disposable domain
+   */
+  async removeDisposableDomain(domain: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/disposable-domains/${encodeURIComponent(domain)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a blocked email
+   */
+  async addBlockedEmail(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-emails`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ email }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a blocked email
+   */
+  async removeBlockedEmail(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-emails/${encodeURIComponent(email)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Add a blocked IP
+   */
+  async addBlockedIP(ipAddress: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-ips`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ ip_address: ipAddress }),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove a blocked IP
+   */
+  async removeBlockedIP(ipAddress: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/blocklists/blocked-ips/${encodeURIComponent(ipAddress)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Get all user overrides
+   */
+  async getUserOverrides(): Promise<UserOverridesListResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides`,
+      { headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Set user override
+   */
+  async setUserOverride(email: string, override: UserOverrideRequest): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides/${encodeURIComponent(email)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(override),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Remove user override
+   */
+  async removeUserOverride(email: string): Promise<SuccessResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/rate-limits/overrides/${encodeURIComponent(email)}`,
+      { method: 'DELETE', headers: getAuthHeaders() }
+    );
+    return handleResponse(response);
+  },
 };
 
 // Types for admin completion message API
@@ -1477,6 +1753,76 @@ export const lyricsReviewApi = {
     const base = `${API_BASE_URL}/api/audio/${hash}`
     return token ? `${base}?token=${encodeURIComponent(token)}` : base
   },
+}
+
+export interface DeleteOutputsResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  deleted_services: {
+    youtube: { status: string; video_id?: string; reason?: string; error?: string };
+    dropbox: { status: string; path?: string; reason?: string; error?: string };
+    gdrive: { status: string; files?: Record<string, boolean>; reason?: string; error?: string };
+  };
+  cleared_state_data: string[];
+  outputs_deleted_at: string;
+}
+
+// Rate Limits API Types
+export interface RateLimitStatsResponse {
+  jobs_per_day_limit: number;
+  youtube_uploads_per_day_limit: number;
+  beta_ip_per_day_limit: number;
+  rate_limiting_enabled: boolean;
+  youtube_uploads_today: number;
+  youtube_uploads_remaining: number;
+  disposable_domains_count: number;
+  blocked_emails_count: number;
+  blocked_ips_count: number;
+  total_overrides: number;
+}
+
+export interface UserRateLimitStatusResponse {
+  email: string;
+  jobs_today: number;
+  jobs_limit: number;
+  jobs_remaining: number;
+  has_bypass: boolean;
+  custom_limit?: number;
+  bypass_reason?: string;
+}
+
+export interface BlocklistsResponse {
+  disposable_domains: string[];
+  blocked_emails: string[];
+  blocked_ips: string[];
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface SuccessResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UserOverride {
+  email: string;
+  bypass_job_limit: boolean;
+  custom_daily_job_limit?: number;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface UserOverrideRequest {
+  bypass_job_limit: boolean;
+  custom_daily_job_limit?: number;
+  reason: string;
+}
+
+export interface UserOverridesListResponse {
+  overrides: UserOverride[];
+  total: number;
 }
 
 export { ApiError };
