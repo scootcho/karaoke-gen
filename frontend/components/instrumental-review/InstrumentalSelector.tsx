@@ -23,6 +23,7 @@ import { CustomUpload } from "./CustomUpload"
 
 interface InstrumentalSelectorProps {
   job: Job
+  isLocalMode?: boolean
 }
 
 type ZoomLevel = 1 | 2 | 4
@@ -44,7 +45,7 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`
 }
 
-export function InstrumentalSelector({ job }: InstrumentalSelectorProps) {
+export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalSelectorProps) {
   const router = useRouter()
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -354,15 +355,22 @@ export function InstrumentalSelector({ job }: InstrumentalSelectorProps) {
     try {
       await api.selectInstrumental(job.job_id, selectedOption)
       toast.success("Selection submitted successfully")
-      // Redirect to dashboard after short delay
-      setTimeout(() => {
-        router.push("/app")
-      }, 1500)
+
+      if (isLocalMode) {
+        // In local mode, just show success - the local server will handle the response
+        // and the CLI will continue the workflow
+        toast.success("You can close this window now", { duration: 10000 })
+      } else {
+        // Redirect to dashboard after short delay (cloud mode)
+        setTimeout(() => {
+          router.push("/app")
+        }, 1500)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit selection")
       setIsSubmitting(false)
     }
-  }, [job.job_id, selectedOption, router])
+  }, [job.job_id, selectedOption, router, isLocalMode])
 
   // Loading state
   if (isLoading) {
@@ -382,12 +390,14 @@ export function InstrumentalSelector({ job }: InstrumentalSelectorProps) {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center max-w-md p-6">
           <p className="text-destructive mb-4">{error}</p>
-          <Button variant="outline" asChild>
-            <Link href="/app">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to dashboard
-            </Link>
-          </Button>
+          {!isLocalMode && (
+            <Button variant="outline" asChild>
+              <Link href="/app">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to dashboard
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
     )

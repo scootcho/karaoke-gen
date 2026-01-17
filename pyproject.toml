@@ -11,9 +11,8 @@ packages = [
     { include = "backend" }
 ]
 include = [
-    "karaoke_gen/instrumental_review/static/*",
-    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets",
-    "lyrics_transcriber_temp/lyrics_transcriber/frontend/web_assets/**/*",
+    "karaoke_gen/nextjs_frontend/out",
+    "karaoke_gen/nextjs_frontend/out/**/*",
     "lyrics_transcriber_temp/lyrics_transcriber/output/fonts/*",
     "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/images/*",
     "lyrics_transcriber_temp/lyrics_transcriber/output/cdgmaker/transitions/*"

@@ -11,6 +11,7 @@ import Link from "next/link"
 import { InstrumentalSelector } from "@/components/instrumental-review"
 import { LyricsAnalyzer } from "@/components/lyrics-review"
 import type { CorrectionData } from "@/lib/lyrics-review/types"
+import { isLocalMode, createLocalModeJob, getLocalJobId } from "@/lib/local-mode"
 
 type RouteType = "review" | "instrumental" | "unknown"
 
@@ -22,6 +23,7 @@ type AccessState =
   | { status: "wrong_state"; currentState: string; expectedStates: string[] }
   | { status: "invalid_route" }
   | { status: "authorized"; job: Job; routeType: RouteType }
+  | { status: "local_mode"; job: Job; routeType: RouteType }
 
 function parseRoute(slug: string[] | undefined): { jobId: string | null; routeType: RouteType } {
   if (!slug || slug.length === 0) {
@@ -67,7 +69,29 @@ export function JobRouterClient() {
 
   useEffect(() => {
     async function checkAccess() {
-      // Invalid route
+      // Check for local mode first (skip all auth checks)
+      if (isLocalMode()) {
+        // In local mode, determine route type from URL or default to review
+        // The local server will redirect to /app/jobs/local/review or /app/jobs/local/instrumental
+        let localRouteType: RouteType = routeType
+
+        // If route is unknown but we're in local mode, try to determine from path
+        if (localRouteType === "unknown") {
+          const path = typeof window !== 'undefined' ? window.location.pathname : ''
+          if (path.includes('instrumental')) {
+            localRouteType = "instrumental"
+          } else {
+            localRouteType = "review" // Default to review in local mode
+          }
+        }
+
+        // Create mock job for local mode
+        const localJob = createLocalModeJob({ routeType: localRouteType }) as Job
+        setAccessState({ status: "local_mode", job: localJob, routeType: localRouteType })
+        return
+      }
+
+      // Invalid route (cloud mode)
       if (!jobId || routeType === "unknown") {
         setAccessState({ status: "invalid_route" })
         return
@@ -240,22 +264,23 @@ export function JobRouterClient() {
     )
   }
 
-  // Authorized - render the appropriate UI
+  // Authorized or local mode - render the appropriate UI
   const { job, routeType: authorizedRouteType } = accessState
+  const inLocalMode = accessState.status === "local_mode"
 
   if (authorizedRouteType === "review") {
-    return <LyricsReviewWrapper job={job} />
+    return <LyricsReviewWrapper job={job} isLocalMode={inLocalMode} />
   }
 
   if (authorizedRouteType === "instrumental") {
-    return <InstrumentalSelector job={job} />
+    return <InstrumentalSelector job={job} isLocalMode={inLocalMode} />
   }
 
   return null
 }
 
 // Lyrics Review Component Wrapper
-function LyricsReviewWrapper({ job }: { job: Job }) {
+function LyricsReviewWrapper({ job, isLocalMode = false }: { job: Job; isLocalMode?: boolean }) {
   const [correctionData, setCorrectionData] = useState<CorrectionData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -314,12 +339,14 @@ function LyricsReviewWrapper({ job }: { job: Job }) {
           <p className="text-muted-foreground mb-4">
             {error || "Could not load lyrics data for this job."}
           </p>
-          <Button variant="outline" asChild>
-            <Link href="/app">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to dashboard
-            </Link>
-          </Button>
+          {!isLocalMode && (
+            <Button variant="outline" asChild>
+              <Link href="/app">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to dashboard
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -330,17 +357,21 @@ function LyricsReviewWrapper({ job }: { job: Job }) {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/app">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Link>
-            </Button>
+            {!isLocalMode && (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/app">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </Link>
+              </Button>
+            )}
             <div>
               <h1 className="font-semibold">
                 {job.artist} - {job.title}
               </h1>
-              <p className="text-sm text-muted-foreground">Lyrics Review</p>
+              <p className="text-sm text-muted-foreground">
+                Lyrics Review{isLocalMode ? ' (Local)' : ''}
+              </p>
             </div>
           </div>
         </div>
