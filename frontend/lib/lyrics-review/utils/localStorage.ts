@@ -15,12 +15,10 @@ export const generateStorageKey = (data: CorrectionData): string => {
 const stripIds = (obj: CorrectionData): LyricsSegment[] => {
   const clone = JSON.parse(JSON.stringify(obj))
   return clone.corrected_segments.map((segment: LyricsSegment) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, ...strippedSegment } = segment
     return {
       ...strippedSegment,
       words: segment.words.map((word) => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id: _wordId, ...strippedWord } = word
         return strippedWord
       }),
