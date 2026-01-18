@@ -18,7 +18,7 @@ function Metric({ color, label, value, description, details, onClick }: MetricPr
     <Card
       className={cn(
         'p-2 pt-0 h-full flex flex-col',
-        onClick && 'cursor-pointer hover:bg-accent transition-colors'
+        onClick && 'cursor-pointer hover:bg-muted/30 transition-colors'
       )}
       onClick={onClick}
     >

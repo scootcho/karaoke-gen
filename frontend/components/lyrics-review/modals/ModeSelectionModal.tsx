@@ -41,7 +41,7 @@ export default function ModeSelectionModal({
               <div
                 className={cn(
                   'p-4 border-2 border-primary rounded-lg cursor-pointer',
-                  'hover:bg-accent transition-colors'
+                  'hover:bg-primary/10 transition-colors'
                 )}
                 onClick={onSelectResync}
               >
@@ -63,7 +63,7 @@ export default function ModeSelectionModal({
             <div
               className={cn(
                 'p-4 border rounded-lg cursor-pointer',
-                'hover:bg-accent hover:border-muted-foreground transition-colors'
+                'hover:bg-muted/30 hover:border-muted-foreground transition-colors'
               )}
               onClick={onSelectReplace}
             >

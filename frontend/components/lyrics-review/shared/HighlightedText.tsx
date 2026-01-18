@@ -417,7 +417,7 @@ export function HighlightedText({
 
   return (
     <div
-      className={`font-mono m-0 leading-relaxed ${preserveSegments ? 'whitespace-normal' : 'whitespace-pre-wrap'}`}
+      className={`font-mono m-0 leading-tight ${preserveSegments ? 'whitespace-normal' : 'whitespace-pre-wrap'}`}
     >
       {renderContent()}
     </div>

@@ -50,16 +50,16 @@ export default function TranscriptionView({
             onValueChange={(value) => value && setViewMode(value as 'text' | 'duration')}
             className="h-7"
           >
-            <ToggleGroupItem value="text" aria-label="text view" className="h-7 px-2 text-xs">
+            <ToggleGroupItem value="text" aria-label="text view" className="h-7 px-2.5 text-[0.75rem]">
               <Type className="h-3.5 w-3.5 mr-1" />
               Text
             </ToggleGroupItem>
             <ToggleGroupItem
               value="duration"
               aria-label="duration view"
-              className="h-7 px-2 text-xs"
+              className="h-7 px-2.5 text-[0.75rem]"
             >
-              <Clock className="h-3.5 w-3.5 mr-1" />
+              <Clock className="h-3.5 w-3.5 mr-1.5" />
               Timeline
             </ToggleGroupItem>
           </ToggleGroup>
@@ -132,7 +132,7 @@ export default function TranscriptionView({
                   className="flex items-start w-full hover:bg-muted/50 transition-colors"
                 >
                   {/* Segment controls */}
-                  <div className="flex items-center gap-0.5 min-w-[2.5em] pt-[1px] pr-1">
+                  <div className="flex items-center gap-0.5 min-w-[2.5em] pr-1">
                     <span
                       className="text-muted-foreground w-[1.8em] text-right mr-1 select-none font-mono text-[0.8rem] leading-tight cursor-pointer hover:underline"
                       onClick={() => setSelectedSegmentIndex(segmentIndex)}

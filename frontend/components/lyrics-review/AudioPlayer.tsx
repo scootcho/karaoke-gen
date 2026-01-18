@@ -150,7 +150,7 @@ export default function AudioPlayer({ audioUrl, onTimeUpdate }: AudioPlayerProps
         max={duration || 100}
         step={0.1}
         onValueChange={handleSeek}
-        className="w-[150px] mx-1"
+        className="w-[100px] mx-1"
       />
 
       <span className="text-xs min-w-[32px]">{formatTime(duration)}</span>

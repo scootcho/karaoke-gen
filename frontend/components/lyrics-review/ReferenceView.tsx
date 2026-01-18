@@ -183,7 +183,7 @@ export default function ReferenceView({
         <div className="flex flex-col gap-0.5">
           {currentSourceSegments.map((segment, index) => (
             <div key={index} className="flex items-start w-full hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-0.5 pt-[1px] pr-1">
+              <div className="flex items-center gap-0.5 pr-1">
                 <Button
                   variant="ghost"
                   size="icon"

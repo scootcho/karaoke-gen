@@ -12,8 +12,8 @@
  */
 
 // Ports used by local review servers
-// Port 8000 is used by lyrics review server
-const LOCAL_LYRICS_REVIEW_PORTS = ['8000', '8764', '8765', '8766', '8767', '8768', '8769']
+// Port 8000-8001 are used by lyrics review server (8001 for side-by-side testing)
+const LOCAL_LYRICS_REVIEW_PORTS = ['8000', '8001', '8764', '8765', '8766', '8767', '8768', '8769']
 // Ports 8765+ are used by instrumental review server
 const LOCAL_INSTRUMENTAL_REVIEW_PORTS = ['8765', '8766', '8767', '8768', '8769', '8770']
 const ALL_LOCAL_PORTS = [...new Set([...LOCAL_LYRICS_REVIEW_PORTS, ...LOCAL_INSTRUMENTAL_REVIEW_PORTS])]

@@ -124,14 +124,14 @@ export default function AgenticCorrectionMetrics({
           <div className="flex gap-1 flex-wrap">
             <Badge
               variant="outline"
-              className="text-[0.65rem] h-5 cursor-pointer hover:bg-accent"
+              className="text-[0.65rem] h-5 cursor-pointer hover:bg-muted/30"
               onClick={() => onConfidenceFilterClick?.('low')}
             >
               Low (&lt;60%): {metrics.lowConfidenceCount}
             </Badge>
             <Badge
               variant="outline"
-              className="text-[0.65rem] h-5 cursor-pointer hover:bg-accent text-green-600"
+              className="text-[0.65rem] h-5 cursor-pointer hover:bg-muted/30 text-green-600"
               onClick={() => onConfidenceFilterClick?.('high')}
             >
               High (&ge;80%): {metrics.highConfidenceCount}
@@ -146,7 +146,7 @@ export default function AgenticCorrectionMetrics({
             <Tooltip key={metric.category}>
               <TooltipTrigger asChild>
                 <div
-                  className="mb-1 p-1 rounded cursor-pointer hover:bg-accent transition-colors"
+                  className="mb-1 p-1 rounded cursor-pointer hover:bg-muted/30 transition-colors"
                   onClick={() => onCategoryClick?.(metric.category)}
                 >
                   <div className="flex justify-between items-center">

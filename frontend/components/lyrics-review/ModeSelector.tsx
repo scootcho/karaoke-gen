@@ -18,8 +18,8 @@ interface ModeSelectorProps {
 export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorProps) {
   return (
     <TooltipProvider>
-      <div className="flex items-center gap-2 h-8">
-        <span className="text-xs text-muted-foreground">Mode:</span>
+      <div className="flex items-center gap-1.5 h-8">
+        <span className="text-[0.75rem] text-muted-foreground">Mode:</span>
         <ToggleGroup
           type="single"
           value={effectiveMode}
@@ -28,8 +28,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="edit" className="h-8 px-2 text-xs">
-                <Edit className="h-4 w-4 mr-1" />
+              <ToggleGroupItem value="edit" className="h-8 px-2 text-[0.75rem]">
+                <Edit className="h-3.5 w-3.5 mr-1" />
                 Edit
               </ToggleGroupItem>
             </TooltipTrigger>
@@ -40,8 +40,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="highlight" className="h-8 px-2 text-xs" disabled>
-                <Highlighter className="h-4 w-4 mr-1" />
+              <ToggleGroupItem value="highlight" className="h-8 px-2 text-[0.75rem]" disabled>
+                <Highlighter className="h-3.5 w-3.5 mr-1" />
                 Highlight
               </ToggleGroupItem>
             </TooltipTrigger>
@@ -52,8 +52,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="delete_word" className="h-8 px-2 text-xs" disabled>
-                <Trash2 className="h-4 w-4 mr-1" />
+              <ToggleGroupItem value="delete_word" className="h-8 px-2 text-[0.75rem]" disabled>
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
                 Delete
               </ToggleGroupItem>
             </TooltipTrigger>

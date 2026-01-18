@@ -10,6 +10,7 @@ import { ArrowLeft, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { InstrumentalSelector } from "@/components/instrumental-review"
 import { LyricsAnalyzer } from "@/components/lyrics-review"
+import { ThemeToggle } from "@/components/ThemeToggle"
 import type { CorrectionData } from "@/lib/lyrics-review/types"
 import { isLocalMode, createLocalModeJob, getLocalJobId } from "@/lib/local-mode"
 
@@ -354,9 +355,10 @@ function LyricsReviewWrapper({ job, isLocalMode = false }: { job: Job; isLocalMo
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      {/* App Header - matches old frontend's AppHeader */}
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-50 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             {!isLocalMode && (
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/app">
@@ -365,19 +367,19 @@ function LyricsReviewWrapper({ job, isLocalMode = false }: { job: Job; isLocalMo
                 </Link>
               </Button>
             )}
-            <div>
-              <h1 className="font-semibold">
-                {job.artist} - {job.title}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Lyrics Review{isLocalMode ? ' (Local)' : ''}
-              </p>
-            </div>
+{/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/static/nomad-karaoke-logo.svg"
+              alt="Nomad Karaoke"
+              style={{ height: 40 }}
+            />
+            <h1 className="text-lg font-bold">Lyrics Transcription Review</h1>
           </div>
+          <ThemeToggle />
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
+      <main className="px-4 py-2">
         <LyricsAnalyzer
           data={correctionData}
           onFileLoad={handleFileLoad}

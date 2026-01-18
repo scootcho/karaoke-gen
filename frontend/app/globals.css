@@ -10,9 +10,9 @@
      =========================================== */
 
   /* Brand Primary Colors */
-  /* Note: darker pink (#ff5bb8) used as default for better white text contrast */
-  --brand-pink: #ff5bb8;
-  --brand-pink-hover: #ff7acc;
+  /* Note: Using #ff7acc as default to match old UI - softer/lighter pink */
+  --brand-pink: #ff7acc;
+  --brand-pink-hover: #ff8fd4;
   --brand-pink-glow: rgba(255, 122, 204, 0.4);
   --brand-gold: #ffdf6b;
   --brand-purple: #8b5cf6;
@@ -66,7 +66,7 @@
   --border: var(--card-border);
   --input: var(--secondary);
   --ring: var(--primary);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
 }
 
 .light {
