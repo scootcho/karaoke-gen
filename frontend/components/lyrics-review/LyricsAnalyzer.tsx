@@ -938,6 +938,8 @@ export default function LyricsAnalyzer({
         onClose={() => setIsReviewModalOpen(false)}
         data={data}
         onSubmit={handleSubmitToServer}
+        apiClient={apiClient}
+        timingOffsetMs={timingOffsetMs}
       />
 
       <AddLyricsModal
