@@ -16,7 +16,9 @@
 const LOCAL_LYRICS_REVIEW_PORTS = ['8000', '8001', '8764', '8765', '8766', '8767', '8768', '8769']
 // Ports 8765+ are used by instrumental review server
 const LOCAL_INSTRUMENTAL_REVIEW_PORTS = ['8765', '8766', '8767', '8768', '8769', '8770']
-const ALL_LOCAL_PORTS = [...new Set([...LOCAL_LYRICS_REVIEW_PORTS, ...LOCAL_INSTRUMENTAL_REVIEW_PORTS])]
+// Development/testing ports (Next.js dev server)
+const DEV_TESTING_PORTS = ['3000', '3001', '3002']
+const ALL_LOCAL_PORTS = [...new Set([...LOCAL_LYRICS_REVIEW_PORTS, ...LOCAL_INSTRUMENTAL_REVIEW_PORTS, ...DEV_TESTING_PORTS])]
 
 /**
  * Check if the frontend is running in local CLI mode

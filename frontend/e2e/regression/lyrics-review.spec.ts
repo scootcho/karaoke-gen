@@ -8,13 +8,14 @@ import { setupApiFixtures, clearAuthToken } from '../fixtures/test-helper';
  * These tests verify the functionality that was migrated from the standalone
  * React/Vite frontend to the consolidated Next.js application.
  *
- * IMPORTANT: These tests require the karaoke-gen frontend to be running on localhost:3000.
- * If another Next.js project is running on port 3000, these tests will fail.
+ * IMPORTANT: These tests require the karaoke-gen frontend dev server.
+ * The port is configurable via E2E_PORT environment variable (default: 3000).
  *
  * To run these tests:
- *   1. Ensure no other dev server is running on port 3000
- *   2. From the frontend directory: npm run dev
- *   3. Then: npx playwright test e2e/regression/lyrics-review.spec.ts
+ *   npx playwright test e2e/regression/lyrics-review.spec.ts
+ *
+ * To run on a different port (e.g., if 3000 is in use):
+ *   E2E_PORT=3001 npx playwright test e2e/regression/lyrics-review.spec.ts
  *
  * Test coverage:
  * 1. Page loading and local mode detection
@@ -207,6 +208,12 @@ async function setupLocalModeMocks(page: Page) {
         path: '/api/jobs/local/preview-video',
         response: { body: { status: 'success', preview_hash: 'preview_123' } },
       },
+      // Audio endpoint (returns empty for mock)
+      {
+        method: 'GET',
+        path: '/api/audio/test_audio_hash_123',
+        response: { status: 200, body: '' },
+      },
       // Annotations endpoint
       {
         method: 'POST',
@@ -241,19 +248,19 @@ test.describe('Lyrics Review - Local Mode', () => {
     await page.goto('/app/jobs/local/review');
     await page.waitForLoadState('networkidle');
 
-    // Wait for data to load
-    await expect(page.getByText('Anchor Sequences')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Corrected Gaps')).toBeVisible();
-    await expect(page.getByText('Uncorrected Gaps')).toBeVisible();
+    // Wait for data to load - use exact text to avoid matching substrings
+    await expect(page.getByText('Anchor Sequences', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Corrected Gaps', { exact: true })).toBeVisible();
+    await expect(page.getByText('Uncorrected Gaps', { exact: true })).toBeVisible();
   });
 
   test('displays transcription text', async ({ page }) => {
     await page.goto('/app/jobs/local/review');
     await page.waitForLoadState('networkidle');
 
-    // Wait for transcription to render
-    await expect(page.getByText('Hello')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('world')).toBeVisible();
+    // Wait for transcription to render - use first() since word appears in both transcription and reference
+    await expect(page.getByText('Hello').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('world').first()).toBeVisible();
   });
 
   test('displays reference lyrics', async ({ page }) => {
@@ -314,7 +321,7 @@ test.describe('Lyrics Review - Local Mode', () => {
     // Modal should open
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible({ timeout: 5000 });
-    await expect(dialog.getByText(/find/i)).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: /find/i })).toBeVisible();
   });
 
   test('timing offset button exists', async ({ page }) => {
@@ -349,8 +356,8 @@ test.describe('Lyrics Review - Audio Player', () => {
     await page.goto('/app/jobs/local/review');
     await page.waitForLoadState('networkidle');
 
-    // Should show time display (0:00 format)
-    await expect(page.getByText(/\d:\d{2}/)).toBeVisible({ timeout: 10000 });
+    // Should show time display (0:00 format) - use first() since there are two (current and duration)
+    await expect(page.getByText(/\d:\d{2}/).first()).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -394,26 +401,16 @@ test.describe('Lyrics Review - Edit Operations', () => {
     await setupLocalModeMocks(page);
   });
 
-  test('clicking word in edit mode opens edit modal', async ({ page }) => {
+  test('word elements are clickable in transcription view', async ({ page }) => {
     await page.goto('/app/jobs/local/review');
     await page.waitForLoadState('networkidle');
 
-    // Ensure we're in edit mode (default)
-    const editModeBtn = page.getByRole('button', { name: /edit/i }).first();
-    if (await editModeBtn.isVisible()) {
-      await editModeBtn.click();
-    }
-
-    // Click on a word in the transcription
-    // Words are rendered in the transcription view
+    // Verify words are rendered and have cursor-pointer style (indicating clickability)
     const wordElement = page.locator('span').filter({ hasText: 'Hello' }).first();
     await expect(wordElement).toBeVisible({ timeout: 10000 });
 
-    // Double-click to potentially trigger edit (implementation specific)
-    await wordElement.dblclick();
-
-    // Check if an edit interface appears (modal or inline)
-    await page.waitForTimeout(500);
+    // Verify it has the expected cursor style for clickable elements
+    await expect(wordElement).toHaveClass(/cursor-pointer/);
   });
 
   test('edit all button exists', async ({ page }) => {
