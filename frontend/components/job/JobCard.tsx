@@ -9,6 +9,7 @@ import { JobActions } from "./JobActions"
 import { OutputLinks } from "./OutputLinks"
 import { AudioSearchDialog } from "../audio-search/AudioSearchDialog"
 import { getJobStep, formatStepIndicator, getJobProgressPercent } from "@/lib/job-status"
+import { useAuth } from "@/lib/auth"
 
 /**
  * StatusIndicator component - Shows step-based progress with visual indicator
@@ -75,6 +76,8 @@ interface JobCardProps {
 
 export function JobCard({ job, onRefresh }: JobCardProps) {
   const [showAudioSearch, setShowAudioSearch] = useState(false)
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   const createdAt = new Date(job.created_at).toLocaleString()
   const isInteractive = job.status === "awaiting_review" ||
@@ -174,8 +177,8 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
         </div>
       )}
 
-      {/* Output links for completed jobs */}
-      {isComplete && (
+      {/* Output links for completed jobs, or admin link for admins on any job */}
+      {(isComplete || isAdmin) && (
         <div className="mt-2">
           <OutputLinks job={job} />
         </div>
