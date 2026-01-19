@@ -32,11 +32,11 @@ export default function WordDivider({
   return (
     <div
       className={cn(
-        'flex items-center justify-center h-auto min-h-[20px] my-0 w-full bg-card overflow-hidden',
+        'flex items-center justify-center h-auto min-h-[20px] my-0 w-full overflow-hidden',
         className
       )}
     >
-      <div className="flex items-center gap-2 flex-wrap justify-center bg-card px-2 z-10">
+      <div className="flex items-center gap-2 flex-wrap justify-center px-2 z-10">
         <Button
           variant="ghost"
           size="sm"

@@ -165,28 +165,51 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     }
   }, [togglePlayPause])
 
-  // Audio event handlers
+  // Audio event handlers - must re-run when loading completes so audio element is available
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
     const handlePlay = () => setIsPlaying(true)
     const handlePause = () => setIsPlaying(false)
     const handleEnded = () => setIsPlaying(false)
+    const handleLoadedMetadata = () => {
+      if (audio.duration && Number.isFinite(audio.duration)) {
+        setDuration(audio.duration)
+      }
+    }
 
-    audio.addEventListener("timeupdate", handleTimeUpdate)
     audio.addEventListener("play", handlePlay)
     audio.addEventListener("pause", handlePause)
     audio.addEventListener("ended", handleEnded)
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
 
     return () => {
-      audio.removeEventListener("timeupdate", handleTimeUpdate)
       audio.removeEventListener("play", handlePlay)
       audio.removeEventListener("pause", handlePause)
       audio.removeEventListener("ended", handleEnded)
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
     }
-  }, [])
+  }, [isLoading]) // Re-run when loading completes to attach handlers to audio element
+
+  // Smooth playhead animation using requestAnimationFrame
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !isPlaying) return
+
+    let animationId: number
+
+    const updateTime = () => {
+      setCurrentTime(audio.currentTime)
+      animationId = requestAnimationFrame(updateTime)
+    }
+
+    animationId = requestAnimationFrame(updateTime)
+
+    return () => {
+      cancelAnimationFrame(animationId)
+    }
+  }, [isPlaying])
 
   // Get audio URL for current selection
   const getAudioUrl = useCallback(() => {
@@ -349,19 +372,23 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     [job.job_id]
   )
 
+  // Success screen state
+  const [showSuccess, setShowSuccess] = useState(false)
+  const [countdown, setCountdown] = useState(2)
+
   // Submit selection
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true)
     try {
       await api.selectInstrumental(job.job_id, selectedOption)
-      toast.success("Selection submitted successfully")
 
       if (isLocalMode) {
-        // In local mode, just show success - the local server will handle the response
-        // and the CLI will continue the workflow
-        toast.success("You can close this window now", { duration: 10000 })
+        // In local mode, show success screen with countdown then close
+        setShowSuccess(true)
+        setCountdown(2)
       } else {
         // Redirect to dashboard after short delay (cloud mode)
+        toast.success("Selection submitted successfully")
         setTimeout(() => {
           router.push("/app")
         }, 1500)
@@ -371,6 +398,24 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       setIsSubmitting(false)
     }
   }, [job.job_id, selectedOption, router, isLocalMode])
+
+  // Countdown effect for success screen
+  useEffect(() => {
+    if (!showSuccess) return
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          window.close()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [showSuccess])
 
   // Loading state
   if (isLoading) {
@@ -398,6 +443,37 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
               </Link>
             </Button>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  // Success screen (local mode)
+  if (showSuccess) {
+    const selectionLabels: Record<string, string> = {
+      clean: "Clean Instrumental",
+      with_backing: "With Backing Vocals",
+      custom: "Custom",
+      uploaded: "Uploaded Instrumental",
+      original: "Original Audio",
+    }
+    const selectionLabel = selectionLabels[selectedOption] || selectedOption
+
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-green-500 mb-4">
+            <Check className="w-8 h-8 inline-block mr-2" />
+            Selection Submitted
+          </h2>
+          <p className="mb-2">
+            You selected: <strong>{selectionLabel}</strong>
+          </p>
+          <p className="text-muted-foreground">
+            {countdown > 0
+              ? `Closing in ${countdown}s...`
+              : "You can close this window now."}
+          </p>
         </div>
       </div>
     )

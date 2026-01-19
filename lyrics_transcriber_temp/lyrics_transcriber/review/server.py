@@ -733,24 +733,27 @@ class ReviewServer:
         server_thread = None
         sock = None
 
+        # Get port from environment variable (default 8000)
+        port = int(os.environ.get("LYRICS_REVIEW_PORT", "8000"))
+
         try:
             # Check port availability
             while True:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(1)
-                if sock.connect_ex(("127.0.0.1", 8000)) == 0:
+                if sock.connect_ex(("127.0.0.1", port)) == 0:
                     # Port is in use, get process info
                     process_info = ""
                     if os.name != "nt":  # Unix-like systems
                         try:
-                            process_info = os.popen("lsof -i:8000").read().strip()
+                            process_info = os.popen(f"lsof -i:{port}").read().strip()
                         except:
                             pass
 
                     self.logger.warning(
-                        f"Port 8000 is in use. Waiting for it to become available...\n"
-                        f"Process using port 8000:\n{process_info}\n"
-                        f"To manually free the port, you can run: lsof -ti:8000 | xargs kill -9"
+                        f"Port {port} is in use. Waiting for it to become available...\n"
+                        f"Process using port {port}:\n{process_info}\n"
+                        f"To manually free the port, you can run: lsof -ti:{port} | xargs kill -9"
                     )
                     sock.close()
                     time.sleep(30)
@@ -759,7 +762,7 @@ class ReviewServer:
                     break
 
             # Start server
-            config = uvicorn.Config(self.app, host="127.0.0.1", port=8000, log_level="error")
+            config = uvicorn.Config(self.app, host="127.0.0.1", port=port, log_level="error")
             server = uvicorn.Server(config)
             server_thread = Thread(target=server.run, daemon=True)
             server_thread.start()
@@ -767,7 +770,7 @@ class ReviewServer:
 
             # Open browser to the Next.js review UI
             # The frontend will automatically detect local mode and skip auth
-            browser_url = "http://localhost:8000/app/jobs/local/review"
+            browser_url = f"http://localhost:{port}/app/jobs/local/review"
             self.logger.info(f"Opening review UI: {browser_url}")
             webbrowser.open(browser_url)
 

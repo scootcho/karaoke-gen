@@ -15,6 +15,7 @@ interface EditWordListProps {
   onMergeWords: (index: number) => void
   onAddWord: (index?: number) => void
   onRemoveWord: (index: number) => void
+  onReplaceAllWords?: (replacementText: string) => void
   onSplitSegment?: (wordIndex: number) => void
   onAddSegment?: (beforeIndex: number) => void
   onMergeSegment?: (mergeWithNext: boolean) => void
@@ -50,12 +51,12 @@ const WordRow = memo(function WordRow({
 
   return (
     <div
-      className={`flex ${isMobile ? 'flex-col gap-2' : 'flex-row gap-4'} items-${isMobile ? 'stretch' : 'center'} py-1`}
+      className={`flex ${isMobile ? 'flex-col gap-2' : 'flex-row gap-4'} items-${isMobile ? 'stretch' : 'end'} py-1`}
     >
       {/* Word text field */}
-      <div className={`flex gap-2 items-center ${isMobile ? '' : 'flex-1'}`}>
+      <div className={`flex gap-2 items-end ${isMobile ? '' : 'flex-1'}`}>
         <div className="flex-1">
-          <Label htmlFor={`word-text-${index}`} className="sr-only">
+          <Label htmlFor={`word-text-${index}`} className="text-xs text-muted-foreground mb-1">
             Word {index}
           </Label>
           <Input
@@ -63,7 +64,6 @@ const WordRow = memo(function WordRow({
             value={word.text}
             onChange={(e) => onWordUpdate(index, { text: e.target.value })}
             onKeyDown={handleKeyDown}
-            placeholder={`Word ${index}`}
             className="h-8"
           />
         </div>
@@ -95,24 +95,24 @@ const WordRow = memo(function WordRow({
 
       {/* Time fields */}
       <div
-        className={`flex gap-2 items-center ${isMobile ? 'justify-start' : 'justify-end'}`}
+        className={`flex gap-2 items-end ${isMobile ? 'justify-start' : 'justify-end'}`}
       >
         <div className={`${isMobile ? 'w-20' : 'w-24'}`}>
+          <Label className="text-xs text-muted-foreground mb-1">Start</Label>
           <Input
             type="number"
             value={word.start_time?.toFixed(2) ?? ''}
             onChange={(e) => onWordUpdate(index, { start_time: parseFloat(e.target.value) })}
-            placeholder="Start"
             step={0.01}
             className="h-8"
           />
         </div>
         <div className={`${isMobile ? 'w-20' : 'w-24'}`}>
+          <Label className="text-xs text-muted-foreground mb-1">End</Label>
           <Input
             type="number"
             value={word.end_time?.toFixed(2) ?? ''}
             onChange={(e) => onWordUpdate(index, { end_time: parseFloat(e.target.value) })}
-            placeholder="End"
             step={0.01}
             className="h-8"
           />
@@ -223,6 +223,7 @@ export default function EditWordList({
   onMergeWords,
   onAddWord,
   onRemoveWord,
+  onReplaceAllWords,
   onSplitSegment,
   onAddSegment,
   onMergeSegment,
@@ -236,12 +237,18 @@ export default function EditWordList({
   const pageSize = isGlobal ? 50 : words.length
 
   const handleReplaceAllWords = () => {
-    const newWords = replacementText.trim().split(/\s+/)
-    newWords.forEach((text, index) => {
-      if (index < words.length) {
-        onWordUpdate(index, { text })
-      }
-    })
+    if (onReplaceAllWords) {
+      // Use the callback that handles proper timing
+      onReplaceAllWords(replacementText)
+    } else {
+      // Fallback: just update text of existing words (legacy behavior)
+      const newWords = replacementText.trim().split(/\s+/)
+      newWords.forEach((text, index) => {
+        if (index < words.length) {
+          onWordUpdate(index, { text })
+        }
+      })
+    }
     setReplacementText('')
   }
 

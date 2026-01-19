@@ -912,6 +912,7 @@ export default function LyricsAnalyzer({
         }
         onSave={handleUpdateSegment}
         onDelete={handleDeleteSegment}
+        onAddSegment={handleAddSegment}
         onSplitSegment={handleSplitSegment}
         onMergeSegment={handleMergeSegment}
         onPlaySegment={handlePlaySegment}

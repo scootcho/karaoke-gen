@@ -258,7 +258,7 @@ export default function TimelineEditor({
             className={cn(
               'absolute h-[30px] top-10 bg-primary rounded text-primary-foreground px-2 py-1',
               'cursor-move select-none flex items-center text-sm font-sans transition-colors',
-              isWordHighlighted(word) && 'bg-secondary'
+              isWordHighlighted(word) && 'bg-purple-500 dark:bg-purple-600'
             )}
             style={{
               left: `${leftPosition}%`,
