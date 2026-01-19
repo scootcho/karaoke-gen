@@ -73,17 +73,20 @@ function getStoredRedirectPath(): string | null {
 
   const redirectPath = sessionStorage.getItem('spa-redirect-path')
   if (redirectPath) {
-    sessionStorage.removeItem('spa-redirect-path')
-    // Update the URL in the address bar to reflect the actual route
-    // This allows page reload to work (browser will re-trigger the SPA redirect flow)
-    try {
-      window.history.replaceState(null, '', redirectPath)
-    } catch {
-      // Ignore errors (e.g., if the URL is invalid)
-    }
+    // DON'T remove sessionStorage here - we need it to survive page reload
+    // Next.js will revert any history.replaceState changes, so the URL stays at /app/jobs/
+    // On reload, the browser requests /app/jobs/, 404.html redirects back here, and we re-read the path
+    // The sessionStorage is cleared when user navigates to a different job or page
     return redirectPath
   }
   return null
+}
+
+// Clear the stored redirect path - called when we're done with it
+function clearStoredRedirectPath(): void {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('spa-redirect-path')
+  }
 }
 
 // Parse route from a stored redirect path
@@ -109,10 +112,23 @@ export function JobRouterClient() {
   const [storedRedirectPath] = useState(() => getStoredRedirectPath())
 
   // Parse route: use stored redirect path if available, otherwise use Next.js params
-  // The URL is updated via history.replaceState in getStoredRedirectPath() to support page reload
+  // Note: sessionStorage persists across reloads to support page refresh
   const { jobId, routeType } = storedRedirectPath
     ? parseRouteFromPath(storedRedirectPath)
     : parseRoute(slug)
+
+  // Clear stored redirect path when navigating to a different job
+  // This prevents stale redirects when clicking "Review Lyrics" on a different job
+  useEffect(() => {
+    if (storedRedirectPath && jobId) {
+      const storedJobId = parseRouteFromPath(storedRedirectPath).jobId
+      // If the stored job ID doesn't match the current job ID, clear it
+      // This handles the case where user navigates to a different job
+      if (storedJobId && storedJobId !== jobId) {
+        clearStoredRedirectPath()
+      }
+    }
+  }, [storedRedirectPath, jobId])
 
   const { user, isLoading: authLoading } = useAuth()
   const [accessState, setAccessState] = useState<AccessState>({ status: "loading" })
