@@ -55,6 +55,7 @@ export interface Job {
   title?: string;
   filename?: string;
   error_message?: string;
+  error_details?: Record<string, any>;
   file_urls?: Record<string, any>;
   state_data?: Record<string, any>;
   timeline?: Array<{
@@ -70,6 +71,16 @@ export interface Job {
   user_email?: string;
   outputs_deleted_at?: string;
   outputs_deleted_by?: string;
+  // Audio search fields
+  audio_search_artist?: string;
+  audio_search_title?: string;
+  // Theme and branding
+  theme_id?: string;
+  brand_prefix?: string;
+  // Customer order fields
+  customer_email?: string;
+  // Request tracking metadata
+  request_metadata?: Record<string, any>;
 }
 
 export interface UploadJobResponse {

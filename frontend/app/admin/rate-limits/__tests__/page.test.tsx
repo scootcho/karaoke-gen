@@ -69,7 +69,7 @@ const mockOverrides = {
     {
       email: "vip@example.com",
       bypass_job_limit: true,
-      custom_daily_job_limit: null,
+      custom_daily_job_limit: undefined,
       reason: "VIP user",
       created_by: "admin@nomadkaraoke.com",
       created_at: "2025-01-08T15:00:00Z",
@@ -242,7 +242,7 @@ describe("AdminRateLimitsPage", () => {
     })
 
     it("adds a disposable domain", async () => {
-      mockAdminApi.addDisposableDomain.mockResolvedValue({ success: true })
+      mockAdminApi.addDisposableDomain.mockResolvedValue({ success: true, message: "Operation successful" })
 
       const user = userEvent.setup()
       render(<AdminRateLimitsPage />)
@@ -339,7 +339,7 @@ describe("AdminRateLimitsPage", () => {
     })
 
     it("creates a new override", async () => {
-      mockAdminApi.setUserOverride.mockResolvedValue({ success: true })
+      mockAdminApi.setUserOverride.mockResolvedValue({ success: true, message: "Operation successful" })
 
       const user = userEvent.setup()
       render(<AdminRateLimitsPage />)

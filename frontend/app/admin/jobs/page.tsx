@@ -1035,8 +1035,8 @@ function AdminJobsPageContent() {
                   </p>
                   {[
                     { key: "theme_id", label: "Theme", value: selectedJob.theme_id || "default" },
-                    { key: "brand_prefix", label: "Brand Prefix", value: (selectedJob as any).brand_prefix },
-                    { key: "customer_email", label: "Customer Email", value: (selectedJob as any).customer_email },
+                    { key: "brand_prefix", label: "Brand Prefix", value: selectedJob.brand_prefix },
+                    { key: "customer_email", label: "Customer Email", value: selectedJob.customer_email },
                   ].map(({ key, label, value }) => (
                     <div key={key} className="flex items-center gap-2 mb-2">
                       <span className="text-sm font-medium w-28">{label}:</span>

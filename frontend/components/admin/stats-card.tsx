@@ -17,6 +17,7 @@ interface StatsCardProps {
   }
   loading?: boolean
   className?: string
+  valueClassName?: string
 }
 
 export function StatsCard({
@@ -27,6 +28,7 @@ export function StatsCard({
   trend,
   loading,
   className,
+  valueClassName,
 }: StatsCardProps) {
   if (loading) {
     return (
@@ -53,7 +55,7 @@ export function StatsCard({
         {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className={cn("text-2xl font-bold", valueClassName)}>{value}</div>
         {description && (
           <p className="text-xs text-muted-foreground mt-1">{description}</p>
         )}
@@ -73,12 +75,20 @@ export function StatsCard({
 interface StatsGridProps {
   children: React.ReactNode
   className?: string
+  columns?: 2 | 3 | 4
 }
 
-export function StatsGrid({ children, className }: StatsGridProps) {
+export function StatsGrid({ children, className, columns }: StatsGridProps) {
+  const colsClass = columns === 2
+    ? "md:grid-cols-2"
+    : columns === 3
+    ? "md:grid-cols-2 lg:grid-cols-3"
+    : "md:grid-cols-2 lg:grid-cols-4"
+
   return (
     <div className={cn(
-      "grid gap-4 md:grid-cols-2 lg:grid-cols-4",
+      "grid gap-4",
+      colsClass,
       className
     )}>
       {children}

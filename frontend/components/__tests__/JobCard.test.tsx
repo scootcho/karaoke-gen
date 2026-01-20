@@ -100,7 +100,7 @@ describe('JobCard', () => {
       expect(reviewLink).toBeInTheDocument()
       const href = reviewLink.closest('a')?.getAttribute('href') || ''
       // Uses hash-based routing for static hosting
-      // Note: Next.js Link normalizes the URL, removing trailing slash before hash
+      // Uses <a> tag (not Next.js Link) to ensure hashchange event fires
       expect(href).toBe('/app/jobs#/123/review')
     })
 
@@ -123,7 +123,7 @@ describe('JobCard', () => {
       expect(instrumentalLink).toBeInTheDocument()
       const href = instrumentalLink.closest('a')?.getAttribute('href') || ''
       // Uses hash-based routing for static hosting
-      // Note: Next.js Link normalizes the URL, removing trailing slash before hash
+      // Uses <a> tag (not Next.js Link) to ensure hashchange event fires
       expect(href).toBe('/app/jobs#/123/instrumental')
     })
 

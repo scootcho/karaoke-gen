@@ -12,7 +12,7 @@ jest.mock('@/lib/auth', () => ({
   useAuth: jest.fn(),
 }))
 
-const mockUseAuth = useAuth as jest.Mock
+const mockUseAuth = useAuth as unknown as jest.Mock
 
 // Mock window.location.reload
 const mockReload = jest.fn()

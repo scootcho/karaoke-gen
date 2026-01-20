@@ -243,7 +243,7 @@ async function testLyricsReview(page: any, context: any, jobId: string) {
     console.log(`   WARNING: Preview error: ${errorText}`);
   } else if (await videoElement.isVisible({ timeout: 10000 }).catch(() => false)) {
     console.log('   Video element visible');
-    const videoState = await videoElement.first().evaluate((el) => {
+    const videoState = await videoElement.first().evaluate((el: Element) => {
       const video = el as HTMLVideoElement;
       return {
         src: video.src?.substring(0, 50),
