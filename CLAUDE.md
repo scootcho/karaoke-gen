@@ -60,6 +60,30 @@ This single command:
 
 **All tests must pass.** Don't dismiss failures as "pre-existing" - investigate and fix them.
 
+### Testing in Production (for Agents)
+
+When asked to "test it yourself in prod" or verify a fix in production:
+
+```bash
+# Get admin token
+export KARAOKE_ADMIN_TOKEN=$(gcloud secrets versions access latest --secret=admin-tokens --project=nomadkaraoke | cut -d',' -f1)
+
+# Option 1: Use the debug template directly
+cd frontend && node e2e/helpers/debug-prod-template.mjs
+
+# Option 2: Copy template for customization (gitignored)
+cp frontend/e2e/helpers/debug-prod-template.mjs frontend/test-my-issue.local.mjs
+# Edit the script, then run it
+node test-my-issue.local.mjs
+
+# Option 3: Run existing production E2E tests
+KARAOKE_ADMIN_TOKEN=$KARAOKE_ADMIN_TOKEN npx playwright test e2e/production/admin-dashboard.spec.ts
+```
+
+Files matching `test-*.local.*` and `debug-*.local.*` are gitignored - you can hardcode tokens in them safely.
+
+See `docs/TESTING.md` § "Ad-Hoc Production Debugging" for full details.
+
 ### Version Bumping
 - Bump `tool.poetry.version` in `pyproject.toml` for code changes
 - Skip for docs-only changes

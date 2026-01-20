@@ -1,1 +1,6 @@
 playwright-report-prod/
+
+# Local debug scripts (may contain tokens - never commit)
+# Use this pattern for ad-hoc testing: test-*.local.{js,cjs,mjs,ts}
+test-*.local.*
+debug-*.local.*
