@@ -179,6 +179,9 @@ Use double-checked locking (`if not X: with lock: if not X: init()`) for shared 
 ### Preload at Startup
 Load SpaCy models, NLTK data, Langfuse handlers at container startup, not lazily during requests. Saves 60-200s on cold starts.
 
+### Langfuse v3 OTEL Isolation
+Langfuse v3 is built on OpenTelemetry. If `CallbackHandler()` is created without a pre-configured `Langfuse` client, it installs itself as the **global** OTEL tracer provider, capturing ALL spans (FastAPI requests, HTTP clients, etc.) - not just LLM calls. Fix: Initialize `Langfuse(tracer_provider=TracerProvider())` with an isolated provider BEFORE creating `CallbackHandler()`. See: https://github.com/orgs/langfuse/discussions/9136
+
 ### Cold Start Mitigation
 Set `min-instances > 0` for Cloud Run services with heavy initialization.
 
