@@ -76,6 +76,8 @@ For faster iteration, run subsets:
 
 TESTING.md covers: test types, CI requirements, Playwright usage, mocking guidelines, and coverage enforcement.
 
+**For ad-hoc production debugging**, see the "Ad-Hoc Production Debugging" section in TESTING.md. Use the template at `frontend/e2e/helpers/debug-prod-template.mjs`.
+
 ## Deployment
 
 ### Automatic (CI/CD)

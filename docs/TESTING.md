@@ -402,6 +402,86 @@ The production tests cover:
 - Final encoding and download
 - Admin dashboard functionality
 
+## Ad-Hoc Production Debugging (for Agents)
+
+When asked to "test it yourself in prod" or debug a specific production issue, use the debug script template:
+
+### Quick Start
+
+```bash
+# Copy the template (the .local suffix is gitignored)
+cp frontend/e2e/helpers/debug-prod-template.mjs frontend/test-my-issue.local.mjs
+
+# Edit the script to customize what you're testing
+# You can hardcode tokens in .local files - they won't be committed
+
+# Run it
+cd frontend && node test-my-issue.local.mjs
+```
+
+### With Environment Variables (Preferred)
+
+```bash
+# Get admin token from Secret Manager
+export KARAOKE_ADMIN_TOKEN=$(gcloud secrets versions access latest --secret=admin-tokens --project=nomadkaraoke | cut -d',' -f1)
+
+# Run the template directly
+cd frontend && node e2e/helpers/debug-prod-template.mjs
+
+# Or with a specific job
+DEBUG_JOB_ID=abc123 node e2e/helpers/debug-prod-template.mjs
+```
+
+### What the Template Provides
+
+- Playwright browser automation against production
+- Auth token injection (via localStorage)
+- Console error capture
+- HTTP error capture (4xx, 5xx responses)
+- Screenshot capability
+- Customizable debug steps
+
+### Gitignore Patterns
+
+Files matching these patterns are gitignored in `frontend/`:
+- `test-*.local.*` - Ad-hoc test scripts
+- `debug-*.local.*` - Debug scripts
+
+**Never commit tokens.** Use env vars or `.local` files only.
+
+### When to Use What
+
+| Scenario | Approach |
+|----------|----------|
+| Quick one-off debugging | Copy template → `.local` file |
+| Reusable production test | Add to `e2e/production/` with env var auth |
+| Regression test (mocked) | Add to `e2e/regression/` |
+
+### Example: Debug a Specific Job's Review Page
+
+```javascript
+// frontend/test-review-debug.local.mjs
+import { chromium } from 'playwright';
+
+const TOKEN = 'your-token-here'; // OK in .local files
+const JOB_ID = '26391a79';
+
+async function debug() {
+  const browser = await chromium.launch({ headless: false }); // See the browser
+  const page = await browser.newContext().then(c => c.newPage());
+
+  await page.addInitScript(t => localStorage.setItem('karaoke_access_token', t), TOKEN);
+  await page.goto(`https://gen.nomadkaraoke.com/app/jobs/${JOB_ID}/review/`);
+
+  // Debug interactively - the browser stays open
+  await page.pause(); // Opens Playwright inspector
+
+  await browser.close();
+}
+
+debug();
+```
+
 ## Running Tests Locally
 
 ```bash
