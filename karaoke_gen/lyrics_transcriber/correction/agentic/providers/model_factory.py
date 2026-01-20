@@ -125,12 +125,29 @@ class ModelFactory:
                 self._langfuse_handler = preloaded
                 return
 
-        # Fall back to creating new handler
+        # Fall back to creating new handler with isolated TracerProvider
+        # CRITICAL: We must initialize Langfuse client with an isolated TracerProvider
+        # BEFORE creating CallbackHandler. Otherwise, Langfuse v3 will install itself
+        # as the global OTEL provider and capture ALL spans (HTTP requests, etc.),
+        # not just LLM calls. See: https://github.com/orgs/langfuse/discussions/9136
         logger.info(f"🤖 Initializing Langfuse handler (not preloaded) for {model_spec}...")
         try:
+            from opentelemetry.sdk.trace import TracerProvider
+            from langfuse import Langfuse
             from langfuse.langchain import CallbackHandler
 
-            # CallbackHandler auto-discovers credentials from environment variables
+            host = os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+
+            # Initialize client with isolated TracerProvider to prevent global OTEL hijacking
+            Langfuse(
+                public_key=public_key,
+                secret_key=secret_key,
+                host=host,
+                tracer_provider=TracerProvider(),  # Isolated - won't touch global OTEL
+            )
+            logger.info(f"🤖 Langfuse client initialized with isolated TracerProvider")
+
+            # Now create the CallbackHandler - it will reuse the existing client
             self._langfuse_handler = CallbackHandler()
             logger.info(f"🤖 Langfuse callback handler initialized for {model_spec}")
         except Exception as e:

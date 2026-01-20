@@ -5,7 +5,19 @@ slow initialization during request processing. The CallbackHandler()
 constructor makes blocking network calls to the Langfuse API, which can
 take 3+ minutes on Cloud Run cold starts.
 
-See docs/archive/2026-01-08-performance-investigation.md for background.
+IMPORTANT: Langfuse v3 is built on OpenTelemetry. If not configured carefully,
+it will install itself as the GLOBAL OpenTelemetry tracer provider, capturing
+ALL spans from every library (FastAPI, HTTP clients, etc.) - not just LLM calls.
+This caused us to exceed our Langfuse hobby tier monthly event limit with
+thousands of "(empty)" HTTP request traces.
+
+The fix: Initialize the Langfuse client with an ISOLATED TracerProvider before
+creating the CallbackHandler. This ensures only LangChain/LLM traces are sent
+to Langfuse, while other OTEL instrumentation remains separate.
+
+See:
+- docs/archive/2026-01-08-performance-investigation.md for background
+- https://github.com/orgs/langfuse/discussions/9136 for the OTEL issue
 """
 
 import logging
@@ -26,6 +38,10 @@ def preload_langfuse_handler() -> Optional[Any]:
     Only initializes if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY
     environment variables are set.
 
+    CRITICAL: We initialize the Langfuse client with an isolated TracerProvider
+    BEFORE creating the CallbackHandler. This prevents Langfuse from hijacking
+    the global OpenTelemetry provider and capturing all HTTP request spans.
+
     Returns:
         The preloaded CallbackHandler, or None if not configured
     """
@@ -40,28 +56,44 @@ def preload_langfuse_handler() -> Optional[Any]:
     # Check if Langfuse is configured
     public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
     secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    host = os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
 
     if not (public_key and secret_key):
         logger.info("Langfuse not configured (missing keys), skipping preload")
         return None
 
-    logger.info("Preloading Langfuse callback handler...")
+    logger.info("Preloading Langfuse callback handler with isolated tracer...")
     start_time = time.time()
 
     try:
+        # Import OpenTelemetry TracerProvider for isolation
+        from opentelemetry.sdk.trace import TracerProvider
+        from langfuse import Langfuse
         from langfuse.langchain import CallbackHandler
 
-        # Initialize the handler - this is the slow part that makes network calls
+        # CRITICAL: Initialize Langfuse client with an ISOLATED TracerProvider
+        # This prevents Langfuse from setting itself as the global OTEL provider,
+        # which would cause ALL HTTP requests to be traced (not just LLM calls).
+        # See: https://github.com/orgs/langfuse/discussions/9136
+        Langfuse(
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host,
+            tracer_provider=TracerProvider(),  # Isolated - won't touch global OTEL
+        )
+        logger.info("Langfuse client initialized with isolated TracerProvider")
+
+        # Now create the CallbackHandler - it will reuse the existing client
+        # instead of creating a new one that hijacks global OTEL
         _preloaded_handler = CallbackHandler()
 
         elapsed = time.time() - start_time
-        host = os.getenv("LANGFUSE_HOST", "cloud.langfuse.com")
         logger.info(f"Langfuse handler preloaded in {elapsed:.2f}s (host: {host})")
 
         return _preloaded_handler
 
-    except ImportError:
-        logger.warning("langfuse package not installed, skipping preload")
+    except ImportError as e:
+        logger.warning(f"langfuse or opentelemetry package not installed, skipping preload: {e}")
         return None
     except Exception as e:
         elapsed = time.time() - start_time
