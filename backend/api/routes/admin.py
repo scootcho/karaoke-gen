@@ -808,23 +808,35 @@ def _extract_files_recursive(
                 expiration_minutes=expiration_minutes,
             )
             files.extend(nested_files)
-        elif isinstance(value, str) and value.startswith("gs://"):
-            # GCS path - generate signed URL
-            try:
-                signed_url = storage.generate_signed_url(value, expiration_minutes=expiration_minutes)
-                # Extract filename from path
-                name = value.split("/")[-1] if "/" in value else value
-                files.append(FileInfo(
-                    name=name,
-                    path=value,
-                    download_url=signed_url,
-                    category=category,
-                    file_key=key,
-                ))
-            except Exception as e:
-                # Log but don't fail - file might not exist
-                logger.warning(f"Failed to generate signed URL for {value}: {e}")
-        # Skip non-GCS values (e.g., youtube URLs, video IDs)
+        elif isinstance(value, str):
+            # Check if it's a GCS path (gs:// URI or relative path starting with "jobs/")
+            # Skip non-GCS values like YouTube URLs, video IDs, etc.
+            blob_path = None
+            if value.startswith("gs://"):
+                # Full GCS URI - extract blob path after bucket name
+                # Format: gs://bucket-name/path/to/file
+                parts = value.replace("gs://", "").split("/", 1)
+                if len(parts) > 1:
+                    blob_path = parts[1]
+            elif value.startswith("jobs/"):
+                # Relative path within bucket - use directly
+                blob_path = value
+
+            if blob_path:
+                try:
+                    signed_url = storage.generate_signed_url(blob_path, expiration_minutes=expiration_minutes)
+                    # Extract filename from path
+                    name = blob_path.split("/")[-1] if "/" in blob_path else blob_path
+                    files.append(FileInfo(
+                        name=name,
+                        path=value,
+                        download_url=signed_url,
+                        category=category,
+                        file_key=key,
+                    ))
+                except Exception as e:
+                    # Log but don't fail - file might not exist
+                    logger.warning(f"Failed to generate signed URL for {value}: {e}")
 
     return files
 
@@ -858,10 +870,14 @@ async def get_job_files(
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
     # Extract all files with signed URLs
-    storage = StorageService()
-    file_urls = job.file_urls or {}
-
-    files = _extract_files_recursive(file_urls, storage)
+    try:
+        storage = StorageService()
+        file_urls = job.file_urls or {}
+        files = _extract_files_recursive(file_urls, storage)
+    except Exception as e:
+        # Log but don't fail - return empty list if file extraction fails
+        logger.error(f"Failed to extract files for job {job_id}: {e}")
+        files = []
 
     return JobFilesResponse(
         job_id=job.job_id,

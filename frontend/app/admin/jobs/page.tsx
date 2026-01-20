@@ -546,6 +546,42 @@ function AdminJobsPageContent() {
     return `${mins}m${secs}s`
   }
 
+  const formatDurationLong = (ms: number) => {
+    if (ms === 0) return "0s"
+    if (ms < 1000) return `${ms}ms`
+    const hours = Math.floor(ms / 3600000)
+    const mins = Math.floor((ms % 3600000) / 60000)
+    const secs = Math.floor((ms % 60000) / 1000)
+    if (hours > 0) return `${hours}h ${mins}m ${secs}s`
+    if (mins > 0) return `${mins}m ${secs}s`
+    return `${secs}s`
+  }
+
+  // Calculate job timing stats from timeline
+  const getJobTimingStats = (job: Job) => {
+    if (!job?.timeline || job.timeline.length < 2) {
+      return { total: 0, processing: 0, waiting: 0 }
+    }
+
+    const firstTime = new Date(job.timeline[0].timestamp).getTime()
+    const lastTime = new Date(job.timeline[job.timeline.length - 1].timestamp).getTime()
+    const total = lastTime - firstTime
+
+    // Calculate waiting time (awaiting_* and in_review states)
+    let waiting = 0
+    for (let i = 0; i < job.timeline.length - 1; i++) {
+      const status = job.timeline[i].status
+      if (status.includes("awaiting") || status === "in_review") {
+        const start = new Date(job.timeline[i].timestamp).getTime()
+        const end = new Date(job.timeline[i + 1].timestamp).getTime()
+        waiting += end - start
+      }
+    }
+
+    const processing = total - waiting
+    return { total, processing, waiting }
+  }
+
   // Get timeline stage color based on status
   const getTimelineStageColor = (status: string, isCurrent: boolean) => {
     if (status === "complete" || status === "prep_complete") {
@@ -646,6 +682,7 @@ function AdminJobsPageContent() {
 
     const jobSource = getJobSource(selectedJob)
     const stageDurations = getStageDurations(selectedJob)
+    const timingStats = getJobTimingStats(selectedJob)
     const SourceIcon = jobSource.icon
     const canDeleteOutputs = ["complete", "prep_complete", "failed", "cancelled"].includes(selectedJob.status)
 
@@ -801,7 +838,7 @@ function AdminJobsPageContent() {
 
           {/* ===== HORIZONTAL TIMELINE ===== */}
           <div className="py-3 border-b">
-            <div className="flex items-start gap-0 overflow-x-auto pb-2">
+            <div className="flex flex-wrap items-start gap-y-2">
               {stageDurations.map((stage, i) => {
                 const isLast = i === stageDurations.length - 1
                 const isCurrent = isLast
@@ -812,7 +849,7 @@ function AdminJobsPageContent() {
                 const time = formatTimeOnly(stage.startTime)
 
                 return (
-                  <div key={i} className="flex items-start shrink-0">
+                  <div key={i} className="flex items-start">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div
@@ -853,7 +890,7 @@ function AdminJobsPageContent() {
                       </TooltipContent>
                     </Tooltip>
                     {!isLast && (
-                      <ChevronRight className="w-3 h-3 text-muted-foreground/30 mx-0.5 mt-2 shrink-0" />
+                      <ChevronRight className="w-3 h-3 text-muted-foreground/40 mx-0.5 mt-2" />
                     )}
                   </div>
                 )
@@ -862,7 +899,7 @@ function AdminJobsPageContent() {
           </div>
 
           {/* ===== JOB INFO GRID ===== */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 py-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 py-3">
             <div className="space-y-1">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">User</p>
               <p className="text-sm truncate" title={selectedJob.user_email || "Unknown"}>
@@ -883,12 +920,6 @@ function AdminJobsPageContent() {
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Updated</p>
-              <p className="text-sm" title={formatDate(selectedJob.updated_at)}>
-                {formatDateCompact(selectedJob.updated_at)}
-              </p>
-            </div>
-            <div className="space-y-1">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Progress</p>
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden max-w-[60px]">
@@ -900,6 +931,19 @@ function AdminJobsPageContent() {
                 <span className="text-sm font-medium">{selectedJob.progress}%</span>
               </div>
             </div>
+            {/* Timing stats */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Total Time</p>
+              <p className="text-sm font-mono">{formatDurationLong(timingStats.total) || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Processing</p>
+              <p className="text-sm font-mono text-blue-600 dark:text-blue-400">{formatDurationLong(timingStats.processing) || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Waiting</p>
+              <p className="text-sm font-mono text-amber-600 dark:text-amber-400">{formatDurationLong(timingStats.waiting) || "—"}</p>
+            </div>
             <div className="space-y-1">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Theme</p>
               <p className="text-sm truncate">{selectedJob.theme_id || "default"}</p>
@@ -907,25 +951,123 @@ function AdminJobsPageContent() {
           </div>
 
           {/* ===== TABBED CONTENT SECTIONS ===== */}
-          <Tabs defaultValue="files" className="w-full">
+          <Tabs defaultValue="overview" className="w-full">
             <TabsList className="w-full justify-start h-9 bg-muted/50">
+              <TabsTrigger value="overview" className="text-xs">
+                <Settings className="w-3 h-3 mr-1" />
+                Overview
+              </TabsTrigger>
               <TabsTrigger value="files" className="text-xs">
                 <Download className="w-3 h-3 mr-1" />
                 Files ({files.length})
-              </TabsTrigger>
-              <TabsTrigger value="config" className="text-xs">
-                <Settings className="w-3 h-3 mr-1" />
-                Config
-              </TabsTrigger>
-              <TabsTrigger value="metadata" className="text-xs">
-                <FileText className="w-3 h-3 mr-1" />
-                Metadata
               </TabsTrigger>
               <TabsTrigger value="debug" className="text-xs">
                 <Terminal className="w-3 h-3 mr-1" />
                 Debug
               </TabsTrigger>
             </TabsList>
+
+            {/* Overview Tab - Config + Metadata side by side */}
+            <TabsContent value="overview" className="mt-3">
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Config Section */}
+                <Card>
+                  <CardHeader className="py-2 px-3 bg-muted/30">
+                    <CardTitle className="text-xs font-medium">Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-3 space-y-2">
+                    {[
+                      { key: "artist", label: "Artist", value: selectedJob.artist },
+                      { key: "title", label: "Title", value: selectedJob.title },
+                      { key: "user_email", label: "User Email", value: selectedJob.user_email },
+                      { key: "theme_id", label: "Theme", value: selectedJob.theme_id || "default" },
+                      { key: "brand_prefix", label: "Brand Prefix", value: selectedJob.brand_prefix },
+                      { key: "customer_email", label: "Customer Email", value: selectedJob.customer_email },
+                    ].map(({ key, label, value }) => (
+                      <div key={key} className="flex items-center gap-2 group">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">{label}</span>
+                        {editingField === key ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => handleEditKeyPress(e, key)}
+                              className="h-6 text-xs"
+                              autoFocus
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => saveField(key)} disabled={saving}>
+                              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3 text-green-600" />}
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={cancelEditing} disabled={saving}>
+                              <X className="w-3 h-3 text-red-600" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            <span className="text-xs truncate flex-1">{value || "—"}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 opacity-0 group-hover:opacity-100"
+                              onClick={() => startEditing(key, value || "")}
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Metadata Section */}
+                <Card>
+                  <CardHeader className="py-2 px-3 bg-muted/30">
+                    <CardTitle className="text-xs font-medium">Request Metadata</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-3 space-y-2">
+                    {selectedJob.request_metadata && Object.keys(selectedJob.request_metadata).length > 0 ? (
+                      <>
+                        {selectedJob.request_metadata.environment && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">Environment</span>
+                            <span className="text-xs">{selectedJob.request_metadata.environment}</span>
+                          </div>
+                        )}
+                        {selectedJob.request_metadata.client_ip && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">Client IP</span>
+                            <span className="text-xs font-mono">{selectedJob.request_metadata.client_ip}</span>
+                          </div>
+                        )}
+                        {selectedJob.request_metadata.user_agent && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">User Agent</span>
+                            <span className="text-xs truncate" title={selectedJob.request_metadata.user_agent}>
+                              {selectedJob.request_metadata.user_agent}
+                            </span>
+                          </div>
+                        )}
+                        {selectedJob.request_metadata.server_version && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">Server Ver</span>
+                            <span className="text-xs font-mono">{selectedJob.request_metadata.server_version}</span>
+                          </div>
+                        )}
+                        {selectedJob.request_metadata.created_from && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase w-20 shrink-0">Created From</span>
+                            <span className="text-xs">{selectedJob.request_metadata.created_from}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">No metadata available</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
             {/* Files Tab */}
             <TabsContent value="files" className="mt-3">
@@ -934,7 +1076,16 @@ function AdminJobsPageContent() {
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 </div>
               ) : files.length === 0 ? (
-                <p className="text-muted-foreground text-sm py-4">No files available</p>
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground text-sm">No files available</p>
+                  <p className="text-muted-foreground text-xs mt-1">
+                    {selectedJob.outputs_deleted_at
+                      ? `Outputs were deleted on ${formatDateCompact(selectedJob.outputs_deleted_at)}`
+                      : selectedJob.status === "complete" || selectedJob.status === "prep_complete"
+                        ? "Files may have been cleaned up or deleted"
+                        : "Files will appear once the job progresses"}
+                  </p>
+                </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {Object.entries(groupFilesByCategory(files)).map(([category, categoryFiles]) => (
@@ -969,119 +1120,6 @@ function AdminJobsPageContent() {
                   ))}
                 </div>
               )}
-            </TabsContent>
-
-            {/* Config Tab */}
-            <TabsContent value="config" className="mt-3">
-              <Card>
-                <CardContent className="pt-4 space-y-3">
-                  {[
-                    { key: "artist", label: "Artist", value: selectedJob.artist },
-                    { key: "title", label: "Title", value: selectedJob.title },
-                    { key: "user_email", label: "User Email", value: selectedJob.user_email },
-                    { key: "theme_id", label: "Theme", value: selectedJob.theme_id || "default" },
-                    { key: "brand_prefix", label: "Brand Prefix", value: selectedJob.brand_prefix },
-                    { key: "customer_email", label: "Customer Email", value: selectedJob.customer_email },
-                  ].map(({ key, label, value }) => (
-                    <div key={key} className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-muted-foreground w-24 shrink-0">{label}</span>
-                      {editingField === key ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <Input
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => handleEditKeyPress(e, key)}
-                            className="h-7 text-sm"
-                            autoFocus
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => saveField(key)}
-                            disabled={saving}
-                          >
-                            {saving ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3 h-3 text-green-600" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={cancelEditing}
-                            disabled={saving}
-                          >
-                            <X className="w-3 h-3 text-red-600" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="text-sm truncate flex-1">
-                            {value || "—"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:opacity-100"
-                            onClick={() => startEditing(key, value || "")}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Metadata Tab */}
-            <TabsContent value="metadata" className="mt-3">
-              <Card>
-                <CardContent className="pt-4">
-                  {selectedJob.request_metadata && Object.keys(selectedJob.request_metadata).length > 0 ? (
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                      {selectedJob.request_metadata.environment && (
-                        <>
-                          <span className="text-muted-foreground text-xs">Environment</span>
-                          <span className="text-xs">{selectedJob.request_metadata.environment}</span>
-                        </>
-                      )}
-                      {selectedJob.request_metadata.client_ip && (
-                        <>
-                          <span className="text-muted-foreground text-xs">Client IP</span>
-                          <span className="text-xs font-mono">{selectedJob.request_metadata.client_ip}</span>
-                        </>
-                      )}
-                      {selectedJob.request_metadata.user_agent && (
-                        <>
-                          <span className="text-muted-foreground text-xs">User Agent</span>
-                          <span className="text-xs truncate" title={selectedJob.request_metadata.user_agent}>
-                            {selectedJob.request_metadata.user_agent}
-                          </span>
-                        </>
-                      )}
-                      {selectedJob.request_metadata.server_version && (
-                        <>
-                          <span className="text-muted-foreground text-xs">Server Version</span>
-                          <span className="text-xs font-mono">{selectedJob.request_metadata.server_version}</span>
-                        </>
-                      )}
-                      {selectedJob.request_metadata.created_from && (
-                        <>
-                          <span className="text-muted-foreground text-xs">Created From</span>
-                          <span className="text-xs">{selectedJob.request_metadata.created_from}</span>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No metadata available</p>
-                  )}
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Debug Tab */}
