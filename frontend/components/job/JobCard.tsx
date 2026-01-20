@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { Job } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Zap } from "lucide-react"
@@ -102,13 +101,14 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
     }
 
     if (job.status === "awaiting_review" || job.status === "in_review") {
+      // Use <a> instead of Link for hash-based URLs to ensure hashchange event fires
       return (
-        <Link
+        <a
           href={`/app/jobs#/${job.job_id}/review`}
           className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-primary-500 hover:bg-primary-600 text-white"
         >
           Review Lyrics
-        </Link>
+        </a>
       )
     }
 
@@ -125,13 +125,14 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
     }
 
     if (job.status === "awaiting_instrumental_selection") {
+      // Use <a> instead of Link for hash-based URLs to ensure hashchange event fires
       return (
-        <Link
+        <a
           href={`/app/jobs#/${job.job_id}/instrumental`}
           className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-primary-500 hover:bg-primary-600 text-white"
         >
           Select Instrumental
-        </Link>
+        </a>
       )
     }
 
