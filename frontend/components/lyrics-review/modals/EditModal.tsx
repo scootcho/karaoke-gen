@@ -293,6 +293,22 @@ export default function EditModal({
     handleClose()
   }, [editedSegment, onSave, handleClose])
 
+  // Handle Enter key to save (same as clicking Save button)
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Only handle Enter key
+    if (e.key !== 'Enter') return
+    // Don't save during manual sync mode
+    if (isManualSyncing) return
+    // Don't intercept Enter in text inputs (let them handle it normally for form submission)
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+    // Don't save if no valid segment
+    if (!editedSegment || editedSegment.words.length === 0) return
+
+    e.preventDefault()
+    handleSave()
+  }, [isManualSyncing, editedSegment, handleSave])
+
   const handlePlayToggle = useCallback(() => {
     if (!segment || !onPlaySegment) return
     if (isPlaying) {
@@ -355,7 +371,7 @@ export default function EditModal({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-[960px] max-h-[90vh] overflow-hidden flex flex-col" onKeyDown={handleKeyDown}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Edit {isGlobal ? 'All Words' : `Segment ${segmentIndex}`}
