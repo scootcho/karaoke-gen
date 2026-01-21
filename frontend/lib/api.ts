@@ -1648,15 +1648,28 @@ export function createLyricsReviewApiClient(jobId: string): LyricsReviewApiClien
   return {
     /**
      * Submit corrected lyrics data
+     *
+     * Backend expects: { corrections: { lines: [...], metadata: {...}, ...rest } }
+     * - 'lines' and 'metadata' are required by Pydantic validator
+     * - 'corrected_segments' and 'corrections' array are needed by render worker
      */
     async submitCorrections(data: CorrectionData): Promise<void> {
+      // Wrap CorrectionData in the structure expected by CorrectionsSubmission
+      // - 'lines' is an alias for corrected_segments (required by validator)
+      // - Include full data for render worker compatibility
+      const payload = {
+        corrections: {
+          ...data,
+          lines: data.corrected_segments,
+        }
+      }
       const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/corrections`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
       await handleResponse<{ status: string }>(response)
     },
