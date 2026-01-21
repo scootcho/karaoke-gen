@@ -242,6 +242,64 @@ describe("API Client", () => {
   })
 })
 
+describe("createLyricsReviewApiClient", () => {
+  const { createLyricsReviewApiClient } = require("../api")
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  describe("submitCorrections", () => {
+    it("should wrap CorrectionData with lines alias for backend validation", async () => {
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "success" }),
+      })
+
+      const client = createLyricsReviewApiClient("job123")
+      const mockCorrectionData = {
+        corrected_segments: [
+          { id: "seg1", text: "Hello", words: [], start_time: 0, end_time: 1 },
+        ],
+        metadata: { total_words: 1 },
+        corrections: [],
+        original_segments: [],
+        reference_lyrics: {},
+        anchor_sequences: [],
+        gap_sequences: [],
+        resized_segments: [],
+        corrections_made: 0,
+        confidence: 0.9,
+        correction_steps: [],
+        word_id_map: {},
+        segment_id_map: {},
+      }
+
+      await client.submitCorrections(mockCorrectionData)
+
+      // Verify the payload structure sent to the backend
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/job123/corrections"),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.any(String),
+        })
+      )
+
+      // Parse the body to verify structure
+      const call = (global.fetch as jest.Mock).mock.calls[0]
+      const body = JSON.parse(call[1].body)
+
+      // Backend expects: { corrections: { lines: [...], metadata: {...}, ... } }
+      expect(body).toHaveProperty("corrections")
+      expect(body.corrections).toHaveProperty("lines") // Required by backend validator
+      expect(body.corrections).toHaveProperty("metadata") // Required by backend validator
+      expect(body.corrections).toHaveProperty("corrected_segments") // Needed by render worker
+      expect(body.corrections.lines).toEqual(mockCorrectionData.corrected_segments)
+    })
+  })
+})
+
 describe("extractErrorMessage", () => {
   const fallback = "Default error message"
 
