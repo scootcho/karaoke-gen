@@ -26,6 +26,7 @@ pytestmark = pytest.mark.skipif(
 if emulators_running():
     from backend.models.job import Job, JobStatus
     from backend.services.job_manager import JobManager
+    from backend.services.firestore_service import FirestoreService
 
 
 class TestCountdownStatePersistence:
@@ -36,8 +37,13 @@ class TestCountdownStatePersistence:
         """Create a real JobManager using emulator."""
         return JobManager()
 
+    @pytest.fixture
+    def firestore_service(self):
+        """Create a real FirestoreService using emulator for direct job operations."""
+        return FirestoreService()
+
     @pytest.mark.asyncio
-    async def test_state_persists_between_render_and_video_workers(self, job_manager):
+    async def test_state_persists_between_render_and_video_workers(self, job_manager, firestore_service):
         """
         State set by render_video_worker is readable by video_worker.
 
@@ -64,7 +70,7 @@ class TestCountdownStatePersistence:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # === render_video_worker completes ===
             job_manager.update_state_data(job_id, 'lyrics_metadata', {
@@ -91,12 +97,12 @@ class TestCountdownStatePersistence:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
     @pytest.mark.asyncio
-    async def test_state_survives_job_reload(self, job_manager):
+    async def test_state_survives_job_reload(self, job_manager, firestore_service):
         """
         State persists when job is reloaded from Firestore multiple times.
         """
@@ -118,7 +124,7 @@ class TestCountdownStatePersistence:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Reload job multiple times
             for i in range(3):
@@ -134,12 +140,12 @@ class TestCountdownStatePersistence:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
     @pytest.mark.asyncio
-    async def test_partial_state_update_preserves_other_fields(self, job_manager):
+    async def test_partial_state_update_preserves_other_fields(self, job_manager, firestore_service):
         """
         Updating one field in state_data doesn't affect other fields.
         """
@@ -163,7 +169,7 @@ class TestCountdownStatePersistence:
                     'audio_complete': True,
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Update video_worker state (different key)
             job_manager.update_state_data(job_id, 'video_worker', {
@@ -181,7 +187,7 @@ class TestCountdownStatePersistence:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
@@ -193,8 +199,12 @@ class TestCountdownStateConsistency:
     def job_manager(self):
         return JobManager()
 
+    @pytest.fixture
+    def firestore_service(self):
+        return FirestoreService()
+
     @pytest.mark.asyncio
-    async def test_concurrent_reads_see_same_state(self, job_manager):
+    async def test_concurrent_reads_see_same_state(self, job_manager, firestore_service):
         """
         Multiple concurrent reads should see the same countdown state.
         """
@@ -216,7 +226,7 @@ class TestCountdownStateConsistency:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Simulate concurrent reads
             reads = []
@@ -235,7 +245,7 @@ class TestCountdownStateConsistency:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
@@ -247,8 +257,12 @@ class TestCountdownStateMigration:
     def job_manager(self):
         return JobManager()
 
+    @pytest.fixture
+    def firestore_service(self):
+        return FirestoreService()
+
     @pytest.mark.asyncio
-    async def test_handles_missing_lyrics_metadata(self, job_manager):
+    async def test_handles_missing_lyrics_metadata(self, job_manager, firestore_service):
         """
         Jobs without lyrics_metadata should be handled gracefully.
 
@@ -267,7 +281,7 @@ class TestCountdownStateMigration:
                 title="Test",
                 state_data={}  # No lyrics_metadata
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # video_worker logic should handle this
             reloaded = job_manager.get_job(job_id)
@@ -281,12 +295,12 @@ class TestCountdownStateMigration:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
     @pytest.mark.asyncio
-    async def test_handles_missing_countdown_fields(self, job_manager):
+    async def test_handles_missing_countdown_fields(self, job_manager, firestore_service):
         """
         Jobs with lyrics_metadata but missing countdown fields handled gracefully.
         """
@@ -309,7 +323,7 @@ class TestCountdownStateMigration:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             reloaded = job_manager.get_job(job_id)
             lyrics_metadata = reloaded.state_data.get('lyrics_metadata', {})
@@ -322,12 +336,12 @@ class TestCountdownStateMigration:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
     @pytest.mark.asyncio
-    async def test_handles_countdown_true_without_duration(self, job_manager):
+    async def test_handles_countdown_true_without_duration(self, job_manager, firestore_service):
         """
         If has_countdown_padding=True but duration missing, default to 3.0.
         """
@@ -348,7 +362,7 @@ class TestCountdownStateMigration:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             reloaded = job_manager.get_job(job_id)
             lyrics_metadata = reloaded.state_data.get('lyrics_metadata', {})
@@ -361,6 +375,6 @@ class TestCountdownStateMigration:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass

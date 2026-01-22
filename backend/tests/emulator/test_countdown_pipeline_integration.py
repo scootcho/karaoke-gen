@@ -28,6 +28,7 @@ if emulators_running():
     from backend.models.job import Job, JobStatus
     from backend.services.job_manager import JobManager
     from backend.services.storage_service import StorageService
+    from backend.services.firestore_service import FirestoreService
 
 
 class TestCountdownStateFlowThroughPipeline:
@@ -42,12 +43,17 @@ class TestCountdownStateFlowThroughPipeline:
         return JobManager()
 
     @pytest.fixture
+    def firestore_service(self):
+        """Create a real FirestoreService using emulator for direct job operations."""
+        return FirestoreService()
+
+    @pytest.fixture
     def storage_service(self):
         """Create a real StorageService using emulator."""
         return StorageService()
 
     @pytest.fixture
-    def job_with_early_start_song(self, job_manager, storage_service):
+    def job_with_early_start_song(self, job_manager, firestore_service):
         """
         Create a job where lyrics start within 3 seconds (needs countdown).
 
@@ -72,19 +78,19 @@ class TestCountdownStateFlowThroughPipeline:
             }
         )
 
-        # Create job in Firestore
-        job_manager._create_job(job)
+        # Create job in Firestore directly
+        firestore_service.create_job(job)
 
         yield job
 
         # Cleanup
         try:
-            job_manager._delete_job(job_id)
+            firestore_service.delete_job(job_id)
         except Exception:
             pass
 
     @pytest.fixture
-    def job_with_late_start_song(self, job_manager, storage_service):
+    def job_with_late_start_song(self, job_manager, firestore_service):
         """
         Create a job where lyrics start after 3 seconds (no countdown needed).
 
@@ -109,12 +115,12 @@ class TestCountdownStateFlowThroughPipeline:
             }
         )
 
-        job_manager._create_job(job)
+        firestore_service.create_job(job)
 
         yield job
 
         try:
-            job_manager._delete_job(job_id)
+            firestore_service.delete_job(job_id)
         except Exception:
             pass
 
@@ -203,8 +209,12 @@ class TestCountdownStateTransitions:
     def job_manager(self):
         return JobManager()
 
+    @pytest.fixture
+    def firestore_service(self):
+        return FirestoreService()
+
     @pytest.mark.asyncio
-    async def test_state_transitions_preserve_countdown_info(self, job_manager):
+    async def test_state_transitions_preserve_countdown_info(self, job_manager, firestore_service):
         """
         Countdown state should survive job state transitions.
 
@@ -229,7 +239,7 @@ class TestCountdownStateTransitions:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Transition to ENCODING
             job_manager.transition_to_state(
@@ -248,7 +258,7 @@ class TestCountdownStateTransitions:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
@@ -260,8 +270,12 @@ class TestWorkerStateDataIsolation:
     def job_manager(self):
         return JobManager()
 
+    @pytest.fixture
+    def firestore_service(self):
+        return FirestoreService()
+
     @pytest.mark.asyncio
-    async def test_lyrics_metadata_not_overwritten_by_other_updates(self, job_manager):
+    async def test_lyrics_metadata_not_overwritten_by_other_updates(self, job_manager, firestore_service):
         """
         Updating video_worker state should NOT overwrite lyrics_metadata.
 
@@ -285,7 +299,7 @@ class TestWorkerStateDataIsolation:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Update video_worker state (different key)
             job_manager.update_state_data(job_id, 'video_worker', {
@@ -306,7 +320,7 @@ class TestWorkerStateDataIsolation:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
 
@@ -324,11 +338,15 @@ class TestCountdownEndToEndWithMockedWorkers:
         return JobManager()
 
     @pytest.fixture
+    def firestore_service(self):
+        return FirestoreService()
+
+    @pytest.fixture
     def storage_service(self):
         return StorageService()
 
     @pytest.mark.asyncio
-    async def test_render_video_worker_updates_countdown_state(self, job_manager, storage_service):
+    async def test_render_video_worker_updates_countdown_state(self, job_manager, firestore_service, storage_service):
         """
         Run render_video_worker code and verify countdown state is updated.
 
@@ -356,7 +374,7 @@ class TestCountdownEndToEndWithMockedWorkers:
                     }
                 }
             )
-            job_manager._create_job(job)
+            firestore_service.create_job(job)
 
             # Mock CountdownProcessor to return padding_added=True
             mock_correction_result = MagicMock()
@@ -397,6 +415,6 @@ class TestCountdownEndToEndWithMockedWorkers:
 
         finally:
             try:
-                job_manager._delete_job(job_id)
+                firestore_service.delete_job(job_id)
             except Exception:
                 pass
