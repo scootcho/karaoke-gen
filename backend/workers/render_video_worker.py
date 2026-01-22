@@ -199,7 +199,16 @@ async def process_render_video(job_id: str) -> bool:
                         job_log.info(f"Countdown added: {padding_seconds}s padding applied to audio and timestamps shifted")
                     else:
                         job_log.info("No countdown needed - song starts after 3 seconds")
-                    
+
+                    # Update lyrics_metadata with countdown info so video_worker knows to pad instrumental
+                    # This is critical for audio sync - without this, instrumental won't match padded vocals
+                    if padding_added:
+                        existing_lyrics_metadata = job.state_data.get('lyrics_metadata', {})
+                        existing_lyrics_metadata['has_countdown_padding'] = True
+                        existing_lyrics_metadata['countdown_padding_seconds'] = padding_seconds
+                        job_manager.update_state_data(job_id, 'lyrics_metadata', existing_lyrics_metadata)
+                        job_log.info(f"Updated lyrics_metadata: has_countdown_padding=True, countdown_padding_seconds={padding_seconds}")
+
                     # 6. Get or create styles using the unified style loader
                     job_log.info("Loading style configuration...")
                     job_log.info(f"  job.style_params_gcs_path: {job.style_params_gcs_path}")
