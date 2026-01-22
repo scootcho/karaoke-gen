@@ -68,6 +68,9 @@ Update job, then verify update is visible before triggering workers to avoid rea
 ### Stale Object References
 After calling async functions that update the database, re-fetch objects before making additional updates to avoid overwriting changes.
 
+### Cross-Worker State Communication
+When deferring processing from one worker to another, you MUST update the job state to communicate what was done. The countdown padding bug regressed multiple times because `render_video_worker` added countdown padding to vocals/audio but didn't update `lyrics_metadata.has_countdown_padding`, so `video_worker` didn't know to pad the instrumental, causing audio desync. **Pattern**: If Worker A performs an action that Worker B must know about, Worker A MUST write that info to `job.state_data` immediately after the action. Don't rely on implicit assumptions between workers.
+
 ### Google Drive Query Escaping
 Escape special chars in Google Drive API queries: `'` → `\'`, `\` → `\\\\`.
 
