@@ -27,6 +27,9 @@ AMD EPYC (C4D series) significantly outperforms Intel Xeon (C4 series) for CPU-b
 
 ## Common Gotchas
 
+### Fail Fast, Don't Fall Back
+Silent fallbacks hide configuration errors. When critical configuration is missing (themes, credentials, etc.), raise clear errors instead of falling back to defaults. Better to fail loudly during testing than silently produce incorrect output in production. Example: Theme validation (v0.109.0) now raises `ValueError` on incomplete themes instead of merging with defaults. This ensures all cloud jobs use complete, explicit themes with no silent degradation.
+
 ### Verify Active Worktree
 Before making changes in a multi-worktree setup, verify which directory the user's dev server is running from.
 
