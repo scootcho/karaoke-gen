@@ -63,18 +63,26 @@ The image contains:
 - **Systemd service** `encoding-worker.service` (enabled, not started)
 - **Startup script** `/opt/encoding-worker/startup.sh`
 
-## Runtime Behavior
+## Runtime Behavior (Immutable Deployment Pattern)
 
 When the VM boots with this image:
 
-1. **Startup script** (`/opt/encoding-worker/startup.sh`) runs via `ExecStartPre`:
-   - Fetches API key from Secret Manager
-   - Downloads latest `karaoke-gen` wheel from GCS
-   - Installs wheel into venv
+1. **bootstrap.sh** runs via `ExecStartPre`:
+   - Downloads `startup.sh` from GCS (CI-managed, always current)
+   - Executes the downloaded startup script
 
-2. **Encoding worker service** starts via `ExecStart`:
+2. **startup.sh** (downloaded from GCS):
+   - Fetches API key from Secret Manager
+   - Downloads `karaoke_gen-current.whl` from GCS (fixed path, no sorting!)
+   - Installs wheel into venv
+   - **Verifies** installed version matches `version.txt` from GCS
+   - Fails fast if version mismatch
+
+3. **Encoding worker service** starts via `ExecStart`:
    - Runs `uvicorn backend.services.gce_encoding.main:app`
    - Listens on port 8080
+
+See `infrastructure/encoding-worker/README.md` for details on this pattern.
 
 ## When to Rebuild
 
@@ -84,8 +92,11 @@ Rebuild the image when:
 - FFmpeg version needs updating
 - New system packages required
 - Font packages change
+- bootstrap.sh changes (extremely rare)
 
-**No rebuild needed** for application code changes - the wheel is downloaded at runtime.
+**No rebuild needed** for:
+- Application code changes (wheel downloaded at runtime)
+- Startup logic changes (startup.sh downloaded from GCS)
 
 ## Image Family
 
