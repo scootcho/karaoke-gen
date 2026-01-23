@@ -289,28 +289,18 @@ class TestPreviewStyleLoading:
         assert result_styles["karaoke"]["font_path"] != "/original/path/font.ttf"
         assert "font.ttf" in result_styles["karaoke"]["font_path"]
     
-    def test_load_styles_from_gcs_falls_back_to_minimal(self, tmp_path):
-        """Test that minimal styles are used when job has no custom styles."""
-        import os
+    def test_load_styles_from_gcs_requires_explicit_theme(self, tmp_path):
+        """Test that load_styles_from_gcs requires explicit theme (Phase 2)."""
         from karaoke_gen.style_loader import load_styles_from_gcs
-        
-        # Call with no custom styles
-        styles_path, result_styles = load_styles_from_gcs(
-            style_params_gcs_path=None,  # No custom styles
-            style_assets={},
-            temp_dir=str(tmp_path),
-            download_func=lambda gcs_path, local_path: None,  # Won't be called
-        )
-        
-        # Verify styles file was created
-        assert os.path.exists(styles_path)
-        
-        # Should have karaoke section with minimal/default values
-        assert "karaoke" in result_styles
-        assert result_styles["karaoke"]["background_color"] == "#000000"
-        assert result_styles["karaoke"]["font"] == "Noto Sans"
-        # Minimal styles have background_image as None (default)
-        assert result_styles["karaoke"].get("background_image") is None
+
+        # Phase 2: Calling with no custom styles should raise an error
+        with pytest.raises(ValueError, match="style_params_gcs_path is required"):
+            load_styles_from_gcs(
+                style_params_gcs_path=None,  # No custom styles
+                style_assets={},
+                temp_dir=str(tmp_path),
+                download_func=lambda gcs_path, local_path: None,  # Won't be called
+            )
     
     def test_asset_mapping_is_complete(self):
         """Verify all required asset mappings are defined in the unified style loader."""
