@@ -160,6 +160,7 @@ BUCKET="gs://karaoke-gen-storage-nomadkaraoke"
 # Fetch API key
 ENCODING_API_KEY=$(gcloud secrets versions access latest --secret=encoding-worker-api-key 2>/dev/null || echo "")
 echo "ENCODING_API_KEY=${ENCODING_API_KEY}" > "${WORKER_DIR}/env"
+chmod 600 "${WORKER_DIR}/env"
 
 # Try to install wheel from fixed path
 echo "Attempting to download wheel..."
