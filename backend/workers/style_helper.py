@@ -191,12 +191,14 @@ class StyleConfig:
         Get intro video duration in seconds.
 
         Raises:
-            ValueError: If no style params loaded or intro section missing
+            ValueError: If no style params loaded, intro section missing, or video_duration missing
         """
         if not self._style_params:
             raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
         if 'intro' not in self._style_params:
             raise ValueError("Missing 'intro' section in theme.")
+        if 'video_duration' not in self._style_params['intro']:
+            raise ValueError("Missing 'video_duration' in intro section.")
         return self._style_params['intro']['video_duration']
 
     @property
@@ -205,12 +207,14 @@ class StyleConfig:
         Get end video duration in seconds.
 
         Raises:
-            ValueError: If no style params loaded or end section missing
+            ValueError: If no style params loaded, end section missing, or video_duration missing
         """
         if not self._style_params:
             raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
         if 'end' not in self._style_params:
             raise ValueError("Missing 'end' section in theme.")
+        if 'video_duration' not in self._style_params['end']:
+            raise ValueError("Missing 'video_duration' in end section.")
         return self._style_params['end']['video_duration']
 
 
