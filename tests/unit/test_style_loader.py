@@ -346,20 +346,18 @@ class TestSaveStyleParams:
 class TestLoadStylesFromGcs:
     """Tests for load_styles_from_gcs function."""
 
-    def test_returns_minimal_styles_when_no_gcs_path(self, temp_dir):
-        """Test that minimal styles are returned when no GCS path provided."""
+    def test_raises_error_when_no_gcs_path(self, temp_dir):
+        """Test that error is raised when no GCS path provided (Phase 2)."""
         mock_download = MagicMock()
-        
-        styles_path, style_data = load_styles_from_gcs(
-            style_params_gcs_path=None,
-            style_assets=None,
-            temp_dir=temp_dir,
-            download_func=mock_download,
-        )
-        
-        assert os.path.exists(styles_path)
-        assert "karaoke" in style_data
-        assert "cdg" in style_data
+
+        with pytest.raises(ValueError, match="style_params_gcs_path is required"):
+            load_styles_from_gcs(
+                style_params_gcs_path=None,
+                style_assets=None,
+                temp_dir=temp_dir,
+                download_func=mock_download,
+            )
+
         mock_download.assert_not_called()
 
     def test_downloads_and_loads_custom_styles(self, temp_dir):
@@ -456,21 +454,21 @@ class TestLoadStylesFromGcs:
         
         mock_logger.warning.assert_called()
 
-    def test_returns_defaults_on_download_failure(self, temp_dir, mock_logger):
-        """Test that defaults are returned when download fails."""
+    def test_raises_error_on_download_failure(self, temp_dir, mock_logger):
+        """Test that error is raised when download fails (Phase 2)."""
         def mock_download(gcs_path, local_path):
             raise Exception("Download failed")
-        
-        styles_path, style_data = load_styles_from_gcs(
-            style_params_gcs_path="gs://bucket/styles.json",
-            style_assets=None,
-            temp_dir=temp_dir,
-            download_func=mock_download,
-            logger=mock_logger,
-        )
-        
-        assert "karaoke" in style_data
-        mock_logger.warning.assert_called()
+
+        with pytest.raises(ValueError, match="Failed to download theme from GCS"):
+            load_styles_from_gcs(
+                style_params_gcs_path="gs://bucket/styles.json",
+                style_assets=None,
+                temp_dir=temp_dir,
+                download_func=mock_download,
+                logger=mock_logger,
+            )
+
+        mock_logger.error.assert_called()
 
 
 class TestHelperFunctions:
@@ -496,58 +494,90 @@ class TestHelperFunctions:
         assert "intro" not in styles
         assert "end" not in styles
 
-    def test_get_intro_format_with_defaults(self):
-        """Test get_intro_format with empty params uses defaults."""
-        result = get_intro_format({})
-        
-        assert result["video_duration"] == DEFAULT_INTRO_STYLE["video_duration"]
+    def test_get_intro_format_raises_on_missing_section(self):
+        """Test get_intro_format raises error when section missing (Phase 2)."""
+        with pytest.raises(ValueError, match="Missing 'intro' section"):
+            get_intro_format({})
 
-    def test_get_intro_format_merges_custom(self):
-        """Test get_intro_format merges custom params."""
+    def test_get_intro_format_raises_on_incomplete(self):
+        """Test get_intro_format raises error on incomplete theme (Phase 2)."""
         style_params = {"intro": {"video_duration": 10}}
+
+        with pytest.raises(ValueError, match="Incomplete 'intro' section"):
+            get_intro_format(style_params)
+
+    def test_get_intro_format_works_with_complete_theme(self):
+        """Test get_intro_format works with complete theme."""
+        style_params = {"intro": DEFAULT_INTRO_STYLE.copy()}
+        style_params["intro"]["video_duration"] = 10
+
         result = get_intro_format(style_params)
-        
+
         assert result["video_duration"] == 10
-        # Should still have default keys
-        assert "font" in result
+        assert result["font"] == DEFAULT_INTRO_STYLE["font"]
 
-    def test_get_end_format_with_defaults(self):
-        """Test get_end_format with empty params uses defaults."""
-        result = get_end_format({})
-        
-        assert result["video_duration"] == DEFAULT_END_STYLE["video_duration"]
+    def test_get_end_format_raises_on_missing_section(self):
+        """Test get_end_format raises error when section missing (Phase 2)."""
+        with pytest.raises(ValueError, match="Missing 'end' section"):
+            get_end_format({})
 
-    def test_get_end_format_merges_custom(self):
-        """Test get_end_format merges custom params."""
+    def test_get_end_format_raises_on_incomplete(self):
+        """Test get_end_format raises error on incomplete theme (Phase 2)."""
         style_params = {"end": {"video_duration": 8}}
+
+        with pytest.raises(ValueError, match="Incomplete 'end' section"):
+            get_end_format(style_params)
+
+    def test_get_end_format_works_with_complete_theme(self):
+        """Test get_end_format works with complete theme."""
+        style_params = {"end": DEFAULT_END_STYLE.copy()}
+        style_params["end"]["video_duration"] = 8
+
         result = get_end_format(style_params)
-        
+
         assert result["video_duration"] == 8
 
-    def test_get_karaoke_format_with_defaults(self):
-        """Test get_karaoke_format with empty params uses defaults."""
-        result = get_karaoke_format({})
-        
-        assert result["font_size"] == DEFAULT_KARAOKE_STYLE["font_size"]
+    def test_get_karaoke_format_raises_on_missing_section(self):
+        """Test get_karaoke_format raises error when section missing (Phase 2)."""
+        with pytest.raises(ValueError, match="Missing 'karaoke' section"):
+            get_karaoke_format({})
 
-    def test_get_karaoke_format_merges_custom(self):
-        """Test get_karaoke_format merges custom params."""
+    def test_get_karaoke_format_raises_on_incomplete(self):
+        """Test get_karaoke_format raises error on incomplete theme (Phase 2)."""
         style_params = {"karaoke": {"font_size": 120}}
+
+        with pytest.raises(ValueError, match="Incomplete 'karaoke' section"):
+            get_karaoke_format(style_params)
+
+    def test_get_karaoke_format_works_with_complete_theme(self):
+        """Test get_karaoke_format works with complete theme."""
+        style_params = {"karaoke": DEFAULT_KARAOKE_STYLE.copy()}
+        style_params["karaoke"]["font_size"] = 120
+
         result = get_karaoke_format(style_params)
-        
+
         assert result["font_size"] == 120
 
     def test_get_cdg_format_returns_none_when_missing(self):
         """Test get_cdg_format returns None when section is missing."""
         result = get_cdg_format({})
-        
+
         assert result is None
 
-    def test_get_cdg_format_merges_custom(self):
-        """Test get_cdg_format merges custom params."""
+    def test_get_cdg_format_raises_on_incomplete(self):
+        """Test get_cdg_format raises error on incomplete theme (Phase 2)."""
         style_params = {"cdg": {"font_path": "/custom/font.ttf"}}
+
+        with pytest.raises(ValueError, match="Incomplete 'cdg' section"):
+            get_cdg_format(style_params)
+
+    def test_get_cdg_format_works_with_complete_theme(self):
+        """Test get_cdg_format works with complete theme."""
+        style_params = {"cdg": DEFAULT_CDG_STYLE.copy()}
+        style_params["cdg"]["font_path"] = "/custom/font.ttf"
+
         result = get_cdg_format(style_params)
-        
+
         assert result["font_path"] == "/custom/font.ttf"
 
     def test_get_video_durations_defaults(self):

@@ -124,31 +124,50 @@ class StyleConfig:
         logger.info(f"Successfully loaded style configuration")
     
     def get_intro_format(self) -> Dict[str, Any]:
-        """Get title/intro screen format, with custom styles if available."""
-        if self._style_params:
-            return get_intro_format(self._style_params)
-        return DEFAULT_INTRO_STYLE.copy()
-    
+        """
+        Get title/intro screen format from loaded theme.
+
+        Raises:
+            ValueError: If no style params loaded (call load() first) or theme incomplete
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        return get_intro_format(self._style_params)
+
     def get_end_format(self) -> Dict[str, Any]:
-        """Get end screen format, with custom styles if available."""
-        if self._style_params:
-            return get_end_format(self._style_params)
-        return DEFAULT_END_STYLE.copy()
-    
+        """
+        Get end screen format from loaded theme.
+
+        Raises:
+            ValueError: If no style params loaded (call load() first) or theme incomplete
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        return get_end_format(self._style_params)
+
     def get_karaoke_format(self) -> Dict[str, Any]:
-        """Get karaoke video format, with custom styles if available."""
-        if self._style_params:
-            return get_karaoke_format(self._style_params)
-        return DEFAULT_KARAOKE_STYLE.copy()
-    
+        """
+        Get karaoke video format from loaded theme.
+
+        Raises:
+            ValueError: If no style params loaded (call load() first) or theme incomplete
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        return get_karaoke_format(self._style_params)
+
     def get_cdg_styles(self) -> Optional[Dict[str, Any]]:
-        """Get CDG generation styles if available, falling back to defaults."""
-        if self._style_params:
-            cdg_styles = get_cdg_format(self._style_params)
-            if cdg_styles:
-                return cdg_styles
-        # Return default CDG styles if no custom styles
-        return DEFAULT_CDG_STYLE.copy()
+        """
+        Get CDG generation styles from loaded theme.
+
+        Returns None if CDG section is not present in theme.
+
+        Raises:
+            ValueError: If no style params loaded (call load() first) or CDG section incomplete
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        return get_cdg_format(self._style_params)
     
     def get_style_params_path(self) -> Optional[str]:
         """
@@ -168,17 +187,35 @@ class StyleConfig:
     
     @property
     def intro_video_duration(self) -> int:
-        """Get intro video duration in seconds."""
-        if self._style_params and 'intro' in self._style_params:
-            return self._style_params['intro'].get('video_duration', 5)
-        return 5
-    
+        """
+        Get intro video duration in seconds.
+
+        Raises:
+            ValueError: If no style params loaded, intro section missing, or video_duration missing
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        if 'intro' not in self._style_params:
+            raise ValueError("Missing 'intro' section in theme.")
+        if 'video_duration' not in self._style_params['intro']:
+            raise ValueError("Missing 'video_duration' in intro section.")
+        return self._style_params['intro']['video_duration']
+
     @property
     def end_video_duration(self) -> int:
-        """Get end video duration in seconds."""
-        if self._style_params and 'end' in self._style_params:
-            return self._style_params['end'].get('video_duration', 5)
-        return 5
+        """
+        Get end video duration in seconds.
+
+        Raises:
+            ValueError: If no style params loaded, end section missing, or video_duration missing
+        """
+        if not self._style_params:
+            raise ValueError("No style parameters loaded. Call load() first and ensure job has a theme.")
+        if 'end' not in self._style_params:
+            raise ValueError("Missing 'end' section in theme.")
+        if 'video_duration' not in self._style_params['end']:
+            raise ValueError("Missing 'video_duration' in end section.")
+        return self._style_params['end']['video_duration']
 
 
 async def load_style_config(job, storage: StorageService, temp_dir: str) -> StyleConfig:

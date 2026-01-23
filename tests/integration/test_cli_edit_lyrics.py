@@ -106,7 +106,15 @@ async def test_cli_edit_lyrics_integration(mocker): # Remove tmp_path
     mock_opener = mocker.mock_open(read_data=b'\x00\x00\x00\x00')
     mocker.patch('builtins.open', mock_opener)
     mocker.patch('io.open', mock_opener)
-    mocker.patch('json.load', return_value={}) # Prevent reading JSON config
+    # Phase 2 requires complete themes - provide a complete theme for style_params
+    from karaoke_gen.style_loader import DEFAULT_INTRO_STYLE, DEFAULT_END_STYLE, DEFAULT_KARAOKE_STYLE, DEFAULT_CDG_STYLE
+    complete_theme = {
+        "intro": DEFAULT_INTRO_STYLE.copy(),
+        "end": DEFAULT_END_STYLE.copy(),
+        "karaoke": DEFAULT_KARAOKE_STYLE.copy(),
+        "cdg": DEFAULT_CDG_STYLE.copy(),
+    }
+    mocker.patch('json.load', return_value=complete_theme) # Return complete theme
     mocker.patch('json.loads', return_value={"cdg": {}}) # Prevent decoding JSON string
     mocker.patch('json.dump', MagicMock()) # Prevent writing JSON
 

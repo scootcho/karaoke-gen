@@ -4,6 +4,12 @@ import tempfile
 import logging
 from unittest.mock import MagicMock
 from karaoke_gen.karaoke_gen import KaraokePrep
+from karaoke_gen.style_loader import (
+    DEFAULT_INTRO_STYLE,
+    DEFAULT_END_STYLE,
+    DEFAULT_KARAOKE_STYLE,
+    DEFAULT_CDG_STYLE,
+)
 import inspect
 
 @pytest.fixture
@@ -21,6 +27,21 @@ def temp_dir():
     """Create a temporary directory for test files."""
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
+
+@pytest.fixture
+def complete_theme():
+    """
+    Return a complete theme with all required sections and fields.
+
+    This is the standard fixture for testing code that requires themes.
+    Use this instead of relying on DEFAULT_* constants with fallback logic.
+    """
+    return {
+        "intro": DEFAULT_INTRO_STYLE.copy(),
+        "end": DEFAULT_END_STYLE.copy(),
+        "karaoke": DEFAULT_KARAOKE_STYLE.copy(),
+        "cdg": DEFAULT_CDG_STYLE.copy(),
+    }
 
 @pytest.fixture
 def basic_karaoke_gen(mock_logger, mock_ffmpeg, temp_dir):

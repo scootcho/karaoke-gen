@@ -42,6 +42,8 @@
 
 ## Recent Changes
 
+- **Theme Validation & Default Removal** (2026-01-22): **BREAKING CHANGE in v0.109.0** - Removed all default style fallback logic to ensure cloud jobs always use complete themes. Style getter functions now raise `ValueError` if themes are incomplete instead of merging with defaults. Added `--list-themes` and `--validate-theme` CLI flags. All cloud jobs guaranteed to use complete nomad theme with no silent fallbacks. See [archive/2026-01-22-theme-validation-remove-defaults.md](archive/2026-01-22-theme-validation-remove-defaults.md).
+
 - **Admin Job Reprocess** (2026-01-21): Added "Reprocess" button to admin job reset toolbar. Allows re-encoding and re-distributing a job with existing settings after deleting outputs. Resets job to `instrumental_selected` state and automatically triggers video worker. Clears video/encoding/distribution state while preserving instrumental selection and lyrics metadata. Use case: Fix distribution issues, re-upload to YouTube with different settings, or re-run encoding after infrastructure changes. See [API.md](API.md#admin-job-reset).
 
 - **Countdown Audio Sync Fix** (2026-01-21): Fixed bug where songs starting within 3 seconds would have audio desync. Root cause: `render_video_worker` added countdown padding to vocals but didn't update `lyrics_metadata.has_countdown_padding`, so `video_worker` didn't pad the instrumental. Fix: Update job state immediately after countdown processing. Added comprehensive test suite (contract tests, pipeline integration, persistence tests) to prevent regression. See [archive/2026-01-21-countdown-audio-sync-testing-strategy.md](archive/2026-01-21-countdown-audio-sync-testing-strategy.md).
