@@ -119,62 +119,70 @@ class TestStyleHelper:
     """Test the backend style helper module."""
     
     @pytest.mark.asyncio
-    async def test_style_config_loads_defaults_when_no_custom_styles(self):
-        """Test that StyleConfig returns defaults when no custom styles."""
+    async def test_style_config_raises_error_when_no_theme(self):
+        """Test that StyleConfig raises error when no theme provided (Phase 2)."""
         pytest.importorskip("google.cloud.storage", reason="GCP libraries not available")
-        from backend.workers.style_helper import StyleConfig, DEFAULT_INTRO_FORMAT
-        
+        from backend.workers.style_helper import StyleConfig
+
         # Mock job with no style assets and no style_params_gcs_path
         job = Mock()
         job.job_id = "test-123"
         job.style_assets = {}
         job.style_params_gcs_path = None  # Explicitly set to None
-        
+
         storage = Mock()
-        
+
         with tempfile.TemporaryDirectory() as temp_dir:
             config = StyleConfig(job, storage, temp_dir)
-            await config.load()
-            
-            assert not config.has_custom_styles()
-            intro_format = config.get_intro_format()
-            assert intro_format == DEFAULT_INTRO_FORMAT
+
+            # Phase 2: Should raise error when loading without theme
+            with pytest.raises(ValueError, match="style_params_gcs_path is required"):
+                await config.load()
     
     @pytest.mark.asyncio
-    async def test_style_config_loads_custom_styles(self):
-        """Test that StyleConfig loads and parses custom styles."""
+    async def test_style_config_loads_complete_theme(self):
+        """Test that StyleConfig loads and parses complete themes (Phase 2)."""
         pytest.importorskip("google.cloud.storage", reason="GCP libraries not available")
         from backend.workers.style_helper import StyleConfig
-        
+        from karaoke_gen.style_loader import (
+            DEFAULT_INTRO_STYLE,
+            DEFAULT_END_STYLE,
+            DEFAULT_KARAOKE_STYLE,
+            DEFAULT_CDG_STYLE,
+        )
+
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a SEPARATE source directory for the source style file
             # (StyleConfig will use temp_dir/style/ for downloads, so we use source/)
             source_dir = os.path.join(temp_dir, "source")
             os.makedirs(source_dir, exist_ok=True)
-            
-            # Create a mock style_params.json in the source directory
+
+            # Create a COMPLETE theme (Phase 2 requirement)
             style_params = {
-                "intro": {
-                    "background_color": "#FF0000",
-                    "title_color": "#00FF00",
-                },
-                "cdg": {
-                    "background_color": "#0000FF",
-                }
+                "intro": DEFAULT_INTRO_STYLE.copy(),
+                "end": DEFAULT_END_STYLE.copy(),
+                "karaoke": DEFAULT_KARAOKE_STYLE.copy(),
+                "cdg": DEFAULT_CDG_STYLE.copy(),
             }
+            # Customize some values
+            style_params["intro"]["background_color"] = "#FF0000"
+            style_params["intro"]["title_color"] = "#00FF00"
+            style_params["cdg"]["instrumental_background"] = "custom_bg.png"
+
             style_json_path = os.path.join(source_dir, "style_params.json")
             with open(style_json_path, 'w') as f:
                 json.dump(style_params, f)
-            
+
             # Create a work directory for StyleConfig (separate from source)
             work_dir = os.path.join(temp_dir, "work")
             os.makedirs(work_dir, exist_ok=True)
-            
+
             # Mock job with style assets
             job = Mock()
             job.job_id = "test-123"
             job.style_assets = {"style_params": "uploads/test/style_params.json"}
-            
+            job.style_params_gcs_path = "uploads/test/style_params.json"
+
             # Mock storage to "download" the file
             storage = Mock()
             def mock_download(gcs_path, local_path):
@@ -183,18 +191,18 @@ class TestStyleHelper:
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
                 shutil.copy(style_json_path, local_path)
             storage.download_file = mock_download
-            
+
             config = StyleConfig(job, storage, work_dir)
             await config.load()
-            
+
             assert config.has_custom_styles()
-            
+
             intro_format = config.get_intro_format()
             assert intro_format['background_color'] == "#FF0000"
             assert intro_format['title_color'] == "#00FF00"
-            
+
             cdg_styles = config.get_cdg_styles()
-            assert cdg_styles['background_color'] == "#0000FF"
+            assert cdg_styles['instrumental_background'] == "custom_bg.png"
 
 
 class TestFileUploadEndpoint:
