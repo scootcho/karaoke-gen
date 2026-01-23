@@ -143,22 +143,20 @@ class TestValidateThemeCompleteness:
         assert "Missing:" in caplog.text
 
 
-class TestGetterFunctionWarnings:
-    """Test that getter functions warn about incomplete themes."""
+class TestGetterFunctionErrors:
+    """Test that getter functions raise errors for incomplete themes (Phase 2)."""
 
-    def test_get_intro_format_complete(self, caplog):
+    def test_get_intro_format_complete(self):
         """Test get_intro_format with complete intro section."""
         style_params = {"intro": DEFAULT_INTRO_STYLE.copy()}
 
-        with caplog.at_level(logging.WARNING):
-            result = get_intro_format(style_params)
+        result = get_intro_format(style_params)
 
-        # Should not warn for complete theme
-        assert "Incomplete intro theme" not in caplog.text
+        # Should return the intro params as-is
         assert result == DEFAULT_INTRO_STYLE
 
-    def test_get_intro_format_incomplete_warns(self, caplog):
-        """Test get_intro_format warns about incomplete intro section."""
+    def test_get_intro_format_incomplete_raises(self):
+        """Test get_intro_format raises error for incomplete intro section."""
         style_params = {
             "intro": {
                 "video_duration": 5,
@@ -167,51 +165,50 @@ class TestGetterFunctionWarnings:
             }
         }
 
-        with caplog.at_level(logging.WARNING):
-            result = get_intro_format(style_params)
+        with pytest.raises(ValueError, match="Incomplete 'intro' section"):
+            get_intro_format(style_params)
 
-        # Should warn about missing fields
-        assert "Incomplete intro theme" in caplog.text
-        assert "Missing fields:" in caplog.text
-        assert "In future versions, incomplete themes will be rejected" in caplog.text
+    def test_get_intro_format_missing_section_raises(self):
+        """Test get_intro_format raises error when intro section is missing."""
+        style_params = {}
 
-        # Should still return merged result with defaults (Phase 1 behavior)
-        assert result["video_duration"] == 5
-        assert result["background_color"] == "#000000"
-        assert result["font"] == DEFAULT_INTRO_STYLE["font"]  # From defaults
+        with pytest.raises(ValueError, match="Missing 'intro' section"):
+            get_intro_format(style_params)
 
-    def test_get_end_format_incomplete_warns(self, caplog):
-        """Test get_end_format warns about incomplete end section."""
+    def test_get_end_format_incomplete_raises(self):
+        """Test get_end_format raises error for incomplete end section."""
         style_params = {"end": {"video_duration": 3}}
 
-        with caplog.at_level(logging.WARNING):
-            result = get_end_format(style_params)
+        with pytest.raises(ValueError, match="Incomplete 'end' section"):
+            get_end_format(style_params)
 
-        assert "Incomplete end theme" in caplog.text
-        assert result["video_duration"] == 3  # Custom value
-        assert result["font"] == DEFAULT_END_STYLE["font"]  # From defaults
+    def test_get_end_format_missing_section_raises(self):
+        """Test get_end_format raises error when end section is missing."""
+        style_params = {}
 
-    def test_get_karaoke_format_incomplete_warns(self, caplog):
-        """Test get_karaoke_format warns about incomplete karaoke section."""
+        with pytest.raises(ValueError, match="Missing 'end' section"):
+            get_end_format(style_params)
+
+    def test_get_karaoke_format_incomplete_raises(self):
+        """Test get_karaoke_format raises error for incomplete karaoke section."""
         style_params = {"karaoke": {"background_color": "#FF0000"}}
 
-        with caplog.at_level(logging.WARNING):
-            result = get_karaoke_format(style_params)
+        with pytest.raises(ValueError, match="Incomplete 'karaoke' section"):
+            get_karaoke_format(style_params)
 
-        assert "Incomplete karaoke theme" in caplog.text
-        assert result["background_color"] == "#FF0000"  # Custom value
-        assert result["font"] == DEFAULT_KARAOKE_STYLE["font"]  # From defaults
+    def test_get_karaoke_format_missing_section_raises(self):
+        """Test get_karaoke_format raises error when karaoke section is missing."""
+        style_params = {}
 
-    def test_get_cdg_format_incomplete_warns(self, caplog):
-        """Test get_cdg_format warns about incomplete cdg section."""
+        with pytest.raises(ValueError, match="Missing 'karaoke' section"):
+            get_karaoke_format(style_params)
+
+    def test_get_cdg_format_incomplete_raises(self):
+        """Test get_cdg_format raises error for incomplete cdg section."""
         style_params = {"cdg": {"font_path": "/custom/font.ttf"}}
 
-        with caplog.at_level(logging.WARNING):
-            result = get_cdg_format(style_params)
-
-        assert "Incomplete cdg theme" in caplog.text
-        assert result["font_path"] == "/custom/font.ttf"  # Custom value
-        assert result["instrumental_background"] == DEFAULT_CDG_STYLE["instrumental_background"]  # From defaults
+        with pytest.raises(ValueError, match="Incomplete 'cdg' section"):
+            get_cdg_format(style_params)
 
     def test_get_cdg_format_missing_section_returns_none(self):
         """Test get_cdg_format returns None when cdg section is missing."""
@@ -221,8 +218,8 @@ class TestGetterFunctionWarnings:
 
         assert result is None
 
-    def test_empty_theme_sections_warn(self, caplog):
-        """Test that empty theme sections (empty dicts) trigger warnings."""
+    def test_empty_theme_sections_raise(self):
+        """Test that empty theme sections (empty dicts) raise errors."""
         style_params = {
             "intro": {},
             "end": {},
@@ -230,49 +227,39 @@ class TestGetterFunctionWarnings:
             "cdg": {},
         }
 
-        with caplog.at_level(logging.WARNING):
-            intro = get_intro_format(style_params)
-            end = get_end_format(style_params)
-            karaoke = get_karaoke_format(style_params)
-            cdg = get_cdg_format(style_params)
+        with pytest.raises(ValueError, match="Incomplete 'intro' section"):
+            get_intro_format(style_params)
 
-        # All should warn
-        assert caplog.text.count("Incomplete") == 4
+        with pytest.raises(ValueError, match="Incomplete 'end' section"):
+            get_end_format(style_params)
 
-        # All should return defaults
-        assert intro == DEFAULT_INTRO_STYLE
-        assert end == DEFAULT_END_STYLE
-        assert karaoke == DEFAULT_KARAOKE_STYLE
-        assert cdg == DEFAULT_CDG_STYLE
+        with pytest.raises(ValueError, match="Incomplete 'karaoke' section"):
+            get_karaoke_format(style_params)
+
+        with pytest.raises(ValueError, match="Incomplete 'cdg' section"):
+            get_cdg_format(style_params)
 
 
-class TestPartialThemes:
-    """Test behavior with partially complete themes."""
+class TestCompleteThemes:
+    """Test behavior with complete themes (Phase 2)."""
 
-    def test_partial_intro_merges_correctly(self):
-        """Test that partial themes merge correctly with defaults."""
+    def test_complete_intro_returns_as_is(self):
+        """Test that complete themes are returned as-is without merging."""
         style_params = {
-            "intro": {
-                "video_duration": 10,
-                "background_color": "#FF0000",
-                "artist_color": "#00FF00",
-                # Missing remaining 12 fields
-            }
+            "intro": DEFAULT_INTRO_STYLE.copy()
         }
+        # Modify some values
+        style_params["intro"]["video_duration"] = 10
+        style_params["intro"]["background_color"] = "#FF0000"
 
         result = get_intro_format(style_params)
 
-        # Custom values should be present
+        # Should return exactly what was provided
         assert result["video_duration"] == 10
         assert result["background_color"] == "#FF0000"
-        assert result["artist_color"] == "#00FF00"
+        assert result == style_params["intro"]
 
-        # Default values should fill in missing fields
-        assert result["font"] == DEFAULT_INTRO_STYLE["font"]
-        assert result["title_color"] == DEFAULT_INTRO_STYLE["title_color"]
-        assert result["title_region"] == DEFAULT_INTRO_STYLE["title_region"]
-
-    def test_missing_optional_fields_handled(self):
+    def test_none_fields_preserved(self):
         """Test that None/null fields are preserved."""
         style_params = {
             "intro": DEFAULT_INTRO_STYLE.copy()
