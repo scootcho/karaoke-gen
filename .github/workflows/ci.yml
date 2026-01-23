@@ -967,8 +967,16 @@ jobs:
           version: "latest"
 
       # ============================================
-      # Upload wheel to GCS for GCE encoding worker
-      # The GCE worker installs this wheel at job start for hot code updates
+      # Deploy to GCE Encoding Worker (Immutable Deployment Pattern)
+      #
+      # This pattern ensures version consistency:
+      # 1. Upload wheel to FIXED path (no version sorting)
+      # 2. Upload startup.sh (logic can change without image rebuild)
+      # 3. Write version manifest for verification
+      # 4. Restart service (triggers bootstrap.sh -> startup.sh)
+      # 5. STRICTLY verify deployed version (fail CI on mismatch)
+      #
+      # See infrastructure/encoding-worker/README.md for details
       # ============================================
 
       - name: Download wheel artifact
@@ -977,52 +985,114 @@ jobs:
           name: package-dist
           path: dist/
 
-      - name: Upload wheel to GCS for GCE worker
+      - name: Deploy to GCE Encoding Worker
         run: |
-          echo "📦 Uploading wheel to GCS for GCE encoding worker..."
+          VERSION="${{ steps.version_check.outputs.version }}"
+          BUCKET="gs://karaoke-gen-storage-${{ env.PROJECT_ID }}"
+
+          echo "🚀 Deploying encoding worker v${VERSION}..."
+
+          # 1. Find the wheel file
           WHEEL_FILE=$(ls dist/*.whl | head -1)
           if [ -z "$WHEEL_FILE" ]; then
             echo "::error::No wheel file found in dist/"
             exit 1
           fi
-          echo "Found wheel: $WHEEL_FILE"
+          echo "📦 Found wheel: $WHEEL_FILE"
 
-          # Upload to GCS (GCE worker downloads latest at job start)
-          gsutil cp "$WHEEL_FILE" gs://karaoke-gen-storage-${{ env.PROJECT_ID }}/wheels/
+          # 2. Upload wheel to FIXED path (atomic via temp file)
+          # This eliminates version sorting - always use karaoke_gen-current.whl
+          echo "📤 Uploading wheel to fixed path..."
+          gsutil cp "$WHEEL_FILE" "${BUCKET}/wheels/karaoke_gen-current.whl.tmp"
+          gsutil mv "${BUCKET}/wheels/karaoke_gen-current.whl.tmp" \
+                    "${BUCKET}/wheels/karaoke_gen-current.whl"
 
-          echo "✅ Wheel uploaded to GCS"
+          # Also keep versioned copy for rollback/debugging
+          gsutil cp "$WHEEL_FILE" "${BUCKET}/wheels/"
+
+          # 3. Upload startup.sh (allows logic changes without image rebuild)
+          echo "📤 Uploading startup.sh..."
+          gsutil cp infrastructure/encoding-worker/startup.sh \
+                    "${BUCKET}/encoding-worker/startup.sh"
+
+          # 4. Write version manifest for verification
+          echo "📝 Writing version manifest..."
+          echo "${VERSION}" | gsutil cp - "${BUCKET}/encoding-worker/version.txt"
+
+          echo "✅ GCS deployment complete"
 
       - name: Restart GCE Encoding Worker
         run: |
-          echo "🔄 Restarting encoding worker to pick up new wheel..."
+          VERSION="${{ steps.version_check.outputs.version }}"
+
+          echo "🔄 Restarting encoding worker..."
 
           # Use IAP tunneling - works directly with service account credentials
-          # (avoids SSH key propagation delays that cause silent failures)
           gcloud compute ssh encoding-worker \
             --zone=us-central1-c \
             --project=nomadkaraoke \
             --tunnel-through-iap \
             --command="sudo systemctl restart encoding-worker"
 
-          echo "⏳ Waiting for service to start..."
-          sleep 15
+          echo "⏳ Waiting for service to start (up to 60s)..."
+          sleep 20
 
-          # Verify the restart worked by checking the wheel version
-          NEW_VERSION=$(gcloud compute ssh encoding-worker \
-            --zone=us-central1-c \
-            --project=nomadkaraoke \
-            --tunnel-through-iap \
-            --command="curl -s http://localhost:8080/health | grep -o '\"wheel_version\":\"[^\"]*\"' | cut -d'\"' -f4")
+      - name: Verify Encoding Worker Version
+        run: |
+          VERSION="${{ steps.version_check.outputs.version }}"
 
-          EXPECTED_VERSION=$(cat pyproject.toml | grep 'version = ' | head -1 | cut -d'"' -f2)
+          echo "🔍 Verifying encoding worker version..."
 
-          if [ "$NEW_VERSION" = "$EXPECTED_VERSION" ]; then
-            echo "✅ Encoding worker restarted successfully (v$NEW_VERSION)"
-          else
-            echo "⚠️ Version mismatch: encoder has v$NEW_VERSION, expected v$EXPECTED_VERSION"
-            echo "   This may indicate the restart failed or the wheel wasn't downloaded"
-            # Don't fail the build - the encoder will still work, just with old version
-          fi
+          # Retry loop - service may take time to fully start
+          MAX_RETRIES=6
+          RETRY_DELAY=10
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i/$MAX_RETRIES..."
+
+            NEW_VERSION=$(gcloud compute ssh encoding-worker \
+              --zone=us-central1-c \
+              --project=nomadkaraoke \
+              --tunnel-through-iap \
+              --command="curl -s http://localhost:8080/health 2>/dev/null | grep -o '\"wheel_version\":\"[^\"]*\"' | cut -d'\"' -f4" 2>/dev/null || echo "")
+
+            if [ "$NEW_VERSION" = "$VERSION" ]; then
+              echo "✅ Encoding worker version verified: v$NEW_VERSION"
+              exit 0
+            fi
+
+            if [ -n "$NEW_VERSION" ]; then
+              echo "⚠️ Version: $NEW_VERSION (expected: $VERSION)"
+            else
+              echo "⚠️ Health endpoint not responding yet"
+            fi
+
+            if [ $i -lt $MAX_RETRIES ]; then
+              echo "   Retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          # STRICT VERIFICATION: Fail CI on version mismatch
+          echo ""
+          echo "=============================================="
+          echo "❌ ENCODING WORKER DEPLOYMENT FAILED"
+          echo "=============================================="
+          echo "Expected version: $VERSION"
+          echo "Deployed version: $NEW_VERSION"
+          echo ""
+          echo "Possible causes:"
+          echo "  - GCS upload failed (check 'Deploy to GCE' step)"
+          echo "  - startup.sh download failed (check VM logs)"
+          echo "  - Wheel installation failed (check VM logs)"
+          echo ""
+          echo "To debug, SSH to VM and check logs:"
+          echo "  gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke --tunnel-through-iap"
+          echo "  sudo journalctl -u encoding-worker -n 100"
+          echo "  cat /var/log/encoding-worker-startup.log"
+          echo "=============================================="
+
+          exit 1
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet

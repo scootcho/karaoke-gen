@@ -8,10 +8,13 @@
 # - Virtual environment exists at /opt/encoding-worker/venv
 # - Systemd service is configured (but not started - no API key yet)
 #
-# At runtime, the startup script only needs to:
-# 1. Fetch API key from Secret Manager
-# 2. Download latest karaoke-gen wheel
-# 3. Start the systemd service
+# IMPORTANT: This image uses the "immutable deployment" pattern:
+# - bootstrap.sh is baked into the image (minimal, rarely changes)
+# - bootstrap.sh downloads startup.sh from GCS on every service start
+# - startup.sh contains all logic and is CI-managed
+# - This allows logic updates without rebuilding the image
+#
+# See infrastructure/encoding-worker/README.md for details.
 
 set -e
 
@@ -95,46 +98,82 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install fastapi uvicorn google-cloud-storage aiofiles aiohttp
 
-# Create startup helper script (runs via ExecStartPre before service starts)
-# This fetches API key and installs latest wheel at boot time
-cat > /opt/encoding-worker/startup.sh << 'STARTUP'
+# Create bootstrap script (runs via ExecStartPre before service starts)
+# This minimal script downloads the REAL startup script from GCS.
+# All actual logic lives in the GCS-hosted startup.sh, managed by CI.
+#
+# Why this pattern?
+# - startup.sh can be updated without rebuilding the Packer image
+# - All code changes go through CI -> GCS -> service restart
+# - No version sorting bugs (fixed wheel path)
+# - Strict version verification before starting
+cat > /opt/encoding-worker/bootstrap.sh << 'BOOTSTRAP'
+#!/bin/bash
+# Encoding Worker Bootstrap Script
+#
+# This is the ONLY script baked into the Packer image.
+# It downloads and executes the real startup script from GCS.
+
+set -e
+
+BUCKET="gs://karaoke-gen-storage-nomadkaraoke"
+WORKER_DIR="/opt/encoding-worker"
+LOG_FILE="/var/log/encoding-worker-bootstrap.log"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "=== Bootstrap: $(date) ==="
+echo "Downloading latest startup script from GCS..."
+
+# Download the CI-managed startup script
+if ! gsutil cp "${BUCKET}/encoding-worker/startup.sh" "${WORKER_DIR}/startup-latest.sh" 2>&1; then
+    echo "ERROR: Failed to download startup.sh from GCS"
+    echo "Falling back to local startup.sh if available..."
+    if [ -f "${WORKER_DIR}/startup-fallback.sh" ]; then
+        cp "${WORKER_DIR}/startup-fallback.sh" "${WORKER_DIR}/startup-latest.sh"
+    else
+        echo "FATAL: No fallback startup script available"
+        exit 1
+    fi
+fi
+
+chmod +x "${WORKER_DIR}/startup-latest.sh"
+
+echo "=== Bootstrap: Executing downloaded startup script ==="
+exec "${WORKER_DIR}/startup-latest.sh"
+BOOTSTRAP
+
+chmod +x /opt/encoding-worker/bootstrap.sh
+
+# Create fallback startup script (used if GCS is unreachable)
+# This is a simplified version that at least tries to start the service
+cat > /opt/encoding-worker/startup-fallback.sh << 'FALLBACK'
 #!/bin/bash
 set -e
 
-echo "=== Encoding worker startup at $(date) ==="
+echo "=== FALLBACK startup at $(date) ==="
+echo "WARNING: Using fallback startup - GCS was unreachable"
 
-# Fetch API key from Secret Manager
-echo "Fetching API key from Secret Manager..."
+WORKER_DIR="/opt/encoding-worker"
+BUCKET="gs://karaoke-gen-storage-nomadkaraoke"
+
+# Fetch API key
 ENCODING_API_KEY=$(gcloud secrets versions access latest --secret=encoding-worker-api-key 2>/dev/null || echo "")
+echo "ENCODING_API_KEY=${ENCODING_API_KEY}" > "${WORKER_DIR}/env"
 
-if [ -z "$ENCODING_API_KEY" ]; then
-    echo "WARNING: No API key found in Secret Manager"
+# Try to install wheel from fixed path
+echo "Attempting to download wheel..."
+if gsutil cp "${BUCKET}/wheels/karaoke_gen-current.whl" /tmp/karaoke_gen.whl 2>/dev/null; then
+    "${WORKER_DIR}/venv/bin/pip" install --upgrade --quiet /tmp/karaoke_gen.whl || true
 fi
 
-# Write environment file for systemd
-echo "ENCODING_API_KEY=${ENCODING_API_KEY}" > /opt/encoding-worker/env
+echo "=== Fallback startup complete ==="
+FALLBACK
 
-# Download and install latest karaoke-gen wheel from GCS
-# This enables hot code updates without rebuilding the image
-echo "Installing latest karaoke-gen wheel from GCS..."
-gsutil cp "gs://karaoke-gen-storage-nomadkaraoke/wheels/karaoke_gen-*.whl" /tmp/ 2>/dev/null || true
-# Use version sort (-V) to get the highest version, not time sort (-t)
-# All wheels download at the same time, so -t picks arbitrarily
-WHEEL_FILE=$(ls /tmp/karaoke_gen-*.whl 2>/dev/null | sort -V | tail -1)
-if [ -n "$WHEEL_FILE" ]; then
-    echo "Installing wheel: $WHEEL_FILE"
-    /opt/encoding-worker/venv/bin/pip install --upgrade --quiet "$WHEEL_FILE" || echo "WARNING: Failed to install wheel"
-else
-    echo "No wheel found in GCS"
-fi
-
-echo "=== Startup script complete ==="
-STARTUP
-
-chmod +x /opt/encoding-worker/startup.sh
+chmod +x /opt/encoding-worker/startup-fallback.sh
 
 # Create systemd service
-# ExecStartPre runs the startup script to fetch API key and install wheel
+# ExecStartPre runs bootstrap.sh which downloads and runs the real startup.sh from GCS
 # ExecStart runs uvicorn with the encoding worker from the installed wheel
 cat > /etc/systemd/system/encoding-worker.service << 'SYSTEMD'
 [Unit]
@@ -146,11 +185,13 @@ Wants=docker.service
 Type=simple
 User=root
 WorkingDirectory=/opt/encoding-worker
-ExecStartPre=/opt/encoding-worker/startup.sh
+# bootstrap.sh downloads startup.sh from GCS, then runs it
+ExecStartPre=/opt/encoding-worker/bootstrap.sh
 ExecStart=/opt/encoding-worker/venv/bin/uvicorn backend.services.gce_encoding.main:app --host 0.0.0.0 --port 8080
 Restart=always
 RestartSec=10
-TimeoutStartSec=300
+# Increased timeout to allow for GCS downloads
+TimeoutStartSec=600
 Environment="GOOGLE_CLOUD_PROJECT=nomadkaraoke"
 EnvironmentFile=/opt/encoding-worker/env
 
@@ -177,3 +218,8 @@ echo "  - FFmpeg at /usr/local/bin/ffmpeg"
 echo "  - Noto fonts (including CJK)"
 echo "  - Virtual environment at /opt/encoding-worker/venv"
 echo "  - Systemd service: encoding-worker.service"
+echo ""
+echo "Immutable deployment pattern:"
+echo "  - bootstrap.sh downloads startup.sh from GCS on every start"
+echo "  - startup.sh is CI-managed, no image rebuild needed for logic changes"
+echo "  - See infrastructure/encoding-worker/README.md"

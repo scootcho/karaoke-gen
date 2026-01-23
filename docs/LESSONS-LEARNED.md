@@ -177,8 +177,33 @@ Use `pulumi up --skip-preview --yes` when CI service account can't run preview. 
 ### Docker Disk Management
 Self-hosted runners need aggressive disk cleanup. Use threshold-based (70%) not age-based cleanup.
 
-### Version Sort for Artifact Selection
-When downloading multiple versioned files (wheels, tarballs), use `sort -V | tail -1` not `ls -t | head -1`. Files downloaded simultaneously have the same timestamp, so time-based sorting picks arbitrarily. Version sorting (`sort -V`) correctly identifies the highest semantic version.
+### Version Sort for Artifact Selection (SUPERSEDED)
+**Note:** This lesson is superseded by the "Immutable Deployment Pattern" below, which eliminates version sorting entirely.
+
+Original lesson: When downloading multiple versioned files (wheels, tarballs), use `sort -V | tail -1` not `ls -t | head -1`. Files downloaded simultaneously have the same timestamp, so time-based sorting picks arbitrarily.
+
+### Immutable Deployment Pattern for GCE Workers
+When deploying to long-running VMs (like the encoding worker), avoid baking deployment logic into Packer images:
+
+**Problem:** The encoding worker had recurring version mismatch issues because:
+1. `startup.sh` was baked into the Packer image
+2. Fixing logic required image rebuild + VM recreation
+3. CI only warned on version mismatch, didn't fail
+4. Multiple deployment vectors (CI, Pulumi, manual SSH) caused drift
+
+**Solution:** Self-updating startup script from GCS:
+1. Packer image contains minimal `bootstrap.sh` (~15 lines, rarely changes)
+2. `bootstrap.sh` downloads real `startup.sh` from GCS on every service start
+3. CI uploads `startup.sh`, wheel, and version manifest to GCS
+4. CI **strictly verifies** deployed version - fails on mismatch
+
+**Benefits:**
+- Logic changes via CI, no Packer rebuild needed
+- Fixed wheel path (`karaoke_gen-current.whl`) eliminates sorting bugs
+- Version verification is mandatory, not optional
+- Single source of truth (GCS), no drift from manual changes
+
+See `infrastructure/encoding-worker/README.md` for implementation details.
 
 ---
 
