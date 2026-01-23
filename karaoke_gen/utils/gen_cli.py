@@ -336,6 +336,48 @@ async def async_main():
     except ValueError:
         sys.exit(1)
 
+    # Handle --list-themes flag
+    if args.list_themes:
+        from backend.services.theme_service import ThemeService
+        theme_service = ThemeService()
+        themes = theme_service.list_themes()
+        print("Available themes:")
+        for theme in themes:
+            marker = " (default)" if theme.is_default else ""
+            print(f"  {theme.id}: {theme.name}{marker}")
+            print(f"    {theme.description}")
+        sys.exit(0)
+
+    # Handle --validate-theme flag
+    if args.validate_theme:
+        from karaoke_gen.style_loader import validate_theme_completeness, load_style_params_from_file
+
+        # Load style params from theme or file
+        if args.theme:
+            from backend.services.theme_service import ThemeService
+            theme_service = ThemeService()
+            theme = theme_service.get_theme(args.theme)
+            if not theme:
+                logger.error(f"Theme not found: {args.theme}")
+                sys.exit(1)
+            style_params = theme.style_params
+            logger.info(f"Validating theme: {args.theme}")
+        elif args.style_params_json:
+            style_params = load_style_params_from_file(args.style_params_json, logger)
+            logger.info(f"Validating style file: {args.style_params_json}")
+        else:
+            logger.error("--validate-theme requires either --theme or --style_params_json")
+            sys.exit(1)
+
+        # Validate completeness
+        is_complete, missing = validate_theme_completeness(style_params, logger)
+        if is_complete:
+            logger.info("✓ Theme is complete with all required parameters")
+            sys.exit(0)
+        else:
+            logger.error(f"✗ Theme is incomplete. Missing: {missing}")
+            sys.exit(1)
+
     # Handle test email template case first
     if args.test_email_template:
         log_level = getattr(logging, args.log_level.upper())

@@ -90,6 +90,9 @@ def mock_base_args():
         style_override=None,
         background_video=None,
         background_video_darkness=0,
+        list_themes=False,
+        validate_theme=False,
+        theme=None,
         auto_download=False,  # New flacfetch parameter
         enable_cdg=False,
         enable_txt=False,

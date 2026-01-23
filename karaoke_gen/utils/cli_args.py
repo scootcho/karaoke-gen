@@ -269,6 +269,17 @@ def create_parser(prog: str = "karaoke-gen") -> argparse.ArgumentParser:
         default=50,
         help="Optional: Darkness overlay percentage (0-100) for video background (default: %(default)s). Example: --background_video_darkness=20",
     )
+    style_group.add_argument(
+        "--list-themes",
+        action="store_true",
+        help="List all available themes and exit. Shows theme IDs, names, and descriptions. Example: --list-themes",
+    )
+    style_group.add_argument(
+        "--validate-theme",
+        action="store_true",
+        help="Validate that the specified theme is complete with all required parameters and exit. "
+             "Requires --theme or --style_params_json. Example: --theme=nomad --validate-theme",
+    )
 
     # Finalisation Configuration
     finalise_group = parser.add_argument_group("Finalisation Configuration")

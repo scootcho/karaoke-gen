@@ -446,15 +446,71 @@ def get_minimal_karaoke_styles() -> Dict[str, Any]:
     }
 
 
+def validate_theme_completeness(
+    style_params: Dict[str, Any],
+    logger: Optional[logging.Logger] = None,
+) -> Tuple[bool, List[str]]:
+    """
+    Validate that a theme has all required parameters.
+
+    Args:
+        style_params: Style parameters dict to validate.
+        logger: Optional logger for messages.
+
+    Returns:
+        Tuple of (is_complete, list_of_missing_fields)
+    """
+    log = logger or logging.getLogger(__name__)
+    missing = []
+
+    # Required sections
+    required_sections = ["intro", "end", "karaoke", "cdg"]
+    for section in required_sections:
+        if section not in style_params:
+            missing.append(f"Missing section: {section}")
+            continue
+
+        # Check required fields per section
+        if section == "intro":
+            required_fields = DEFAULT_INTRO_STYLE.keys()
+        elif section == "end":
+            required_fields = DEFAULT_END_STYLE.keys()
+        elif section == "karaoke":
+            required_fields = DEFAULT_KARAOKE_STYLE.keys()
+        elif section == "cdg":
+            required_fields = DEFAULT_CDG_STYLE.keys()
+        else:
+            continue
+
+        for field in required_fields:
+            if field not in style_params[section]:
+                missing.append(f"{section}.{field}")
+
+    is_complete = len(missing) == 0
+    if not is_complete:
+        log.warning(f"Theme validation failed. Missing: {missing}")
+
+    return is_complete, missing
+
+
 def get_intro_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract intro/title screen format from style parameters.
-    
+
     Merges custom intro params with defaults.
     """
     defaults = DEFAULT_INTRO_STYLE
     intro_params = style_params.get("intro", {})
-    
+
+    # Validate completeness (warning only in Phase 1)
+    missing = [k for k in defaults if k not in intro_params]
+    if missing:
+        logger.warning(
+            f"Incomplete intro theme. Missing fields: {missing}. "
+            f"Using defaults for missing fields. "
+            f"In future versions, incomplete themes will be rejected."
+        )
+
     result = defaults.copy()
     result.update(intro_params)
     return result
@@ -463,12 +519,21 @@ def get_intro_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
 def get_end_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract end screen format from style parameters.
-    
+
     Merges custom end params with defaults.
     """
     defaults = DEFAULT_END_STYLE
     end_params = style_params.get("end", {})
-    
+
+    # Validate completeness (warning only in Phase 1)
+    missing = [k for k in defaults if k not in end_params]
+    if missing:
+        logger.warning(
+            f"Incomplete end theme. Missing fields: {missing}. "
+            f"Using defaults for missing fields. "
+            f"In future versions, incomplete themes will be rejected."
+        )
+
     result = defaults.copy()
     result.update(end_params)
     return result
@@ -477,12 +542,21 @@ def get_end_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
 def get_karaoke_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract karaoke video format from style parameters.
-    
+
     Merges custom karaoke params with defaults.
     """
     defaults = DEFAULT_KARAOKE_STYLE
     karaoke_params = style_params.get("karaoke", {})
-    
+
+    # Validate completeness (warning only in Phase 1)
+    missing = [k for k in defaults if k not in karaoke_params]
+    if missing:
+        logger.warning(
+            f"Incomplete karaoke theme. Missing fields: {missing}. "
+            f"Using defaults for missing fields. "
+            f"In future versions, incomplete themes will be rejected."
+        )
+
     result = defaults.copy()
     result.update(karaoke_params)
     return result
@@ -491,15 +565,24 @@ def get_karaoke_format(style_params: Dict[str, Any]) -> Dict[str, Any]:
 def get_cdg_format(style_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Extract CDG generation format from style parameters.
-    
+
     Returns None if no CDG section is defined.
     """
     if "cdg" not in style_params:
         return None
-    
+
     defaults = DEFAULT_CDG_STYLE
     cdg_params = style_params.get("cdg", {})
-    
+
+    # Validate completeness (warning only in Phase 1)
+    missing = [k for k in defaults if k not in cdg_params]
+    if missing:
+        logger.warning(
+            f"Incomplete cdg theme. Missing fields: {missing}. "
+            f"Using defaults for missing fields. "
+            f"In future versions, incomplete themes will be rejected."
+        )
+
     result = defaults.copy()
     result.update(cdg_params)
     return result
