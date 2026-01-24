@@ -1448,6 +1448,23 @@ async def delete_job_outputs(
             logger.error(f"Error deleting Google Drive files for job {job_id}: {e}", exc_info=True)
             results["gdrive"] = {"status": "error", "error": str(e)}
 
+    # Clean up GCS finals folder - prevents stale files from being picked up during re-encoding
+    try:
+        from backend.services.storage_service import StorageService
+        storage = StorageService()
+        finals_prefix = f"jobs/{job_id}/finals/"
+        deleted_count = storage.delete_folder(finals_prefix)
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} files from GCS finals folder for job {job_id}")
+        results["gcs_finals"] = {
+            "status": "success",
+            "deleted_count": deleted_count,
+            "path": finals_prefix,
+        }
+    except Exception as e:
+        logger.error(f"Error deleting GCS finals folder for job {job_id}: {e}", exc_info=True)
+        results["gcs_finals"] = {"status": "error", "error": str(e)}
+
     # Update job record
     deletion_timestamp = datetime.now(timezone.utc)
     user_service = get_user_service()
@@ -1499,7 +1516,8 @@ async def delete_job_outputs(
         f"Admin {admin_email} deleted outputs for job {job_id}. "
         f"YouTube: {results['youtube']['status']}, "
         f"Dropbox: {results['dropbox']['status']}, "
-        f"GDrive: {results['gdrive']['status']}. "
+        f"GDrive: {results['gdrive']['status']}, "
+        f"GCS Finals: {results['gcs_finals']['status']}. "
         f"Cleared state_data keys: {cleared_keys}"
     )
 
