@@ -97,14 +97,9 @@ backend_service_account = backend_sa.create_backend_service_account()
 backend_iam_bindings = backend_sa.grant_backend_permissions(backend_service_account)
 cloud_tasks_invoker = backend_sa.grant_cloud_tasks_invoker_permission()
 
-# Grant Cloud Build compute service account permission to deploy as karaoke-backend SA
-# This is required for Cloud Build to deploy Cloud Run services that use the backend service account
-cloudbuild_deploy_as_backend = gcp.serviceaccount.IAMMember(
-    "cloudbuild-deploy-as-backend",
-    service_account_id=backend_service_account.name,
-    role="roles/iam.serviceAccountUser",
-    member=f"serviceAccount:{get_project_number()}-compute@developer.gserviceaccount.com",
-)
+# NOTE: CI uses GitHub Actions for deployments, not Cloud Build.
+# If Cloud Build is ever needed, grant roles/iam.serviceAccountUser to
+# {project_number}-compute@ on the karaoke-backend service account.
 
 # GitHub Actions service account with Workload Identity Federation
 github_actions_service_account = github_actions_sa.create_github_actions_service_account()
