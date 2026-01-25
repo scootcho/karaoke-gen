@@ -127,6 +127,26 @@ def create_lyrics_transcription_job(
                                     ),
                                 ),
                             ),
+                            # Cloud Run service URL for Cloud Tasks targeting
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="CLOUD_RUN_SERVICE_URL",
+                                value="https://api.nomadkaraoke.com",
+                            ),
+                            # Enable Cloud Tasks mode (vs direct HTTP)
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="ENABLE_CLOUD_TASKS",
+                                value="true",
+                            ),
+                            # Admin token for Cloud Tasks auth header
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="ADMIN_TOKENS",
+                                value_source=cloudrunv2.JobTemplateTemplateContainerEnvValueSourceArgs(
+                                    secret_key_ref=cloudrunv2.JobTemplateTemplateContainerEnvValueSourceSecretKeyRefArgs(
+                                        secret=f"projects/{PROJECT_ID}/secrets/admin-tokens",
+                                        version="latest",
+                                    ),
+                                ),
+                            ),
                         ],
                     )
                 ],
@@ -198,6 +218,26 @@ def create_audio_separation_job(
                             cloudrunv2.JobTemplateTemplateContainerEnvArgs(
                                 name="AUDIO_SEPARATOR_API_URL",
                                 value="https://nomadkaraoke--audio-separator-api.modal.run",
+                            ),
+                            # Cloud Run service URL for Cloud Tasks targeting
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="CLOUD_RUN_SERVICE_URL",
+                                value="https://api.nomadkaraoke.com",
+                            ),
+                            # Enable Cloud Tasks mode (vs direct HTTP)
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="ENABLE_CLOUD_TASKS",
+                                value="true",
+                            ),
+                            # Admin token for Cloud Tasks auth header
+                            cloudrunv2.JobTemplateTemplateContainerEnvArgs(
+                                name="ADMIN_TOKENS",
+                                value_source=cloudrunv2.JobTemplateTemplateContainerEnvValueSourceArgs(
+                                    secret_key_ref=cloudrunv2.JobTemplateTemplateContainerEnvValueSourceSecretKeyRefArgs(
+                                        secret=f"projects/{PROJECT_ID}/secrets/admin-tokens",
+                                        version="latest",
+                                    ),
+                                ),
                             ),
                         ],
                     )
