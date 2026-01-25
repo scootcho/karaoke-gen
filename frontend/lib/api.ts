@@ -8,8 +8,11 @@ import type { CorrectionData, CorrectionAnnotation } from './lyrics-review/types
 
 // In development, use relative URLs to go through Next.js proxy (avoids CORS)
 // In production (static export), use the full backend URL
-export const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  ? ''  // Relative URL - goes through Next.js proxy
+// For local mode (localhost or 127.0.0.1), use relative URLs
+const isLocalHostname = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+export const API_BASE_URL = isLocalHostname
+  ? ''  // Relative URL - goes to the local server
   : (process.env.NEXT_PUBLIC_API_URL || 'https://api.nomadkaraoke.com');
 
 // Token management - stored in localStorage (client-side only)
@@ -392,12 +395,14 @@ export const api = {
   },
   
   /**
-   * Complete the lyrics review
+   * Complete the lyrics review with optional instrumental selection (combined flow)
    */
-  async completeReview(jobId: string): Promise<{ status: string; job_status: string; message: string }> {
+  async completeReview(jobId: string, instrumentalSelection?: InstrumentalSelectionType): Promise<{ status: string; job_status: string; message: string }> {
+    const body = instrumentalSelection ? { instrumental_selection: instrumentalSelection } : undefined;
     const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/complete-review`, {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: body ? { 'Content-Type': 'application/json', ...getAuthHeaders() } : getAuthHeaders(),
+      body: body ? JSON.stringify(body) : undefined
     });
     return handleResponse(response);
   },

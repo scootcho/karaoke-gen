@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { CorrectionData } from '@/lib/lyrics-review/types'
-import { ArrowLeft, Upload, Loader2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import PreviewVideoSection from '../PreviewVideoSection'
 
 interface ApiClient {
@@ -40,6 +40,11 @@ export default function ReviewChangesModal({
   // Check if there are manual corrections (user-made changes)
   const hasManualCorrections = corrections.some(c => c.handler === 'ManualCorrector' || c.handler === 'UserEdit')
 
+  const handleSubmit = () => {
+    if (isSubmitting) return
+    onSubmit()
+  }
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -60,7 +65,7 @@ export default function ReviewChangesModal({
           {hasManualCorrections ? (
             <p>Manual corrections detected. Review the preview to ensure the lyrics are synchronized correctly.</p>
           ) : (
-            <p>No manual corrections detected. If everything looks good in the preview, click submit and the server will generate the final karaoke video.</p>
+            <p>No manual corrections detected. If everything looks good in the preview, proceed to select your instrumental.</p>
           )}
           <p>Total segments: {totalSegments}</p>
         </div>
@@ -71,19 +76,19 @@ export default function ReviewChangesModal({
             Cancel
           </Button>
           <Button
-            onClick={onSubmit}
+            onClick={handleSubmit}
             disabled={isSubmitting}
             className="bg-green-600 hover:bg-green-700"
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Submitting...
+                Saving...
               </>
             ) : (
               <>
-                Complete Review
-                <Upload className="h-4 w-4 ml-2" />
+                Proceed to Instrumental Review
+                <ArrowRight className="h-4 w-4 ml-2" />
               </>
             )}
           </Button>

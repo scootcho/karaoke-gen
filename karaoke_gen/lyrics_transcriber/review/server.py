@@ -71,13 +71,42 @@ class ReviewServer:
         output_config: OutputConfig,
         audio_filepath: str,
         logger: logging.Logger,
+        # Instrumental review data (optional - for combined review flow)
+        instrumental_options: Optional[List[Dict[str, Any]]] = None,
+        backing_vocals_analysis: Optional[Dict[str, Any]] = None,
+        clean_instrumental_path: Optional[str] = None,
+        with_backing_path: Optional[str] = None,
+        backing_vocals_path: Optional[str] = None,
     ):
-        """Initialize the review server."""
+        """Initialize the review server.
+
+        Args:
+            correction_result: The lyrics correction result to review
+            output_config: Output configuration
+            audio_filepath: Path to the main audio file (vocals)
+            logger: Logger instance
+            instrumental_options: List of instrumental options for selection
+                Each option: {"id": str, "label": str, "audio_path": str}
+            backing_vocals_analysis: Analysis result from AudioAnalyzer
+            clean_instrumental_path: Path to clean instrumental audio file
+            with_backing_path: Path to instrumental with backing vocals
+            backing_vocals_path: Path to backing vocals audio file
+        """
         self.correction_result = correction_result
         self.output_config = output_config
         self.audio_filepath = audio_filepath
         self.logger = logger or logging.getLogger(__name__)
         self.review_completed = False
+        self.corrections_saved = False  # Flag for intermediate save (before instrumental review)
+        self.pending_corrections: Optional[Dict[str, Any]] = None  # Store corrections until final submission
+
+        # Instrumental review data
+        self.instrumental_options = instrumental_options or []
+        self.backing_vocals_analysis = backing_vocals_analysis
+        self.clean_instrumental_path = clean_instrumental_path
+        self.with_backing_path = with_backing_path
+        self.backing_vocals_path = backing_vocals_path
+        self.instrumental_selection: Optional[str] = None
 
         # Create FastAPI instance and configure
         self.app = FastAPI()
@@ -250,16 +279,25 @@ class ReviewServer:
         self.app.add_api_route("/api/handlers", self.update_handlers, methods=["POST"])
         self.app.add_api_route("/api/add-lyrics", self.add_lyrics, methods=["POST"])
 
+        # Instrumental audio streaming routes (for combined review)
+        self.app.add_api_route("/api/audio/instrumental/{stem_type}", self.get_instrumental_audio, methods=["GET"])
+
         # Cloud-compatible routes (for unified Next.js frontend)
         # These use the same handlers but with cloud-style URL patterns
         # Job ID is always "local" for local CLI mode
         self.app.add_api_route("/api/jobs/{job_id}", self.get_local_job, methods=["GET"])
         self.app.add_api_route("/api/jobs/{job_id}/corrections", self.get_correction_data, methods=["GET"])
+        self.app.add_api_route("/api/jobs/{job_id}/corrections", self.submit_corrections, methods=["POST"])
         self.app.add_api_route("/api/jobs/{job_id}/corrections", self.complete_review, methods=["PUT"])
         self.app.add_api_route("/api/jobs/{job_id}/preview-video", self.generate_preview_video, methods=["POST"])
         self.app.add_api_route("/api/jobs/{job_id}/handlers", self.update_handlers_cloud, methods=["PATCH"])
         self.app.add_api_route("/api/jobs/{job_id}/lyrics", self.add_lyrics, methods=["POST"])
         self.app.add_api_route("/api/jobs/{job_id}/annotations", self.post_annotation, methods=["POST"])
+
+        # Review-specific routes (used by combined review UI)
+        self.app.add_api_route("/api/review/{job_id}/correction-data", self.get_correction_data, methods=["GET"])
+        self.app.add_api_route("/api/review/{job_id}/complete", self.complete_review, methods=["POST"])
+        self.app.add_api_route("/api/jobs/{job_id}/complete-review", self.complete_review, methods=["POST"])
 
         # Agentic AI v1 endpoints (contract-compliant scaffolds)
         self.app.add_api_route("/api/v1/correction/agentic", self.post_correction_agentic, methods=["POST"])
@@ -277,9 +315,43 @@ class ReviewServer:
         # Tenant config endpoint (returns default config for local mode)
         self.app.add_api_route("/api/tenant/config", self.get_tenant_config, methods=["GET"])
 
+        # Review-prefixed routes for frontend compatibility
+        self.app.add_api_route("/api/review/{job_id}/preview-video", self.generate_preview_video, methods=["POST"])
+        # Wrapper for get_preview_video that accepts job_id (but ignores it)
+        async def get_preview_video_with_job_id(job_id: str, preview_hash: str):
+            return await self.get_preview_video(preview_hash)
+        self.app.add_api_route("/api/review/{job_id}/preview-video/{preview_hash}", get_preview_video_with_job_id, methods=["GET"])
+
+        # Instrumental review data endpoints
+        self.app.add_api_route("/api/jobs/{job_id}/instrumental-analysis", self.get_instrumental_analysis, methods=["GET"])
+        self.app.add_api_route("/api/jobs/{job_id}/waveform-data", self.get_waveform_data, methods=["GET"])
+
+        # Instrumental audio streaming
+        self.app.add_api_route("/api/jobs/{job_id}/audio-stream/backing_vocals", self.get_backing_vocals_audio, methods=["GET"])
+        self.app.add_api_route("/api/jobs/{job_id}/audio-stream/clean_instrumental", self.get_clean_audio, methods=["GET"])
+        self.app.add_api_route("/api/jobs/{job_id}/audio-stream/with_backing", self.get_with_backing_audio, methods=["GET"])
+
     async def get_correction_data(self):
-        """Get the correction data."""
-        return self.correction_result.to_dict()
+        """Get the correction data including instrumental options."""
+        data = self.correction_result.to_dict()
+
+        # Include instrumental review data as top-level fields (frontend expects these)
+        if self.instrumental_options:
+            # Add audio_url to each option for frontend streaming
+            options_with_urls = []
+            for opt in self.instrumental_options:
+                opt_with_url = dict(opt)
+                if opt.get("id") == "clean":
+                    opt_with_url["audio_url"] = "/api/audio/instrumental/clean"
+                elif opt.get("id") == "with_backing":
+                    opt_with_url["audio_url"] = "/api/audio/instrumental/with_backing"
+                options_with_urls.append(opt_with_url)
+            data["instrumental_options"] = options_with_urls
+
+        if self.backing_vocals_analysis:
+            data["backing_vocals_analysis"] = self.backing_vocals_analysis
+
+        return data
 
     async def get_tenant_config(self):
         """Get tenant configuration for local mode.
@@ -310,6 +382,107 @@ class ReviewServer:
             "user_email": "local@localhost",
             "audio_hash": metadata.get("audio_hash", "local"),
         }
+
+    async def get_instrumental_analysis(self, job_id: str):
+        """Return instrumental analysis data for selection UI."""
+        if not self.backing_vocals_analysis:
+            raise HTTPException(404, "No backing vocals analysis available")
+
+        return {
+            "has_original": False,  # Not supported in local mode
+            "analysis": self.backing_vocals_analysis,
+            "audio_urls": {
+                "backing_vocals": f"/api/jobs/{job_id}/audio-stream/backing_vocals" if self.backing_vocals_path else None,
+                "clean": f"/api/jobs/{job_id}/audio-stream/clean_instrumental" if self.clean_instrumental_path else None,
+                "with_backing": f"/api/jobs/{job_id}/audio-stream/with_backing" if self.with_backing_path else None,
+            },
+            "has_uploaded_instrumental": False,  # Not supported in local mode
+        }
+
+    async def get_waveform_data(self, job_id: str):
+        """Generate waveform visualization data."""
+        if not self.backing_vocals_path or not os.path.exists(self.backing_vocals_path):
+            raise HTTPException(404, "No backing vocals audio available")
+
+        # Import here to avoid circular dependency
+        from pydub import AudioSegment
+        import numpy as np
+
+        try:
+            # Load audio with pydub
+            audio = AudioSegment.from_file(self.backing_vocals_path)
+
+            # Get raw audio data
+            samples = np.array(audio.get_array_of_samples())
+
+            # If stereo, average the channels
+            if audio.channels == 2:
+                samples = samples.reshape((-1, 2)).mean(axis=1)
+
+            # Calculate number of samples per point (aim for ~1000 points)
+            num_points = 1000
+            chunk_size = len(samples) // num_points
+
+            # Generate amplitude peaks
+            peaks = []
+            for i in range(num_points):
+                start = i * chunk_size
+                end = min(start + chunk_size, len(samples))
+                if start < len(samples):
+                    chunk = samples[start:end]
+                    # Get peak amplitude for this chunk
+                    peak = np.abs(chunk).max() if len(chunk) > 0 else 0
+                    peaks.append(float(peak))
+
+            # Normalize to 0-1 range
+            max_peak = max(peaks) if peaks else 1
+            if max_peak > 0:
+                peaks = [p / max_peak for p in peaks]
+
+            duration = len(audio) / 1000.0  # Convert ms to seconds
+
+            return {
+                "duration_seconds": duration,
+                "duration": duration,  # Backward compat
+                "amplitudes": peaks,
+                "sample_rate": audio.frame_rate,
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to generate waveform: {e}")
+            raise HTTPException(500, f"Failed to generate waveform: {str(e)}")
+
+    async def get_backing_vocals_audio(self, job_id: str):
+        """Stream backing vocals audio file."""
+        if not self.backing_vocals_path or not os.path.exists(self.backing_vocals_path):
+            raise HTTPException(404, "Backing vocals audio not found")
+
+        return FileResponse(
+            self.backing_vocals_path,
+            media_type="audio/flac",
+            filename=os.path.basename(self.backing_vocals_path)
+        )
+
+    async def get_clean_audio(self, job_id: str):
+        """Stream clean instrumental audio file."""
+        if not self.clean_instrumental_path or not os.path.exists(self.clean_instrumental_path):
+            raise HTTPException(404, "Clean instrumental audio not found")
+
+        return FileResponse(
+            self.clean_instrumental_path,
+            media_type="audio/flac",
+            filename=os.path.basename(self.clean_instrumental_path)
+        )
+
+    async def get_with_backing_audio(self, job_id: str):
+        """Stream with-backing instrumental audio file."""
+        if not self.with_backing_path or not os.path.exists(self.with_backing_path):
+            raise HTTPException(404, "With-backing instrumental audio not found")
+
+        return FileResponse(
+            self.with_backing_path,
+            media_type="audio/flac",
+            filename=os.path.basename(self.with_backing_path)
+        )
 
     async def update_handlers_cloud(self, job_id: str, enabled_handlers: List[str] = Body(...)):
         """Cloud-compatible handler update endpoint (PATCH method).
@@ -543,15 +716,57 @@ class ReviewServer:
         """Update a CorrectionResult with new correction data."""
         return CorrectionOperations.update_correction_result_with_data(base_result, updated_data)
 
-    async def complete_review(self, updated_data: Dict[str, Any] = Body(...)):
-        """Complete the review process."""
+    async def submit_corrections(self, request_body: Dict[str, Any] = Body(...)):
+        """Submit corrections without completing the review (intermediate save).
+
+        This is called when the user proceeds from lyrics review to instrumental review.
+        The corrections are saved but the review is not marked as complete yet.
+        """
         try:
-            self.correction_result = self._update_correction_result(self.correction_result, updated_data)
-            self.review_completed = True
-            return {"status": "success"}
+            # Extract the corrections data from the wrapper
+            corrections_data = request_body.get("corrections", request_body)
+
+            self.logger.info("Saving corrections (intermediate step before instrumental review)")
+
+            # Store corrections for later application (don't update correction_result yet)
+            # We'll apply them when complete_review is called with the instrumental selection
+            self.pending_corrections = corrections_data
+            self.corrections_saved = True  # Flag to indicate corrections are ready
+
+            return {"status": "success", "message": "Corrections saved"}
         except Exception as e:
-            self.logger.error(f"Failed to update correction data: {str(e)}")
-            return {"status": "error", "message": str(e)}
+            self.logger.error(f"Failed to save corrections: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    async def complete_review(self, updated_data: Dict[str, Any] = Body(...)):
+        """Complete the review process (final submission with instrumental selection)."""
+        try:
+            # Extract instrumental selection if present
+            instrumental_selection = updated_data.pop("instrumental_selection", None)
+            if instrumental_selection:
+                self.instrumental_selection = instrumental_selection
+                self.logger.info(f"Instrumental selection: {instrumental_selection}")
+
+            # Apply pending corrections if they were saved earlier
+            if self.pending_corrections:
+                self.logger.info("Applying pending corrections from lyrics review")
+                self.correction_result = self._update_correction_result(self.correction_result, self.pending_corrections)
+                self.pending_corrections = None  # Clear after applying
+            elif updated_data:
+                # Fallback: apply corrections from request body if no pending corrections
+                self.correction_result = self._update_correction_result(self.correction_result, updated_data)
+
+            # Store instrumental selection in correction result metadata
+            if self.instrumental_selection:
+                if not self.correction_result.metadata:
+                    self.correction_result.metadata = {}
+                self.correction_result.metadata["instrumental_selection"] = self.instrumental_selection
+
+            self.review_completed = True
+            return {"status": "success", "job_status": "completed", "message": "Review completed"}
+        except Exception as e:
+            self.logger.error(f"Failed to complete review: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def ping(self):
         """Simple ping endpoint for testing."""
@@ -571,6 +786,35 @@ class ReviewServer:
             return FileResponse(self.audio_filepath, media_type="audio/mpeg", filename=os.path.basename(self.audio_filepath))
         except Exception as e:
             raise HTTPException(status_code=404, detail="Audio file not found")
+
+    async def get_instrumental_audio(self, stem_type: str):
+        """Stream instrumental audio files.
+
+        Args:
+            stem_type: One of "clean", "with_backing", or "backing_vocals"
+        """
+        # Map stem type to file path
+        path_map = {
+            "clean": self.clean_instrumental_path,
+            "with_backing": self.with_backing_path,
+            "backing_vocals": self.backing_vocals_path,
+        }
+
+        audio_path = path_map.get(stem_type)
+        if not audio_path or not os.path.exists(audio_path):
+            raise HTTPException(status_code=404, detail=f"Instrumental audio not found: {stem_type}")
+
+        # Determine content type based on file extension
+        ext = os.path.splitext(audio_path)[1].lower()
+        content_types = {
+            ".flac": "audio/flac",
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".m4a": "audio/mp4",
+        }
+        content_type = content_types.get(ext, "application/octet-stream")
+
+        return FileResponse(audio_path, media_type=content_type, filename=os.path.basename(audio_path))
 
     async def generate_preview_video(self, updated_data: Dict[str, Any] = Body(...)):
         """Generate a preview video with the current corrections."""

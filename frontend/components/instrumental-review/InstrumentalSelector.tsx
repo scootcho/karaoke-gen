@@ -376,11 +376,12 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
   const [showSuccess, setShowSuccess] = useState(false)
   const [countdown, setCountdown] = useState(2)
 
-  // Submit selection
+  // Submit selection (final submission: corrections + instrumental)
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true)
     try {
-      await api.selectInstrumental(job.job_id, selectedOption)
+      // Submit BOTH corrections + instrumental selection (final submission)
+      await api.completeReview(job.job_id, selectedOption)
 
       if (isLocalMode) {
         // In local mode, show success screen with countdown then close
@@ -388,13 +389,13 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
         setCountdown(2)
       } else {
         // Redirect to dashboard after short delay (cloud mode)
-        toast.success("Selection submitted successfully")
+        toast.success("Review completed successfully")
         setTimeout(() => {
           router.push("/app")
         }, 1500)
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to submit selection")
+      toast.error(err instanceof Error ? err.message : "Failed to complete review")
       setIsSubmitting(false)
     }
   }, [job.job_id, selectedOption, router, isLocalMode])

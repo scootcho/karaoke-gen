@@ -18,9 +18,8 @@
 | Audio upload & separation | Working |
 | Lyrics transcription | Working |
 | Auto-correction (agentic + heuristic) | Disabled (raw transcription goes to human review) |
-| Human lyrics review | Working |
+| Combined review (lyrics + instrumental) | Working |
 | Preview video generation | Working |
-| Instrumental selection | Working |
 | Multi-format encoding | Working |
 | Token-based auth | Working |
 | Magic link auth | Working |
@@ -41,6 +40,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Combined Lyrics + Instrumental Review** (2026-01-24): Merged the two-step human review process (lyrics review, then instrumental selection) into a single unified flow. Users now review lyrics AND select instrumental track in one session, submitting both with a single click. **Benefits**: Better UX (one interaction vs two), reduced drop-off, single email notification instead of two. **Technical changes**: Backing vocals analysis moved to screens_worker (runs before review), instrumental options included in `/api/review/{job_id}/correction-data` response, `POST /api/review/{job_id}/complete` now requires `instrumental_selection` field. The `AWAITING_INSTRUMENTAL_SELECTION` state is retained for finalise-only jobs but no longer used in the normal flow. See [ARCHITECTURE.md](ARCHITECTURE.md#processing-pipeline) and [LESSONS-LEARNED.md](LESSONS-LEARNED.md#combined-review-flow-jan-2026).
 
 - **Edit Segment Time Input UX Fix** (2026-01-24): Fixed cursor jumping issue when typing multi-digit time values in the edit segment modal. Replaced controlled number inputs with debounced `TimeInput` component that maintains local state while focused and only syncs to parent after 300ms or on blur. This allows users to smoothly type values like "12.34" without the cursor jumping to the end on each keystroke. Added 15 comprehensive unit tests and E2E regression test to prevent future regressions. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#debounced-inputs-for-formatted-controlled-components).
 
