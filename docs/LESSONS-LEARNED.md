@@ -142,6 +142,9 @@ Testing webhook creates correct DTO isn't enough. Also test that manager/service
 ### E2E Mocks Must Match Types
 Mock responses must match TypeScript interfaces exactly. Silent failures from type mismatches are hard to debug.
 
+### Mocks Hide API Contract Mismatches
+When E2E tests use mocked API endpoints, the mocks define what you *think* the API is, not what it *actually* is. If frontend code calls a non-existent endpoint (`/api/jobs/{id}/lyrics`), a mock responding to that path will pass—but production will 404. **Pattern**: (1) Add unit tests that verify exact endpoint URLs, (2) Add at least one integration test that calls the real backend, (3) When mocks fail in ways that don't match prod, suspect a contract mismatch. Example: The "Add Reference Lyrics" feature had frontend calling `/api/jobs/{id}/lyrics` while backend expected `/api/review/{id}/add-lyrics`. Mocks used the wrong path too, so regression tests passed while production failed with 404.
+
 ### Use data-testid for E2E
 Prefer `data-testid` over label/text selectors. They're immune to label changes and won't break when similar fields are added.
 
