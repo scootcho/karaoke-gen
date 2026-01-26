@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { Loader2 } from "lucide-react"
 
 export type AudioType = "original" | "backing" | "clean" | "with_backing" | "custom" | "uploaded"
 
@@ -12,6 +13,7 @@ interface StemComparisonProps {
   hasCustom: boolean
   hasUploaded: boolean
   uploadedFilename?: string
+  isLoading?: boolean
 }
 
 interface AudioOption {
@@ -29,6 +31,7 @@ export function StemComparison({
   hasCustom,
   hasUploaded,
   uploadedFilename,
+  isLoading = false,
 }: StemComparisonProps) {
   const options: AudioOption[] = [
     { type: "original", label: "Original", available: hasOriginal },
@@ -43,21 +46,29 @@ export function StemComparison({
 
   return (
     <div className="flex flex-wrap gap-1 bg-background rounded-md p-0.5">
-      {availableOptions.map((option) => (
-        <button
-          key={option.type}
-          type="button"
-          onClick={() => onAudioChange(option.type)}
-          title={option.title}
-          className={cn(
-            "px-2.5 py-1.5 rounded text-xs font-medium transition-all",
-            "text-muted-foreground hover:text-foreground",
-            activeAudio === option.type && "bg-primary text-primary-foreground"
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
+      {availableOptions.map((option) => {
+        const isActive = activeAudio === option.type
+        const showSpinner = isActive && isLoading
+
+        return (
+          <button
+            key={option.type}
+            type="button"
+            onClick={() => onAudioChange(option.type)}
+            disabled={isLoading}
+            title={option.title}
+            className={cn(
+              "px-2.5 py-1.5 rounded text-xs font-medium transition-all flex items-center gap-1.5",
+              "text-muted-foreground hover:text-foreground",
+              isActive && "bg-primary text-primary-foreground",
+              isLoading && !isActive && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            {showSpinner && <Loader2 className="w-3 h-3 animate-spin" />}
+            {option.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

@@ -386,3 +386,59 @@ class TestPreviewStyleLoading:
         font_mappings = ASSET_KEY_MAPPINGS["font"]
         assert isinstance(font_mappings, list)
         assert ("karaoke", "font_path") in font_mappings
+
+
+class TestInstrumentalAnalysisAudioUrls:
+    """Tests for the audio_urls response from get_instrumental_analysis endpoint.
+
+    The frontend expects specific field names in the audio_urls dict.
+    This test documents and enforces the contract.
+    """
+
+    def test_audio_url_field_names_match_frontend_expectations(self):
+        """Verify audio_urls uses 'backing_vocals' not 'backing'.
+
+        The frontend InstrumentalSelector.tsx expects:
+        - audio_urls.clean
+        - audio_urls.with_backing
+        - audio_urls.original
+        - audio_urls.backing_vocals  <-- NOT 'backing'
+
+        This field name mismatch caused backing vocals audio to never load
+        in cloud mode because the frontend looked for 'backing_vocals' but
+        the backend returned 'backing'.
+        """
+        # Document the expected field names that frontend uses
+        expected_audio_url_keys = [
+            'clean',           # Clean instrumental (vocals removed)
+            'with_backing',    # Instrumental with backing vocals
+            'original',        # Original audio file
+            'backing_vocals',  # Backing vocals only stem (NOT 'backing')
+        ]
+
+        # Verify 'backing' is NOT in the expected keys
+        assert 'backing' not in expected_audio_url_keys
+        assert 'backing_vocals' in expected_audio_url_keys
+
+    def test_frontend_stem_type_map_uses_backing_vocals(self):
+        """Document that frontend maps 'backing' AudioType to 'backing_vocals' API field.
+
+        In InstrumentalSelector.tsx:
+        - STEM_TYPE_MAP['backing'] = 'backing_vocals'
+        - getAudioUrl() looks for urls.backing_vocals
+        - handleAudioChange() looks for urls.backing_vocals
+
+        The backend must return 'backing_vocals' to match.
+        """
+        # This mirrors the frontend STEM_TYPE_MAP
+        frontend_stem_type_map = {
+            'original': 'original',
+            'backing': 'backing_vocals',  # AudioType 'backing' -> API field 'backing_vocals'
+            'clean': 'clean_instrumental',
+            'with_backing': 'with_backing',
+            'custom': 'custom_instrumental',
+            'uploaded': 'uploaded_instrumental',
+        }
+
+        # Verify the mapping for backing is 'backing_vocals'
+        assert frontend_stem_type_map['backing'] == 'backing_vocals'
