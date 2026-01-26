@@ -325,6 +325,210 @@ test.describe('Cloud Mode - Auth Requirements', () => {
   });
 });
 
+test.describe('Cloud Mode - Instrumental Audio Loading', () => {
+  /**
+   * REGRESSION TEST: Verify instrumental review requests audio with correct field names
+   *
+   * Bug: Backend was returning audio_urls['backing'] but frontend expected audio_urls['backing_vocals']
+   * This caused backing vocals audio to never load in cloud mode.
+   *
+   * Fix: Backend changed to use 'backing_vocals' to match frontend expectations.
+   */
+
+  test('instrumental review uses backing_vocals field from audio_urls (not backing)', async ({ page }) => {
+    // Mock instrumental analysis response with correctly named fields
+    const mockInstrumentalAnalysis = {
+      job_id: TEST_JOB_ID,
+      artist: 'Test Artist',
+      title: 'Test Song',
+      duration_seconds: 180,
+      analysis: {
+        has_audible_content: true,
+        total_duration_seconds: 180,
+        audible_segments: [],
+        recommended_selection: 'clean',
+        total_audible_duration_seconds: 10,
+        audible_percentage: 5.5,
+        silence_threshold_db: -40,
+      },
+      audio_urls: {
+        clean: 'https://storage.example.com/clean.flac',
+        with_backing: 'https://storage.example.com/with_backing.flac',
+        original: 'https://storage.example.com/original.flac',
+        backing_vocals: 'https://storage.example.com/backing_vocals.flac', // MUST be 'backing_vocals', NOT 'backing'
+      },
+      has_original: true,
+      has_uploaded_instrumental: false,
+    };
+
+    const mockWaveformData = {
+      amplitudes: Array(100).fill(0.5),
+      duration_seconds: 180,
+    };
+
+    await setAuthToken(page, 'test-token-123');
+    await setupApiFixtures(page, {
+      mocks: [
+        {
+          method: 'GET',
+          path: `/api/jobs/${TEST_JOB_ID}`,
+          response: { body: { ...mockJobData, status: 'awaiting_review' } },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/instrumental-analysis`,
+          response: { body: mockInstrumentalAnalysis },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/waveform-data`,
+          response: { body: mockWaveformData },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/correction-data`,
+          response: { body: mockCorrectionData },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/me',
+          response: { body: mockUserData },
+        },
+        {
+          method: 'GET',
+          path: '/api/tenant/config',
+          response: { body: { tenant: null, is_default: true } },
+        },
+      ],
+    });
+
+    // Track audio file requests to verify correct URLs are used
+    const audioRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = request.url();
+      if (url.includes('storage.example.com')) {
+        audioRequests.push(url);
+      }
+    });
+
+    // Navigate to instrumental review
+    await page.goto(`/app/jobs/#/${TEST_JOB_ID}/instrumental`);
+    await page.waitForLoadState('networkidle');
+
+    // Should show the instrumental selection UI
+    await expect(page.locator('h1')).toContainText('Instrumental Selection', { timeout: 10000 });
+
+    // Wait for UI to fully load
+    await page.waitForTimeout(1000);
+
+    // Click the "Backing Vocals Only" tab to load that audio
+    const backingVocalsTab = page.getByRole('button', { name: /backing vocals only/i });
+    if (await backingVocalsTab.isVisible({ timeout: 5000 })) {
+      await backingVocalsTab.click();
+      await page.waitForTimeout(500);
+
+      // Verify the backing_vocals URL was requested (not just 'backing')
+      const backingVocalsRequested = audioRequests.some((url) =>
+        url.includes('backing_vocals.flac')
+      );
+      expect(backingVocalsRequested).toBe(true);
+    }
+  });
+
+  test('audio tabs show loading state when switching', async ({ page }) => {
+    // This test verifies the UX improvement: loading feedback when switching audio tabs
+    const mockInstrumentalAnalysis = {
+      job_id: TEST_JOB_ID,
+      artist: 'Test Artist',
+      title: 'Test Song',
+      duration_seconds: 180,
+      analysis: {
+        has_audible_content: false,
+        total_duration_seconds: 180,
+        audible_segments: [],
+        recommended_selection: 'clean',
+        total_audible_duration_seconds: 0,
+        audible_percentage: 0,
+        silence_threshold_db: -40,
+      },
+      audio_urls: {
+        clean: 'https://storage.example.com/clean.flac',
+        with_backing: 'https://storage.example.com/with_backing.flac',
+        original: 'https://storage.example.com/original.flac',
+        backing_vocals: 'https://storage.example.com/backing_vocals.flac',
+      },
+      has_original: true,
+      has_uploaded_instrumental: false,
+    };
+
+    const mockWaveformData = {
+      amplitudes: Array(100).fill(0.5),
+      duration_seconds: 180,
+    };
+
+    await setAuthToken(page, 'test-token-123');
+    await setupApiFixtures(page, {
+      mocks: [
+        {
+          method: 'GET',
+          path: `/api/jobs/${TEST_JOB_ID}`,
+          response: { body: { ...mockJobData, status: 'awaiting_review' } },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/instrumental-analysis`,
+          response: { body: mockInstrumentalAnalysis },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/waveform-data`,
+          response: { body: mockWaveformData },
+        },
+        {
+          method: 'GET',
+          path: `/api/review/${TEST_JOB_ID}/correction-data`,
+          response: { body: mockCorrectionData },
+        },
+        {
+          method: 'GET',
+          path: '/api/users/me',
+          response: { body: mockUserData },
+        },
+        {
+          method: 'GET',
+          path: '/api/tenant/config',
+          response: { body: { tenant: null, is_default: true } },
+        },
+      ],
+    });
+
+    // Navigate to instrumental review
+    await page.goto(`/app/jobs/#/${TEST_JOB_ID}/instrumental`);
+    await page.waitForLoadState('networkidle');
+
+    // Should show the instrumental selection UI
+    await expect(page.locator('h1')).toContainText('Instrumental Selection', { timeout: 10000 });
+
+    // Find audio tabs
+    const originalTab = page.getByRole('button', { name: /^original$/i });
+    const pureInstrumentalTab = page.getByRole('button', { name: /pure instrumental/i });
+
+    // Wait for tabs to be visible
+    await expect(pureInstrumentalTab).toBeVisible({ timeout: 5000 });
+
+    // Click on a different tab - the loading indicator should appear (briefly)
+    // We can't easily assert on transient loading states, but we verify
+    // that switching tabs doesn't crash and the tab becomes active
+    if (await originalTab.isVisible()) {
+      await originalTab.click();
+
+      // After click, the original tab should have the active styling
+      // (We can't easily test the spinner since it disappears when audio loads)
+      await expect(originalTab).toHaveClass(/bg-primary/, { timeout: 5000 });
+    }
+  });
+});
+
 test.describe('Cloud Mode vs Local Mode', () => {
   /**
    * These tests verify that local mode and cloud mode remain distinct

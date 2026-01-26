@@ -791,7 +791,7 @@ async def get_instrumental_analysis(
     # Check for backing vocals stem for playback
     backing_vocals_path = stems.get('backing_vocals')
     if backing_vocals_path:
-        audio_urls['backing'] = storage.generate_signed_url(backing_vocals_path, expiration_minutes=120)
+        audio_urls['backing_vocals'] = storage.generate_signed_url(backing_vocals_path, expiration_minutes=120)
 
     # Format response to match InstrumentalAnalysis type
     return {

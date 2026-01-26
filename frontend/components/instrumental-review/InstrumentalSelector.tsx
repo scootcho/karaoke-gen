@@ -75,6 +75,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
   const [isUploading, setIsUploading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isShiftHeld, setIsShiftHeld] = useState(false)
+  const [isAudioLoading, setIsAudioLoading] = useState(false)
 
   // Derived state
   const hasOriginal = analysisData?.has_original ?? false
@@ -249,6 +250,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
 
       audio.pause()
       setActiveAudio(type)
+      setIsAudioLoading(true)
 
       // Update audio source
       // For cloud mode, use signed URLs from analysis data
@@ -268,16 +270,20 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       }
       audio.src = audioUrl
 
-      audio.addEventListener(
-        "loadeddata",
-        () => {
-          audio.currentTime = time
-          if (wasPlaying) {
-            audio.play().catch(() => {})
-          }
-        },
-        { once: true }
-      )
+      const handleLoaded = () => {
+        setIsAudioLoading(false)
+        audio.currentTime = time
+        if (wasPlaying) {
+          audio.play().catch(() => {})
+        }
+      }
+
+      const handleError = () => {
+        setIsAudioLoading(false)
+      }
+
+      audio.addEventListener("loadeddata", handleLoaded, { once: true })
+      audio.addEventListener("error", handleError, { once: true })
     },
     [job.job_id, isLocalMode, analysisData]
   )
@@ -595,6 +601,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
               hasCustom={hasCustom}
               hasUploaded={hasUploaded}
               uploadedFilename={uploadedFilename}
+              isLoading={isAudioLoading}
             />
             <CustomUpload onUpload={handleUpload} isUploading={isUploading} />
           </div>
@@ -629,17 +636,27 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
         </div>
 
         {/* Waveform */}
-        <WaveformViewer
-          amplitudes={amplitudes}
-          duration={duration}
-          currentTime={currentTime}
-          muteRegions={muteRegions}
-          audibleSegments={audibleSegments}
-          zoomLevel={zoomLevel}
-          onSeek={seekTo}
-          onRegionCreate={addRegion}
-          isShiftHeld={isShiftHeld}
-        />
+        <div className="relative flex-1 min-h-0">
+          <WaveformViewer
+            amplitudes={amplitudes}
+            duration={duration}
+            currentTime={currentTime}
+            muteRegions={muteRegions}
+            audibleSegments={audibleSegments}
+            zoomLevel={zoomLevel}
+            onSeek={seekTo}
+            onRegionCreate={addRegion}
+            isShiftHeld={isShiftHeld}
+          />
+          {isAudioLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="w-4 h-4" />
+                Loading audio...
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Time axis */}
         <div className="flex justify-between px-3 py-1 text-[10px] text-muted-foreground bg-black/40 flex-shrink-0">
