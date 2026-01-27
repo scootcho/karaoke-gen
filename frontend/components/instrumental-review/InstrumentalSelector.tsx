@@ -280,6 +280,11 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
 
       const handleError = () => {
         setIsAudioLoading(false)
+        toast.error("Failed to load audio")
+        // Restore previous playback state
+        if (wasPlaying) {
+          audio.play().catch(() => {})
+        }
       }
 
       audio.addEventListener("loadeddata", handleLoaded, { once: true })
@@ -426,22 +431,14 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       const correctionData = await lyricsReviewApi.getCorrectionData(job.job_id)
       await lyricsReviewApi.completeReview(job.job_id, correctionData, selectedOption)
 
-      if (isLocalMode) {
-        // In local mode, show success screen with countdown then close
-        setShowSuccess(true)
-        setCountdown(2)
-      } else {
-        // Redirect to dashboard after short delay (cloud mode)
-        toast.success("Review completed successfully")
-        setTimeout(() => {
-          router.push("/app")
-        }, 1500)
-      }
+      // Show success screen in both modes
+      setShowSuccess(true)
+      setCountdown(isLocalMode ? 2 : 3)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to complete review")
       setIsSubmitting(false)
     }
-  }, [job.job_id, selectedOption, router, isLocalMode])
+  }, [job.job_id, selectedOption, isLocalMode])
 
   // Countdown effect for success screen
   useEffect(() => {
@@ -451,7 +448,11 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval)
-          window.close()
+          if (isLocalMode) {
+            window.close()
+          } else {
+            router.push("/app")
+          }
           return 0
         }
         return prev - 1
@@ -459,7 +460,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [showSuccess])
+  }, [showSuccess, isLocalMode, router])
 
   // Loading state
   if (isLoading) {
@@ -492,7 +493,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     )
   }
 
-  // Success screen (local mode)
+  // Success screen
   if (showSuccess) {
     const selectionLabels: Record<string, string> = {
       clean: "Clean Instrumental",
@@ -515,8 +516,12 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
           </p>
           <p className="text-muted-foreground">
             {countdown > 0
-              ? `Closing in ${countdown}s...`
-              : "You can close this window now."}
+              ? isLocalMode
+                ? `Closing in ${countdown}s...`
+                : `Redirecting in ${countdown}s...`
+              : isLocalMode
+                ? "You can close this window now."
+                : "Redirecting..."}
           </p>
         </div>
       </div>

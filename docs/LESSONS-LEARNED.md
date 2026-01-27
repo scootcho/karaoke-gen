@@ -98,6 +98,9 @@ Auth tokens in localStorage are domain-isolated. Keep auth on a single domain or
 ### Standalone HTML Pages Need Auth Fallback
 Standalone HTML pages (like instrumental review) that use magic link tokens should also check localStorage for user auth tokens. Priority: full auth token (doesn't expire) > magic link token (expires). This prevents logged-in users from being blocked when their magic link expires.
 
+### Local Mode Detection Must Check Routing Pattern
+When detecting local CLI mode on localhost, check both port AND routing pattern. Hash-based routing (`#/{jobId}/route`) indicates cloud mode even on localhost:3000, while path-based routing (`/local/route`) indicates local CLI mode. This allows E2E tests to run in cloud mode on localhost without being misdetected as local CLI mode. **Implementation**: `isLocalMode()` should return false when it detects the hash-based routing pattern `#/?[^/]+/(review|instrumental)`, regardless of hostname/port.
+
 ### Tab Visibility Refresh
 Use `visibilitychange` event for immediate refresh when user returns to tab, not just polling intervals.
 

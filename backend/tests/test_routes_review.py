@@ -430,15 +430,15 @@ class TestInstrumentalAnalysisAudioUrls:
 
         The backend must return 'backing_vocals' to match.
         """
-        # This mirrors the frontend STEM_TYPE_MAP
-        frontend_stem_type_map = {
+        # Frontend expects these audio_urls keys in cloud mode
+        # (In local mode, it uses STEM_TYPE_MAP which has different values)
+        expected_cloud_mode_keys = {
             'original': 'original',
             'backing': 'backing_vocals',  # AudioType 'backing' -> API field 'backing_vocals'
-            'clean': 'clean_instrumental',
+            'clean': 'clean',  # AudioType 'clean' -> API field 'clean'
             'with_backing': 'with_backing',
-            'custom': 'custom_instrumental',
-            'uploaded': 'uploaded_instrumental',
         }
 
         # Verify the mapping for backing is 'backing_vocals'
-        assert frontend_stem_type_map['backing'] == 'backing_vocals'
+        assert expected_cloud_mode_keys['backing'] == 'backing_vocals'
+        assert expected_cloud_mode_keys['clean'] == 'clean'

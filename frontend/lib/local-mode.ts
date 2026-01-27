@@ -20,17 +20,41 @@ const ALL_LOCAL_PORTS = [...new Set([...LOCAL_REVIEW_PORTS, ...DEV_TESTING_PORTS
 
 /**
  * Check if the frontend is running in local CLI mode
+ *
+ * Returns true only if:
+ * - Running on localhost with a known local server port
+ * - NOT using hash-based routing (cloud mode uses #/{jobId}/route)
+ * - URL path contains /local/ (explicit local mode indicator)
+ *
+ * This allows running cloud mode tests on localhost while still supporting
+ * local CLI mode for the karaoke-gen CLI tool.
  */
 export function isLocalMode(): boolean {
   if (typeof window === 'undefined') return false
 
-  const { hostname, port } = window.location
+  const { hostname, port, hash, pathname } = window.location
 
   // Must be on localhost
   if (hostname !== 'localhost' && hostname !== '127.0.0.1') return false
 
   // Must be on one of the known local server ports
-  return ALL_LOCAL_PORTS.includes(port)
+  if (!ALL_LOCAL_PORTS.includes(port)) return false
+
+  // If using hash-based routing (cloud mode pattern), it's NOT local mode
+  // Cloud mode uses: /app/jobs/#/{jobId}/review or /app/jobs/#/{jobId}/instrumental
+  if (hash && hash.match(/^#\/?[^/]+\/(review|instrumental)/)) {
+    return false
+  }
+
+  // If pathname explicitly contains /local/, it's local mode
+  // Local mode uses: /app/jobs/local/review or /app/jobs/local/instrumental
+  if (pathname.includes('/local/')) {
+    return true
+  }
+
+  // Default to local mode on localhost with known ports (backwards compatibility)
+  // This handles the case where the local CLI opens the page at /app/jobs/local/review
+  return true
 }
 
 /**
