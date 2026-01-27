@@ -280,6 +280,11 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
 
       const handleError = () => {
         setIsAudioLoading(false)
+        toast.error("Failed to load audio")
+        // Restore previous playback state
+        if (wasPlaying) {
+          audio.play().catch(() => {})
+        }
       }
 
       audio.addEventListener("loadeddata", handleLoaded, { once: true })
