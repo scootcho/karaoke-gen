@@ -48,6 +48,34 @@ When multiple code paths create jobs (file upload, audio search, webhooks), use 
 ### Fix Both Sides of Dual Code Paths
 When fixing a bug in a system with multiple code paths (e.g., legacy vs orchestrator, local vs cloud), verify ALL paths are fixed. PR #271 fixed the GCE worker to READ `instrumental_selection` but only checked the legacy path which was already SENDING it. The orchestrator path (production default) wasn't sending it. **Pattern**: If a component receives config from multiple callers, check ALL callers when fixing the receiving side. Write integration tests that cover each path.
 
+### Test Real Code, Not Just Mocked Endpoints (Jan 2026)
+**What happened**: Job `5a69afd1` failed in production with `ImportError: cannot import name 'run_video_worker' from 'backend.workers.video_worker'`. This function never existed - the import was incorrect from the start. The bug was introduced in commit 29be83cb (Jan 25, 2026) and reached production the same day.
+
+**Why tests didn't catch it**: `test_internal_api.py` mocked the entire worker function, so the import statement inside the function was never executed:
+```python
+patch('backend.api.routes.internal.process_render_video', mock_render)
+```
+This verified the HTTP endpoint worked but bypassed all real worker code, including imports.
+
+**The fix**: Added `test_render_video_worker_integration.py` with AST-based import validation that parses the worker source code and verifies every import actually exists. This test runs on every CI build and would have caught the bug before deployment.
+
+**Pattern for preventing similar bugs**:
+1. **Mock minimally**: Don't mock entire worker functions - mock only external dependencies (Firestore, GCS, APIs)
+2. **Use AST validation**: For critical worker modules, add tests that parse the source and validate all imports exist
+3. **Integration tests**: Use emulator-based integration tests (in `backend/tests/emulator/`) that execute real worker code paths
+
+**Correct worker coordination pattern**:
+```python
+# ✅ CORRECT: Use WorkerService
+from backend.services.worker_service import get_worker_service
+worker_service = get_worker_service()
+await worker_service.trigger_video_worker(job_id)
+
+# ❌ WRONG: Import non-existent function directly
+from backend.workers.video_worker import run_video_worker
+await run_video_worker(job_id, job_manager, storage)
+```
+
 **Example 1:** The `gcs_path` parameter bug for remote flacfetch downloads was fixed for RED/OPS torrent sources in December 2025, but the same bug existed for YouTube sources. The fix only addressed one branch of the conditional, leaving YouTube downloads broken when remote was enabled. Always search for ALL code paths that might need the same fix.
 
 **Example 2:** The countdown audio sync fix (PR #328) only fixed the writer side (`render_video_worker` updating `lyrics_metadata.has_countdown_padding`). The orchestrator path that READS that state and pads the instrumental wasn't updated. PR #338 added the reader-side fix: `OrchestratorConfig` now has `countdown_padding_seconds`, `create_orchestrator_config_from_job` reads from lyrics_metadata, and GCE worker pads instrumental audio. **Lesson**: When adding cross-worker state, trace the data flow end-to-end through ALL code paths (legacy KaraokeFinalise path AND orchestrator path).
