@@ -426,22 +426,14 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       const correctionData = await lyricsReviewApi.getCorrectionData(job.job_id)
       await lyricsReviewApi.completeReview(job.job_id, correctionData, selectedOption)
 
-      if (isLocalMode) {
-        // In local mode, show success screen with countdown then close
-        setShowSuccess(true)
-        setCountdown(2)
-      } else {
-        // Redirect to dashboard after short delay (cloud mode)
-        toast.success("Review completed successfully")
-        setTimeout(() => {
-          router.push("/app")
-        }, 1500)
-      }
+      // Show success screen in both modes
+      setShowSuccess(true)
+      setCountdown(isLocalMode ? 2 : 3)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to complete review")
       setIsSubmitting(false)
     }
-  }, [job.job_id, selectedOption, router, isLocalMode])
+  }, [job.job_id, selectedOption, isLocalMode])
 
   // Countdown effect for success screen
   useEffect(() => {
@@ -451,7 +443,11 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(interval)
-          window.close()
+          if (isLocalMode) {
+            window.close()
+          } else {
+            router.push("/app")
+          }
           return 0
         }
         return prev - 1
@@ -459,7 +455,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [showSuccess])
+  }, [showSuccess, isLocalMode, router])
 
   // Loading state
   if (isLoading) {
@@ -492,7 +488,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     )
   }
 
-  // Success screen (local mode)
+  // Success screen
   if (showSuccess) {
     const selectionLabels: Record<string, string> = {
       clean: "Clean Instrumental",
@@ -515,8 +511,12 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
           </p>
           <p className="text-muted-foreground">
             {countdown > 0
-              ? `Closing in ${countdown}s...`
-              : "You can close this window now."}
+              ? isLocalMode
+                ? `Closing in ${countdown}s...`
+                : `Redirecting in ${countdown}s...`
+              : isLocalMode
+                ? "You can close this window now."
+                : "Redirecting..."}
           </p>
         </div>
       </div>
@@ -636,27 +636,17 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
         </div>
 
         {/* Waveform */}
-        <div className="relative flex-1 min-h-0">
-          <WaveformViewer
-            amplitudes={amplitudes}
-            duration={duration}
-            currentTime={currentTime}
-            muteRegions={muteRegions}
-            audibleSegments={audibleSegments}
-            zoomLevel={zoomLevel}
-            onSeek={seekTo}
-            onRegionCreate={addRegion}
-            isShiftHeld={isShiftHeld}
-          />
-          {isAudioLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner className="w-4 h-4" />
-                Loading audio...
-              </div>
-            </div>
-          )}
-        </div>
+        <WaveformViewer
+          amplitudes={amplitudes}
+          duration={duration}
+          currentTime={currentTime}
+          muteRegions={muteRegions}
+          audibleSegments={audibleSegments}
+          zoomLevel={zoomLevel}
+          onSeek={seekTo}
+          onRegionCreate={addRegion}
+          isShiftHeld={isShiftHeld}
+        />
 
         {/* Time axis */}
         <div className="flex justify-between px-3 py-1 text-[10px] text-muted-foreground bg-black/40 flex-shrink-0">
