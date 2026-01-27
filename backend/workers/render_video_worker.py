@@ -341,9 +341,11 @@ async def process_render_video(job_id: str) -> bool:
                         logger.info(f"[job:{job_id}] WORKER_END worker=render-video status=success duration={duration:.1f}s")
 
                         # Trigger video worker for final encoding
-                        from backend.workers.video_worker import run_video_worker
+                        from backend.services.worker_service import get_worker_service
+
+                        worker_service = get_worker_service()
                         job_log.info("Triggering video worker for final encoding...")
-                        await run_video_worker(job_id, job_manager, storage)
+                        await worker_service.trigger_video_worker(job_id)
 
                     # Mark render progress as complete for idempotency
                     # This allows the worker to be re-triggered after admin reset
