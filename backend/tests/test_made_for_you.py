@@ -1641,8 +1641,12 @@ class TestMadeForYouYouTubeDownloadContract:
         """
         When YouTube download fails, job should be transitioned to FAILED status.
 
-        The handler catches the error, marks the job as failed, sends an error
-        notification email to admin, and swallows the exception (doesn't re-raise).
+        Flow in _handle_made_for_you_order:
+        1. Inner except catches YouTubeDownloadError
+        2. Transitions job to FAILED status
+        3. Re-raises the exception
+        4. Outer except catches it and sends admin notification email
+        5. Outer handler swallows the exception (doesn't propagate to caller)
         """
         from backend.api.routes.users import _handle_made_for_you_order
         from backend.services.youtube_download_service import YouTubeDownloadError
@@ -1664,7 +1668,7 @@ class TestMadeForYouYouTubeDownloadContract:
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
              patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
 
-            # Handler catches errors and sends notification, doesn't re-raise
+            # Inner handler marks job failed and re-raises; outer handler sends notification
             await _handle_made_for_you_order(
                 session_id="sess_123",
                 metadata=youtube_order_metadata,
