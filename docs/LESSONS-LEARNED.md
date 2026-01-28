@@ -179,6 +179,41 @@ Mock responses must match TypeScript interfaces exactly. Silent failures from ty
 ### Mocks Hide API Contract Mismatches
 When E2E tests use mocked API endpoints, the mocks define what you *think* the API is, not what it *actually* is. If frontend code calls a non-existent endpoint (`/api/jobs/{id}/lyrics`), a mock responding to that path will pass—but production will 404. **Pattern**: (1) Add unit tests that verify exact endpoint URLs, (2) Add at least one integration test that calls the real backend, (3) When mocks fail in ways that don't match prod, suspect a contract mismatch. Example: The "Add Reference Lyrics" feature had frontend calling `/api/jobs/{id}/lyrics` while backend expected `/api/review/{id}/add-lyrics`. Mocks used the wrong path too, so regression tests passed while production failed with 404.
 
+### YouTube URL Downloads Must Happen Before Workers (Jan 2026)
+
+**Problem**: Job 811ec4e5 (made_for_you order with YouTube URL) failed with "Failed to download audio file". Workers were triggered but `input_media_gcs_path` was null.
+
+**Root cause**: The `_handle_made_for_you_order` webhook handler triggered workers directly for YouTube URLs without downloading audio first via `YouTubeDownloadService`. The correct flow (used in `file_upload.py` and `audio_search.py`) is:
+1. Detect YouTube URL
+2. Use `YouTubeDownloadService.download()` to download audio to GCS
+3. Update job with `input_media_gcs_path`
+4. THEN trigger workers
+
+**Why tests didn't catch it**: The test `test_youtube_url_order_skips_search` mocked the entire `worker_service`, verifying only that `trigger_audio_worker.assert_called_once()`. The mock hid the fact that workers require `input_media_gcs_path` to be set, which only happens after `YouTubeDownloadService.download()` completes.
+
+**Pattern for preventing similar bugs**:
+1. **Test prerequisites, not just calls**: When testing worker triggers, verify all fields workers need are set BEFORE triggers
+2. **Use call-order tracking**: Track sequence of operations to verify `download → update job → trigger workers`
+3. **AST import validation**: Verify the handler imports and uses required services (same pattern as `test_job_creation_regression.py`)
+
+**Example test pattern**:
+```python
+call_order = []
+
+mock_youtube_service.download = AsyncMock(
+    side_effect=lambda **kwargs: call_order.append('download')
+)
+mock_worker_service.trigger_audio_worker = AsyncMock(
+    side_effect=lambda x: call_order.append('audio_worker')
+)
+
+# After calling handler...
+assert 'download' in call_order, "YouTube download must be called"
+download_index = call_order.index('download')
+worker_index = call_order.index('audio_worker')
+assert download_index < worker_index, "Download must happen BEFORE workers"
+```
+
 ### Use data-testid for E2E
 Prefer `data-testid` over label/text selectors. They're immune to label changes and won't break when similar fields are added.
 

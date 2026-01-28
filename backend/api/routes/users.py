@@ -61,6 +61,10 @@ from backend.api.dependencies import require_admin
 from backend.api.routes.file_upload import _prepare_theme_for_job
 from backend.services.auth_service import UserType
 from backend.utils.test_data import is_test_email
+from backend.services.youtube_download_service import (
+    get_youtube_download_service,
+    YouTubeDownloadError,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -578,12 +582,43 @@ async def _handle_made_for_you_order(
 
         # Handle based on whether we have a YouTube URL or need to search
         if youtube_url:
-            # URL provided - trigger workers directly (no audio selection needed)
-            logger.info(f"Job {job_id}: YouTube URL provided, triggering workers")
-            await asyncio.gather(
-                worker_service.trigger_audio_worker(job_id),
-                worker_service.trigger_lyrics_worker(job_id)
-            )
+            # URL provided - download audio first, then trigger workers
+            # CRITICAL: Workers require input_media_gcs_path to be set before they can process
+            # See docs/LESSONS-LEARNED.md "YouTube URL Downloads Must Happen Before Workers"
+            logger.info(f"Job {job_id}: YouTube URL provided, downloading audio first")
+
+            try:
+                youtube_service = get_youtube_download_service()
+                audio_gcs_path = await youtube_service.download(
+                    url=youtube_url,
+                    job_id=job_id,
+                    artist=artist,
+                    title=title,
+                )
+
+                # Update job with the downloaded audio path BEFORE triggering workers
+                job_manager.update_job(job_id, {
+                    'input_media_gcs_path': audio_gcs_path,
+                    'filename': os.path.basename(audio_gcs_path),
+                })
+
+                logger.info(f"Job {job_id}: YouTube audio downloaded to {audio_gcs_path}, triggering workers")
+
+                # Now trigger both workers in parallel (audio already downloaded)
+                await asyncio.gather(
+                    worker_service.trigger_audio_worker(job_id),
+                    worker_service.trigger_lyrics_worker(job_id)
+                )
+
+            except YouTubeDownloadError as e:
+                logger.error(f"Job {job_id}: YouTube download failed: {e}")
+                job_manager.transition_to_state(
+                    job_id=job_id,
+                    new_status=JobStatus.FAILED,
+                    progress=0,
+                    message=f"YouTube download failed: {str(e)}"
+                )
+                raise
         else:
             # No URL - use audio search flow, pause for admin selection
             # Made-for-you jobs require admin to select audio source
