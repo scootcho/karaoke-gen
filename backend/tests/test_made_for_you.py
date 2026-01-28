@@ -1332,7 +1332,10 @@ class TestHandleMadeForYouOrder:
         mock_theme_service
     ):
         """
-        Orders with YouTube URL should trigger workers directly, not search.
+        Orders with YouTube URL should download audio then trigger workers (no search).
+
+        Note: The download step was added in Jan 2026 to fix job 811ec4e5 failure.
+        See docs/LESSONS-LEARNED.md "YouTube URL Downloads Must Happen Before Workers".
         """
         from backend.api.routes.users import _handle_made_for_you_order
 
@@ -1349,11 +1352,18 @@ class TestHandleMadeForYouOrder:
         mock_worker_service.trigger_audio_worker = AsyncMock()
         mock_worker_service.trigger_lyrics_worker = AsyncMock()
 
+        # Mock YouTube download service to return a GCS path
+        mock_youtube_service = MagicMock()
+        mock_youtube_service.download = AsyncMock(
+            return_value="uploads/test-job-123/audio/test.webm"
+        )
+
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service), \
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
-             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service):
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
 
             await _handle_made_for_you_order(
                 session_id="sess_123",
@@ -1367,7 +1377,10 @@ class TestHandleMadeForYouOrder:
             # URL should be set
             assert job_create_arg.url == youtube_metadata["youtube_url"]
 
-            # Workers should be triggered directly
+            # Audio should be downloaded first
+            mock_youtube_service.download.assert_called_once()
+
+            # Workers should be triggered after download
             mock_worker_service.trigger_audio_worker.assert_called_once()
             mock_worker_service.trigger_lyrics_worker.assert_called_once()
 
@@ -1433,6 +1446,312 @@ class TestHandleMadeForYouOrder:
 
             assert job_create_arg.theme_id == "nomad", \
                 "Default nomad theme should be applied to made-for-you jobs"
+
+
+class TestMadeForYouYouTubeDownloadContract:
+    """
+    CRITICAL: Contract tests for YouTube URL handling in made-for-you orders.
+
+    Bug context (2026-01-28): Job 811ec4e5 failed because the webhook handler
+    triggered workers directly for YouTube URLs without downloading audio first.
+    Workers require input_media_gcs_path to be set, which only happens after
+    YouTubeDownloadService.download() completes.
+
+    This test ensures the correct pattern:
+    1. YouTubeDownloadService.download() is called BEFORE workers
+    2. Job is updated with input_media_gcs_path BEFORE workers
+    3. THEN workers are triggered
+
+    See docs/LESSONS-LEARNED.md "YouTube URL Downloads Must Happen Before Workers"
+    """
+
+    @pytest.fixture
+    def mock_job_manager(self):
+        """Create mock JobManager with update tracking."""
+        manager = MagicMock()
+        mock_job = MagicMock()
+        mock_job.job_id = "test-job-123"
+        manager.create_job.return_value = mock_job
+        return manager
+
+    @pytest.fixture
+    def mock_email_service(self):
+        """Create mock email service."""
+        service = MagicMock()
+        service.send_email.return_value = True
+        return service
+
+    @pytest.fixture
+    def mock_user_service(self):
+        """Create mock user service."""
+        service = MagicMock()
+        service._mark_stripe_session_processed.return_value = None
+        mock_admin_login = MagicMock()
+        mock_admin_login.token = "test-admin-login-token-123"
+        service.create_admin_login_token.return_value = mock_admin_login
+        return service
+
+    @pytest.fixture
+    def mock_theme_service(self):
+        """Create mock theme service."""
+        service = MagicMock()
+        service.get_default_theme_id.return_value = "nomad"
+        return service
+
+    @pytest.fixture
+    def youtube_order_metadata(self):
+        """Order metadata with YouTube URL."""
+        return {
+            "order_type": "made_for_you",
+            "customer_email": "customer@example.com",
+            "artist": "Test Artist",
+            "title": "Test Song",
+            "source_type": "youtube",
+            "youtube_url": "https://youtube.com/watch?v=abc123",
+        }
+
+    @pytest.mark.asyncio
+    async def test_youtube_url_downloads_before_workers(
+        self, mock_job_manager, mock_email_service, mock_user_service,
+        mock_theme_service, youtube_order_metadata
+    ):
+        """
+        CRITICAL: YouTube audio MUST be downloaded before workers are triggered.
+
+        The correct flow is:
+        1. YouTubeDownloadService.download() returns GCS path
+        2. Job is updated with input_media_gcs_path
+        3. Workers are triggered
+
+        Without this, workers fail with "Failed to download audio file" because
+        input_media_gcs_path is null.
+        """
+        from backend.api.routes.users import _handle_made_for_you_order
+
+        # Track call order to verify sequence
+        call_order = []
+
+        # Mock YouTubeDownloadService to return a GCS path
+        mock_youtube_service = MagicMock()
+        mock_youtube_service.download = AsyncMock(
+            return_value="uploads/test-job-123/audio/test.webm",
+            side_effect=lambda **kwargs: (
+                call_order.append('youtube_download'),
+                "uploads/test-job-123/audio/test.webm"
+            )[1]
+        )
+
+        # Mock worker service and track when workers are triggered
+        mock_worker_service = MagicMock()
+        mock_worker_service.trigger_audio_worker = AsyncMock(
+            side_effect=lambda x: call_order.append('audio_worker')
+        )
+        mock_worker_service.trigger_lyrics_worker = AsyncMock(
+            side_effect=lambda x: call_order.append('lyrics_worker')
+        )
+
+        # Track when input_media_gcs_path is set
+        original_update_job = mock_job_manager.update_job
+        def tracking_update_job(job_id, data):
+            if isinstance(data, dict) and 'input_media_gcs_path' in data:
+                call_order.append('gcs_path_set')
+            return original_update_job(job_id, data) if callable(original_update_job) else None
+        mock_job_manager.update_job = MagicMock(side_effect=tracking_update_job)
+
+        with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
+             patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service), \
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
+
+            await _handle_made_for_you_order(
+                session_id="sess_123",
+                metadata=youtube_order_metadata,
+                user_service=mock_user_service,
+                email_service=mock_email_service,
+            )
+
+        # CRITICAL: YouTubeDownloadService.download MUST be called for YouTube URLs
+        mock_youtube_service.download.assert_called_once()
+
+        # CRITICAL: GCS path MUST be set BEFORE workers are triggered
+        assert 'gcs_path_set' in call_order, \
+            "input_media_gcs_path must be set for YouTube URL orders. " \
+            f"Call order was: {call_order}"
+
+        gcs_path_index = call_order.index('gcs_path_set')
+        worker_indices = [i for i, x in enumerate(call_order)
+                         if x in ('audio_worker', 'lyrics_worker')]
+
+        for worker_index in worker_indices:
+            assert gcs_path_index < worker_index, \
+                f"input_media_gcs_path must be set BEFORE workers are triggered. " \
+                f"Call order was: {call_order}"
+
+    @pytest.mark.asyncio
+    async def test_youtube_download_called_with_correct_params(
+        self, mock_job_manager, mock_email_service, mock_user_service,
+        mock_theme_service, youtube_order_metadata
+    ):
+        """
+        YouTubeDownloadService.download must be called with job_id, url, artist, and title.
+        """
+        from backend.api.routes.users import _handle_made_for_you_order
+
+        mock_youtube_service = MagicMock()
+        mock_youtube_service.download = AsyncMock(
+            return_value="uploads/test-job-123/audio/test.webm"
+        )
+
+        mock_worker_service = MagicMock()
+        mock_worker_service.trigger_audio_worker = AsyncMock()
+        mock_worker_service.trigger_lyrics_worker = AsyncMock()
+
+        with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
+             patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service), \
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
+
+            await _handle_made_for_you_order(
+                session_id="sess_123",
+                metadata=youtube_order_metadata,
+                user_service=mock_user_service,
+                email_service=mock_email_service,
+            )
+
+        # Verify download was called with expected parameters
+        mock_youtube_service.download.assert_called_once()
+        call_kwargs = mock_youtube_service.download.call_args.kwargs
+
+        assert call_kwargs.get('url') == youtube_order_metadata['youtube_url'], \
+            "download must be called with the YouTube URL"
+        assert call_kwargs.get('job_id') == "test-job-123", \
+            "download must be called with the job_id"
+        assert call_kwargs.get('artist') == youtube_order_metadata['artist'], \
+            "download must be called with the artist"
+        assert call_kwargs.get('title') == youtube_order_metadata['title'], \
+            "download must be called with the title"
+
+    @pytest.mark.asyncio
+    async def test_youtube_download_failure_marks_job_failed(
+        self, mock_job_manager, mock_email_service, mock_user_service,
+        mock_theme_service, youtube_order_metadata
+    ):
+        """
+        When YouTube download fails, job should be transitioned to FAILED status.
+
+        Flow in _handle_made_for_you_order:
+        1. Inner except catches YouTubeDownloadError
+        2. Transitions job to FAILED status
+        3. Re-raises the exception
+        4. Outer except catches it and sends admin notification email
+        5. Outer handler swallows the exception (doesn't propagate to caller)
+        """
+        from backend.api.routes.users import _handle_made_for_you_order
+        from backend.services.youtube_download_service import YouTubeDownloadError
+        from backend.models.job import JobStatus
+
+        # Mock YouTubeDownloadService to raise an error
+        mock_youtube_service = MagicMock()
+        mock_youtube_service.download = AsyncMock(
+            side_effect=YouTubeDownloadError("Video unavailable")
+        )
+
+        mock_worker_service = MagicMock()
+        mock_worker_service.trigger_audio_worker = AsyncMock()
+        mock_worker_service.trigger_lyrics_worker = AsyncMock()
+
+        with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
+             patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service), \
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
+
+            # Inner handler marks job failed and re-raises; outer handler sends notification
+            await _handle_made_for_you_order(
+                session_id="sess_123",
+                metadata=youtube_order_metadata,
+                user_service=mock_user_service,
+                email_service=mock_email_service,
+            )
+
+        # Verify job was transitioned to FAILED
+        mock_job_manager.transition_to_state.assert_called()
+        transition_call = mock_job_manager.transition_to_state.call_args
+        assert transition_call.kwargs.get('new_status') == JobStatus.FAILED, \
+            "Job should be transitioned to FAILED on download error"
+        assert "YouTube download failed" in transition_call.kwargs.get('message', ''), \
+            "Error message should indicate YouTube download failure"
+
+        # Workers should NOT be triggered when download fails
+        mock_worker_service.trigger_audio_worker.assert_not_called()
+        mock_worker_service.trigger_lyrics_worker.assert_not_called()
+
+        # Admin should receive error notification email
+        mock_email_service.send_email.assert_called_once()
+        email_call = mock_email_service.send_email.call_args
+        assert "[FAILED]" in email_call.kwargs.get('subject', ''), \
+            "Error notification email should have [FAILED] in subject"
+
+
+class TestMadeForYouYouTubeImports:
+    """
+    AST-based import validation to prevent missing dependency bugs.
+
+    Verifies that _handle_made_for_you_order imports and uses the correct
+    services for YouTube URL handling.
+    """
+
+    def test_handler_imports_youtube_download_service(self):
+        """
+        Verify _handle_made_for_you_order uses YouTubeDownloadService for YouTube URLs.
+
+        This is a regression guard that uses source inspection to verify the
+        handler imports the required service. If this test fails, YouTube URL
+        orders will fail at runtime because the download step is missing.
+        """
+        import inspect
+        from backend.api.routes.users import _handle_made_for_you_order
+
+        source = inspect.getsource(_handle_made_for_you_order)
+
+        # Must use YouTubeDownloadService for YouTube URLs
+        assert 'get_youtube_download_service' in source or 'YouTubeDownloadService' in source, \
+            "_handle_made_for_you_order must use YouTubeDownloadService for YouTube URLs. " \
+            "Without this, workers are triggered without downloading audio first, " \
+            "causing 'Failed to download audio file' errors."
+
+    def test_handler_calls_download_for_youtube_urls(self):
+        """
+        Verify the handler has a code path that calls download() for YouTube URLs.
+        """
+        import inspect
+        from backend.api.routes.users import _handle_made_for_you_order
+
+        source = inspect.getsource(_handle_made_for_you_order)
+
+        # The handler must have download logic for YouTube URLs
+        # Either calling .download() directly or await youtube_service.download()
+        has_download_call = '.download(' in source or 'download(' in source
+
+        assert has_download_call, \
+            "_handle_made_for_you_order must call download() for YouTube URLs. " \
+            "The current code triggers workers directly without downloading."
+
+    def test_users_module_imports_youtube_service(self):
+        """
+        Verify the users module imports YouTubeDownloadService.
+        """
+        import inspect
+        from backend.api.routes import users
+
+        source = inspect.getsource(users)
+
+        # Module must import the YouTube download service
+        assert 'get_youtube_download_service' in source, \
+            "backend.api.routes.users must import get_youtube_download_service. " \
+            "This is required for handling YouTube URL made-for-you orders."
 
 
 class TestMadeForYouDistributionSettings:
