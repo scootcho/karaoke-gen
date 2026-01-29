@@ -114,6 +114,32 @@ def mock_worker_service_local():
     return service
 
 
+@pytest.fixture
+def mock_theme_service():
+    """Mock theme service to avoid real Firestore calls."""
+    service = MagicMock()
+    service.get_default_theme_id.return_value = "nomad"
+    service.get_theme.return_value = MagicMock(
+        theme_id="nomad",
+        name="Nomad Karaoke",
+        style_params={}
+    )
+    return service
+
+
+@pytest.fixture
+def mock_distribution_settings():
+    """Mock distribution settings for made-for-you orders."""
+    settings = MagicMock()
+    settings.enable_youtube_upload = True
+    settings.dropbox_path = "/Nomad Karaoke"
+    settings.gdrive_folder_id = "test-folder-id"
+    settings.brand_prefix = "Nomad Karaoke"
+    settings.discord_webhook_url = None
+    settings.youtube_description = None
+    return settings
+
+
 # =============================================================================
 # Test Classes
 # =============================================================================
@@ -132,7 +158,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_creates_job_with_correct_fields(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that a YouTube URL order creates a job with the correct fields.
@@ -152,7 +179,11 @@ class TestMadeForYouYouTubeOrderFlow:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_fields",
@@ -182,7 +213,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_triggers_workers(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that YouTube URL orders trigger workers.
@@ -199,7 +231,11 @@ class TestMadeForYouYouTubeOrderFlow:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_workers",
@@ -215,7 +251,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_sends_notifications(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that YouTube URL orders send notification emails.
@@ -233,7 +270,11 @@ class TestMadeForYouYouTubeOrderFlow:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_notifications",
@@ -259,7 +300,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_marks_session_processed(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that Stripe session is marked as processed for idempotency.
@@ -273,7 +315,11 @@ class TestMadeForYouYouTubeOrderFlow:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_idempotency",
@@ -291,7 +337,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_with_customer_notes(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata_with_notes
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata_with_notes
     ):
         """
         Test that customer notes are preserved on the job.
@@ -305,7 +352,11 @@ class TestMadeForYouYouTubeOrderFlow:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_notes",
@@ -321,7 +372,8 @@ class TestMadeForYouYouTubeOrderFlow:
     @pytest.mark.asyncio
     async def test_youtube_url_order_skips_audio_search(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that YouTube URL orders skip audio search (go straight to workers).
@@ -336,7 +388,11 @@ class TestMadeForYouYouTubeOrderFlow:
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             mock_audio_service = MagicMock()
             mock_get_audio.return_value = mock_audio_service
@@ -366,7 +422,8 @@ class TestMadeForYouYouTubeJobState:
     @pytest.mark.asyncio
     async def test_job_state_set_correctly_for_youtube_url_order(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test that job state is set correctly for YouTube URL orders.
@@ -383,7 +440,11 @@ class TestMadeForYouYouTubeJobState:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_state",
@@ -416,6 +477,7 @@ class TestMadeForYouYouTubeErrorHandling:
     @pytest.mark.asyncio
     async def test_exception_sends_failure_notification(
         self, mock_email_service, mock_user_service_for_webhook,
+        mock_theme_service, mock_distribution_settings,
         youtube_order_metadata
     ):
         """
@@ -428,7 +490,10 @@ class TestMadeForYouYouTubeErrorHandling:
         mock_job_manager.create_job.side_effect = Exception("Database error")
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)):
 
             # Should not raise - error is handled internally
             await _handle_made_for_you_order(
@@ -456,7 +521,8 @@ class TestMadeForYouWebhookIntegration:
     @pytest.mark.asyncio
     async def test_handle_made_for_you_order_full_flow(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings,
+        youtube_order_metadata
     ):
         """
         Test the full made-for-you order handler flow.
@@ -477,7 +543,11 @@ class TestMadeForYouWebhookIntegration:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="cs_test_webhook_flow",
@@ -513,7 +583,7 @@ class TestMadeForYouYouTubeDistributionSettings:
     @pytest.mark.asyncio
     async def test_distribution_defaults_applied(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local, youtube_order_metadata
+        mock_worker_service_local, mock_theme_service, youtube_order_metadata
     ):
         """
         Test that distribution defaults are applied to made-for-you jobs.
@@ -539,7 +609,10 @@ class TestMadeForYouYouTubeDistributionSettings:
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
              patch('backend.services.storage_service.StorageService'), \
-             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_settings):
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_distribution",
@@ -566,7 +639,7 @@ class TestMadeForYouYouTubeGCSPath:
     @pytest.mark.asyncio
     async def test_job_url_set_correctly(
         self, mock_email_service, mock_user_service_for_webhook,
-        mock_worker_service_local
+        mock_worker_service_local, mock_theme_service, mock_distribution_settings
     ):
         """
         Test that the YouTube URL is stored correctly on the job.
@@ -590,7 +663,11 @@ class TestMadeForYouYouTubeGCSPath:
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
-             patch('backend.services.storage_service.StorageService'):
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_effective_distribution_settings', return_value=mock_distribution_settings), \
+             patch('backend.api.routes.users.resolve_cdg_txt_defaults', return_value=(False, False)), \
+             patch('backend.api.routes.users._prepare_theme_for_job', return_value=(None, None, None)):
 
             await _handle_made_for_you_order(
                 session_id="sess_test_url",
