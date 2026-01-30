@@ -440,3 +440,197 @@ async def internal_health(
     """
     return {"status": "healthy", "service": "karaoke-backend-internal"}
 
+
+# =============================================================================
+# Test Webhook Endpoint (for E2E testing)
+# =============================================================================
+
+class TestWebhookRequest(BaseModel):
+    """
+    Request to simulate a Stripe webhook event for E2E testing.
+
+    This allows E2E tests to trigger payment flow logic without requiring
+    actual Stripe checkout sessions or valid webhook signatures.
+    """
+    event_type: str  # e.g., "checkout.session.completed"
+    session_id: str  # Must start with "e2e-test-" prefix
+    customer_email: str
+    metadata: dict  # order_type, package_id, credits, artist, title, etc.
+
+
+class TestWebhookResponse(BaseModel):
+    """Response from test webhook processing."""
+    status: str  # "processed", "already_processed", "error"
+    job_id: Optional[str] = None  # For made-for-you orders
+    credits_added: Optional[int] = None  # For credit purchases
+    new_balance: Optional[int] = None  # For credit purchases
+    message: str
+
+
+@router.post("/test-webhook", response_model=TestWebhookResponse)
+async def test_webhook(
+    request: TestWebhookRequest,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
+):
+    """
+    Test endpoint that simulates Stripe webhook events for E2E testing.
+
+    SECURITY:
+    - Protected by admin authentication (X-Admin-Token header)
+    - Session IDs must start with "e2e-test-" prefix to prevent collision
+      with real Stripe sessions
+    - Only for E2E testing - bypasses Stripe signature verification
+
+    This endpoint reuses the same handler logic as the real webhook endpoint,
+    ensuring E2E tests validate actual business logic.
+
+    Supported event types:
+    - checkout.session.completed: Handles credit purchases and made-for-you orders
+
+    For credit purchases, metadata must include:
+    - package_id: e.g., "1_credit"
+    - credits: e.g., "1"
+    - user_email: Email of user to credit
+
+    For made-for-you orders, metadata must include:
+    - order_type: "made_for_you"
+    - customer_email: Customer email for delivery
+    - artist: Song artist
+    - title: Song title
+    - source_type: "search" or "youtube"
+    - youtube_url: (optional) If source_type is "youtube"
+    - notes: (optional) Customer notes
+    """
+    from backend.services.user_service import get_user_service
+    from backend.services.email_service import get_email_service
+    from backend.services.stripe_service import get_stripe_service
+    from backend.api.routes.users import _handle_made_for_you_order
+
+    # Validate session_id prefix for safety
+    if not request.session_id.startswith("e2e-test-"):
+        logger.warning(f"Test webhook rejected: session_id '{request.session_id}' missing required prefix")
+        raise HTTPException(
+            status_code=400,
+            detail="Session ID must start with 'e2e-test-' prefix for test webhooks"
+        )
+
+    logger.info(f"TEST_WEBHOOK event_type={request.event_type} session_id={request.session_id}")
+    add_span_attribute("event_type", request.event_type)
+    add_span_attribute("session_id", request.session_id)
+    add_span_attribute("is_test_webhook", True)
+
+    user_service = get_user_service()
+    email_service = get_email_service()
+    stripe_service = get_stripe_service()
+
+    if request.event_type == "checkout.session.completed":
+        session_id = request.session_id
+        metadata = request.metadata
+
+        # Idempotency check: Skip if this session was already processed
+        if user_service.is_stripe_session_processed(session_id):
+            logger.info(f"Test webhook: session {session_id} already processed")
+            return TestWebhookResponse(
+                status="already_processed",
+                message=f"Session {session_id} was already processed"
+            )
+
+        # Check if this is a made-for-you order
+        if metadata.get("order_type") == "made_for_you":
+            try:
+                # Call the same handler used by the real webhook
+                await _handle_made_for_you_order(
+                    session_id=session_id,
+                    metadata=metadata,
+                    user_service=user_service,
+                    email_service=email_service,
+                )
+
+                # Get the job ID from the most recent job for this customer
+                # The handler creates a job, so we need to find it
+                from google.cloud import firestore
+                from google.cloud.firestore_v1 import FieldFilter
+
+                db = user_service.db
+                # Look for the job by session_id pattern in state_data or by customer_email
+                # Since the job was just created, query by customer_email and made_for_you flag
+                customer_email = metadata.get("customer_email", "")
+                jobs_query = db.collection("jobs").where(
+                    filter=FieldFilter("customer_email", "==", customer_email)
+                ).where(
+                    filter=FieldFilter("made_for_you", "==", True)
+                ).order_by("created_at", direction=firestore.Query.DESCENDING).limit(1)
+
+                jobs = list(jobs_query.stream())
+                job_id = jobs[0].to_dict().get("job_id") if jobs else None
+
+                logger.info(f"Test webhook: made-for-you order processed, job_id={job_id}")
+                return TestWebhookResponse(
+                    status="processed",
+                    job_id=job_id,
+                    message=f"Made-for-you order created successfully"
+                )
+            except Exception as e:
+                logger.exception(f"Test webhook: error processing made-for-you order: {e}")
+                return TestWebhookResponse(
+                    status="error",
+                    message=f"Error processing made-for-you order: {str(e)}"
+                )
+        else:
+            # Handle regular credit purchase
+            # Build a synthetic session object that matches Stripe's format
+            synthetic_session = {
+                "id": session_id,
+                "customer_email": request.customer_email,
+                "metadata": metadata,
+            }
+
+            success, user_email, credits, msg = stripe_service.handle_checkout_completed(
+                synthetic_session
+            )
+
+            if not success:
+                logger.warning(f"Test webhook: credit purchase validation failed: {msg}")
+                return TestWebhookResponse(
+                    status="error",
+                    message=msg
+                )
+
+            if user_email and credits > 0:
+                # Add credits to user account
+                ok, new_balance, credit_msg = user_service.add_credits(
+                    email=user_email,
+                    amount=credits,
+                    reason="stripe_purchase",
+                    stripe_session_id=session_id,
+                )
+
+                if ok:
+                    # Send confirmation email (same as real webhook)
+                    email_service.send_credits_added(user_email, credits, new_balance)
+                    logger.info(f"Test webhook: added {credits} credits to {user_email}, new balance: {new_balance}")
+                    return TestWebhookResponse(
+                        status="processed",
+                        credits_added=credits,
+                        new_balance=new_balance,
+                        message=f"Added {credits} credits to {user_email}"
+                    )
+                else:
+                    logger.error(f"Test webhook: failed to add credits: {credit_msg}")
+                    return TestWebhookResponse(
+                        status="error",
+                        message=f"Failed to add credits: {credit_msg}"
+                    )
+
+            return TestWebhookResponse(
+                status="error",
+                message="Invalid credit purchase data"
+            )
+    else:
+        # Unsupported event type
+        logger.warning(f"Test webhook: unsupported event type '{request.event_type}'")
+        return TestWebhookResponse(
+            status="error",
+            message=f"Unsupported event type: {request.event_type}"
+        )
+
