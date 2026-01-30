@@ -190,43 +190,51 @@ test.describe('Lyrics Review Only - Focused Test', () => {
 
     await page.screenshot({ path: 'test-results/focused-06-video-state.png', fullPage: true });
 
-    // Click "Complete Review" button in the modal
-    console.log('6. Looking for "Complete Review" button...');
+    // Click "Proceed to Instrumental Review" button in the modal
+    // (Previously "Complete Review" - changed with combined review UI)
+    console.log('6. Looking for "Proceed to Instrumental Review" button...');
 
     // List all buttons in the modal
     const modalButtons = await previewModal.getByRole('button').allTextContents();
     console.log(`   Modal buttons: ${modalButtons.join(', ')}`);
 
-    const completeReviewBtn = page.getByRole('button', { name: /complete review/i });
+    const proceedBtn = page.getByRole('button', { name: /proceed to instrumental/i });
 
-    if (await completeReviewBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      console.log('   Found "Complete Review" button - clicking...');
-      await completeReviewBtn.click();
-      console.log('   Clicked "Complete Review" button');
+    if (await proceedBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      console.log('   Found "Proceed to Instrumental Review" button - clicking...');
+      await proceedBtn.click();
+      console.log('   Clicked "Proceed to Instrumental Review" button');
     } else {
-      // Try to find any submit-like button
-      const submitBtn = previewModal.getByRole('button', { name: /submit|confirm|done|save/i });
+      // Try to find any submit-like button (for backwards compatibility)
+      const submitBtn = previewModal.getByRole('button', { name: /submit|confirm|done|save|complete/i });
       if (await submitBtn.isVisible().catch(() => false)) {
         const btnText = await submitBtn.textContent();
         console.log(`   Found alternative submit button: "${btnText}" - clicking...`);
         await submitBtn.click();
       } else {
-        console.log('   Could not find Complete Review or similar button');
-        await page.screenshot({ path: 'test-results/focused-07-no-complete-btn.png', fullPage: true });
-        throw new Error('Could not find Complete Review button');
+        console.log('   Could not find Proceed to Instrumental or similar button');
+        await page.screenshot({ path: 'test-results/focused-07-no-proceed-btn.png', fullPage: true });
+        throw new Error('Could not find Proceed to Instrumental Review button');
       }
     }
 
-    // Wait for the submission to process
-    console.log('7. Waiting for submission to complete...');
+    // Wait for navigation to instrumental selection
+    console.log('7. Waiting for navigation to instrumental selection...');
     await page.waitForTimeout(5000);
 
-    await page.screenshot({ path: 'test-results/focused-08-after-submit.png', fullPage: true });
+    await page.screenshot({ path: 'test-results/focused-08-after-proceed.png', fullPage: true });
+
+    // Note: This focused test only covers the lyrics review portion.
+    // The instrumental selection happens next on the same page via hash navigation.
+    // For full flow testing, use happy-path-real-user.spec.ts
 
     console.log('');
     console.log('========================================');
     console.log('FOCUSED TEST COMPLETE');
     console.log('========================================');
+    console.log('NOTE: This test completes the lyrics review step only.');
+    console.log('      The instrumental selection UI should now be visible on this page.');
+    console.log('      For the full flow, use happy-path-real-user.spec.ts');
   });
 
   test('Add Reference Lyrics via API', async ({ page, context, request }) => {

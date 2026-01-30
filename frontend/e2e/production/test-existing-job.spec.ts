@@ -256,27 +256,28 @@ async function testLyricsReview(page: any, context: any, jobId: string) {
     console.log('   WARNING: No video element found');
   }
 
-  // Click "Complete Review" button
-  console.log('10. Clicking "Complete Review" button...');
+  // Click "Proceed to Instrumental Review" button (previously "Complete Review")
+  console.log('10. Clicking "Proceed to Instrumental Review" button...');
   const modalButtons = await previewModal.getByRole('button').allTextContents();
   console.log(`   Modal buttons: ${modalButtons.join(', ')}`);
 
-  const completeReviewBtn = reviewPage.getByRole('button', { name: /complete review/i });
+  const proceedBtn = reviewPage.getByRole('button', { name: /proceed to instrumental/i });
 
-  if (await completeReviewBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await completeReviewBtn.click();
-    console.log('   Clicked Complete Review button');
+  if (await proceedBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await proceedBtn.click();
+    console.log('   Clicked Proceed to Instrumental Review button');
   } else {
-    await reviewPage.screenshot({ path: 'test-results/existing-09-no-complete-btn.png', fullPage: true });
-    throw new Error('Could not find Complete Review button');
+    await reviewPage.screenshot({ path: 'test-results/existing-09-no-proceed-btn.png', fullPage: true });
+    throw new Error('Could not find Proceed to Instrumental Review button');
   }
 
-  // Wait for submission
-  console.log('11. Waiting for submission...');
+  // Wait for navigation to instrumental selection (happens via hash change on same page)
+  console.log('11. Waiting for navigation to instrumental selection...');
   await reviewPage.waitForTimeout(5000);
 
-  await reviewPage.screenshot({ path: 'test-results/existing-10-after-submit.png', fullPage: true });
-  console.log('   Lyrics review completed successfully!');
+  await reviewPage.screenshot({ path: 'test-results/existing-10-after-proceed.png', fullPage: true });
+  console.log('   Lyrics review step completed - now on instrumental selection!');
+  console.log('   NOTE: With combined UI, instrumental selection is on the same page.');
 
   await reviewPage.close();
 }
