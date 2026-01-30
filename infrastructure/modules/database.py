@@ -73,7 +73,11 @@ def create_database() -> dict:
             firestore.IndexFieldArgs(field_path="made_for_you", order="ASCENDING"),
             firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
         ],
-        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+        opts=pulumi.ResourceOptions(
+            depends_on=[firestore_db],
+            # Import existing index created before Pulumi managed it
+            import_="projects/nomadkaraoke/databases/(default)/collectionGroups/jobs/indexes/CICAgOi36pgK",
+        ),
     )
 
     # Sessions: query by user_email + is_active, order by created_at
