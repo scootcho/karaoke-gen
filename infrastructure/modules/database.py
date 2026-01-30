@@ -61,6 +61,21 @@ def create_database() -> dict:
         opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
     )
 
+    # Jobs: query by customer_email + made_for_you, order by created_at
+    # Used for finding existing made-for-you orders for a customer
+    resources["firestore_index_jobs_customer_mfy"] = firestore.Index(
+        "firestore-index-jobs-customer-mfy",
+        project=PROJECT_ID,
+        database=firestore_db.name,
+        collection="jobs",
+        fields=[
+            firestore.IndexFieldArgs(field_path="customer_email", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="made_for_you", order="ASCENDING"),
+            firestore.IndexFieldArgs(field_path="created_at", order="DESCENDING"),
+        ],
+        opts=pulumi.ResourceOptions(depends_on=[firestore_db]),
+    )
+
     # Sessions: query by user_email + is_active, order by created_at
     resources["firestore_index_sessions_active"] = firestore.Index(
         "firestore-index-sessions-active",

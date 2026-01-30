@@ -200,7 +200,7 @@ export async function getJobDetails(
   adminToken: string,
   apiUrl: string = URLS.production.api
 ): Promise<Record<string, unknown> | null> {
-  const response = await fetch(`${apiUrl}/api/admin/jobs/${jobId}`, {
+  const response = await fetch(`${apiUrl}/api/jobs/${jobId}`, {
     headers: {
       'Authorization': `Bearer ${adminToken}`,
     },
