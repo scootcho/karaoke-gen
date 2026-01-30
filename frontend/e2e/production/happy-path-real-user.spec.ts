@@ -16,8 +16,8 @@ import { createEmailHelper, isEmailTestingAvailable } from '../helpers/email-tes
  * 4. Create Job - Search for test song via UI
  * 5. Audio Selection - Select audio source via UI dialog
  * 6. Wait for Processing - Monitor via UI status updates
- * 7. Lyrics Review - Open review UI, interact, submit via UI
- * 8. Instrumental Selection - Open selection UI, interact, submit via UI
+ * 7. Combined Review - Open review UI, preview video, proceed to instrumental
+ * 8. Instrumental Selection - Select instrumental and submit (same page via hash nav)
  * 9. Wait for Completion - Monitor via UI
  * 10. Verify Downloads - Check download links work
  * 11. Verify Distribution - Check YouTube/Dropbox/GDrive indicators
@@ -540,11 +540,15 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('STEP 6 COMPLETE: Lyrics processing finished');
 
       // =========================================================================
-      // STEP 7: Lyrics Review (via UI - REAL USER FLOW)
-      // The minimal path: scroll to bottom -> click "Preview Video" -> wait for video -> click "Complete Review"
+      // STEP 7: Combined Lyrics Review & Instrumental Selection (via UI - REAL USER FLOW)
+      // After the UI redesign, lyrics review and instrumental selection are combined:
+      // 1. User opens lyrics review page
+      // 2. User clicks "Preview Video" to open modal
+      // 3. User clicks "Proceed to Instrumental Review" which navigates to instrumental selection
+      // 4. User selects instrumental and clicks "Confirm & Continue"
       // =========================================================================
       console.log('\n========================================');
-      console.log('STEP 7: Lyrics Review (UI Interaction)');
+      console.log('STEP 7: Combined Lyrics Review & Instrumental Selection');
       console.log('========================================');
 
       // Click the Review Lyrics button/link
@@ -621,7 +625,7 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         const errorText = await errorAlert.textContent();
         console.log(`  WARNING: Preview error: ${errorText}`);
         await reviewPage.screenshot({ path: 'test-results/07e-preview-error.png', fullPage: true });
-        // Continue anyway - we can still click Complete Review even if preview failed
+        // Continue anyway - we can still proceed to instrumental even if preview failed
       } else if (await videoElement.isVisible({ timeout: 10000 }).catch(() => false)) {
         console.log('  Video element visible in modal');
         // Give the video a moment to buffer/load
@@ -632,31 +636,93 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
 
       await reviewPage.screenshot({ path: 'test-results/07f-video-state.png', fullPage: true });
 
-      // Click "Complete Review" button in the modal
-      // This button has variant="contained", color="success", and endIcon={<CloudUpload />}
-      const completeReviewBtn = reviewPage.getByRole('button', { name: /complete review/i });
-      await expect(completeReviewBtn).toBeVisible({ timeout: TIMEOUTS.action });
-      console.log('  Found "Complete Review" button');
+      // Click "Proceed to Instrumental Review" button in the modal
+      // This button saves corrections and navigates to the instrumental selection UI
+      const proceedBtn = reviewPage.getByRole('button', { name: /proceed to instrumental/i });
+      await expect(proceedBtn).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Found "Proceed to Instrumental Review" button');
 
-      await completeReviewBtn.click();
-      console.log('  Clicked "Complete Review" button');
+      await proceedBtn.click();
+      console.log('  Clicked "Proceed to Instrumental Review" button');
 
-      // Wait for the submission to process
-      // The handleSubmitToServer function calls apiClient.submitCorrections() then window.close()
+      // Wait for the navigation to instrumental selection (happens via hash change)
+      // The page navigates to #/{jobId}/instrumental
+      await reviewPage.waitForTimeout(3000);
+
+      await reviewPage.screenshot({ path: 'test-results/07g-after-proceed.png', fullPage: true });
+
+      // =========================================================================
+      // STEP 8: Instrumental Selection (continuation of combined flow)
+      // The page has navigated to the instrumental selection UI via hash routing
+      // =========================================================================
+      console.log('\n========================================');
+      console.log('STEP 8: Instrumental Selection');
+      console.log('========================================');
+
+      // Wait for the instrumental selection UI to load
+      // The InstrumentalSelector component renders selection options
+      console.log('  Waiting for instrumental selection UI to load...');
+
+      // Wait for either the selection options or the loading indicator to appear
+      try {
+        await reviewPage.waitForSelector('.selection-option, .selection-panel, [class*="selection"]', { timeout: 30000 });
+        console.log('  Instrumental selection UI loaded');
+      } catch {
+        // If selector not found, check for loading state
+        const loadingState = reviewPage.getByText(/loading instrumental/i);
+        if (await loadingState.isVisible({ timeout: 5000 }).catch(() => false)) {
+          console.log('  Waiting for instrumental analysis to complete...');
+          await expect(loadingState).not.toBeVisible({ timeout: 60000 });
+        }
+      }
+
+      await reviewPage.screenshot({ path: 'test-results/08a-instrumental-opened.png', fullPage: true });
+      console.log('  Instrumental selection UI opened');
+
+      // Select "Clean" instrumental option
+      // The options have class "selection-option" and contain labels with "Clean" or "With Backing"
+      const cleanOption = reviewPage.locator('.selection-option:has-text("Clean")').first();
+      if (await cleanOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await cleanOption.click();
+        console.log('  Selected "Clean" instrumental option');
+      } else {
+        // If we can't find "Clean" specifically, the first option might already be selected
+        console.log('  Clean option not found - using default selection');
+      }
+
+      await reviewPage.screenshot({ path: 'test-results/08b-clean-selected.png', fullPage: true });
+
+      // Click the submit button: "✓ Confirm & Continue" (id="submit-btn")
+      const submitBtn = reviewPage.locator('#submit-btn');
+      await expect(submitBtn).toBeVisible({ timeout: TIMEOUTS.action });
+      console.log('  Found submit button');
+
+      await submitBtn.click();
+      console.log('  Clicked "Confirm & Continue" button');
+
+      // Wait for submission to complete - the page shows a success screen then redirects
+      // In cloud mode, after success it redirects to /app after a countdown
       await reviewPage.waitForTimeout(5000);
 
-      await reviewPage.screenshot({ path: 'test-results/07g-after-complete-review.png', fullPage: true });
+      await reviewPage.screenshot({ path: 'test-results/08c-instrumental-submitted.png', fullPage: true });
 
-      // The review page may close automatically after submission (window.close())
-      // If it's still open, close it manually
+      // The page redirects to /app after completion, or may close
+      // Wait a bit for the redirect/close to happen
       if (!reviewPage.isClosed()) {
-        await reviewPage.close();
-        console.log('  Closed review UI');
+        // Wait for potential redirect or success screen
+        try {
+          await reviewPage.waitForURL(/\/app/, { timeout: 10000 });
+          console.log('  Redirected to /app after instrumental selection');
+        } catch {
+          // If no redirect, close manually
+          await reviewPage.close();
+          console.log('  Closed review UI');
+        }
       } else {
         console.log('  Review UI closed automatically after submission');
       }
 
-      // Refresh main app to see updated status
+      // Refresh main app
       await page.bringToFront();
       const refreshBtn = page.getByRole('button', { name: /refresh/i });
       if (await refreshBtn.isVisible().catch(() => false)) {
@@ -664,121 +730,10 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         await page.waitForTimeout(3000);
       }
 
-      await page.screenshot({ path: 'test-results/07h-after-review-refresh.png' });
-      console.log('STEP 7 COMPLETE: Lyrics review submitted via UI');
-
-      // =========================================================================
-      // STEP 8: Wait for Video Rendering & Instrumental Selection (via UI - REAL USER FLOW)
-      // The instrumental UI has: selection-option elements, submit button with id="submit-btn"
-      // =========================================================================
-      console.log('\n========================================');
-      console.log('STEP 8: Wait for Video Rendering & Instrumental Selection');
-      console.log('========================================');
-
-      // Wait for instrumental selection to become available
-      console.log('  Waiting for video rendering and instrumental selection...');
-
-      let foundInstrumentalStatus = false;
-      const renderStartTime = Date.now();
-
-      while (Date.now() - renderStartTime < TIMEOUTS.videoRendering) {
-        // Refresh
-        if (await refreshBtn.isVisible().catch(() => false)) {
-          await refreshBtn.click();
-          await page.waitForTimeout(2000);
-        }
-
-        // Check job card status
-        const statusText = await jobCard.textContent() || '';
-        console.log(`  Status: ${statusText.substring(0, 80)}...`);
-
-        // Look for instrumental selection UI availability
-        // Users ALWAYS have to go through the instrumental review UI - there's no skip
-        if (statusText.toLowerCase().includes('select instrumental') ||
-            statusText.toLowerCase().includes('awaiting_instrumental') ||
-            (statusText.toLowerCase().includes('action needed') && statusText.toLowerCase().includes('instrumental'))) {
-          foundInstrumentalStatus = true;
-          console.log('  Job ready for instrumental selection');
-          break;
-        }
-
-        if (statusText.toLowerCase().includes('failed')) {
-          throw new Error('Job failed during video rendering');
-        }
-
-        await page.waitForTimeout(10000);
-      }
-
-      if (!foundInstrumentalStatus) {
-        throw new Error('Timeout waiting for instrumental selection - users must always complete this step');
-      }
-
-      {
-        // Click the Select Instrumental button/link
-        const instrumentalLink = jobCard.getByRole('link', { name: /select instrumental/i });
-        await expect(instrumentalLink).toBeVisible({ timeout: TIMEOUTS.action });
-
-        const instrumentalUrl = await instrumentalLink.getAttribute('href');
-        console.log(`  Instrumental URL: ${instrumentalUrl}`);
-
-        // Open instrumental UI in new page
-        const instrumentalPage = await context.newPage();
-        // Handle both absolute and relative URLs
-        const fullUrl = instrumentalUrl?.startsWith('http') ? instrumentalUrl : `${PROD_URL}${instrumentalUrl}`;
-        // Use 'load' instead of 'networkidle' - instrumental page has ongoing audio requests
-        // that prevent networkidle from ever being reached
-        await instrumentalPage.goto(fullUrl, { waitUntil: 'load' });
-        await instrumentalPage.waitForTimeout(3000);
-
-        await instrumentalPage.screenshot({ path: 'test-results/08a-instrumental-opened.png', fullPage: true });
-        console.log('  Instrumental selection UI opened');
-
-        // Wait for the page to fully load - the instrumental UI renders selection options
-        await instrumentalPage.waitForSelector('.selection-option, .selection-panel', { timeout: 30000 });
-
-        // Select "Clean" instrumental option
-        // The options have class "selection-option" and contain labels with "Clean" or "With Backing"
-        const cleanOption = instrumentalPage.locator('.selection-option:has-text("Clean")').first();
-        if (await cleanOption.isVisible({ timeout: 5000 }).catch(() => false)) {
-          await cleanOption.click();
-          console.log('  Selected "Clean" instrumental option');
-        } else {
-          // If we can't find "Clean" specifically, the first option might already be selected
-          console.log('  Clean option not found - using default selection');
-        }
-
-        await instrumentalPage.screenshot({ path: 'test-results/08b-clean-selected.png', fullPage: true });
-
-        // Click the submit button: "✓ Confirm & Continue" (id="submit-btn")
-        const submitBtn = instrumentalPage.locator('#submit-btn');
-        await expect(submitBtn).toBeVisible({ timeout: TIMEOUTS.action });
-        console.log('  Found submit button');
-
-        await submitBtn.click();
-        console.log('  Clicked "Confirm & Continue" button');
-
-        // Wait for submission to complete - the page shows a success screen then auto-closes
-        await instrumentalPage.waitForTimeout(5000);
-
-        await instrumentalPage.screenshot({ path: 'test-results/08c-instrumental-submitted.png', fullPage: true });
-
-        // The page may auto-close after submission
-        if (!instrumentalPage.isClosed()) {
-          await instrumentalPage.close();
-          console.log('  Closed instrumental UI');
-        } else {
-          console.log('  Instrumental UI closed automatically after submission');
-        }
-      }
-
-      // Refresh main app
-      await page.bringToFront();
-      if (await refreshBtn.isVisible().catch(() => false)) {
-        await refreshBtn.click();
-        await page.waitForTimeout(3000);
-      }
-
-      await page.screenshot({ path: 'test-results/08d-after-instrumental.png' });
+      await reviewPage.screenshot({ path: 'test-results/08d-after-instrumental.png', fullPage: true }).catch(() => {
+        // reviewPage may be closed already, that's OK
+      });
+      await page.screenshot({ path: 'test-results/08d-main-after-instrumental.png' });
       console.log('STEP 8 COMPLETE: Instrumental selection handled via UI');
 
       // =========================================================================
