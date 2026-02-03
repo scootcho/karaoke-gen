@@ -1146,14 +1146,8 @@ async def reset_job(
     }
 
     # Perform the update with state_data clearing
-    # We need to set the cleared keys to DELETE_FIELD
-    success = job_manager.update_job(job_id, updates)
-
-    if not success:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to reset job. Please try again."
-        )
+    # Note: update_job() raises exceptions on failure, returns None on success
+    job_manager.update_job(job_id, updates)
 
     # Clear the state data keys and error state using direct Firestore update
     from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
