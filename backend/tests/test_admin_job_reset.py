@@ -162,27 +162,6 @@ class TestResetJobToAwaitingReview:
             assert data["new_status"] == "awaiting_review"
 
 
-class TestResetJobToAwaitingInstrumentalSelection:
-    """Tests for resetting job to AWAITING_INSTRUMENTAL_SELECTION state."""
-
-    def test_reset_to_awaiting_instrumental_selection(self, client, mock_job):
-        """Test resetting a job to AWAITING_INSTRUMENTAL_SELECTION state."""
-        with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
-            mock_jm = Mock()
-            mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
-            mock_jm_class.return_value = mock_jm
-
-            response = client.post(
-                "/api/admin/jobs/test-job-123/reset",
-                json={"target_state": "awaiting_instrumental_selection"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert data["new_status"] == "awaiting_instrumental_selection"
-
-
 class TestResetJobValidation:
     """Tests for reset endpoint validation."""
 
@@ -353,6 +332,51 @@ class TestResetJobClearsStateData:
             data = response.json()
             assert "cleared_data" in data or "state_data" in str(data)
 
+    def test_reset_to_pending_clears_parallel_processing_flags(self, client):
+        """Test that resetting to PENDING clears audio_complete and lyrics_complete.
+
+        This is critical for proper re-processing - without clearing these flags,
+        workers may think audio/lyrics processing is already done.
+        """
+        from backend.models.job import Job, JobStatus
+        from datetime import datetime, UTC
+
+        # Create a job with audio_complete and lyrics_complete set
+        mock_job = Job(
+            job_id="test-job-123",
+            status=JobStatus.COMPLETE,
+            artist="Test Artist",
+            title="Test Title",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            state_data={
+                "audio_complete": True,
+                "lyrics_complete": True,
+                "audio_search_results": [{"source": "test"}],
+            }
+        )
+
+        with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
+            mock_jm = Mock()
+            mock_jm.get_job.return_value = mock_job
+            mock_jm.update_job.return_value = True
+            mock_jm_class.return_value = mock_jm
+
+            response = client.post(
+                "/api/admin/jobs/test-job-123/reset",
+                json={"target_state": "pending"},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify the cleared_data includes the parallel processing flags
+            cleared_keys = data.get("cleared_data", [])
+            assert "audio_complete" in cleared_keys, \
+                f"audio_complete should be cleared. Cleared: {cleared_keys}"
+            assert "lyrics_complete" in cleared_keys, \
+                f"lyrics_complete should be cleared. Cleared: {cleared_keys}"
+
     def test_reset_to_awaiting_review_preserves_audio_data(self, client, mock_job):
         """Test that resetting to AWAITING_REVIEW preserves audio stems."""
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
@@ -368,12 +392,15 @@ class TestResetJobClearsStateData:
 
             assert response.status_code == 200
 
-    def test_reset_to_instrumental_preserves_review_data(self, client, mock_job):
-        """Test that resetting to AWAITING_INSTRUMENTAL_SELECTION preserves review data."""
+    def test_rejects_deprecated_awaiting_instrumental_selection(self, client, mock_job):
+        """Test that awaiting_instrumental_selection is no longer a valid reset target.
+
+        This state was deprecated in Jan 2026 when lyrics review and instrumental
+        selection were combined into a single review step.
+        """
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -381,7 +408,9 @@ class TestResetJobClearsStateData:
                 json={"target_state": "awaiting_instrumental_selection"},
             )
 
-            assert response.status_code == 200
+            # Should be rejected as invalid
+            assert response.status_code == 400
+            assert "invalid" in response.json()["detail"].lower()
 
 
 class TestResetJobToInstrumentalSelected:

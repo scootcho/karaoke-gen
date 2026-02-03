@@ -7,7 +7,7 @@ route logic without hitting real cloud services.
 import pytest
 import json
 from datetime import datetime, UTC
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch, Mock
 from fastapi.testclient import TestClient
 from io import BytesIO
 
@@ -131,13 +131,91 @@ class TestHealthRoutes:
         assert data["queue_length"] == 5
 
 
+class TestJobConsistencyEndpoint:
+    """Tests for the /health/job-consistency endpoint."""
+
+    @pytest.fixture
+    def client(self):
+        """Create test client."""
+        with patch('backend.api.routes.health.JobManager') as mock_jm_class:
+            from backend.main import app
+            return TestClient(app)
+
+    def test_job_consistency_returns_empty_when_no_jobs(self, client):
+        """Test endpoint returns empty results when no jobs exist."""
+        with patch('backend.api.routes.health.JobManager') as mock_jm_class:
+            mock_jm = Mock()
+            mock_jm.list_jobs.return_value = []
+            mock_jm_class.return_value = mock_jm
+
+            response = client.get("/api/health/job-consistency")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_checked"] == 0
+            assert data["inconsistent_count"] == 0
+            assert data["inconsistent_jobs"] == []
+
+    def test_job_consistency_detects_issues(self, client):
+        """Test endpoint detects inconsistent jobs."""
+        from backend.models.job import Job, JobStatus
+        from datetime import datetime, UTC
+
+        stuck_job = Job(
+            job_id="stuck-123",
+            artist="Test",
+            title="Song",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            state_data={'audio_complete': True},
+            input_media_gcs_path="gs://bucket/audio.mp3",
+        )
+
+        with patch('backend.api.routes.health.JobManager') as mock_jm_class:
+            mock_jm = Mock()
+            mock_jm.list_jobs.return_value = [stuck_job]
+            mock_jm_class.return_value = mock_jm
+
+            response = client.get("/api/health/job-consistency")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total_checked"] == 1
+            assert data["inconsistent_count"] == 1
+            assert len(data["inconsistent_jobs"]) == 1
+            assert data["inconsistent_jobs"][0]["job_id"] == "stuck-123"
+
+    def test_job_consistency_filters_by_status(self, client):
+        """Test endpoint filters by status parameter."""
+        with patch('backend.api.routes.health.JobManager') as mock_jm_class:
+            mock_jm = Mock()
+            mock_jm.list_jobs.return_value = []
+            mock_jm_class.return_value = mock_jm
+
+            response = client.get("/api/health/job-consistency?status=pending")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status_filter"] == "pending"
+
+    def test_job_consistency_rejects_invalid_status(self, client):
+        """Test endpoint rejects invalid status parameter."""
+        with patch('backend.api.routes.health.JobManager') as mock_jm_class:
+            mock_jm = Mock()
+            mock_jm_class.return_value = mock_jm
+
+            response = client.get("/api/health/job-consistency?status=invalid_status")
+            assert response.status_code == 200
+            data = response.json()
+            assert "error" in data
+            assert "Invalid status" in data["error"]
+
+
 class TestJobRoutes:
     """Tests for jobs.py routes.
-    
+
     Note: These tests verify the route module structure.
     Full integration tests are in test_api_integration.py.
     """
-    
+
     def test_jobs_router_exists(self):
         """Test jobs router can be imported."""
         from backend.api.routes import jobs

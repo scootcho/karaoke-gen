@@ -65,6 +65,7 @@ from backend.services.youtube_download_service import (
     get_youtube_download_service,
     YouTubeDownloadError,
 )
+from backend.exceptions import InvalidStateTransitionError
 
 
 logger = logging.getLogger(__name__)
@@ -476,14 +477,12 @@ async def _handle_made_for_you_order(
     """
     from backend.models.job import JobCreate, JobStatus
     from backend.services.job_manager import JobManager
-    from backend.services.worker_service import get_worker_service
     from backend.services.audio_search_service import (
         get_audio_search_service,
         NoResultsError,
         AudioSearchError,
     )
     from backend.services.storage_service import StorageService
-    import asyncio
     import tempfile
     import os
 
@@ -501,7 +500,6 @@ async def _handle_made_for_you_order(
 
     try:
         job_manager = JobManager()
-        worker_service = get_worker_service()
         storage_service = StorageService()
 
         # Apply default theme (Nomad) - same as audio_search endpoint
@@ -602,13 +600,22 @@ async def _handle_made_for_you_order(
                     'filename': os.path.basename(audio_gcs_path),
                 })
 
-                logger.info(f"Job {job_id}: YouTube audio downloaded to {audio_gcs_path}, triggering workers")
+                logger.info(f"Job {job_id}: YouTube audio downloaded to {audio_gcs_path}")
 
-                # Now trigger both workers in parallel (audio already downloaded)
-                await asyncio.gather(
-                    worker_service.trigger_audio_worker(job_id),
-                    worker_service.trigger_lyrics_worker(job_id)
-                )
+                # Use centralized helper that handles transition + worker triggers
+                # This ensures consistent state machine flow and raises on invalid transitions
+                try:
+                    await job_manager.start_job_processing(job_id)
+                except InvalidStateTransitionError as e:
+                    logger.error(f"Job {job_id}: Failed to start processing - invalid state transition: {e}")
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.FAILED,
+                        progress=0,
+                        message=f"Failed to start processing: {str(e)}",
+                        raise_on_invalid=False  # Don't raise if already failed
+                    )
+                    raise
 
             except YouTubeDownloadError as e:
                 logger.error(f"Job {job_id}: YouTube download failed: {e}")

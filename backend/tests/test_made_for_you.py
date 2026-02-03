@@ -1332,10 +1332,13 @@ class TestHandleMadeForYouOrder:
         mock_theme_service
     ):
         """
-        Orders with YouTube URL should download audio then trigger workers (no search).
+        Orders with YouTube URL should download audio then start processing (no search).
 
         Note: The download step was added in Jan 2026 to fix job 811ec4e5 failure.
         See docs/LESSONS-LEARNED.md "YouTube URL Downloads Must Happen Before Workers".
+
+        The handler now uses job_manager.start_job_processing() which handles
+        transitioning to DOWNLOADING and triggering workers.
         """
         from backend.api.routes.users import _handle_made_for_you_order
 
@@ -1348,18 +1351,16 @@ class TestHandleMadeForYouOrder:
             "youtube_url": "https://youtube.com/watch?v=abc123",
         }
 
-        mock_worker_service = MagicMock()
-        mock_worker_service.trigger_audio_worker = AsyncMock()
-        mock_worker_service.trigger_lyrics_worker = AsyncMock()
-
         # Mock YouTube download service to return a GCS path
         mock_youtube_service = MagicMock()
         mock_youtube_service.download = AsyncMock(
             return_value="uploads/test-job-123/audio/test.webm"
         )
 
+        # Mock start_job_processing as an async method
+        mock_job_manager.start_job_processing = AsyncMock()
+
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
-             patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service), \
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
              patch('backend.services.storage_service.StorageService'), \
              patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
@@ -1380,9 +1381,8 @@ class TestHandleMadeForYouOrder:
             # Audio should be downloaded first
             mock_youtube_service.download.assert_called_once()
 
-            # Workers should be triggered after download
-            mock_worker_service.trigger_audio_worker.assert_called_once()
-            mock_worker_service.trigger_lyrics_worker.assert_called_once()
+            # start_job_processing should be called (handles transition + workers)
+            mock_job_manager.start_job_processing.assert_called_once_with("test-job-123")
 
     @pytest.mark.asyncio
     async def test_stripe_session_marked_processed(
@@ -1587,6 +1587,69 @@ class TestMadeForYouYouTubeDownloadContract:
             assert gcs_path_index < worker_index, \
                 f"input_media_gcs_path must be set BEFORE workers are triggered. " \
                 f"Call order was: {call_order}"
+
+    @pytest.mark.asyncio
+    async def test_youtube_url_calls_start_job_processing_after_download(
+        self, mock_job_manager, mock_email_service, mock_user_service,
+        mock_theme_service, youtube_order_metadata
+    ):
+        """
+        CRITICAL: start_job_processing must be called AFTER download completes.
+
+        The handler uses job_manager.start_job_processing() which:
+        1. Transitions job to DOWNLOADING
+        2. Triggers audio and lyrics workers
+
+        Without start_job_processing, workers would run but all status updates
+        would fail silently because transitions from PENDING to GENERATING_SCREENS
+        or AWAITING_REVIEW are invalid.
+
+        This bug caused made-for-you orders to get stuck at PENDING status even though
+        all processing completed successfully. See job IDs 06cfea29 and 984da08b.
+        """
+        from backend.api.routes.users import _handle_made_for_you_order
+
+        # Track call order to verify sequence
+        call_order = []
+
+        # Mock YouTubeDownloadService to return a GCS path
+        mock_youtube_service = MagicMock()
+        mock_youtube_service.download = AsyncMock(
+            return_value="uploads/test-job-123/audio/test.webm",
+            side_effect=lambda **kwargs: (
+                call_order.append('youtube_download'),
+                "uploads/test-job-123/audio/test.webm"
+            )[1]
+        )
+
+        # Track when start_job_processing is called
+        mock_job_manager.start_job_processing = AsyncMock(
+            side_effect=lambda job_id: call_order.append('start_job_processing')
+        )
+
+        with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
+             patch('backend.services.storage_service.StorageService'), \
+             patch('backend.api.routes.users.get_theme_service', return_value=mock_theme_service), \
+             patch('backend.api.routes.users.get_youtube_download_service', return_value=mock_youtube_service):
+
+            await _handle_made_for_you_order(
+                session_id="sess_123",
+                metadata=youtube_order_metadata,
+                user_service=mock_user_service,
+                email_service=mock_email_service,
+            )
+
+        # CRITICAL: start_job_processing must be called
+        assert 'start_job_processing' in call_order, \
+            f"start_job_processing must be called. Call order was: {call_order}"
+
+        # CRITICAL: start_job_processing must happen AFTER download
+        download_index = call_order.index('youtube_download')
+        processing_index = call_order.index('start_job_processing')
+
+        assert download_index < processing_index, \
+            f"YouTube download must complete BEFORE start_job_processing. " \
+            f"Call order was: {call_order}"
 
     @pytest.mark.asyncio
     async def test_youtube_download_called_with_correct_params(

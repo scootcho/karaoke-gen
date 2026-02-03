@@ -269,10 +269,12 @@ class TestUrlJobWorkerSequencing:
     async def test_parallel_worker_triggers_both_workers(self):
         """
         _trigger_workers_parallel should trigger both workers (for uploaded files).
+        Note: This function now lives in jobs.py (direct job creation endpoint).
+        Most code paths use job_manager.start_job_processing() instead.
         """
-        from backend.api.routes.file_upload import _trigger_workers_parallel
+        from backend.api.routes.jobs import _trigger_workers_parallel
 
-        with patch('backend.api.routes.file_upload.worker_service') as mock_ws:
+        with patch('backend.api.routes.jobs.worker_service') as mock_ws:
             mock_ws.trigger_audio_worker = AsyncMock()
             mock_ws.trigger_lyrics_worker = AsyncMock()
 

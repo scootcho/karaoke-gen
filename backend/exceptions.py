@@ -64,3 +64,39 @@ class IPBlockedError(Exception):
         self.message = message
         self.ip_address = ip_address
         super().__init__(message)
+
+
+class InvalidStateTransitionError(Exception):
+    """
+    Raised when an invalid job state transition is attempted.
+
+    This exception is raised by JobManager.transition_to_state() when the
+    requested transition is not allowed by the state machine defined in
+    STATE_TRANSITIONS.
+
+    Example: Trying to transition from PENDING to GENERATING_SCREENS is invalid
+    because PENDING can only transition to DOWNLOADING, SEARCHING_AUDIO, FAILED,
+    or CANCELLED.
+
+    Attributes:
+        message: Human-readable error message
+        job_id: The job ID that failed to transition
+        from_status: Current status of the job
+        to_status: Attempted target status
+        valid_transitions: List of valid transitions from current status
+    """
+
+    def __init__(
+        self,
+        message: str,
+        job_id: str = "",
+        from_status: str = "",
+        to_status: str = "",
+        valid_transitions: list = None
+    ):
+        self.message = message
+        self.job_id = job_id
+        self.from_status = from_status
+        self.to_status = to_status
+        self.valid_transitions = valid_transitions or []
+        super().__init__(message)

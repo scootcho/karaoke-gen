@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from backend.config import settings
-from backend.exceptions import RateLimitExceededError
+from backend.exceptions import RateLimitExceededError, InvalidStateTransitionError
 from backend.models.job import Job, JobStatus, JobCreate, STATE_TRANSITIONS
 from backend.models.worker_log import WorkerLogEntry
 from backend.services.firestore_service import FirestoreService
@@ -316,53 +316,87 @@ class JobManager:
         self.firestore.delete_job(job_id)
         logger.info(f"Deleted job {job_id}")
     
-    def validate_state_transition(self, job_id: str, new_status: JobStatus) -> bool:
+    def validate_state_transition(
+        self,
+        job_id: str,
+        new_status: JobStatus,
+        raise_on_invalid: bool = True
+    ) -> bool:
         """
         Validate that a state transition is legal.
-        
+
+        Args:
+            job_id: Job ID
+            new_status: Target state
+            raise_on_invalid: If True, raise InvalidStateTransitionError on invalid
+                              transitions. If False, return False (legacy behavior).
+
         Returns:
-            True if transition is valid, False otherwise
+            True if transition is valid
+
+        Raises:
+            InvalidStateTransitionError: If transition is invalid and raise_on_invalid=True
+            ValueError: If job not found and raise_on_invalid=True
         """
         job = self.get_job(job_id)
         if not job:
-            logger.error(f"Job {job_id} not found")
+            error_msg = f"Job {job_id} not found"
+            logger.error(error_msg)
+            if raise_on_invalid:
+                raise ValueError(error_msg)
             return False
-        
+
         current_status = job.status
         valid_transitions = STATE_TRANSITIONS.get(current_status, [])
-        
+
         if new_status not in valid_transitions:
-            logger.error(
+            error_msg = (
                 f"Invalid state transition for job {job_id}: "
                 f"{current_status} -> {new_status}. "
-                f"Valid transitions: {valid_transitions}"
+                f"Valid transitions: {[s.value for s in valid_transitions]}"
             )
+            logger.error(error_msg)
+
+            if raise_on_invalid:
+                raise InvalidStateTransitionError(
+                    message=error_msg,
+                    job_id=job_id,
+                    from_status=current_status,
+                    to_status=new_status.value if hasattr(new_status, 'value') else str(new_status),
+                    valid_transitions=[s.value for s in valid_transitions]
+                )
             return False
-        
+
         return True
-    
+
     def transition_to_state(
         self,
         job_id: str,
         new_status: JobStatus,
         progress: Optional[int] = None,
         message: Optional[str] = None,
-        state_data_updates: Optional[Dict[str, Any]] = None
+        state_data_updates: Optional[Dict[str, Any]] = None,
+        raise_on_invalid: bool = True
     ) -> bool:
         """
         Transition job to new state with validation.
-        
+
         Args:
             job_id: Job ID
             new_status: Target state
             progress: Progress percentage (0-100)
             message: Timeline message
             state_data_updates: Updates to state_data field
-        
+            raise_on_invalid: If True (default), raise InvalidStateTransitionError
+                              on invalid transitions. If False, return False silently.
+
         Returns:
-            True if transition succeeded, False otherwise
+            True if transition succeeded, False if failed (only when raise_on_invalid=False)
+
+        Raises:
+            InvalidStateTransitionError: If transition is invalid and raise_on_invalid=True
         """
-        if not self.validate_state_transition(job_id, new_status):
+        if not self.validate_state_transition(job_id, new_status, raise_on_invalid=raise_on_invalid):
             return False
         
         updates = {
@@ -768,7 +802,69 @@ class JobManager:
         lyrics_complete = job.state_data.get('lyrics_complete', False)
         
         return audio_complete and lyrics_complete
-    
+
+    async def start_job_processing(
+        self,
+        job_id: str,
+        progress: int = 15,
+        message: str = "Starting audio and lyrics processing"
+    ) -> None:
+        """
+        Transition job to DOWNLOADING and trigger audio + lyrics workers.
+
+        This is the single entry point for starting job processing after audio
+        is available. All handlers (file_upload, webhook, audio_search) should
+        use this method to ensure consistent state transitions.
+
+        The method:
+        1. Validates job exists and has input_media_gcs_path
+        2. Transitions to DOWNLOADING status (raises if invalid)
+        3. Triggers audio and lyrics workers in parallel
+
+        Args:
+            job_id: Job ID to start processing
+            progress: Progress percentage to set (default 15)
+            message: Timeline message (default "Starting audio and lyrics processing")
+
+        Raises:
+            InvalidStateTransitionError: If job can't transition to DOWNLOADING
+            ValueError: If job not found or missing input_media_gcs_path
+
+        Example:
+            # After downloading audio to GCS:
+            job_manager.update_job(job_id, {'input_media_gcs_path': audio_path})
+            await job_manager.start_job_processing(job_id)
+        """
+        import asyncio
+        from backend.services.worker_service import get_worker_service
+
+        job = self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+
+        if not job.input_media_gcs_path:
+            raise ValueError(
+                f"Job {job_id} missing input_media_gcs_path. "
+                "Audio must be downloaded to GCS before starting processing."
+            )
+
+        # Transition to DOWNLOADING - this will raise if invalid
+        self.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.DOWNLOADING,
+            progress=progress,
+            message=message
+        )
+
+        # Trigger both workers in parallel
+        worker_service = get_worker_service()
+        await asyncio.gather(
+            worker_service.trigger_audio_worker(job_id),
+            worker_service.trigger_lyrics_worker(job_id)
+        )
+
+        logger.info(f"Job {job_id}: Started processing (audio + lyrics workers triggered)")
+
     def mark_audio_complete(self, job_id: str) -> None:
         """
         Mark audio processing as complete and check if can proceed.
