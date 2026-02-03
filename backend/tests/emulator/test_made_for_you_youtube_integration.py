@@ -229,13 +229,11 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job.job_id = "test-job-workers"
         mock_job_manager.create_job.return_value = mock_job
 
-        # Mock job_manager.get_job to return a proper Job object for start_job_processing
-        mock_job_for_processing = MagicMock()
-        mock_job_for_processing.job_id = "test-job-workers"
-        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-workers/audio/test.webm"
-        mock_job_for_processing.status = "pending"
-        mock_job_manager.get_job.return_value = mock_job_for_processing
-        mock_job_manager.transition_to_state.return_value = True
+        # start_job_processing is async - mock it to call workers directly
+        async def mock_start_job_processing(job_id, progress=15, message=""):
+            await mock_worker_service_local.trigger_audio_worker(job_id)
+            await mock_worker_service_local.trigger_lyrics_worker(job_id)
+        mock_job_manager.start_job_processing = AsyncMock(side_effect=mock_start_job_processing)
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
@@ -277,13 +275,8 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job.job_id = "test-job-notifications"
         mock_job_manager.create_job.return_value = mock_job
 
-        # Mock job_manager.get_job to return a proper Job object for start_job_processing
-        mock_job_for_processing = MagicMock()
-        mock_job_for_processing.job_id = "test-job-notifications"
-        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-notifications/audio/test.webm"
-        mock_job_for_processing.status = "pending"
-        mock_job_manager.get_job.return_value = mock_job_for_processing
-        mock_job_manager.transition_to_state.return_value = True
+        # start_job_processing is async - mock it as simple AsyncMock
+        mock_job_manager.start_job_processing = AsyncMock()
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
@@ -405,13 +398,11 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job.job_id = "test-job-no-search"
         mock_job_manager.create_job.return_value = mock_job
 
-        # Mock job_manager.get_job to return a proper Job object for start_job_processing
-        mock_job_for_processing = MagicMock()
-        mock_job_for_processing.job_id = "test-job-no-search"
-        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-no-search/audio/test.webm"
-        mock_job_for_processing.status = "pending"
-        mock_job_manager.get_job.return_value = mock_job_for_processing
-        mock_job_manager.transition_to_state.return_value = True
+        # start_job_processing is async - mock it to call workers directly
+        async def mock_start_job_processing(job_id, progress=15, message=""):
+            await mock_worker_service_local.trigger_audio_worker(job_id)
+            await mock_worker_service_local.trigger_lyrics_worker(job_id)
+        mock_job_manager.start_job_processing = AsyncMock(side_effect=mock_start_job_processing)
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
@@ -572,13 +563,11 @@ class TestMadeForYouWebhookIntegration:
         mock_job.job_id = "test-job-webhook-flow"
         mock_job_manager.create_job.return_value = mock_job
 
-        # Mock job_manager.get_job to return a proper Job object for start_job_processing
-        mock_job_for_processing = MagicMock()
-        mock_job_for_processing.job_id = "test-job-webhook-flow"
-        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-webhook-flow/audio/test.webm"
-        mock_job_for_processing.status = "pending"
-        mock_job_manager.get_job.return_value = mock_job_for_processing
-        mock_job_manager.transition_to_state.return_value = True
+        # start_job_processing is async - mock it to call workers directly
+        async def mock_start_job_processing(job_id, progress=15, message=""):
+            await mock_worker_service_local.trigger_audio_worker(job_id)
+            await mock_worker_service_local.trigger_lyrics_worker(job_id)
+        mock_job_manager.start_job_processing = AsyncMock(side_effect=mock_start_job_processing)
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
