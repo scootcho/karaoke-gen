@@ -229,6 +229,14 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job.job_id = "test-job-workers"
         mock_job_manager.create_job.return_value = mock_job
 
+        # Mock job_manager.get_job to return a proper Job object for start_job_processing
+        mock_job_for_processing = MagicMock()
+        mock_job_for_processing.job_id = "test-job-workers"
+        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-workers/audio/test.webm"
+        mock_job_for_processing.status = "pending"
+        mock_job_manager.get_job.return_value = mock_job_for_processing
+        mock_job_manager.transition_to_state.return_value = True
+
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
              patch('backend.services.storage_service.StorageService'), \
@@ -245,7 +253,7 @@ class TestMadeForYouYouTubeOrderFlow:
                 email_service=mock_email_service,
             )
 
-            # Verify workers were triggered
+            # Verify workers were triggered via start_job_processing
             mock_worker_service_local.trigger_audio_worker.assert_called_once_with(mock_job.job_id)
             mock_worker_service_local.trigger_lyrics_worker.assert_called_once_with(mock_job.job_id)
 
@@ -268,6 +276,14 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job = MagicMock()
         mock_job.job_id = "test-job-notifications"
         mock_job_manager.create_job.return_value = mock_job
+
+        # Mock job_manager.get_job to return a proper Job object for start_job_processing
+        mock_job_for_processing = MagicMock()
+        mock_job_for_processing.job_id = "test-job-notifications"
+        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-notifications/audio/test.webm"
+        mock_job_for_processing.status = "pending"
+        mock_job_manager.get_job.return_value = mock_job_for_processing
+        mock_job_manager.transition_to_state.return_value = True
 
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
@@ -389,6 +405,14 @@ class TestMadeForYouYouTubeOrderFlow:
         mock_job.job_id = "test-job-no-search"
         mock_job_manager.create_job.return_value = mock_job
 
+        # Mock job_manager.get_job to return a proper Job object for start_job_processing
+        mock_job_for_processing = MagicMock()
+        mock_job_for_processing.job_id = "test-job-no-search"
+        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-no-search/audio/test.webm"
+        mock_job_for_processing.status = "pending"
+        mock_job_manager.get_job.return_value = mock_job_for_processing
+        mock_job_manager.transition_to_state.return_value = True
+
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
              patch('backend.services.audio_search_service.get_audio_search_service') as mock_get_audio, \
@@ -412,7 +436,7 @@ class TestMadeForYouYouTubeOrderFlow:
             # Audio search should NOT be called for YouTube URL orders
             mock_audio_service.search.assert_not_called()
 
-            # Workers should be triggered directly
+            # Workers should be triggered directly via start_job_processing
             mock_worker_service_local.trigger_audio_worker.assert_called_once()
 
 
@@ -548,6 +572,14 @@ class TestMadeForYouWebhookIntegration:
         mock_job.job_id = "test-job-webhook-flow"
         mock_job_manager.create_job.return_value = mock_job
 
+        # Mock job_manager.get_job to return a proper Job object for start_job_processing
+        mock_job_for_processing = MagicMock()
+        mock_job_for_processing.job_id = "test-job-webhook-flow"
+        mock_job_for_processing.input_media_gcs_path = "uploads/test-job-webhook-flow/audio/test.webm"
+        mock_job_for_processing.status = "pending"
+        mock_job_manager.get_job.return_value = mock_job_for_processing
+        mock_job_manager.transition_to_state.return_value = True
+
         with patch('backend.services.job_manager.JobManager', return_value=mock_job_manager), \
              patch('backend.services.worker_service.get_worker_service', return_value=mock_worker_service_local), \
              patch('backend.services.storage_service.StorageService'), \
@@ -573,7 +605,7 @@ class TestMadeForYouWebhookIntegration:
             # 2. Verify YouTube download was called
             mock_youtube_download_service.download.assert_called_once()
 
-            # 3. Verify workers were triggered
+            # 3. Verify workers were triggered via start_job_processing
             mock_worker_service_local.trigger_audio_worker.assert_called_once()
             mock_worker_service_local.trigger_lyrics_worker.assert_called_once()
 

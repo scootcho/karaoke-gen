@@ -218,16 +218,16 @@ class TestCountdownStateTransitions:
         """
         Countdown state should survive job state transitions.
 
-        When job moves from RENDERING_VIDEO to ENCODING,
+        When job moves from GENERATING_VIDEO to ENCODING,
         the lyrics_metadata should remain intact.
         """
         job_id = f"transition-test-{datetime.now(UTC).timestamp()}"
 
         try:
-            # Create job in RENDERING_VIDEO state
+            # Create job in GENERATING_VIDEO state (valid predecessor to ENCODING)
             job = Job(
                 job_id=job_id,
-                status=JobStatus.RENDERING_VIDEO,
+                status=JobStatus.GENERATING_VIDEO,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
                 artist="Test",
@@ -241,7 +241,7 @@ class TestCountdownStateTransitions:
             )
             firestore_service.create_job(job)
 
-            # Transition to ENCODING
+            # Transition to ENCODING (valid transition from GENERATING_VIDEO)
             job_manager.transition_to_state(
                 job_id=job_id,
                 new_status=JobStatus.ENCODING,
