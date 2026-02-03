@@ -432,16 +432,25 @@ async def _download_and_start_processing(
             'filename': filename,
         })
 
-        # Use centralized start_job_processing which handles:
-        # 1. Validates job exists and has input_media_gcs_path
-        # 2. Transitions to DOWNLOADING (raises InvalidStateTransitionError if invalid)
-        # 3. Triggers audio + lyrics workers in parallel
-        background_tasks.add_task(
-            job_manager.start_job_processing,
-            job_id,
-            15,  # progress
-            "Audio downloaded, starting processing"
+        # Transition from DOWNLOADING_AUDIO to DOWNLOADING and trigger workers
+        # Note: Can't use start_job_processing() here because that expects PENDING status,
+        # but we're in DOWNLOADING_AUDIO state from the audio search flow.
+        job_manager.transition_to_state(
+            job_id=job_id,
+            new_status=JobStatus.DOWNLOADING,
+            progress=15,
+            message="Audio downloaded, starting processing"
         )
+
+        # Trigger workers in background
+        async def trigger_workers():
+            worker_service = get_worker_service()
+            await asyncio.gather(
+                worker_service.trigger_audio_worker(job_id),
+                worker_service.trigger_lyrics_worker(job_id)
+            )
+
+        background_tasks.add_task(trigger_workers)
         
         return {
             'selected_index': selection_index,

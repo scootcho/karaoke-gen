@@ -65,6 +65,7 @@ from backend.services.youtube_download_service import (
     get_youtube_download_service,
     YouTubeDownloadError,
 )
+from backend.exceptions import InvalidStateTransitionError
 
 
 logger = logging.getLogger(__name__)
@@ -603,7 +604,18 @@ async def _handle_made_for_you_order(
 
                 # Use centralized helper that handles transition + worker triggers
                 # This ensures consistent state machine flow and raises on invalid transitions
-                await job_manager.start_job_processing(job_id)
+                try:
+                    await job_manager.start_job_processing(job_id)
+                except InvalidStateTransitionError as e:
+                    logger.error(f"Job {job_id}: Failed to start processing - invalid state transition: {e}")
+                    job_manager.transition_to_state(
+                        job_id=job_id,
+                        new_status=JobStatus.FAILED,
+                        progress=0,
+                        message=f"Failed to start processing: {str(e)}",
+                        raise_on_invalid=False  # Don't raise if already failed
+                    )
+                    raise
 
             except YouTubeDownloadError as e:
                 logger.error(f"Job {job_id}: YouTube download failed: {e}")
