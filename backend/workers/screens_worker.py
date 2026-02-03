@@ -33,6 +33,7 @@ from pathlib import Path
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.job_health_service import validate_worker_can_run
 from backend.config import get_settings
 from backend.workers.style_helper import load_style_config, StyleConfig
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
@@ -238,6 +239,14 @@ def _validate_prerequisites(job) -> bool:
     Returns:
         True if prerequisites met, False otherwise
     """
+    # Validate job status is appropriate for screens worker
+    # This helps catch bugs where the worker is triggered incorrectly
+    status_error = validate_worker_can_run("screens_worker", job)
+    if status_error:
+        logger.warning(f"Job {job.job_id}: {status_error}")
+        # Log warning but don't fail - status validation is a safety net,
+        # the state_data flags below are the authoritative check
+
     # SAFETY NET: Enforce theme requirement at processing time
     # This catches any jobs that somehow bypassed JobManager.create_job() validation
     if not job.theme_id:
@@ -262,7 +271,7 @@ def _validate_prerequisites(job) -> bool:
     if not job.artist or not job.title:
         logger.error(f"Job {job.job_id}: Missing artist or title")
         return False
-    
+
     return True
 
 

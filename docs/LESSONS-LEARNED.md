@@ -45,6 +45,19 @@ When UI removes options, backend must apply sensible defaults. Don't rely on eac
 ### Centralize Job Creation Logic
 When multiple code paths create jobs (file upload, audio search, webhooks), use a shared service for default resolution. The made-for-you webhook handler diverged from regular job creation, missing CDG/TXT defaults because it didn't call the shared `resolve_cdg_txt_defaults()` function. Fix: Create `job_defaults_service.py` with centralized helpers used by ALL job creation paths.
 
+### Make State Transitions Loud, Not Silent (Feb 2026)
+**What happened**: Jobs 06cfea29 and 984da08b got stuck at `pending` forever. The Made-For-You webhook handler triggered workers without first transitioning from PENDING to DOWNLOADING. The state machine returned `False` silently, workers ran, but job status never advanced.
+
+**Root cause**: `transition_to_state()` returned `False` on invalid transitions, but callers didn't check the return value. Silent failures let bugs hide in production.
+
+**Fix implemented**:
+1. **Make failures loud**: `transition_to_state()` now raises `InvalidStateTransitionError` by default (use `raise_on_invalid=False` for soft failures)
+2. **Centralize the pattern**: Created `start_job_processing()` helper that atomically transitions + triggers workers - all handlers use this instead of implementing independently
+3. **Runtime consistency checks**: Added `job_health_service.py` with `check_job_consistency()` to detect stuck jobs (audio_complete but status=pending)
+4. **Worker validation**: Workers now log warnings if triggered when job is in unexpected status
+
+**Pattern**: When a function can fail, prefer exceptions over boolean returns. Silent failures accumulate into production bugs. Use centralized helpers for multi-step operations (state change + side effects) to prevent divergent implementations.
+
 ### Fix Both Sides of Dual Code Paths
 When fixing a bug in a system with multiple code paths (e.g., legacy vs orchestrator, local vs cloud), verify ALL paths are fixed. PR #271 fixed the GCE worker to READ `instrumental_selection` but only checked the legacy path which was already SENDING it. The orchestrator path (production default) wasn't sending it. **Pattern**: If a component receives config from multiple callers, check ALL callers when fixing the receiving side. Write integration tests that cover each path.
 
@@ -213,6 +226,37 @@ download_index = call_order.index('download')
 worker_index = call_order.index('audio_worker')
 assert download_index < worker_index, "Download must happen BEFORE workers"
 ```
+
+### Made-For-You Jobs Must Transition to DOWNLOADING Before Workers (Feb 2026)
+
+**Problem**: Made-for-you orders with YouTube URLs (jobs 06cfea29, 984da08b) got stuck at `pending` status even though all processing completed successfully. Workers ran, `state_data` showed `audio_complete: true`, `lyrics_complete: true`, `screens_progress.stage: complete`, but the `status` field remained `pending`.
+
+**Root cause**: The `_handle_made_for_you_order` function in `users.py` triggered workers for YouTube URL orders **without first transitioning the job from PENDING to DOWNLOADING**. The job state machine defines strict valid transitions:
+- `PENDING` → `DOWNLOADING`, `SEARCHING_AUDIO`, `FAILED`, `CANCELLED` (only these are valid)
+- Workers try: `PENDING` → `GENERATING_SCREENS` → `AWAITING_REVIEW` (INVALID!)
+
+All status transitions after workers complete fail silently because they're invalid from `PENDING`.
+
+**Why it was subtle**:
+1. Workers completed successfully (no errors in logs)
+2. `state_data` updates worked (they bypass state machine validation)
+3. Only the `status` field failed to update (uses `transition_to_state` which validates)
+
+**Fix**:
+1. Immediate: Add `transition_to_state(job_id, JobStatus.DOWNLOADING)` before triggering workers
+2. Robustness: Make `transition_to_state()` raise `InvalidStateTransitionError` by default instead of returning `False` silently
+3. Pattern: Create centralized `job_manager.start_job_processing(job_id)` helper that handles transition + worker triggers atomically
+
+**Robustness changes** (see `docs/archive/2026-02-02-state-machine-robustness-plan.md`):
+- `InvalidStateTransitionError` exception with full context (job_id, from_status, to_status, valid_transitions)
+- `validate_state_transition()` and `transition_to_state()` now have `raise_on_invalid=True` default
+- `start_job_processing()` centralizes the pattern: validate prerequisites → transition → trigger workers
+
+**Pattern**: Always verify state machine flow in webhook handlers. Use centralized helpers like `start_job_processing()` instead of duplicating transition + worker logic.
+
+**Tests added**:
+- `test_youtube_url_calls_start_job_processing_after_download` - verifies proper sequence
+- `TestInvalidStateTransitionError`, `TestValidateStateTransitionRaisesBehavior`, `TestStartJobProcessing` in `test_job_manager.py`
 
 ### Use data-testid for E2E
 Prefer `data-testid` over label/text selectors. They're immune to label changes and won't break when similar fields are added.

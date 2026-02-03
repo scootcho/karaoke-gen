@@ -16,6 +16,9 @@ from backend.services.encoding_service import get_encoding_service
 from backend.services.spacy_preloader import get_preloaded_model, is_model_preloaded
 from backend.services.nltk_preloader import get_preloaded_cmudict, is_cmudict_preloaded
 from backend.services.langfuse_preloader import get_preloaded_langfuse_handler, is_langfuse_preloaded, is_langfuse_configured
+from backend.services.job_health_service import check_job_consistency_detailed
+from backend.services.job_manager import JobManager
+from backend.models.job import JobStatus
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -427,6 +430,69 @@ async def preload_status() -> Dict[str, Any]:
             "nltk_preload": "Saves ~100-150s on SyllablesMatchHandler init",
             "langfuse_preload": "Saves ~200s on AgenticCorrector init",
         }
+    }
+
+
+@router.get("/health/job-consistency")
+async def job_consistency_check(
+    status: Optional[str] = None,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Check job consistency across the system.
+
+    This endpoint identifies jobs with state inconsistencies that may indicate
+    bugs in the state machine or trigger logic. Use this to find stuck jobs
+    or jobs in invalid states.
+
+    Args:
+        status: Optional filter by job status (e.g., "pending", "downloading")
+        limit: Maximum number of jobs to check (default 50)
+
+    Returns:
+        Dictionary with:
+        - total_checked: Number of jobs checked
+        - inconsistent_count: Number of jobs with issues
+        - inconsistent_jobs: List of job details with their issues
+        - summary: Summary of issue types found
+    """
+    job_manager = JobManager()
+
+    # Query jobs to check
+    query_params = {}
+    if status:
+        try:
+            job_status = JobStatus(status)
+            query_params['status'] = job_status
+        except ValueError:
+            return {
+                "error": f"Invalid status: {status}",
+                "valid_statuses": [s.value for s in JobStatus]
+            }
+
+    # Get jobs from Firestore
+    jobs = job_manager.list_jobs(limit=limit, **query_params)
+
+    # Check each job for consistency
+    inconsistent_jobs = []
+    issue_summary = {}
+
+    for job in jobs:
+        result = check_job_consistency_detailed(job)
+        if not result['is_healthy']:
+            inconsistent_jobs.append(result)
+            # Count issue types
+            for issue in result['issues']:
+                issue_type = issue.split(':')[0] if ':' in issue else issue
+                issue_summary[issue_type] = issue_summary.get(issue_type, 0) + 1
+
+    return {
+        "total_checked": len(jobs),
+        "inconsistent_count": len(inconsistent_jobs),
+        "inconsistent_jobs": inconsistent_jobs,
+        "summary": issue_summary,
+        "status_filter": status,
+        "limit": limit,
     }
 
 

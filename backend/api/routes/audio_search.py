@@ -236,14 +236,6 @@ def extract_request_metadata(request: Request, created_from: str = "audio_search
     }
 
 
-async def _trigger_workers_parallel(job_id: str) -> None:
-    """Trigger both audio and lyrics workers in parallel."""
-    await asyncio.gather(
-        worker_service.trigger_audio_worker(job_id),
-        worker_service.trigger_lyrics_worker(job_id)
-    )
-
-
 def _extract_gcs_path(filepath: str) -> str:
     """
     Extract the path portion from a GCS path or gs:// URL.
@@ -434,21 +426,22 @@ async def _download_and_start_processing(
                 except Exception as e:
                     logger.warning(f"Failed to clean up temp files: {e}")
         
-        # Update job with GCS path and transition to DOWNLOADING
+        # Update job with GCS path
         job_manager.update_job(job_id, {
             'input_media_gcs_path': audio_gcs_path,
             'filename': filename,
         })
-        
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.DOWNLOADING,
-            progress=15,
-            message="Audio downloaded, starting processing"
+
+        # Use centralized start_job_processing which handles:
+        # 1. Validates job exists and has input_media_gcs_path
+        # 2. Transitions to DOWNLOADING (raises InvalidStateTransitionError if invalid)
+        # 3. Triggers audio + lyrics workers in parallel
+        background_tasks.add_task(
+            job_manager.start_job_processing,
+            job_id,
+            15,  # progress
+            "Audio downloaded, starting processing"
         )
-        
-        # Trigger workers
-        background_tasks.add_task(_trigger_workers_parallel, job_id)
         
         return {
             'selected_index': selection_index,

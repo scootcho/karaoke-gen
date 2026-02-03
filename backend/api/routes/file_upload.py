@@ -256,19 +256,6 @@ ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 ALLOWED_FONT_EXTENSIONS = {'.ttf', '.otf', '.woff', '.woff2'}
 
 
-async def _trigger_workers_parallel(job_id: str) -> None:
-    """
-    Trigger both audio and lyrics workers in parallel.
-
-    FastAPI's BackgroundTasks runs async tasks sequentially, so we use
-    asyncio.gather to ensure both workers start at the same time.
-    """
-    await asyncio.gather(
-        worker_service.trigger_audio_worker(job_id),
-        worker_service.trigger_lyrics_worker(job_id)
-    )
-
-
 async def _trigger_audio_worker_only(job_id: str) -> None:
     """
     Trigger only the audio worker.
@@ -755,17 +742,16 @@ async def upload_and_create_job(
         if style_assets:
             logger.info(f"Style assets: {list(style_assets.keys())}")
         
-        # Transition job to DOWNLOADING state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.DOWNLOADING,
-            progress=5,
-            message="Files uploaded, preparing to process"
+        # Use centralized start_job_processing which handles:
+        # 1. Validates job exists and has input_media_gcs_path
+        # 2. Transitions to DOWNLOADING (raises InvalidStateTransitionError if invalid)
+        # 3. Triggers audio + lyrics workers in parallel
+        background_tasks.add_task(
+            job_manager.start_job_processing,
+            job_id,
+            5,  # progress
+            "Files uploaded, preparing to process"
         )
-        
-        # Trigger workers in parallel using asyncio.gather
-        # (FastAPI's BackgroundTasks runs async tasks sequentially)
-        background_tasks.add_task(_trigger_workers_parallel, job_id)
         
         # Build distribution services info for response
         distribution_services: Dict[str, Any] = {}
@@ -1305,16 +1291,16 @@ async def mark_uploads_complete(
         
         logger.info(f"Validated uploads for job {job_id}: {body.uploaded_files}")
         
-        # Transition job to DOWNLOADING state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.DOWNLOADING,
-            progress=5,
-            message="Files uploaded, preparing to process"
+        # Use centralized start_job_processing which handles:
+        # 1. Validates job exists and has input_media_gcs_path
+        # 2. Transitions to DOWNLOADING (raises InvalidStateTransitionError if invalid)
+        # 3. Triggers audio + lyrics workers in parallel
+        background_tasks.add_task(
+            job_manager.start_job_processing,
+            job_id,
+            5,  # progress
+            "Files uploaded, preparing to process"
         )
-        
-        # Trigger workers in parallel
-        background_tasks.add_task(_trigger_workers_parallel, job_id)
         
         # Get distribution services info for response
         credential_manager = get_credential_manager()
@@ -1588,14 +1574,6 @@ async def create_job_from_url(
         if title:
             logger.info(f"  Title: {title}")
 
-        # Transition job to DOWNLOADING state
-        job_manager.transition_to_state(
-            job_id=job_id,
-            new_status=JobStatus.DOWNLOADING,
-            progress=5,
-            message="Starting audio download from URL"
-        )
-
         # For YouTube URLs, download audio NOW using YouTubeDownloadService
         # This uses remote flacfetch (if configured) to avoid bot detection on Cloud Run
         if _is_youtube_url(body.url):
@@ -1617,14 +1595,16 @@ async def create_job_from_url(
 
                 logger.info(f"YouTube audio downloaded to GCS: {audio_gcs_path}")
 
-                # Now trigger both workers in parallel (audio already downloaded)
-                job_manager.transition_to_state(
-                    job_id=job_id,
-                    new_status=JobStatus.DOWNLOADING,
-                    progress=10,
-                    message="Audio downloaded, starting processing"
+                # Use centralized start_job_processing which handles:
+                # 1. Validates job exists and has input_media_gcs_path
+                # 2. Transitions PENDING → DOWNLOADING (raises if invalid)
+                # 3. Triggers audio + lyrics workers in parallel
+                background_tasks.add_task(
+                    job_manager.start_job_processing,
+                    job_id,
+                    10,  # progress
+                    "Audio downloaded, starting processing"
                 )
-                background_tasks.add_task(_trigger_workers_parallel, job_id)
 
             except YouTubeDownloadError as e:
                 logger.error(f"YouTube download failed: {e}")
@@ -1634,8 +1614,14 @@ async def create_job_from_url(
                     detail=f"YouTube download failed: {e}"
                 )
         else:
-            # For non-YouTube URLs, trigger ONLY audio worker first
+            # For non-YouTube URLs, transition to DOWNLOADING and trigger audio worker
             # The audio worker will download the URL and trigger lyrics worker after
+            job_manager.transition_to_state(
+                job_id=job_id,
+                new_status=JobStatus.DOWNLOADING,
+                progress=5,
+                message="Starting audio download from URL"
+            )
             background_tasks.add_task(_trigger_audio_worker_only, job_id)
 
         return CreateJobFromUrlResponse(

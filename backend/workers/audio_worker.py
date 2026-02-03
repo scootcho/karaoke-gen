@@ -24,6 +24,7 @@ from pathlib import Path
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.job_health_service import validate_worker_can_run
 from backend.config import get_settings
 from backend.workers.worker_logging import create_job_logger, setup_job_logging, job_logging_context
 from backend.workers.registry import worker_registry
@@ -288,7 +289,15 @@ async def process_audio_separation(job_id: str) -> bool:
         logger.error(f"[job:{job_id}] Job not found in Firestore")
         job_log.error(f"Job {job_id} not found in Firestore!")
         return False
-    
+
+    # Validate job status is appropriate for audio worker
+    # This helps catch bugs where the worker is triggered incorrectly
+    status_error = validate_worker_can_run("audio_worker", job)
+    if status_error:
+        logger.warning(f"[job:{job_id}] {status_error}")
+        job_log.warning(status_error)
+        # Continue anyway - this is a safety net warning, not a hard failure
+
     # Create temporary working directory
     temp_dir = tempfile.mkdtemp(prefix=f"karaoke_{job_id}_")
     job_log.info(f"Created temp directory: {temp_dir}")

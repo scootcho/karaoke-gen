@@ -496,7 +496,7 @@ function AdminJobsPageContent() {
     const info: Record<string, { label: string; description: string; icon: any }> = {
       pending: {
         label: "Pending",
-        description: "Restart from the beginning. Clears all processing data.",
+        description: "Restart from the beginning. Clears all processing data including audio/lyrics progress.",
         icon: RotateCcw,
       },
       awaiting_audio_selection: {
@@ -505,14 +505,9 @@ function AdminJobsPageContent() {
         icon: Music,
       },
       awaiting_review: {
-        label: "Lyrics Review",
-        description: "Re-review lyrics. Preserves audio stems.",
+        label: "Combined Review",
+        description: "Re-review lyrics AND re-select instrumental. Preserves audio stems.",
         icon: Mic,
-      },
-      awaiting_instrumental_selection: {
-        label: "Instrumental",
-        description: "Re-select instrumental. Preserves lyrics review.",
-        icon: Sliders,
       },
       instrumental_selected: {
         label: "Reprocess Video",
@@ -816,8 +811,7 @@ function AdminJobsPageContent() {
               {[
                 { state: "pending", icon: RotateCcw, label: "Start" },
                 { state: "awaiting_audio_selection", icon: Music, label: "Audio" },
-                { state: "awaiting_review", icon: Mic, label: "Lyrics" },
-                { state: "awaiting_instrumental_selection", icon: Sliders, label: "Inst." },
+                { state: "awaiting_review", icon: Mic, label: "Review" },  // Combined lyrics + instrumental review
                 { state: "instrumental_selected", icon: RefreshCw, label: "Reprocess" },
               ].map(({ state, icon: Icon, label }) => (
                 <Tooltip key={state}>
@@ -1638,8 +1632,7 @@ function AdminJobsPageContent() {
                     <span className="font-medium">What happens next:</span>{" "}
                     {resetResult.new_status === "pending" && "Job will need to go through audio search, download, and all processing steps."}
                     {resetResult.new_status === "awaiting_audio_selection" && "User can select from the cached audio search results."}
-                    {resetResult.new_status === "awaiting_review" && "User can review and correct the lyrics."}
-                    {resetResult.new_status === "awaiting_instrumental_selection" && "User can select the instrumental track."}
+                    {resetResult.new_status === "awaiting_review" && "User can review lyrics and select instrumental track."}
                     {resetResult.new_status === "instrumental_selected" && (
                       resetResult.worker_triggered
                         ? "Video generation is now in progress."

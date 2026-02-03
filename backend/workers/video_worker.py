@@ -34,6 +34,7 @@ from pathlib import Path
 from backend.models.job import JobStatus
 from backend.services.job_manager import JobManager
 from backend.services.storage_service import StorageService
+from backend.services.job_health_service import validate_worker_can_run
 from backend.services.rclone_service import get_rclone_service
 from backend.services.youtube_service import get_youtube_service
 from backend.services.encoding_service import get_encoding_service
@@ -894,6 +895,13 @@ async def _handle_native_distribution(
 
 def _validate_prerequisites(job) -> bool:
     """Validate that all prerequisites are met for video generation."""
+    # Validate job status is appropriate for video worker
+    # This helps catch bugs where the worker is triggered incorrectly
+    status_error = validate_worker_can_run("video_worker", job)
+    if status_error:
+        logger.warning(f"Job {job.job_id}: {status_error}")
+        # Continue anyway - this is a safety net warning, not a hard failure
+
     # Check instrumental selection
     instrumental_selection = job.state_data.get('instrumental_selection')
     if not instrumental_selection:

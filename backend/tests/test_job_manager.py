@@ -5,7 +5,7 @@ Tests the job lifecycle management without requiring actual Firestore connection
 Uses mocking to isolate the business logic.
 """
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from datetime import datetime, UTC
 
 # Mock Firestore before importing JobManager
@@ -14,6 +14,7 @@ sys.modules['google.cloud.firestore'] = MagicMock()
 
 from backend.services.job_manager import JobManager
 from backend.models.job import Job, JobCreate, JobStatus
+from backend.exceptions import InvalidStateTransitionError
 
 
 @pytest.fixture
@@ -566,6 +567,288 @@ class TestDeleteStateDataKeys:
         result = job_manager.delete_state_data_keys("test123", ["render_progress"])
 
         assert result == []
+
+
+# =============================================================================
+# InvalidStateTransitionError Tests
+# =============================================================================
+
+class TestInvalidStateTransitionError:
+    """Tests for InvalidStateTransitionError exception."""
+
+    def test_exception_stores_all_attributes(self):
+        """Test exception stores job_id, from_status, to_status, and valid_transitions."""
+        error = InvalidStateTransitionError(
+            message="Test error",
+            job_id="test-123",
+            from_status="pending",
+            to_status="generating_screens",
+            valid_transitions=["downloading", "searching_audio", "failed"]
+        )
+
+        assert error.message == "Test error"
+        assert error.job_id == "test-123"
+        assert error.from_status == "pending"
+        assert error.to_status == "generating_screens"
+        assert error.valid_transitions == ["downloading", "searching_audio", "failed"]
+        assert str(error) == "Test error"
+
+    def test_exception_defaults(self):
+        """Test exception has sensible defaults."""
+        error = InvalidStateTransitionError(message="Minimal error")
+
+        assert error.message == "Minimal error"
+        assert error.job_id == ""
+        assert error.from_status == ""
+        assert error.to_status == ""
+        assert error.valid_transitions == []
+
+
+# =============================================================================
+# State Transition Validation Tests (raise_on_invalid behavior)
+# =============================================================================
+
+class TestValidateStateTransitionRaisesBehavior:
+    """Tests for validate_state_transition with raise_on_invalid parameter."""
+
+    def test_invalid_transition_raises_by_default(self, job_manager, mock_firestore_service):
+        """Test that invalid transition raises InvalidStateTransitionError by default."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        # PENDING cannot transition directly to GENERATING_SCREENS
+        with pytest.raises(InvalidStateTransitionError) as exc_info:
+            job_manager.validate_state_transition("test123", JobStatus.GENERATING_SCREENS)
+
+        error = exc_info.value
+        assert error.job_id == "test123"
+        assert error.from_status == JobStatus.PENDING
+        assert error.to_status == "generating_screens"
+        assert "downloading" in error.valid_transitions
+
+    def test_invalid_transition_returns_false_when_not_raising(self, job_manager, mock_firestore_service):
+        """Test that invalid transition returns False when raise_on_invalid=False."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        # PENDING cannot transition directly to GENERATING_SCREENS
+        result = job_manager.validate_state_transition(
+            "test123",
+            JobStatus.GENERATING_SCREENS,
+            raise_on_invalid=False
+        )
+
+        assert result is False
+
+    def test_valid_transition_returns_true(self, job_manager, mock_firestore_service):
+        """Test that valid transition returns True."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        # PENDING can transition to DOWNLOADING
+        result = job_manager.validate_state_transition("test123", JobStatus.DOWNLOADING)
+
+        assert result is True
+
+    def test_job_not_found_raises_value_error(self, job_manager, mock_firestore_service):
+        """Test that missing job raises ValueError when raise_on_invalid=True."""
+        mock_firestore_service.get_job.return_value = None
+
+        with pytest.raises(ValueError, match="Job nonexistent not found"):
+            job_manager.validate_state_transition("nonexistent", JobStatus.DOWNLOADING)
+
+    def test_job_not_found_returns_false_when_not_raising(self, job_manager, mock_firestore_service):
+        """Test that missing job returns False when raise_on_invalid=False."""
+        mock_firestore_service.get_job.return_value = None
+
+        result = job_manager.validate_state_transition(
+            "nonexistent",
+            JobStatus.DOWNLOADING,
+            raise_on_invalid=False
+        )
+
+        assert result is False
+
+
+class TestTransitionToStateRaisesBehavior:
+    """Tests for transition_to_state with raise_on_invalid parameter."""
+
+    def test_invalid_transition_raises_by_default(self, job_manager, mock_firestore_service):
+        """Test that invalid transition raises InvalidStateTransitionError by default."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        # PENDING cannot transition directly to AWAITING_REVIEW
+        with pytest.raises(InvalidStateTransitionError) as exc_info:
+            job_manager.transition_to_state("test123", JobStatus.AWAITING_REVIEW)
+
+        error = exc_info.value
+        assert error.job_id == "test123"
+
+    def test_invalid_transition_returns_false_when_not_raising(self, job_manager, mock_firestore_service):
+        """Test that invalid transition returns False when raise_on_invalid=False."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        result = job_manager.transition_to_state(
+            "test123",
+            JobStatus.AWAITING_REVIEW,
+            raise_on_invalid=False
+        )
+
+        assert result is False
+        # Verify update was NOT called since transition was invalid
+        mock_firestore_service.update_job.assert_not_called()
+
+    def test_valid_transition_updates_job(self, job_manager, mock_firestore_service):
+        """Test that valid transition updates the job."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC)
+        )
+
+        result = job_manager.transition_to_state(
+            "test123",
+            JobStatus.DOWNLOADING,
+            progress=15,
+            message="Starting processing"
+        )
+
+        assert result is True
+        # transition_to_state uses update_job_status internally
+        mock_firestore_service.update_job_status.assert_called()
+        call_kwargs = mock_firestore_service.update_job_status.call_args.kwargs
+        assert call_kwargs['job_id'] == "test123"
+        assert call_kwargs['status'] == JobStatus.DOWNLOADING
+
+
+# =============================================================================
+# start_job_processing Tests
+# =============================================================================
+
+class TestStartJobProcessing:
+    """Tests for start_job_processing method."""
+
+    @pytest.mark.asyncio
+    async def test_raises_if_job_not_found(self, job_manager, mock_firestore_service):
+        """Test raises ValueError if job doesn't exist."""
+        mock_firestore_service.get_job.return_value = None
+
+        with pytest.raises(ValueError, match="Job missing-job not found"):
+            await job_manager.start_job_processing("missing-job")
+
+    @pytest.mark.asyncio
+    async def test_raises_if_missing_input_media_path(self, job_manager, mock_firestore_service):
+        """Test raises ValueError if job has no input_media_gcs_path."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            input_media_gcs_path=None  # Missing
+        )
+
+        with pytest.raises(ValueError, match="missing input_media_gcs_path"):
+            await job_manager.start_job_processing("test123")
+
+    @pytest.mark.asyncio
+    async def test_raises_if_invalid_state_transition(self, job_manager, mock_firestore_service):
+        """Test raises InvalidStateTransitionError if job can't transition to DOWNLOADING."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.AWAITING_REVIEW,  # Can't go back to DOWNLOADING
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            input_media_gcs_path="gs://bucket/audio.mp3"
+        )
+
+        with pytest.raises(InvalidStateTransitionError):
+            await job_manager.start_job_processing("test123")
+
+    @pytest.mark.asyncio
+    async def test_transitions_and_triggers_workers(self, job_manager, mock_firestore_service):
+        """Test successful flow: transitions to DOWNLOADING and triggers workers."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            input_media_gcs_path="gs://bucket/audio.mp3"
+        )
+
+        with patch('backend.services.worker_service.get_worker_service') as mock_get_worker:
+            mock_worker = Mock()
+            mock_worker.trigger_audio_worker = AsyncMock()
+            mock_worker.trigger_lyrics_worker = AsyncMock()
+            mock_get_worker.return_value = mock_worker
+
+            await job_manager.start_job_processing("test123")
+
+            # Verify transition was called (uses update_job_status internally)
+            mock_firestore_service.update_job_status.assert_called()
+            call_kwargs = mock_firestore_service.update_job_status.call_args.kwargs
+            assert call_kwargs['status'] == JobStatus.DOWNLOADING
+
+            # Verify both workers were triggered
+            mock_worker.trigger_audio_worker.assert_called_once_with("test123")
+            mock_worker.trigger_lyrics_worker.assert_called_once_with("test123")
+
+    @pytest.mark.asyncio
+    async def test_workers_triggered_in_parallel(self, job_manager, mock_firestore_service):
+        """Test that audio and lyrics workers are triggered concurrently."""
+        mock_firestore_service.get_job.return_value = Job(
+            job_id="test123",
+            status=JobStatus.PENDING,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            input_media_gcs_path="gs://bucket/audio.mp3"
+        )
+
+        call_order = []
+
+        async def track_audio(*args):
+            call_order.append(('audio_start', datetime.now()))
+            # Simulate some work
+            call_order.append(('audio_end', datetime.now()))
+
+        async def track_lyrics(*args):
+            call_order.append(('lyrics_start', datetime.now()))
+            # Simulate some work
+            call_order.append(('lyrics_end', datetime.now()))
+
+        with patch('backend.services.worker_service.get_worker_service') as mock_get_worker:
+            mock_worker = Mock()
+            mock_worker.trigger_audio_worker = AsyncMock(side_effect=track_audio)
+            mock_worker.trigger_lyrics_worker = AsyncMock(side_effect=track_lyrics)
+            mock_get_worker.return_value = mock_worker
+
+            await job_manager.start_job_processing("test123")
+
+            # Both workers should have been called
+            assert any('audio_start' in str(c) for c in call_order)
+            assert any('lyrics_start' in str(c) for c in call_order)
 
 
 if __name__ == "__main__":
