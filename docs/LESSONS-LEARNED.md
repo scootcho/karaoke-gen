@@ -312,6 +312,38 @@ const debouncedUpdate = useCallback((val: string) => {
 
 **Testing**: Verify (1) typing multi-digit values doesn't jump cursor, (2) debounce fires after delay, (3) blur syncs immediately, (4) external updates respected when not focused. See `frontend/components/lyrics-review/__tests__/TimeInput.test.tsx` for comprehensive test suite.
 
+### Mocks Must Match Real Return Values (Feb 2026)
+
+**Problem**: PR #371 introduced a bug where admin reset always returned 500. The code checked `if not success:` after calling `update_job()`, but `update_job()` returns `None`, not a boolean. Since `not None` is `True`, the error was always raised.
+
+**Why tests didn't catch it**: All 22 test mocks had:
+```python
+mock_jm.update_job.return_value = True  # WRONG - real method returns None
+```
+
+The mock returned `True`, so `if not True:` was `False` and tests passed. But in production, `if not None:` is `True`, causing 500 errors.
+
+**Root cause**: Mocks were written based on an assumed API contract (boolean return) rather than the actual contract (void return, raises on error).
+
+**Fix**:
+1. Updated all mocks to `return_value = None` with comment explaining why
+2. Added emulator integration test (`test_admin_reset_integration.py`) that uses real `JobManager`
+3. Added explicit test `test_update_job_returns_none_not_boolean` to document the API contract
+
+**Pattern for preventing this**:
+1. **Mocks should match real signatures**: Check the actual method before setting `return_value`. Void methods should mock `return_value = None`.
+2. **Add emulator tests for critical paths**: Integration tests with real services catch contract mismatches mocks hide.
+3. **Document API contracts in tests**: Add explicit tests for non-obvious behaviors (`update_job` returns None, raises on failure).
+
+**Code pattern**:
+```python
+# ❌ WRONG - assumes boolean return
+mock_jm.update_job.return_value = True
+
+# ✅ CORRECT - matches real API
+mock_jm.update_job.return_value = None  # Real API: returns None, raises on error
+```
+
 ### Emulator Tests Catch Real Bugs
 Firestore emulator tests catch issues (like missing indexes) that unit tests with mocks miss.
 
