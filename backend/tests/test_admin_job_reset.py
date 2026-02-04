@@ -84,7 +84,7 @@ class TestResetJobToPending:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -104,7 +104,7 @@ class TestResetJobToPending:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -128,7 +128,7 @@ class TestResetJobToAwaitingAudioSelection:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -149,7 +149,7 @@ class TestResetJobToAwaitingReview:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -247,7 +247,7 @@ class TestResetJobLogging:
              patch('backend.api.routes.admin.logger') as mock_logger:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -270,7 +270,7 @@ class TestResetJobTimeline:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -319,7 +319,7 @@ class TestResetJobClearsStateData:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -359,7 +359,7 @@ class TestResetJobClearsStateData:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -382,7 +382,7 @@ class TestResetJobClearsStateData:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -425,7 +425,7 @@ class TestResetJobToInstrumentalSelected:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             # Mock worker service with async method
@@ -450,7 +450,7 @@ class TestResetJobToInstrumentalSelected:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             # Mock worker service
@@ -478,7 +478,7 @@ class TestResetJobToInstrumentalSelected:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             # Mock worker service failure
@@ -515,7 +515,7 @@ class TestResetJobToInstrumentalSelected:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             mock_worker_service = Mock()
@@ -550,7 +550,7 @@ class TestResetJobClearsErrorState:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -654,7 +654,7 @@ class TestResetIncludesEncodingProgress:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -679,7 +679,7 @@ class TestResetWorkerTriggerResponseFields:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             mock_worker_service = Mock()
@@ -704,7 +704,7 @@ class TestResetWorkerTriggerResponseFields:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             mock_worker_service = Mock()
@@ -730,7 +730,7 @@ class TestResetWorkerTriggerResponseFields:
              patch('backend.services.worker_service.get_worker_service') as mock_ws:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             mock_worker_service = Mock()
@@ -754,7 +754,7 @@ class TestResetWorkerTriggerResponseFields:
         with patch('backend.api.routes.admin.JobManager') as mock_jm_class:
             mock_jm = Mock()
             mock_jm.get_job.return_value = mock_job
-            mock_jm.update_job.return_value = True
+            mock_jm.update_job.return_value = None  # Matches real API: returns None, raises on error
             mock_jm_class.return_value = mock_jm
 
             response = client.post(
@@ -962,3 +962,57 @@ class TestTriggerWorkerEndpoint:
                 app.dependency_overrides[require_admin] = original_override
             else:
                 app.dependency_overrides[require_admin] = get_mock_admin
+
+
+class TestResetEndpointWithRealJobData:
+    """
+    Tests using real production job data (job 984da08b) as fixture.
+
+    This validates the admin reset endpoint works correctly with realistic
+    state_data from a production job that needed manual admin reset.
+    """
+
+    # Real state_data from production job 984da08b
+    REAL_JOB_STATE_DATA = {
+        "backing_vocals_analysis": {"has_audible_content": True},
+        "video_progress": {"stage": "running"},  # Stale progress
+        "lyrics_complete": True,
+        "audio_complete": True
+    }
+
+    def test_reset_endpoint_returns_200_with_none_return_value(self, client):
+        """
+        Test that reset endpoint returns 200 (not 500) when update_job
+        returns None, matching the real API behavior.
+
+        Before fix: endpoint checked 'if not success:' which was always True
+        After fix: endpoint doesn't check return value
+
+        Uses real production job 984da08b data as fixture.
+        """
+        # Mock job with real production data
+        mock_job = Mock(spec=Job)
+        mock_job.job_id = "984da08b"
+        mock_job.status = JobStatus.COMPLETE
+        mock_job.artist = "Mark Mallman"
+        mock_job.title = "Minneapolis"
+        mock_job.theme_id = "nomad"
+        mock_job.user_email = "madeforyou@nomadkaraoke.com"
+        mock_job.file_urls = {"stems": {}, "lyrics": {}}
+        mock_job.state_data = self.REAL_JOB_STATE_DATA.copy()
+        mock_job.timeline = []
+
+        with patch('backend.api.routes.admin.JobManager') as mock_jm:
+            mock_jm.return_value.get_job.return_value = mock_job
+            # KEY: return None (matching real API contract - not boolean!)
+            mock_jm.return_value.update_job.return_value = None
+
+            response = client.post(
+                "/api/admin/jobs/984da08b/reset",
+                json={"target_state": "pending"},
+            )
+
+            # This is the bug fix - before it was 500, now 200
+            assert response.status_code == 200
+            assert response.json()["status"] == "success"
+            assert response.json()["new_status"] == "pending"

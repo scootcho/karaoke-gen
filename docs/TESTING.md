@@ -158,6 +158,30 @@ def test_create_job_applies_default_theme(mock_firestore, mock_gcs):
     assert job.theme_id == "nomad"  # Default theme applied
 ```
 
+**Critical: Mocks Must Match Real API Contracts**
+
+When mocking methods, ensure the mock's `return_value` matches what the real method returns. A common bug pattern:
+
+```python
+# ❌ BAD: Assumes method returns boolean
+mock_service.update_job.return_value = True
+
+# Code under test:
+success = job_manager.update_job(job_id, updates)
+if not success:  # BUG: if real method returns None, this is always True!
+    raise HTTPException(500)
+```
+
+The fix:
+
+```python
+# ✅ GOOD: Check real method signature first
+# def update_job(self, job_id: str, updates: Dict) -> None:
+mock_service.update_job.return_value = None  # Match real API
+```
+
+**Before writing a mock**, check the actual method's return type. Void methods should mock `return_value = None`. Methods that raise on error (rather than returning False) should have mocks that raise exceptions for error cases. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#mocks-must-match-real-return-values-feb-2026) for a production bug caused by this.
+
 ### Integration Tests (`tests/integration/`)
 
 **Purpose:** Test CLI workflows and component interactions.
