@@ -148,8 +148,8 @@ class AudioShakeAPI:
             "targets": [
                 {
                     "model": "alignment",
-                    "formats": ["json"],
-                    "language": "en"
+                    "formats": ["json"]
+                    # Note: Language omitted - AudioShake will auto-detect (supports 100+ languages)
                 }
             ],
         }

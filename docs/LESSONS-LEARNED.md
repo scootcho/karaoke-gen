@@ -171,6 +171,35 @@ Using `downloading` is the safest choice because it's the most flexible entry st
 
 **Pattern**: When writing admin operations or restart logic that sets job status and triggers workers, always check `backend/models/job.py:STATE_TRANSITIONS` to ensure the target state allows transitioning to whatever state the worker will try to enter. Don't make assumptions about valid transitions - verify against the state machine definition.
 
+### AudioShake Language Auto-Detection (Feb 2026)
+**What happened**: Job `1eab1172` with Russian lyrics ("я куплю тебе дом") was transcribed by AudioShake, but the lyrics were translated to English instead of being transcribed in Russian. The transcription showed English words instead of Cyrillic characters.
+
+**Root cause**: `karaoke_gen/lyrics_transcriber/transcribers/audioshake.py:152` was hardcoding `"language": "en"` in the AudioShake API request. This told AudioShake to transcribe/translate everything as English, regardless of the actual audio language.
+
+**Fix** (v0.115.4): Remove the hardcoded language parameter from the API request. AudioShake supports language auto-detection when the `language` field is omitted. Tested with API call - omitting the language field allows AudioShake to auto-detect from 100+ supported languages (Russian, Chinese, Spanish, etc.).
+
+```python
+# Before (forced English):
+data = {
+    "targets": [{
+        "model": "alignment",
+        "formats": ["json"],
+        "language": "en"  # ← Hardcoded
+    }]
+}
+
+# After (auto-detect):
+data = {
+    "targets": [{
+        "model": "alignment",
+        "formats": ["json"]
+        # Language omitted - AudioShake auto-detects
+    }]
+}
+```
+
+**Pattern**: When integrating with transcription/translation APIs, check if they support language auto-detection before hardcoding a language. Many modern APIs (Whisper, AudioShake, etc.) can auto-detect language, which makes the system work globally without configuration. Only hardcode a language when you need to force a specific output language or when the API requires it.
+
 ### Fonts in Docker
 Base Docker images have no fonts. Install `fonts-noto-core`, `fonts-noto-cjk` for video rendering.
 
