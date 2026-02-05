@@ -37,7 +37,7 @@ from config import (
     DiskSizes,
 )
 from modules import database, storage as storage_module, artifact_registry, secrets
-from modules import cloud_tasks, cloud_run, monitoring, networking
+from modules import cloud_tasks, cloud_run, monitoring, networking, runner_manager
 from modules.iam import backend_sa, github_actions_sa, claude_automation_sa, worker_sas
 from compute import encoding_worker_vm, github_runners
 
@@ -249,8 +249,18 @@ encoding_worker_instance = encoding_worker_vm.create_encoding_worker_vm(
 encoding_worker_firewall = encoding_worker_vm.create_encoding_worker_firewall()
 
 # GitHub Runners (CI/CD self-hosted runners)
+# Create Cloud NAT for outbound internet access (no external IPs needed)
+github_runners_router, github_runners_nat = github_runners.create_cloud_nat()
+
+# Create runner VMs (Spot instances for 60-91% cost savings)
 github_runner_vms = github_runners.create_github_runners(
-    github_runner_sa, all_secrets["github-runner-pat"]
+    github_runner_sa, all_secrets["github-runner-pat"], github_runners_nat
+)
+
+# Create runner manager (auto-start/stop VMs based on CI activity)
+runner_manager_resources = runner_manager.create_runner_manager_resources(
+    all_secrets["github-webhook-secret"],
+    all_secrets["github-runner-pat"],
 )
 
 
@@ -334,3 +344,8 @@ pulumi.export("encoding_worker_vm_name", encoding_worker_instance.name)
 # GitHub runners
 pulumi.export("github_runner_vm_names", [vm.name for vm in github_runner_vms])
 pulumi.export("github_runner_service_account", github_runner_sa.email)
+pulumi.export("github_runners_nat", github_runners_nat.name)
+
+# GitHub runner manager (auto-start/stop)
+pulumi.export("runner_manager_function_url", runner_manager_resources["function"].url)
+pulumi.export("runner_manager_scheduler_job", runner_manager_resources["scheduler_job"].name)

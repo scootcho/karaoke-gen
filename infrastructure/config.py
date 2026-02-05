@@ -87,10 +87,28 @@ class QueueConfigs:
 
 
 # Number of self-hosted GitHub Action runners
-NUM_GITHUB_RUNNERS = 20
+# Reduced from 20 to 3 - runners auto-scale with start/stop management
+NUM_GITHUB_RUNNERS = 3
 
 # Google Drive folder ID for validator (public share folder)
 GDRIVE_FOLDER_ID = "1laRKAyxo0v817SstfM5XkpbWiNKNAMSX"
+
+
+class RunnerManagerConfig:
+    """Configuration for GitHub runner auto-start/stop management."""
+
+    FUNCTION_NAME = "github-runner-manager"
+    FUNCTION_MEMORY = "256M"
+    FUNCTION_TIMEOUT = 300  # 5 minutes
+    IDLE_TIMEOUT_HOURS = 1  # Shorter than Aquarius (3h) since we have more CI activity
+    IDLE_CHECK_SCHEDULE = "*/15 * * * *"  # Every 15 minutes
+
+
+class SecretNames:
+    """Secret Manager secret names."""
+
+    GITHUB_RUNNER_PAT = "github-runner-pat"
+    GITHUB_WEBHOOK_SECRET = "github-webhook-secret"
 
 # GitHub repository for runner registration
 GITHUB_REPO_OWNER = "nomadkaraoke"

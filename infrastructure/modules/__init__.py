@@ -13,6 +13,7 @@ from . import cloud_run
 from . import monitoring
 from . import iam
 from . import networking
+from . import runner_manager
 
 __all__ = [
     "database",
@@ -24,4 +25,5 @@ __all__ = [
     "monitoring",
     "iam",
     "networking",
+    "runner_manager",
 ]

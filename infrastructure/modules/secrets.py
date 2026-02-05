@@ -47,6 +47,7 @@ def create_secrets() -> dict[str, secretmanager.Secret]:
 
         # GitHub
         "github-runner-pat",
+        "github-webhook-secret",  # For runner manager webhook verification
 
         # E2E Testing
         "e2e-bypass-key",
