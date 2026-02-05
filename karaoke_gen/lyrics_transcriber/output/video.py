@@ -219,7 +219,8 @@ class VideoGenerator:
             # Create a temporary copy of the ASS file with a unique filename
             import time
 
-            safe_prefix = "".join(c if c.isalnum() else "_" for c in output_prefix)
+            # Only allow ASCII alphanumeric characters to prevent FFmpeg path issues with Unicode
+            safe_prefix = "".join(c if c.isascii() and c.isalnum() else "_" for c in output_prefix)
             timestamp = int(time.time() * 1000)
             temp_ass_path = os.path.join(self.cache_dir, f"temp_subtitles_{safe_prefix}_{timestamp}.ass")
             import shutil
@@ -279,7 +280,8 @@ class VideoGenerator:
             import time
             import shutil
 
-            safe_prefix = "".join(c if c.isalnum() else "_" for c in output_prefix)
+            # Only allow ASCII alphanumeric characters to prevent FFmpeg path issues with Unicode
+            safe_prefix = "".join(c if c.isascii() and c.isalnum() else "_" for c in output_prefix)
             timestamp = int(time.time() * 1000)
             temp_ass_path = os.path.join(self.cache_dir, f"temp_preview_subtitles_{safe_prefix}_{timestamp}.ass")
 

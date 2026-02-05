@@ -1965,9 +1965,9 @@ class JobMonitor:
             folder_name = f"{brand_code} - {artist} - {title}"
         else:
             folder_name = f"{artist} - {title}"
-        
-        # Sanitize folder name
-        folder_name = "".join(c for c in folder_name if c.isalnum() or c in " -_").strip()
+
+        # Sanitize folder name - only allow ASCII alphanumeric to prevent filesystem issues
+        folder_name = "".join(c for c in folder_name if (c.isascii() and c.isalnum()) or c in " -_").strip()
         
         output_dir = Path(self.config.output_dir) / folder_name
         output_dir.mkdir(parents=True, exist_ok=True)

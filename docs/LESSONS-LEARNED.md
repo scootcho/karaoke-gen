@@ -138,6 +138,22 @@ For subprocess without shell, FFmpeg filter paths need: apostrophes escaped as `
 ### Unicode in HTTP Headers
 Sanitize user input (artist/title) to ASCII for HTTP headers. Smart quotes, em dashes from copy/paste cause encoding errors.
 
+### Unicode in File Paths (Feb 2026)
+**What happened**: Job `1eab1172` with Russian title "я куплю тебе дом" (Cyrillic) failed with FFmpeg exit code 183. The temp subtitle file path contained Unicode characters: `temp_subtitles_zivert___я_куплю_тебе_дом_1770150285852.ass`.
+
+**Root cause**: Python's `str.isalnum()` returns `True` for ALL Unicode alphanumeric characters (Cyrillic, Arabic, Chinese, etc.), not just ASCII. The code used `"".join(c if c.isalnum() else "_" for c in output_prefix)` to sanitize filenames, which allowed Cyrillic letters through because they're "alphanumeric" in Unicode. FFmpeg cannot handle Unicode characters in filter argument paths, causing file I/O errors.
+
+**Fix**: Replace `c.isalnum()` with `c.isascii() and c.isalnum()` to only allow ASCII alphanumeric characters (a-z, A-Z, 0-9). This ensures temp file paths are safe for FFmpeg and other external tools.
+
+**Locations fixed** (v0.115.2):
+- `karaoke_gen/lyrics_transcriber/output/video.py:222` - `generate_video()` temp subtitle path
+- `karaoke_gen/lyrics_transcriber/output/video.py:282` - `generate_preview_video()` temp subtitle path
+- `karaoke_gen/utils/remote_cli.py:1970` - output folder name sanitization
+
+**Pattern**: When sanitizing filenames or paths for external tools, always use ASCII-only checks. Don't assume `isalnum()`, `isalpha()`, or `isdigit()` are ASCII-only - they match all Unicode categories.
+
+**Test coverage**: Added 10 comprehensive tests covering Cyrillic, Chinese, Arabic, emoji, and accented characters to prevent regression.
+
 ### Fonts in Docker
 Base Docker images have no fonts. Install `fonts-noto-core`, `fonts-noto-cjk` for video rendering.
 
