@@ -2158,18 +2158,18 @@ async def restart_job(
         # Set coordination flags to trigger screens worker
         update_payload["state_data.audio_complete"] = True
         update_payload["state_data.lyrics_complete"] = True
-        update_payload["status"] = "transcribing"  # Allows screens worker to run
+        update_payload["status"] = "downloading"  # Allows transition to generating_screens
         update_payload["message"] = "Restarting with preserved audio stems"
         update_payload["error_message"] = DELETE_FIELD
         update_payload["error_details"] = DELETE_FIELD
         update_payload["timeline"] = ArrayUnion([{
-            "status": "transcribing",
+            "status": "downloading",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "message": f"Admin {admin_email} restarted job (preserving audio stems)"
         }])
 
         job_ref.update(update_payload)
-        new_status = "transcribing"
+        new_status = "downloading"
 
         # Trigger screens worker
         try:

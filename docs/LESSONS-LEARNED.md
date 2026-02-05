@@ -154,6 +154,23 @@ Sanitize user input (artist/title) to ASCII for HTTP headers. Smart quotes, em d
 
 **Test coverage**: Added 10 comprehensive tests covering Cyrillic, Chinese, Arabic, emoji, and accented characters to prevent regression.
 
+### Admin Job Restart Must Use Valid State Transitions (Feb 2026)
+**What happened**: After fixing the Unicode bug (v0.115.2), job `1eab1172` was restarted using the admin "Full Restart" button. The restart triggered successfully, but then immediately failed with: "Invalid state transition for job 1eab1172: transcribing -> JobStatus.GENERATING_SCREENS. Valid transitions: ['correcting', 'failed']"
+
+**Root cause**: The admin restart endpoint (`backend/api/routes/admin.py:2161`) was setting the job status to `transcribing` when `preserve_audio_stems=True`, then triggering the screens worker. The screens worker immediately tries to transition to `GENERATING_SCREENS` state. However, the state machine (`backend/models/job.py:STATE_TRANSITIONS`) doesn't allow `transcribing -> generating_screens` - only `transcribing -> correcting` or `transcribing -> failed`.
+
+**Why this happened**: The code was written intuitively ("we're preserving audio stems and want to restart from screens, so set to transcribing") without checking the state machine's allowed transitions. The comment even said "Allows screens worker to run" but that was incorrect.
+
+**Fix** (v0.115.3): Change restart endpoint to set status to `downloading` instead of `transcribing`. Looking at STATE_TRANSITIONS:
+- `downloading` → `generating_screens` ✓ (valid)
+- `audio_complete` → `generating_screens` ✓ (valid)
+- `lyrics_complete` → `generating_screens` ✓ (valid)
+- `transcribing` → `generating_screens` ✗ (invalid)
+
+Using `downloading` is the safest choice because it's the most flexible entry state that allows transitioning to screens generation.
+
+**Pattern**: When writing admin operations or restart logic that sets job status and triggers workers, always check `backend/models/job.py:STATE_TRANSITIONS` to ensure the target state allows transitioning to whatever state the worker will try to enter. Don't make assumptions about valid transitions - verify against the state machine definition.
+
 ### Fonts in Docker
 Base Docker images have no fonts. Install `fonts-noto-core`, `fonts-noto-cjk` for video rendering.
 
