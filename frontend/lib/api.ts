@@ -1454,6 +1454,59 @@ export const adminApi = {
     return handleResponse(response);
   },
 
+  /**
+   * Regenerate title and end screens with current artist/title metadata (admin only).
+   * Use when you've edited artist/title and need screens to reflect the new metadata.
+   */
+  async regenerateScreens(jobId: string): Promise<RegenerateScreensResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/regenerate-screens`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders()
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Fully restart a job from the beginning (admin only).
+   * Unlike reset (which just changes state), restart actually triggers workers.
+   */
+  async restartJob(jobId: string, options: RestartJobRequest): Promise<RestartJobResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/restart`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(options),
+      }
+    );
+    return handleResponse(response);
+  },
+
+  /**
+   * Override the audio source for a job (admin only).
+   * Switch from YouTube URL to audio search mode.
+   */
+  async overrideAudioSource(jobId: string, request: OverrideAudioSourceRequest): Promise<OverrideAudioSourceResponse> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/admin/jobs/${jobId}/override-audio-source`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(request),
+      }
+    );
+    return handleResponse(response);
+  },
+
   // =========================================================================
   // Rate Limits API
   // =========================================================================
@@ -1690,6 +1743,46 @@ export interface ClearWorkersResponse {
   job_id: string;
   message: string;
   cleared_keys: string[];
+}
+
+export interface RegenerateScreensResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  previous_screens_deleted: boolean;
+  worker_triggered: boolean;
+  error?: string;
+}
+
+export interface RestartJobRequest {
+  preserve_audio_stems: boolean;
+  delete_outputs: boolean;
+}
+
+export interface RestartJobResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  previous_status: string;
+  new_status: string;
+  cleared_data: string[];
+  deleted_gcs_paths: string[];
+  workers_triggered: string[];
+  error?: string;
+}
+
+export interface OverrideAudioSourceRequest {
+  source_type: "audio_search";
+}
+
+export interface OverrideAudioSourceResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  previous_source: string;
+  new_source: string;
+  cleared_data: string[];
+  new_status: string;
 }
 
 // ==========================================================================

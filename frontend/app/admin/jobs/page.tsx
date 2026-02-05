@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { adminApi, api, Job, FileInfo, JobFilesResponse, JobUpdateRequest, JobResetResponse, DeleteOutputsResponse, ClearWorkersResponse, TriggerWorkerResponse } from "@/lib/api"
+import { adminApi, api, Job, FileInfo, JobFilesResponse, JobUpdateRequest, JobResetResponse, DeleteOutputsResponse, RegenerateScreensResponse, RestartJobResponse, OverrideAudioSourceResponse } from "@/lib/api"
 import { useAdminSettings } from "@/lib/admin-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -182,11 +182,21 @@ function AdminJobsPageContent() {
   const [deleteOutputsResult, setDeleteOutputsResult] = useState<DeleteOutputsResponse | null>(null)
   const [deleteOutputsResultOpen, setDeleteOutputsResultOpen] = useState(false)
 
-  // Clear workers state
-  const [clearingWorkers, setClearingWorkers] = useState(false)
+  // Note: clearingWorkers and triggeringWorker states removed
+  // These low-level escape hatches are replaced by Full Restart and Regen Screens
 
-  // Trigger worker state
-  const [triggeringWorker, setTriggeringWorker] = useState(false)
+  // Regenerate screens state
+  const [regeneratingScreens, setRegeneratingScreens] = useState(false)
+  const [regenerateScreensDialogOpen, setRegenerateScreensDialogOpen] = useState(false)
+
+  // Restart job state
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const [restartPreserveStems, setRestartPreserveStems] = useState(true)
+
+  // Override audio source state
+  const [overrideAudioDialogOpen, setOverrideAudioDialogOpen] = useState(false)
+  const [overridingAudio, setOverridingAudio] = useState(false)
 
   const loadJobs = useCallback(async () => {
     try {
@@ -420,74 +430,113 @@ function AdminJobsPageContent() {
     }
   }
 
-  // Handle clear workers - clears worker progress to allow re-execution
-  const handleClearWorkers = async () => {
+  // Note: handleClearWorkers and handleTriggerWorker removed
+  // These low-level escape hatches are replaced by Full Restart and Regen Screens
+
+  // Handle regenerate screens - regenerates title/end screens with current metadata
+  const handleRegenerateScreens = async () => {
     if (!selectedJobId) return
 
     try {
-      setClearingWorkers(true)
-      const result = await adminApi.clearWorkers(selectedJobId)
+      setRegeneratingScreens(true)
+      const result = await adminApi.regenerateScreens(selectedJobId)
 
-      if (result.cleared_keys.length > 0) {
+      if (result.worker_triggered) {
         toast({
-          title: "Workers Cleared",
-          description: `${result.message}: ${result.cleared_keys.join(", ")}`,
+          title: "Screen Regeneration Started",
+          description: "Title and end screens are being regenerated with current artist/title. This may take 30-60 seconds.",
         })
       } else {
         toast({
-          title: "No Progress Keys",
-          description: result.message,
-        })
-      }
-
-      // Refresh job details
-      loadJobDetail(selectedJobId)
-      loadLogs(selectedJobId)
-    } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err.message || "Failed to clear workers",
-        variant: "destructive",
-      })
-    } finally {
-      setClearingWorkers(false)
-    }
-  }
-
-  // Handle trigger worker - manually triggers a worker for processing
-  const handleTriggerWorker = async (workerType: string = "video") => {
-    if (!selectedJobId) return
-
-    try {
-      setTriggeringWorker(true)
-      const result = await adminApi.triggerWorker(selectedJobId, workerType)
-
-      if (result.triggered) {
-        toast({
-          title: `${workerType.charAt(0).toUpperCase() + workerType.slice(1)} Worker Triggered`,
-          description: `Job ${selectedJobId} is now processing. The ${workerType} worker will begin generating the video.`,
-        })
-      } else {
-        toast({
-          title: "Trigger Failed",
-          description: result.error
-            ? `${result.message}: ${result.error}`
-            : result.message,
+          title: "Regeneration Failed",
+          description: result.error || result.message,
           variant: "destructive",
         })
       }
 
+      setRegenerateScreensDialogOpen(false)
       // Refresh job details
       loadJobDetail(selectedJobId)
       loadLogs(selectedJobId)
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Failed to trigger worker",
+        description: err.message || "Failed to regenerate screens",
         variant: "destructive",
       })
     } finally {
-      setTriggeringWorker(false)
+      setRegeneratingScreens(false)
+    }
+  }
+
+  // Handle restart job - fully restarts a job with worker triggering
+  const handleRestartJob = async () => {
+    if (!selectedJobId) return
+
+    try {
+      setRestarting(true)
+      const result = await adminApi.restartJob(selectedJobId, {
+        preserve_audio_stems: restartPreserveStems,
+        delete_outputs: true,
+      })
+
+      if (result.status === "success" || result.status === "partial") {
+        toast({
+          title: "Job Restarted",
+          description: `${result.message}. Workers triggered: ${result.workers_triggered.join(", ") || "none (waiting for action)"}`,
+        })
+      }
+
+      if (result.error) {
+        toast({
+          title: "Warning",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
+
+      setRestartDialogOpen(false)
+      // Refresh job details
+      loadJobDetail(selectedJobId)
+      loadLogs(selectedJobId)
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to restart job",
+        variant: "destructive",
+      })
+    } finally {
+      setRestarting(false)
+    }
+  }
+
+  // Handle override audio source - switches to audio search mode
+  const handleOverrideAudioSource = async () => {
+    if (!selectedJobId) return
+
+    try {
+      setOverridingAudio(true)
+      const result = await adminApi.overrideAudioSource(selectedJobId, {
+        source_type: "audio_search",
+      })
+
+      toast({
+        title: "Audio Source Changed",
+        description: result.message,
+      })
+
+      setOverrideAudioDialogOpen(false)
+      // Refresh job details
+      loadJobDetail(selectedJobId)
+      loadLogs(selectedJobId)
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to override audio source",
+        variant: "destructive",
+      })
+    } finally {
+      setOverridingAudio(false)
     }
   }
 
@@ -809,7 +858,7 @@ function AdminJobsPageContent() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-1">Reset to:</span>
               {[
-                { state: "pending", icon: RotateCcw, label: "Start" },
+                // Note: "pending" (Start) removed - use "Full Restart" button instead
                 { state: "awaiting_audio_selection", icon: Music, label: "Audio" },
                 { state: "awaiting_review", icon: Mic, label: "Review" },  // Combined lyrics + instrumental review
                 { state: "instrumental_selected", icon: RefreshCw, label: "Reprocess" },
@@ -858,21 +907,27 @@ function AdminJobsPageContent() {
                 </TooltipContent>
               </Tooltip>
 
+              {/* Admin Actions */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={handleClearWorkers}
-                    disabled={clearingWorkers}
+                    className="h-7 px-2 text-xs border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                    onClick={() => setRegenerateScreensDialogOpen(true)}
+                    disabled={regeneratingScreens}
                   >
-                    <RefreshCw className={`w-3 h-3 mr-1 ${clearingWorkers ? "animate-spin" : ""}`} />
-                    Clear Workers
+                    {regeneratingScreens ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                    )}
+                    Regen Screens
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Clear worker progress markers to allow re-execution
+                  <p className="font-medium">Regenerate Title/End Screens</p>
+                  <p className="text-xs text-muted-foreground">Use after editing artist/title to update screens</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -881,22 +936,51 @@ function AdminJobsPageContent() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className={`h-7 px-2 text-xs ${selectedJob.status === "instrumental_selected" ? "border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950" : ""}`}
-                    onClick={() => handleTriggerWorker("video")}
-                    disabled={triggeringWorker}
+                    className="h-7 px-2 text-xs border-purple-500 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950"
+                    onClick={() => {
+                      setRestartPreserveStems(true)
+                      setRestartDialogOpen(true)
+                    }}
+                    disabled={restarting}
                   >
-                    {triggeringWorker ? (
+                    {restarting ? (
                       <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                     ) : (
-                      <Play className="w-3 h-3 mr-1" />
+                      <RotateCcw className="w-3 h-3 mr-1" />
                     )}
-                    Trigger
+                    Full Restart
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Manually trigger video worker processing
+                  <p className="font-medium">Full Restart with Worker Triggering</p>
+                  <p className="text-xs text-muted-foreground">Unlike Reset, this actually triggers workers to run</p>
                 </TooltipContent>
               </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                    onClick={() => setOverrideAudioDialogOpen(true)}
+                    disabled={overridingAudio}
+                  >
+                    {overridingAudio ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Music className="w-3 h-3 mr-1" />
+                    )}
+                    Audio Search
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="font-medium">Switch to Audio Search</p>
+                  <p className="text-xs text-muted-foreground">Override YouTube URL with audio search for better quality</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-5 mx-1" />
 
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1660,6 +1744,134 @@ function AdminJobsPageContent() {
               </div>
             </DialogContent>
           </Dialog>
+
+          {/* Regenerate Screens Confirmation Dialog */}
+          <AlertDialog open={regenerateScreensDialogOpen} onOpenChange={setRegenerateScreensDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-blue-500" />
+                  Regenerate Title/End Screens
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will regenerate the title and end screen videos using the <strong>current</strong> artist and title metadata.
+                  <br /><br />
+                  <strong>Current values:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Artist: <code className="bg-muted px-1 rounded">{selectedJob?.artist || "(not set)"}</code></li>
+                    <li>Title: <code className="bg-muted px-1 rounded">{selectedJob?.title || "(not set)"}</code></li>
+                  </ul>
+                  <br />
+                  Screen generation takes 30-60 seconds. Progress will be visible in the job timeline.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleRegenerateScreens}
+                  disabled={regeneratingScreens}
+                  className="bg-blue-500 hover:bg-blue-600"
+                >
+                  {regeneratingScreens && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Regenerate Screens
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Restart Job Confirmation Dialog */}
+          <AlertDialog open={restartDialogOpen} onOpenChange={setRestartDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-purple-500" />
+                  Full Restart Job
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div>
+                    <p>Unlike &quot;Reset to Start&quot;, this will actually <strong>trigger workers</strong> to begin processing.</p>
+                    <br />
+                    <div className="flex items-center space-x-2 p-3 bg-muted rounded-lg">
+                      <input
+                        type="checkbox"
+                        id="preserveStems"
+                        checked={restartPreserveStems}
+                        onChange={(e) => setRestartPreserveStems(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <label htmlFor="preserveStems" className="text-sm font-medium">
+                        Preserve audio stems (faster)
+                      </label>
+                    </div>
+                    <br />
+                    {restartPreserveStems ? (
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Quick restart:</strong> Keeps existing audio separation and lyrics. Only regenerates screens and video with current metadata. Good for fixing title/artist typos.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Full restart:</strong> Re-downloads audio (if YouTube), re-separates stems, re-transcribes lyrics. Use when audio source needs to change.
+                      </p>
+                    )}
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleRestartJob}
+                  disabled={restarting}
+                  className="bg-purple-500 hover:bg-purple-600"
+                >
+                  {restarting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Restart Job
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Override Audio Source Confirmation Dialog */}
+          <AlertDialog open={overrideAudioDialogOpen} onOpenChange={setOverrideAudioDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <Music className="w-5 h-5 text-amber-500" />
+                  Switch to Audio Search
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will clear the current audio source and switch to audio search mode.
+                  <br /><br />
+                  <strong>What happens:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>YouTube URL and downloaded audio will be cleared</li>
+                    <li>All processing state will be reset</li>
+                    <li>Job will move to &quot;Awaiting Audio Selection&quot;</li>
+                    <li>You can then search for and select higher quality audio</li>
+                  </ul>
+                  <br />
+                  <strong>Current source:</strong>{" "}
+                  {selectedJob?.url ? (
+                    <span className="text-muted-foreground">YouTube URL</span>
+                  ) : selectedJob?.input_media_gcs_path ? (
+                    <span className="text-muted-foreground">Uploaded file</span>
+                  ) : (
+                    <span className="text-muted-foreground">Audio search</span>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleOverrideAudioSource}
+                  disabled={overridingAudio}
+                  className="bg-amber-500 hover:bg-amber-600"
+                >
+                  {overridingAudio && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Switch to Audio Search
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </TooltipProvider>
     )

@@ -1855,3 +1855,650 @@ async def impersonate_user(
         user_email=target_email,
         message=f"Now impersonating {target_email}",
     )
+
+
+# =============================================================================
+# Regenerate Screens Endpoint
+# =============================================================================
+
+class RegenerateScreensResponse(BaseModel):
+    """Response from regenerate screens endpoint."""
+    status: str
+    job_id: str
+    message: str
+    previous_screens_deleted: bool
+    worker_triggered: bool
+    error: Optional[str] = None
+
+
+# States where regenerate screens is allowed
+REGENERATE_SCREENS_ALLOWED_STATES = {
+    "complete",
+    "failed",
+    "awaiting_review",
+    "awaiting_instrumental_selection",
+    "instrumental_selected",
+    "prep_complete",
+}
+
+
+@router.post("/jobs/{job_id}/regenerate-screens", response_model=RegenerateScreensResponse)
+async def regenerate_screens(
+    job_id: str,
+    auth_data: AuthResult = Depends(require_admin),
+):
+    """
+    Regenerate title and end screens with current artist/title metadata (admin only).
+
+    Use this when you've edited the artist or title fields and need the
+    title/end screens to reflect the new metadata.
+
+    This endpoint:
+    1. Validates the job is in an appropriate state
+    2. Deletes existing screen files from GCS
+    3. Triggers the screens worker to regenerate with current metadata
+    4. Returns immediately (does not wait for completion)
+
+    Monitor progress via the job detail page or logs.
+
+    Allowed states: complete, failed, awaiting_review, awaiting_instrumental_selection,
+    instrumental_selected, prep_complete
+    """
+    admin_email = auth_data.user_email or "unknown"
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Validate job state
+    if job.status not in REGENERATE_SCREENS_ALLOWED_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot regenerate screens for job in '{job.status}' state. "
+            f"Allowed states: {', '.join(sorted(REGENERATE_SCREENS_ALLOWED_STATES))}"
+        )
+
+    # Validate job has artist and title
+    if not job.artist or not job.title:
+        raise HTTPException(
+            status_code=400,
+            detail="Job must have artist and title set to regenerate screens"
+        )
+
+    # Check that audio and lyrics processing completed at some point
+    state_data = job.state_data or {}
+    audio_progress = state_data.get('audio_progress', {})
+    lyrics_progress = state_data.get('lyrics_progress', {})
+
+    if audio_progress.get('stage') != 'audio_complete':
+        raise HTTPException(
+            status_code=400,
+            detail="Audio processing must be complete before regenerating screens"
+        )
+
+    if lyrics_progress.get('stage') != 'lyrics_complete':
+        raise HTTPException(
+            status_code=400,
+            detail="Lyrics processing must be complete before regenerating screens"
+        )
+
+    # Delete existing screen files from GCS
+    storage = StorageService()
+    screens_deleted = False
+    try:
+        # Delete screen video and image files
+        screen_paths = [
+            f"jobs/{job_id}/screens/title.mov",
+            f"jobs/{job_id}/screens/title.jpg",
+            f"jobs/{job_id}/screens/title.png",
+            f"jobs/{job_id}/screens/end.mov",
+            f"jobs/{job_id}/screens/end.jpg",
+            f"jobs/{job_id}/screens/end.png",
+        ]
+        for path in screen_paths:
+            try:
+                storage.delete_file(path)
+            except Exception:
+                pass  # File may not exist
+        screens_deleted = True
+        logger.info(f"Admin {admin_email} deleted existing screens for job {job_id}")
+    except Exception as e:
+        logger.warning(f"Error deleting screens for job {job_id}: {e}")
+
+    # Clear screens_progress to allow worker to run
+    from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
+    db = job_manager.firestore.db
+    job_ref = db.collection("jobs").document(job_id)
+
+    # Update state to allow screens worker to run
+    job_ref.update({
+        "state_data.screens_progress": DELETE_FIELD,
+        "state_data.audio_complete": True,
+        "state_data.lyrics_complete": True,
+        "timeline": ArrayUnion([{
+            "status": job.status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": f"Admin {admin_email} triggered screen regeneration"
+        }])
+    })
+
+    # Trigger screens worker
+    worker_triggered = False
+    error_msg = None
+    try:
+        from backend.services.worker_service import get_worker_service
+        worker_service = get_worker_service()
+        worker_triggered = await worker_service.trigger_screens_worker(job_id)
+        if worker_triggered:
+            logger.info(f"Admin {admin_email} triggered screens regeneration for job {job_id}")
+        else:
+            error_msg = "Worker service returned False - check service logs"
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error triggering screens worker for job {job_id}: {e}", exc_info=True)
+
+    return RegenerateScreensResponse(
+        status="success" if worker_triggered else "error",
+        job_id=job_id,
+        message="Screens regeneration started" if worker_triggered else "Failed to trigger screens worker",
+        previous_screens_deleted=screens_deleted,
+        worker_triggered=worker_triggered,
+        error=error_msg,
+    )
+
+
+# =============================================================================
+# Restart Job Endpoint
+# =============================================================================
+
+class RestartJobRequest(BaseModel):
+    """Request model for restarting a job."""
+    preserve_audio_stems: bool = False  # If true, keep existing stems (faster)
+    delete_outputs: bool = True  # Delete existing output files from GCS
+
+
+class RestartJobResponse(BaseModel):
+    """Response from restart job endpoint."""
+    status: str
+    job_id: str
+    message: str
+    previous_status: str
+    new_status: str
+    cleared_data: List[str]
+    deleted_gcs_paths: List[str]
+    workers_triggered: List[str]
+    error: Optional[str] = None
+
+
+# States where restart is allowed
+RESTART_ALLOWED_STATES = {
+    "pending",
+    "complete",
+    "failed",
+    "awaiting_review",
+    "awaiting_audio_selection",
+    "awaiting_instrumental_selection",
+    "instrumental_selected",
+    "prep_complete",
+}
+
+
+@router.post("/jobs/{job_id}/restart", response_model=RestartJobResponse)
+async def restart_job(
+    job_id: str,
+    request: RestartJobRequest,
+    auth_data: AuthResult = Depends(require_admin),
+):
+    """
+    Fully restart a job from the beginning (admin only).
+
+    Unlike reset (which just changes state), restart actually triggers
+    the appropriate workers to begin processing again.
+
+    Options:
+    - preserve_audio_stems: If True, keeps existing audio separation (faster restart).
+      Useful when you just need to regenerate screens with updated metadata.
+    - delete_outputs: If True (default), deletes existing output files from GCS.
+
+    When preserve_audio_stems=True:
+    - Keeps stems, lyrics, and transcription data
+    - Clears screens, video, encoding state
+    - Triggers screens worker immediately
+
+    When preserve_audio_stems=False:
+    - Clears all processing state
+    - For YouTube URL jobs: triggers download then audio/lyrics workers
+    - For audio search jobs: transitions to awaiting_audio_selection
+    - For file upload jobs: triggers audio/lyrics workers
+
+    Allowed states: pending, complete, failed, awaiting_review, awaiting_audio_selection,
+    awaiting_instrumental_selection, instrumental_selected, prep_complete
+    """
+    admin_email = auth_data.user_email or "unknown"
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Validate job state
+    if job.status not in RESTART_ALLOWED_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot restart job in '{job.status}' state. "
+            f"Allowed states: {', '.join(sorted(RESTART_ALLOWED_STATES))}"
+        )
+
+    previous_status = job.status
+    state_data = job.state_data or {}
+    cleared_keys = []
+    deleted_paths = []
+    workers_triggered = []
+    error_msg = None
+
+    from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
+    db = job_manager.firestore.db
+    job_ref = db.collection("jobs").document(job_id)
+
+    # Delete output files if requested
+    if request.delete_outputs:
+        storage = StorageService()
+        # Delete screens
+        for screen_file in ["title.mov", "title.jpg", "title.png", "end.mov", "end.jpg", "end.png"]:
+            try:
+                path = f"jobs/{job_id}/screens/{screen_file}"
+                storage.delete_file(path)
+                deleted_paths.append(path)
+            except Exception:
+                pass
+        # Delete final outputs
+        for output_file in ["final_4k.mp4", "final_720p.mp4", "with_vocals.mkv", "preview.mp4"]:
+            try:
+                path = f"jobs/{job_id}/output/{output_file}"
+                storage.delete_file(path)
+                deleted_paths.append(path)
+            except Exception:
+                pass
+
+    if request.preserve_audio_stems:
+        # Quick restart: keep stems/lyrics, just regenerate screens and video
+        # Validate that audio and lyrics completed
+        audio_progress = state_data.get('audio_progress', {})
+        lyrics_progress = state_data.get('lyrics_progress', {})
+
+        if audio_progress.get('stage') != 'audio_complete':
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot preserve audio stems - audio processing was not complete"
+            )
+        if lyrics_progress.get('stage') != 'lyrics_complete':
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot preserve audio stems - lyrics processing was not complete"
+            )
+
+        # Clear only screens/video/encoding state
+        keys_to_clear = [
+            "screens_progress",
+            "video_progress",
+            "render_progress",
+            "encoding_progress",
+            "review_complete",
+            "instrumental_selection",
+        ]
+
+        update_payload = {}
+        for key in keys_to_clear:
+            if key in state_data:
+                update_payload[f"state_data.{key}"] = DELETE_FIELD
+                cleared_keys.append(key)
+
+        # Set coordination flags to trigger screens worker
+        update_payload["state_data.audio_complete"] = True
+        update_payload["state_data.lyrics_complete"] = True
+        update_payload["status"] = "transcribing"  # Allows screens worker to run
+        update_payload["message"] = "Restarting with preserved audio stems"
+        update_payload["error_message"] = DELETE_FIELD
+        update_payload["error_details"] = DELETE_FIELD
+        update_payload["timeline"] = ArrayUnion([{
+            "status": "transcribing",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": f"Admin {admin_email} restarted job (preserving audio stems)"
+        }])
+
+        job_ref.update(update_payload)
+        new_status = "transcribing"
+
+        # Trigger screens worker
+        try:
+            from backend.services.worker_service import get_worker_service
+            worker_service = get_worker_service()
+            if await worker_service.trigger_screens_worker(job_id):
+                workers_triggered.append("screens")
+                logger.info(f"Admin {admin_email} triggered screens worker for restart of job {job_id}")
+            else:
+                error_msg = "Failed to trigger screens worker"
+        except Exception as e:
+            error_msg = f"Error triggering screens worker: {e}"
+            logger.error(f"Error triggering screens worker for job {job_id}: {e}", exc_info=True)
+
+    else:
+        # Full restart: clear everything and start from beginning
+        keys_to_clear = [
+            "audio_complete",
+            "lyrics_complete",
+            "audio_progress",
+            "lyrics_progress",
+            "screens_progress",
+            "video_progress",
+            "render_progress",
+            "encoding_progress",
+            "review_complete",
+            "corrected_lyrics",
+            "instrumental_selection",
+            "instrumental_options",
+            "lyrics_metadata",
+        ]
+
+        update_payload = {}
+        for key in keys_to_clear:
+            if key in state_data:
+                update_payload[f"state_data.{key}"] = DELETE_FIELD
+                cleared_keys.append(key)
+
+        update_payload["error_message"] = DELETE_FIELD
+        update_payload["error_details"] = DELETE_FIELD
+
+        # Determine what workers to trigger based on job input type
+        has_youtube_url = bool(job.url)
+        has_uploaded_file = bool(job.input_media_gcs_path)
+        has_audio_search = bool(state_data.get('audio_search_results') or state_data.get('audio_selection'))
+
+        if has_youtube_url and not has_audio_search:
+            # YouTube URL job - need to re-download and process
+            # Clear the downloaded file to force re-download
+            update_payload["input_media_gcs_path"] = DELETE_FIELD
+            cleared_keys.append("input_media_gcs_path")
+            update_payload["status"] = "downloading"
+            update_payload["message"] = "Re-downloading audio from YouTube"
+            update_payload["timeline"] = ArrayUnion([{
+                "status": "downloading",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "message": f"Admin {admin_email} restarted job - downloading from YouTube"
+            }])
+            job_ref.update(update_payload)
+            new_status = "downloading"
+
+            # Download YouTube audio using YouTubeDownloadService, then trigger processing
+            try:
+                from backend.services.youtube_download_service import (
+                    get_youtube_download_service,
+                    YouTubeDownloadError,
+                )
+                from backend.services.worker_service import get_worker_service
+
+                youtube_service = get_youtube_download_service()
+                audio_gcs_path = await youtube_service.download(
+                    url=job.url,
+                    job_id=job_id,
+                    artist=job.artist,
+                    title=job.title,
+                )
+
+                # Update job with downloaded audio path
+                job_manager.update_job(job_id, {'input_media_gcs_path': audio_gcs_path})
+                workers_triggered.append("download")
+                logger.info(f"YouTube audio re-downloaded to GCS: {audio_gcs_path}")
+
+                # Now trigger audio and lyrics workers
+                worker_service = get_worker_service()
+                if await worker_service.trigger_audio_worker(job_id):
+                    workers_triggered.append("audio")
+                if await worker_service.trigger_lyrics_worker(job_id):
+                    workers_triggered.append("lyrics")
+
+                if "audio" not in workers_triggered and "lyrics" not in workers_triggered:
+                    error_msg = "Audio downloaded but failed to trigger processing workers"
+            except YouTubeDownloadError as e:
+                error_msg = f"YouTube download failed: {e}"
+                logger.error(f"YouTube download failed for job {job_id}: {e}")
+                # Update job to failed state
+                job_manager.mark_job_failed(job_id, f"YouTube download failed: {e}")
+                new_status = "failed"
+            except Exception as e:
+                error_msg = f"Error during YouTube restart: {e}"
+                logger.error(f"Error restarting YouTube job {job_id}: {e}", exc_info=True)
+
+        elif has_audio_search:
+            # Audio search job - go back to audio selection
+            # Clear audio search results to allow re-search
+            for key in ["audio_search_results", "audio_search_count", "remote_search_id", "audio_selection"]:
+                if key in state_data:
+                    update_payload[f"state_data.{key}"] = DELETE_FIELD
+                    cleared_keys.append(key)
+
+            update_payload["input_media_gcs_path"] = DELETE_FIELD
+            update_payload["status"] = "awaiting_audio_selection"
+            update_payload["message"] = "Ready for audio source selection"
+            update_payload["timeline"] = ArrayUnion([{
+                "status": "awaiting_audio_selection",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "message": f"Admin {admin_email} restarted job - select audio source"
+            }])
+            job_ref.update(update_payload)
+            new_status = "awaiting_audio_selection"
+            # No workers to trigger - waiting for admin to select audio
+
+        elif has_uploaded_file:
+            # File upload job - just trigger audio/lyrics workers
+            update_payload["status"] = "downloading"
+            update_payload["message"] = "Restarting audio and lyrics processing"
+            update_payload["timeline"] = ArrayUnion([{
+                "status": "downloading",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "message": f"Admin {admin_email} restarted job from beginning"
+            }])
+            job_ref.update(update_payload)
+            new_status = "downloading"
+
+            try:
+                from backend.services.worker_service import get_worker_service
+                worker_service = get_worker_service()
+                if await worker_service.trigger_audio_worker(job_id):
+                    workers_triggered.append("audio")
+                if await worker_service.trigger_lyrics_worker(job_id):
+                    workers_triggered.append("lyrics")
+                if not workers_triggered:
+                    error_msg = "Failed to trigger audio/lyrics workers"
+            except Exception as e:
+                error_msg = f"Error triggering workers: {e}"
+                logger.error(f"Error triggering workers for job {job_id}: {e}", exc_info=True)
+        else:
+            # Unknown job type - just set to pending
+            update_payload["status"] = "pending"
+            update_payload["message"] = "Job reset - manual intervention may be needed"
+            update_payload["timeline"] = ArrayUnion([{
+                "status": "pending",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "message": f"Admin {admin_email} restarted job (no automatic worker trigger)"
+            }])
+            job_ref.update(update_payload)
+            new_status = "pending"
+            error_msg = "Job type unclear - may need manual worker trigger"
+
+    logger.info(
+        f"Admin {admin_email} restarted job {job_id}: "
+        f"{previous_status} -> {new_status}, cleared: {cleared_keys}, workers: {workers_triggered}"
+    )
+
+    return RestartJobResponse(
+        status="success" if workers_triggered or new_status == "awaiting_audio_selection" else "partial",
+        job_id=job_id,
+        message=f"Job restarted from {previous_status} to {new_status}",
+        previous_status=previous_status,
+        new_status=new_status,
+        cleared_data=cleared_keys,
+        deleted_gcs_paths=deleted_paths,
+        workers_triggered=workers_triggered,
+        error=error_msg,
+    )
+
+
+# =============================================================================
+# Override Audio Source Endpoint
+# =============================================================================
+
+class OverrideAudioSourceRequest(BaseModel):
+    """Request model for overriding audio source."""
+    source_type: str  # "audio_search" - switch to audio search mode
+
+
+class OverrideAudioSourceResponse(BaseModel):
+    """Response from override audio source endpoint."""
+    status: str
+    job_id: str
+    message: str
+    previous_source: str  # "youtube", "audio_search", "file_upload"
+    new_source: str
+    cleared_data: List[str]
+    new_status: str
+
+
+# States where audio source override is allowed
+OVERRIDE_AUDIO_ALLOWED_STATES = {
+    "pending",
+    "complete",
+    "failed",
+    "awaiting_review",
+    "awaiting_audio_selection",
+    "instrumental_selected",
+    "prep_complete",
+}
+
+
+@router.post("/jobs/{job_id}/override-audio-source", response_model=OverrideAudioSourceResponse)
+async def override_audio_source(
+    job_id: str,
+    request: OverrideAudioSourceRequest,
+    auth_data: AuthResult = Depends(require_admin),
+):
+    """
+    Override the audio source for a job (admin only).
+
+    Use this when a Made-For-You order was submitted with a YouTube URL
+    but you want to use audio search to find higher quality audio instead.
+
+    Currently supports switching to audio_search mode, which:
+    1. Clears existing audio-related state
+    2. Transitions job to awaiting_audio_selection
+    3. Admin can then search for and select a better audio source
+
+    Allowed states: pending, complete, failed, awaiting_review, awaiting_audio_selection,
+    instrumental_selected, prep_complete
+    """
+    admin_email = auth_data.user_email or "unknown"
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    # Validate job state
+    if job.status not in OVERRIDE_AUDIO_ALLOWED_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot override audio source for job in '{job.status}' state. "
+            f"Allowed states: {', '.join(sorted(OVERRIDE_AUDIO_ALLOWED_STATES))}"
+        )
+
+    # Validate source type
+    if request.source_type != "audio_search":
+        raise HTTPException(
+            status_code=400,
+            detail="Only 'audio_search' source type is currently supported"
+        )
+
+    # Determine current source type
+    state_data = job.state_data or {}
+    if state_data.get('audio_selection') or state_data.get('audio_search_results'):
+        previous_source = "audio_search"
+    elif job.url:
+        previous_source = "youtube"
+    elif job.input_media_gcs_path:
+        previous_source = "file_upload"
+    else:
+        previous_source = "unknown"
+
+    previous_status = job.status
+    cleared_keys = []
+
+    from google.cloud.firestore_v1 import DELETE_FIELD, ArrayUnion
+    db = job_manager.firestore.db
+    job_ref = db.collection("jobs").document(job_id)
+
+    # Clear all audio-related state to start fresh with audio search
+    keys_to_clear = [
+        "audio_complete",
+        "lyrics_complete",
+        "audio_progress",
+        "lyrics_progress",
+        "screens_progress",
+        "video_progress",
+        "render_progress",
+        "encoding_progress",
+        "review_complete",
+        "corrected_lyrics",
+        "instrumental_selection",
+        "instrumental_options",
+        "lyrics_metadata",
+        "audio_search_results",
+        "audio_search_count",
+        "remote_search_id",
+        "audio_selection",
+    ]
+
+    update_payload = {}
+    for key in keys_to_clear:
+        if key in state_data:
+            update_payload[f"state_data.{key}"] = DELETE_FIELD
+            cleared_keys.append(key)
+
+    # Clear job-level audio fields
+    update_payload["url"] = DELETE_FIELD  # Clear YouTube URL
+    update_payload["input_media_gcs_path"] = DELETE_FIELD  # Clear downloaded file
+    update_payload["error_message"] = DELETE_FIELD
+    update_payload["error_details"] = DELETE_FIELD
+
+    # Set audio search fields based on current artist/title
+    update_payload["audio_search_artist"] = job.artist
+    update_payload["audio_search_title"] = job.title
+
+    # Transition to awaiting_audio_selection
+    new_status = "awaiting_audio_selection"
+    update_payload["status"] = new_status
+    update_payload["message"] = "Ready for audio search - select audio source"
+    update_payload["progress"] = 0
+    update_payload["timeline"] = ArrayUnion([{
+        "status": new_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": f"Admin {admin_email} switched audio source from {previous_source} to audio_search"
+    }])
+
+    job_ref.update(update_payload)
+
+    logger.info(
+        f"Admin {admin_email} overrode audio source for job {job_id}: "
+        f"{previous_source} -> audio_search, status: {previous_status} -> {new_status}"
+    )
+
+    return OverrideAudioSourceResponse(
+        status="success",
+        job_id=job_id,
+        message=f"Audio source changed from {previous_source} to audio_search. "
+        "Use the audio search UI to select a new source.",
+        previous_source=previous_source,
+        new_source="audio_search",
+        cleared_data=cleared_keys,
+        new_status=new_status,
+    )
