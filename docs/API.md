@@ -958,6 +958,119 @@ Response:
 }
 ```
 
+#### Regenerate Screens
+
+```http
+POST /api/admin/jobs/{job_id}/regenerate-screens
+Authorization: Bearer ADMIN_TOKEN
+```
+
+Regenerates title and end screen videos using the **current** artist/title metadata. Use this after editing artist or title fields to update the screens without full reprocessing.
+
+Requirements:
+- Job must have audio and lyrics processing complete
+- Job must be in an allowed state: `complete`, `failed`, `awaiting_review`, `awaiting_instrumental_selection`, `instrumental_selected`, `prep_complete`
+
+The endpoint:
+1. Deletes existing screen files from GCS
+2. Triggers the screens worker to regenerate with current metadata
+3. Returns immediately (does not wait for completion)
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "message": "Screens regeneration started",
+  "previous_screens_deleted": true,
+  "worker_triggered": true,
+  "error": null
+}
+```
+
+Screen generation takes 30-60 seconds. Monitor progress via job timeline or logs.
+
+#### Restart Job
+
+```http
+POST /api/admin/jobs/{job_id}/restart
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "preserve_audio_stems": true,
+  "delete_outputs": true
+}
+```
+
+Fully restarts a job from the beginning. Unlike the reset endpoint (which just changes state), restart actually **triggers workers** to begin processing.
+
+Options:
+- `preserve_audio_stems` (default: false) - If true, keeps existing audio separation and lyrics. Only regenerates screens and video with current metadata. Good for fixing title/artist typos.
+- `delete_outputs` (default: true) - Delete existing output files from GCS.
+
+Behavior by job type:
+- **YouTube URL jobs**: Re-downloads audio, then triggers audio/lyrics workers
+- **Audio search jobs**: Transitions to `awaiting_audio_selection` for admin to re-select
+- **File upload jobs**: Triggers audio/lyrics workers directly
+
+When `preserve_audio_stems=true`:
+- Validates audio and lyrics processing completed previously
+- Clears screens/video/encoding state only
+- Triggers screens worker immediately
+
+Allowed states: `pending`, `complete`, `failed`, `awaiting_review`, `awaiting_audio_selection`, `awaiting_instrumental_selection`, `instrumental_selected`, `prep_complete`
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "message": "Job restarted from complete to downloading",
+  "previous_status": "complete",
+  "new_status": "downloading",
+  "cleared_data": ["audio_complete", "lyrics_complete", "screens_progress", "..."],
+  "deleted_gcs_paths": ["jobs/abc123/screens/title.mov", "..."],
+  "workers_triggered": ["download", "audio", "lyrics"],
+  "error": null
+}
+```
+
+#### Override Audio Source
+
+```http
+POST /api/admin/jobs/{job_id}/override-audio-source
+Authorization: Bearer ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "source_type": "audio_search"
+}
+```
+
+Switches a job's audio source from YouTube URL to audio search mode. Use this when a Made-For-You order was submitted with a YouTube URL but you want to find higher quality audio.
+
+Currently only supports switching to `audio_search` mode, which:
+1. Clears existing audio-related state (URL, downloaded file, stems, transcription)
+2. Sets `audio_search_artist` and `audio_search_title` from current job metadata
+3. Transitions job to `awaiting_audio_selection`
+4. Admin can then search for and select a better audio source in the UI
+
+Allowed states: `pending`, `complete`, `failed`, `awaiting_review`, `awaiting_audio_selection`, `instrumental_selected`, `prep_complete`
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "message": "Audio source changed from youtube to audio_search. Use the audio search UI to select a new source.",
+  "previous_source": "youtube",
+  "new_source": "audio_search",
+  "cleared_data": ["audio_complete", "lyrics_complete", "url", "input_media_gcs_path", "..."],
+  "new_status": "awaiting_audio_selection"
+}
+```
+
 If triggering fails:
 ```json
 {
