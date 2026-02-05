@@ -57,6 +57,8 @@ class PackagingService:
         title: str,
         output_mp3_path: Optional[str] = None,
         output_cdg_path: Optional[str] = None,
+        lrc_has_countdown_padding: bool = False,
+        countdown_padding_seconds: float = 3.0,
     ) -> Tuple[str, Optional[str], Optional[str]]:
         """
         Create a CDG package (ZIP containing CDG and MP3 files).
@@ -69,6 +71,9 @@ class PackagingService:
             title: Song title for metadata
             output_mp3_path: Optional path for the extracted MP3 file
             output_cdg_path: Optional path for the extracted CDG file
+            lrc_has_countdown_padding: If True, LRC contains countdown-shifted timestamps
+                that need adjustment since CDG uses instrumental audio without padding
+            countdown_padding_seconds: Duration of countdown padding to compensate for
 
         Returns:
             Tuple of (zip_path, mp3_path, cdg_path)
@@ -131,6 +136,8 @@ class PackagingService:
             title=title,
             artist=artist,
             cdg_styles=self.cdg_styles,
+            lrc_has_countdown_padding=lrc_has_countdown_padding,
+            countdown_padding_seconds=countdown_padding_seconds,
         )
 
         # Rename ZIP to expected output path if different

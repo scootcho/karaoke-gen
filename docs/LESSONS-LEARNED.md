@@ -93,6 +93,8 @@ await run_video_worker(job_id, job_manager, storage)
 
 **Example 2:** The countdown audio sync fix (PR #328) only fixed the writer side (`render_video_worker` updating `lyrics_metadata.has_countdown_padding`). The orchestrator path that READS that state and pads the instrumental wasn't updated. PR #338 added the reader-side fix: `OrchestratorConfig` now has `countdown_padding_seconds`, `create_orchestrator_config_from_job` reads from lyrics_metadata, and GCE worker pads instrumental audio. **Lesson**: When adding cross-worker state, trace the data flow end-to-end through ALL code paths (legacy KaraokeFinalise path AND orchestrator path).
 
+**Example 3:** CDG sync fix (Feb 2026). Video rendering adds 3s countdown padding to audio AND shifts LRC timestamps by +3s. But CDG generation uses instrumental audio (no padding) while still using the countdown-shifted LRC timestamps, causing CDG lyrics to appear 3s late. **Root cause**: The LRC file was designed for countdown-padded video audio, but CDG uses unpadded instrumental. **Fix**: Pass `lrc_has_countdown_padding` flag to CDG generator, which strips the countdown segment and shifts timestamps back. **Pattern**: When one output format (video) transforms shared data (LRC), check if other consumers (CDG) need the original or transformed version.
+
 ### Worker Idempotency Must Complete the Lifecycle
 When implementing idempotency checks that set `stage='running'` at start, workers MUST also set `stage='complete'` on success. Without the completion update, retries or reprocessing attempts will be blocked because the stage is permanently stuck at `'running'`. The fix in v0.108.14 added completion markers to render_video, video, and screens workers.
 

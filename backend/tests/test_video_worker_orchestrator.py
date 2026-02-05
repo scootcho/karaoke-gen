@@ -310,6 +310,63 @@ class TestVideoWorkerOrchestratorPackaging:
                 mock_service.create_cdg_package.assert_called_once()
                 assert orchestrator.result.final_karaoke_cdg_zip == f"{temp_dir}/cdg.zip"
 
+    @pytest.mark.asyncio
+    async def test_run_packaging_cdg_with_countdown_padding(self):
+        """Test CDG packaging passes countdown params when LRC has countdown padding.
+
+        This test prevents regression of the CDG sync bug where:
+        - Video rendering adds 3s countdown and shifts LRC timestamps by +3s
+        - CDG generation was using shifted timestamps but instrumental audio without padding
+        - Result: CDG lyrics appeared 3 seconds late
+
+        The fix: When lrc_has_countdown_padding=True, the packaging service must pass
+        this flag to CDGGenerator so it can strip the countdown and shift timestamps back.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            lrc_file = os.path.join(temp_dir, "test.lrc")
+            audio_file = os.path.join(temp_dir, "test.flac")
+
+            # Create LRC with countdown-shifted timestamps (as video rendering produces)
+            with open(lrc_file, "w") as f:
+                f.write("[00:00.10]1:/3... 2... 1...\n")  # Countdown at 0.1s
+                f.write("[00:03.60]1:/First\n")  # First word at 3.6s (shifted from 0.6s)
+            with open(audio_file, "w") as f:
+                f.write("dummy audio")
+
+            config = OrchestratorConfig(
+                job_id="test-job",
+                artist="Test Artist",
+                title="Test Title",
+                title_video_path="/path/title.mov",
+                karaoke_video_path="/path/karaoke.mov",
+                instrumental_audio_path=audio_file,
+                lrc_file_path=lrc_file,
+                output_dir=temp_dir,
+                enable_cdg=True,
+                cdg_styles={"background_color": "black"},
+                lrc_has_countdown_padding=True,  # Critical: flag must be set
+            )
+            orchestrator = VideoWorkerOrchestrator(config)
+
+            with patch.object(orchestrator, "_get_packaging_service") as mock_get:
+                mock_service = MagicMock()
+                mock_service.create_cdg_package.return_value = (
+                    f"{temp_dir}/cdg.zip",
+                    f"{temp_dir}/test.mp3",
+                    f"{temp_dir}/test.cdg",
+                )
+                mock_get.return_value = mock_service
+
+                await orchestrator._run_packaging()
+
+                # CRITICAL ASSERTION: countdown padding params must be passed
+                mock_service.create_cdg_package.assert_called_once()
+                call_kwargs = mock_service.create_cdg_package.call_args[1]
+                assert call_kwargs.get("lrc_has_countdown_padding") is True, \
+                    "lrc_has_countdown_padding must be passed to packaging service for CDG sync fix"
+                assert call_kwargs.get("countdown_padding_seconds") == 3.0, \
+                    "countdown_padding_seconds must be passed for CDG timestamp adjustment"
+
 
 class TestVideoWorkerOrchestratorEncoding:
     """Test encoding stage."""

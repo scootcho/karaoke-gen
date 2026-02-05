@@ -75,6 +75,10 @@ class OrchestratorConfig:
     # Audio synchronization - pad instrumental to match countdown-padded vocals
     countdown_padding_seconds: Optional[float] = None
 
+    # CDG sync fix: track if LRC already has countdown timestamps
+    # When True, CDG generation will strip the countdown segment and adjust timestamps
+    lrc_has_countdown_padding: bool = False
+
     # Encoding backend preference
     encoding_backend: str = "auto"  # "auto", "local", "gce"
 
@@ -263,7 +267,12 @@ class VideoWorkerOrchestrator:
 
         # Generate CDG package
         if self.config.enable_cdg:
-            self.job_log.info("Generating CDG package")
+            if self.config.lrc_has_countdown_padding:
+                self.job_log.info(
+                    f"Generating CDG package (compensating for {self.config.countdown_padding_seconds}s countdown in LRC)"
+                )
+            else:
+                self.job_log.info("Generating CDG package")
             try:
                 cdg_zip_path = os.path.join(
                     self.config.output_dir,
@@ -286,6 +295,8 @@ class VideoWorkerOrchestrator:
                     title=self.config.title,
                     output_mp3_path=mp3_path,
                     output_cdg_path=cdg_path,
+                    lrc_has_countdown_padding=self.config.lrc_has_countdown_padding,
+                    countdown_padding_seconds=self.config.countdown_padding_seconds or 3.0,
                 )
 
                 self.result.final_karaoke_cdg_zip = zip_file
@@ -706,9 +717,11 @@ def create_orchestrator_config_from_job(
 
     # Get countdown padding info from lyrics metadata
     # This ensures instrumental is padded to match vocals if countdown was added
+    # Also tracks if LRC has countdown padding so CDG can compensate
     lyrics_metadata = job.state_data.get('lyrics_metadata', {})
     countdown_padding_seconds = None
-    if lyrics_metadata.get('has_countdown_padding'):
+    lrc_has_countdown_padding = lyrics_metadata.get('has_countdown_padding', False)
+    if lrc_has_countdown_padding:
         countdown_padding_seconds = lyrics_metadata.get('countdown_padding_seconds', 3.0)
 
     if existing_instrumental:
@@ -758,6 +771,9 @@ def create_orchestrator_config_from_job(
 
         # Audio synchronization - pad instrumental to match countdown-padded vocals
         countdown_padding_seconds=countdown_padding_seconds,
+
+        # CDG sync fix: track if LRC already has countdown timestamps
+        lrc_has_countdown_padding=lrc_has_countdown_padding,
 
         # Encoding backend - auto selects GCE if available
         encoding_backend="auto",

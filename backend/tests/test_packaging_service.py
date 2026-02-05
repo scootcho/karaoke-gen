@@ -243,6 +243,59 @@ class TestPackagingServiceCDGPackage:
                 title="Test Title",
                 artist="Test Artist",
                 cdg_styles=styles,
+                lrc_has_countdown_padding=False,
+                countdown_padding_seconds=3.0,
+            )
+            assert os.path.isfile(zip_path)
+
+    @patch("karaoke_gen.lyrics_transcriber.output.cdg.CDGGenerator")
+    def test_create_cdg_package_with_countdown_padding(self, mock_cdg_generator_class):
+        """Test CDG package creation with countdown padding parameters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lrc_file = os.path.join(tmpdir, "test.lrc")
+            audio_file = os.path.join(tmpdir, "test.flac")
+            zip_path = os.path.join(tmpdir, "output.zip")
+            generated_zip = os.path.join(tmpdir, "generated.zip")
+
+            with open(lrc_file, "w") as f:
+                f.write("[00:00.00]Test lyrics")
+            with open(audio_file, "w") as f:
+                f.write("fake audio")
+
+            # Create the zip file that would be generated
+            with zipfile.ZipFile(generated_zip, "w") as zf:
+                zf.writestr("test.mp3", "fake mp3")
+                zf.writestr("test.cdg", "fake cdg")
+
+            mock_generator = MagicMock()
+            mock_generator.generate_cdg_from_lrc.return_value = (
+                "test.cdg", "test.mp3", generated_zip
+            )
+            mock_cdg_generator_class.return_value = mock_generator
+
+            styles = {"font_size": 24}
+            service = PackagingService(cdg_styles=styles)
+
+            # Call with countdown padding enabled
+            result = service.create_cdg_package(
+                lrc_file=lrc_file,
+                audio_file=audio_file,
+                output_zip_path=zip_path,
+                artist="Test Artist",
+                title="Test Title",
+                lrc_has_countdown_padding=True,
+                countdown_padding_seconds=3.5,
+            )
+
+            # Verify countdown params are passed to generator
+            mock_generator.generate_cdg_from_lrc.assert_called_once_with(
+                lrc_file=lrc_file,
+                audio_file=audio_file,
+                title="Test Title",
+                artist="Test Artist",
+                cdg_styles=styles,
+                lrc_has_countdown_padding=True,
+                countdown_padding_seconds=3.5,
             )
             assert os.path.isfile(zip_path)
 
