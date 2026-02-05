@@ -552,6 +552,8 @@ class CDGGenerator:
         title: str,
         artist: str,
         cdg_styles: dict,
+        lrc_has_countdown_padding: bool = False,
+        countdown_padding_seconds: float = 3.0,
     ) -> Tuple[str, str, str]:
         """Generate a CDG file from an LRC file and audio file.
 
@@ -561,6 +563,10 @@ class CDGGenerator:
             title: Title of the song
             artist: Artist name
             cdg_styles: Dictionary containing CDG style parameters
+            lrc_has_countdown_padding: If True, LRC has countdown-shifted timestamps
+                that need to be adjusted since CDG uses instrumental audio without
+                the countdown padding applied
+            countdown_padding_seconds: Duration of countdown to remove (default 3.0)
 
         Returns:
             Tuple containing paths to (cdg_file, mp3_file, zip_file)
@@ -569,6 +575,12 @@ class CDGGenerator:
 
         # Parse LRC file and convert to lyrics_data format
         lyrics_data = self._parse_lrc(lrc_file)
+
+        # If LRC has countdown padding, remove the countdown segment and adjust timestamps
+        # This is needed because CDG uses instrumental audio without countdown padding,
+        # but the LRC was generated from video rendering which added countdown
+        if lrc_has_countdown_padding:
+            lyrics_data = self._remove_countdown_from_lyrics(lyrics_data, countdown_padding_seconds)
 
         toml_file = self._create_toml_file(
             audio_file=audio_file,
@@ -617,3 +629,62 @@ class CDGGenerator:
 
         self.logger.info(f"Found {len(lyrics)} lyric lines")
         return lyrics
+
+    def _remove_countdown_from_lyrics(
+        self,
+        lyrics_data: List[dict],
+        countdown_padding_seconds: float
+    ) -> List[dict]:
+        """Remove countdown segment and shift timestamps back by countdown duration.
+
+        When video rendering adds a countdown (e.g., "3... 2... 1..."), it:
+        1. Adds a countdown segment near the start (timestamp < countdown_padding)
+        2. Shifts all subsequent lyrics timestamps forward by countdown_padding
+
+        CDG uses instrumental audio without this padding, so we need to:
+        1. Remove the countdown segment entirely
+        2. Shift all remaining timestamps back to their original positions
+
+        Args:
+            lyrics_data: List of lyric entries with timestamp (centiseconds) and text
+            countdown_padding_seconds: Duration of countdown padding in seconds
+
+        Returns:
+            Adjusted lyrics data with countdown removed and timestamps shifted back
+        """
+        countdown_cs = int(countdown_padding_seconds * 100)  # Convert to centiseconds
+
+        adjusted = []
+        skipped_countdown = False
+
+        for entry in lyrics_data:
+            # Skip entries that are part of the countdown (timestamp < countdown duration)
+            # These are typically "3... 2... 1..." or similar countdown text
+            if entry["timestamp"] < countdown_cs:
+                self.logger.debug(f"Skipping countdown segment: timestamp={entry['timestamp']}cs, text='{entry['text']}'")
+                skipped_countdown = True
+                continue
+
+            # Shift remaining timestamps back by the countdown duration
+            adjusted.append({
+                "timestamp": entry["timestamp"] - countdown_cs,
+                "text": entry["text"]
+            })
+
+        if skipped_countdown:
+            self.logger.info(
+                f"Removed countdown padding: {len(lyrics_data)} -> {len(adjusted)} entries, "
+                f"shifted timestamps by -{countdown_cs}cs ({countdown_padding_seconds}s)"
+            )
+        else:
+            self.logger.warning(
+                f"lrc_has_countdown_padding was True but no countdown segment found "
+                f"(no entries with timestamp < {countdown_cs}cs). Proceeding with timestamp shift only."
+            )
+            # Still shift all timestamps even if no countdown segment was found
+            adjusted = [
+                {"timestamp": entry["timestamp"] - countdown_cs, "text": entry["text"]}
+                for entry in lyrics_data
+            ]
+
+        return adjusted
