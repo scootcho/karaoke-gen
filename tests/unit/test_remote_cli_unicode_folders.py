@@ -98,39 +98,36 @@ class TestRemoteCliFolderNameSanitization:
         assert "Song" in folder_name
 
     def test_empty_folder_name_fallback(self):
-        """Test that if sanitization results in empty string, fallback to job_id."""
-        # Simulate entirely non-ASCII artist and title
-        artist = "😀😀😀"
-        title = "🎵🎵🎵"
+        """Test that if sanitization results in empty or separator-only string, fallback to job_id."""
         job_id = "abc123xyz"
 
+        # Test 1: Emoji with separator results in "-" after sanitization
+        artist = "😀😀😀"
+        title = "🎵🎵🎵"
         folder_name = f"{artist} - {title}"
         folder_name = "".join(c for c in folder_name if (c.isascii() and c.isalnum()) or c in " -_").strip()
 
-        # After sanitization, only " - " remains (spaces and hyphens are allowed)
-        # After strip(), we get "-" (or could be empty depending on exact input)
-        # In this case we get "-" which is truthy but not useful
+        # After sanitization, only "-" remains (spaces/hyphens allowed but emoji removed)
+        assert folder_name == "-"
 
-        # Apply the fallback logic (matching the actual code)
-        if not folder_name:
+        # Apply the fallback logic (updated to check for alphanumeric content)
+        if not folder_name or not any(c.isascii() and c.isalnum() for c in folder_name):
             folder_name = f"job_{job_id}"
 
-        # Verify that non-alphanumeric-only results get caught
-        # Note: The actual code will let "-" through since strip() doesn't make it falsy
-        # This test documents the actual behavior
-        assert folder_name.isascii()
+        # Verify fallback is used for separator-only result
+        assert folder_name == "job_abc123xyz"
 
-        # Test with truly empty result (all characters removed)
+        # Test 2: Truly empty result (all characters removed, no separator)
         artist2 = "😀"
         title2 = "🎵"
         folder_name2 = f"{artist2}{title2}"  # No separator, just emoji
         folder_name2 = "".join(c for c in folder_name2 if (c.isascii() and c.isalnum()) or c in " -_").strip()
 
-        # Now it should be empty
+        # Should be empty
         assert folder_name2 == ""
 
         # Apply fallback
-        if not folder_name2:
+        if not folder_name2 or not any(c.isascii() and c.isalnum() for c in folder_name2):
             folder_name2 = f"job_{job_id}"
 
         assert folder_name2 == "job_abc123xyz"
