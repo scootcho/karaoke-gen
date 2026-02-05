@@ -1968,7 +1968,11 @@ class JobMonitor:
 
         # Sanitize folder name - only allow ASCII alphanumeric to prevent filesystem issues
         folder_name = "".join(c for c in folder_name if (c.isascii() and c.isalnum()) or c in " -_").strip()
-        
+
+        # Guard against empty folder name (e.g., if title/artist were entirely non-ASCII)
+        if not folder_name:
+            folder_name = f"job_{job_id}"
+
         output_dir = Path(self.config.output_dir) / folder_name
         output_dir.mkdir(parents=True, exist_ok=True)
         
