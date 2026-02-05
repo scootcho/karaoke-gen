@@ -1052,9 +1052,10 @@ Switches a job's audio source from YouTube URL to audio search mode. Use this wh
 
 Currently only supports switching to `audio_search` mode, which:
 1. Clears existing audio-related state (URL, downloaded file, stems, transcription)
-2. Sets `audio_search_artist` and `audio_search_title` from current job metadata
-3. Transitions job to `awaiting_audio_selection`
-4. Admin can then search for and select a better audio source in the UI
+2. Performs an audio search using the job's artist/title
+3. Stores search results in state_data
+4. Transitions job to `awaiting_audio_selection` with results ready
+5. Admin can then select an audio source from the search results in the UI
 
 Allowed states: `pending`, `complete`, `failed`, `awaiting_review`, `awaiting_audio_selection`, `instrumental_selected`, `prep_complete`
 
@@ -1063,23 +1064,28 @@ Response:
 {
   "status": "success",
   "job_id": "abc123",
-  "message": "Audio source changed from youtube to audio_search. Use the audio search UI to select a new source.",
+  "message": "Found 5 audio sources - select one in the admin panel.",
   "previous_source": "youtube",
   "new_source": "audio_search",
   "cleared_data": ["audio_complete", "lyrics_complete", "url", "input_media_gcs_path", "..."],
-  "new_status": "awaiting_audio_selection"
+  "new_status": "awaiting_audio_selection",
+  "search_results_count": 5,
+  "error": null
 }
 ```
 
-If triggering fails:
+If no audio sources found:
 ```json
 {
   "status": "error",
   "job_id": "abc123",
-  "worker_type": "video",
-  "triggered": false,
-  "message": "Failed to trigger video worker for job abc123",
-  "error": "Job is in wrong state for video processing"
+  "message": "No audio sources found for: Artist - Title",
+  "previous_source": "youtube",
+  "new_source": "audio_search",
+  "cleared_data": ["..."],
+  "new_status": "failed",
+  "search_results_count": null,
+  "error": "No audio sources found for: Artist - Title"
 }
 ```
 

@@ -20,6 +20,7 @@ from backend.services.user_service import get_user_service, UserService, USERS_C
 from backend.services.job_manager import JobManager
 from backend.services.flacfetch_client import get_flacfetch_client, FlacfetchServiceError
 from backend.services.storage_service import StorageService
+from backend.services.audio_search_service import get_audio_search_service, NoResultsError, AudioSearchError
 from backend.models.job import JobStatus
 from backend.utils.test_data import is_test_email
 from karaoke_gen.utils import sanitize_filename
@@ -2363,6 +2364,8 @@ class OverrideAudioSourceResponse(BaseModel):
     new_source: str
     cleared_data: List[str]
     new_status: str
+    search_results_count: Optional[int] = None
+    error: Optional[str] = None
 
 
 # States where audio source override is allowed
@@ -2391,8 +2394,10 @@ async def override_audio_source(
 
     Currently supports switching to audio_search mode, which:
     1. Clears existing audio-related state
-    2. Transitions job to awaiting_audio_selection
-    3. Admin can then search for and select a better audio source
+    2. Performs an audio search using the job's artist/title
+    3. Stores search results in state_data
+    4. Transitions job to awaiting_audio_selection with results ready
+    5. Admin can then select an audio source from the search results
 
     Allowed states: pending, complete, failed, awaiting_review, awaiting_audio_selection,
     instrumental_selected, prep_complete
@@ -2471,34 +2476,83 @@ async def override_audio_source(
     update_payload["error_details"] = DELETE_FIELD
 
     # Set audio search fields based on current artist/title
-    update_payload["audio_search_artist"] = job.artist
-    update_payload["audio_search_title"] = job.title
+    search_artist = job.artist
+    search_title = job.title
+    update_payload["audio_search_artist"] = search_artist
+    update_payload["audio_search_title"] = search_title
 
-    # Transition to awaiting_audio_selection
-    new_status = "awaiting_audio_selection"
-    update_payload["status"] = new_status
-    update_payload["message"] = "Ready for audio search - select audio source"
-    update_payload["progress"] = 0
+    # First transition to searching_audio
+    update_payload["status"] = "searching_audio"
+    update_payload["message"] = f"Searching for: {search_artist} - {search_title}"
+    update_payload["progress"] = 5
     update_payload["timeline"] = ArrayUnion([{
-        "status": new_status,
+        "status": "searching_audio",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "message": f"Admin {admin_email} switched audio source from {previous_source} to audio_search"
     }])
 
     job_ref.update(update_payload)
 
-    logger.info(
-        f"Admin {admin_email} overrode audio source for job {job_id}: "
-        f"{previous_source} -> audio_search, status: {previous_status} -> {new_status}"
-    )
+    # Perform the actual audio search
+    search_results_count = None
+    error_msg = None
+    try:
+        audio_search_service = get_audio_search_service()
+        search_results = audio_search_service.search(search_artist, search_title)
+        search_results_count = len(search_results)
+
+        # Store results in job state_data
+        results_dicts = [r.to_dict() for r in search_results]
+        state_data_update = {
+            'audio_search_results': results_dicts,
+            'audio_search_count': search_results_count,
+        }
+        if audio_search_service.last_remote_search_id:
+            state_data_update['remote_search_id'] = audio_search_service.last_remote_search_id
+
+        # Transition to awaiting_audio_selection with results
+        new_status = "awaiting_audio_selection"
+        job_ref.update({
+            "state_data": state_data_update,
+            "status": new_status,
+            "message": f"Found {search_results_count} audio sources - select one",
+            "progress": 10,
+        })
+
+        logger.info(
+            f"Admin {admin_email} overrode audio source for job {job_id}: "
+            f"{previous_source} -> audio_search, found {search_results_count} results"
+        )
+
+    except NoResultsError as e:
+        new_status = "failed"
+        error_msg = f"No audio sources found for: {search_artist} - {search_title}"
+        job_ref.update({
+            "status": new_status,
+            "message": error_msg,
+            "error_message": error_msg,
+        })
+        logger.warning(f"Audio search failed for job {job_id}: {error_msg}")
+
+    except AudioSearchError as e:
+        new_status = "failed"
+        error_msg = f"Audio search failed: {e}"
+        job_ref.update({
+            "status": new_status,
+            "message": error_msg,
+            "error_message": error_msg,
+        })
+        logger.error(f"Audio search error for job {job_id}: {e}")
 
     return OverrideAudioSourceResponse(
-        status="success",
+        status="success" if not error_msg else "error",
         job_id=job_id,
-        message=f"Audio source changed from {previous_source} to audio_search. "
-        "Use the audio search UI to select a new source.",
+        message=f"Found {search_results_count} audio sources - select one in the admin panel." if not error_msg
+        else error_msg,
         previous_source=previous_source,
         new_source="audio_search",
         cleared_data=cleared_keys,
         new_status=new_status,
+        search_results_count=search_results_count,
+        error=error_msg,
     )
