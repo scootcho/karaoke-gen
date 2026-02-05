@@ -2038,6 +2038,7 @@ RESTART_ALLOWED_STATES = {
     "complete",
     "failed",
     "awaiting_review",
+    "in_review",  # User opened review UI but hasn't completed
     "awaiting_audio_selection",
     "awaiting_instrumental_selection",
     "instrumental_selected",
