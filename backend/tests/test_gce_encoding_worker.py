@@ -227,3 +227,81 @@ class TestInstrumentalSelectionRegression:
         assert result is not None
         name = result.name.lower()
         assert "clean" in name, f"Expected clean instrumental but found: {result.name}"
+
+
+class TestWheelFilenameFiltering:
+    """Test wheel filename filtering to prevent installation of invalid wheels.
+
+    Bug: The ensure_latest_wheel() function downloads all wheels including
+    karaoke_gen-current.whl, which is not a valid PEP 427 wheel filename
+    (missing version and platform tags). When pip tries to install it,
+    it fails with: "Invalid wheel filename (wrong number of parts)"
+
+    Fix: Filter out wheels containing '-current' before selecting which to install.
+    """
+
+    def filter_wheels(self, wheels):
+        """Replicate the filtering logic from ensure_latest_wheel()."""
+        return [w for w in wheels if '-current' not in w]
+
+    def test_filters_out_current_wheel(self):
+        """Test that karaoke_gen-current.whl is filtered out."""
+        wheels = [
+            "/tmp/karaoke_gen-0.116.0-py3-none-any.whl",
+            "/tmp/karaoke_gen-current.whl",
+            "/tmp/karaoke_gen-0.115.0-py3-none-any.whl",
+        ]
+
+        filtered = self.filter_wheels(wheels)
+
+        assert len(filtered) == 2
+        assert "/tmp/karaoke_gen-current.whl" not in filtered
+        assert "/tmp/karaoke_gen-0.116.0-py3-none-any.whl" in filtered
+        assert "/tmp/karaoke_gen-0.115.0-py3-none-any.whl" in filtered
+
+    def test_returns_empty_when_only_current_wheel(self):
+        """Test that filtering returns empty list when only current wheel exists."""
+        wheels = ["/tmp/karaoke_gen-current.whl"]
+
+        filtered = self.filter_wheels(wheels)
+
+        assert filtered == []
+
+    def test_selects_latest_version_after_filtering(self):
+        """Test that the latest version is selected after filtering out current."""
+        wheels = [
+            "/tmp/karaoke_gen-0.114.0-py3-none-any.whl",
+            "/tmp/karaoke_gen-current.whl",
+            "/tmp/karaoke_gen-0.116.0-py3-none-any.whl",
+            "/tmp/karaoke_gen-0.115.0-py3-none-any.whl",
+        ]
+
+        filtered = self.filter_wheels(wheels)
+        latest = sorted(filtered)[-1]
+
+        # Lexicographic sort puts 0.116.0 last
+        assert "0.116.0" in latest
+
+    def test_no_filtering_when_no_current_wheel(self):
+        """Test that valid wheels pass through when no current wheel exists."""
+        wheels = [
+            "/tmp/karaoke_gen-0.116.0-py3-none-any.whl",
+            "/tmp/karaoke_gen-0.115.0-py3-none-any.whl",
+        ]
+
+        filtered = self.filter_wheels(wheels)
+
+        assert len(filtered) == 2
+        assert filtered == wheels
+
+    def test_filters_current_in_different_paths(self):
+        """Test that current wheel is filtered regardless of path."""
+        wheels = [
+            "/different/path/karaoke_gen-current.whl",
+            "/tmp/karaoke_gen-0.116.0-py3-none-any.whl",
+        ]
+
+        filtered = self.filter_wheels(wheels)
+
+        assert len(filtered) == 1
+        assert "/tmp/karaoke_gen-0.116.0-py3-none-any.whl" in filtered
