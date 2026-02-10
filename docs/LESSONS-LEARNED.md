@@ -98,6 +98,22 @@ await run_video_worker(job_id, job_manager, storage)
 ### Worker Idempotency Must Complete the Lifecycle
 When implementing idempotency checks that set `stage='running'` at start, workers MUST also set `stage='complete'` on success. Without the completion update, retries or reprocessing attempts will be blocked because the stage is permanently stuck at `'running'`. The fix in v0.108.14 added completion markers to render_video, video, and screens workers.
 
+### pip Wheel Filename Validation (Feb 2026)
+**What happened**: Job 749141f8 failed with "Cannot connect to host 136.119.50.148:8080" during encoding. Investigation revealed the GCE encoding worker service had crashed and was restarting. The crash was caused by pip rejecting `karaoke_gen-current.whl` with "Invalid wheel filename (wrong number of parts)".
+
+**Root cause**: The `ensure_latest_wheel()` function in `backend/services/gce_encoding/main.py` downloaded all wheels from GCS using a wildcard pattern (`karaoke_gen-*.whl`), which included `karaoke_gen-current.whl`. This file is a convenience symlink/copy for CI deployment but lacks the version and platform tags required by PEP 427 wheel naming standard (`{distribution}-{version}-{python}-{abi}-{platform}.whl`). When pip tried to install it, it failed, causing the worker to crash.
+
+**Why it was confusing**: The actual error ("Cannot connect") masked the real problem (wheel installation failure). The service was healthy but kept restarting due to the pip error, making it temporarily unavailable when Cloud Run tried to connect.
+
+**Fix**: Filter out wheels containing '-current' before selecting which to install:
+```python
+wheels = glob.glob("/tmp/karaoke_gen-*.whl")
+# Filter out karaoke_gen-current.whl (not a valid PEP 427 wheel name)
+wheels = [w for w in wheels if '-current' not in w]
+```
+
+**Pattern**: When downloading artifacts with wildcards, filter results to exclude non-standard naming patterns before processing. CI convenience files (symlinks, "latest", "current") often don't follow the same naming conventions as versioned releases. Always validate artifact names match expected patterns before attempting to use them.
+
 ### Clear Worker Progress Keys When Reprocessing
 When resetting a job or re-reviewing a completed job, all worker progress keys (`*_progress`) must be cleared from `state_data`. Workers check `state_data.{worker}_progress.stage == 'complete'` for idempotency - if stale keys exist from a previous run, workers will skip execution even though the job needs reprocessing. **Pattern**: Any operation that intends to re-run workers (admin reset, review resubmission) must explicitly clear progress keys using `job_manager.delete_state_data_keys()`. See `backend/api/routes/review.py:complete_review()` and `backend/api/routes/admin.py:clear_worker_state()`.
 

@@ -254,6 +254,9 @@ def ensure_latest_wheel():
 
         # Find the downloaded wheel (get the latest by version sorting)
         wheels = glob_module.glob("/tmp/karaoke_gen-*.whl")
+        # Filter out karaoke_gen-current.whl (not a valid PEP 427 wheel name)
+        wheels = [w for w in wheels if '-current' not in w]
+
         if not wheels:
             logger.warning("No wheel found in GCS, using fallback encoding logic")
             return False
