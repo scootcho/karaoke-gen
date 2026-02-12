@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { Highlighter, Edit, Trash2 } from 'lucide-react'
+import { Highlighter, Pencil, Trash2 } from 'lucide-react'
 import { InteractionMode } from '@/lib/lyrics-review/types'
 
 interface ModeSelectorProps {
@@ -23,13 +23,16 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
         <ToggleGroup
           type="single"
           value={effectiveMode}
-          onValueChange={(value) => value === 'edit' && onChange(value as InteractionMode)}
+          onValueChange={(value) => value && onChange(value as InteractionMode)}
           className="h-8"
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="edit" className="h-8 px-2 text-[0.75rem]">
-                <Edit className="h-3.5 w-3.5 mr-1" />
+              <ToggleGroupItem
+                value="edit"
+                className="h-8 px-2.5 text-[0.75rem] !flex-none aria-checked:font-semibold aria-checked:bg-blue-600 aria-checked:text-white dark:aria-checked:bg-blue-500"
+              >
+                <Pencil className="h-3.5 w-3.5 mr-1" />
                 Edit
               </ToggleGroupItem>
             </TooltipTrigger>
@@ -40,7 +43,10 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="highlight" className="h-8 px-2 text-[0.75rem]" disabled>
+              <ToggleGroupItem
+                value="highlight"
+                className="h-8 px-2.5 text-[0.75rem] !flex-none aria-checked:font-semibold aria-checked:bg-blue-600 aria-checked:text-white dark:aria-checked:bg-blue-500"
+              >
                 <Highlighter className="h-3.5 w-3.5 mr-1" />
                 Highlight
               </ToggleGroupItem>
@@ -52,7 +58,10 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <ToggleGroupItem value="delete_word" className="h-8 px-2 text-[0.75rem]" disabled>
+              <ToggleGroupItem
+                value="delete_word"
+                className="h-8 px-2.5 text-[0.75rem] !flex-none aria-checked:font-semibold aria-checked:bg-blue-600 aria-checked:text-white dark:aria-checked:bg-blue-500"
+              >
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
                 Delete
               </ToggleGroupItem>
