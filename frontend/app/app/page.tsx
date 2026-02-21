@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, Suspense, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, Suspense, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { api, Job, getAccessToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
@@ -15,8 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Music2, RefreshCw, Loader2, Moon, Sun } from "lucide-react"
-import { sortJobsByPriority } from "@/lib/job-status"
+import { Music2, RefreshCw, Loader2, Moon, Sun, Eye, EyeOff } from "lucide-react"
+import { sortJobsByPriority, getDisplayJobs } from "@/lib/job-status"
 import { WarmingUpLoader } from "@/components/WarmingUpLoader"
 import { JobCard } from "@/components/job"
 import { JobSubmission } from "@/components/job/JobSubmission"
@@ -35,7 +35,7 @@ import {
 function AppPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [jobs, setJobs] = useState<Job[]>([])
+  const [allJobs, setAllJobs] = useState<Job[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
@@ -44,10 +44,24 @@ function AppPageContent() {
   const { isDarkMode, toggleTheme, mounted } = useTheme()
   const { user, fetchUser, verifyMagicLink } = useAuth()
   const { showTestData } = useAdminSettings()
-  const [jobLimit, setJobLimit] = useState<number>(5)
+  const [jobLimit, setJobLimit] = useState<number>(() => {
+    if (typeof window === "undefined") return 5
+    const saved = localStorage.getItem("nomad-karaoke-job-limit")
+    return saved ? Number(saved) : 5
+  })
+  const [hideCompleted, setHideCompleted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("nomad-karaoke-hide-completed") === "true"
+  })
 
   // Check if user is admin (for exclude_test parameter)
   const isAdmin = user?.role === "admin" || user?.email?.endsWith("@nomadkaraoke.com")
+
+  // Derive displayed jobs from allJobs + display limit + filter (instant, no re-fetch)
+  const { displayedJobs: jobs, totalFetched } = useMemo(
+    () => getDisplayJobs(allJobs, jobLimit, hideCompleted),
+    [allJobs, jobLimit, hideCompleted]
+  )
 
   // Memoize loadJobs for use with visibility refresh
   const loadJobs = useCallback(async () => {
@@ -57,13 +71,13 @@ function AppPageContent() {
       return
     }
     try {
-      // Only admins can filter test jobs, and by default we hide them
+      // Always fetch 100 jobs; display limit is applied client-side
       const data = await api.listJobs({
-        limit: jobLimit === -1 ? 100 : jobLimit,
+        limit: 100,
         exclude_test: isAdmin ? !showTestData : undefined
       })
       // Sort: blocking jobs first, then processing, then completed
-      setJobs(sortJobsByPriority(data))
+      setAllJobs(sortJobsByPriority(data))
     } catch (err: any) {
       // Don't log auth errors - user just needs to authenticate
       if (err?.status !== 401) {
@@ -73,10 +87,10 @@ function AppPageContent() {
       setIsLoadingJobs(false)
       setIsInitialLoad(false)
     }
-  }, [isAdmin, showTestData, jobLimit])
+  }, [isAdmin, showTestData])
 
   // Enable notifications for job status changes (sound + title animation)
-  useJobNotifications(jobs)
+  useJobNotifications(allJobs)
 
   // Refresh jobs immediately when tab becomes visible (after returning from review UIs)
   useVisibilityRefresh(loadJobs, isAuthenticated === true)
@@ -158,7 +172,7 @@ function AppPageContent() {
   return (
     <div className="min-h-screen animated-gradient">
       {/* AutoProcessor - handles non-interactive mode for jobs with that flag */}
-      <AutoProcessor jobs={jobs} onJobsChanged={loadJobs} />
+      <AutoProcessor jobs={allJobs} onJobsChanged={loadJobs} />
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-dark-900/80 backdrop-blur-md border-b border-dark-700">
@@ -235,7 +249,33 @@ function AppPageContent() {
                 <CardTitle style={{ color: 'var(--text)' }}>Recent Jobs</CardTitle>
                 <div className="flex items-center gap-2">
                   {isLoadingJobs && <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--text-muted)' }} />}
-                  <Select value={String(jobLimit)} onValueChange={(v) => setJobLimit(Number(v))}>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          style={{ color: 'var(--text-muted)' }}
+                          onClick={() => {
+                            const next = !hideCompleted
+                            setHideCompleted(next)
+                            localStorage.setItem("nomad-karaoke-hide-completed", String(next))
+                          }}
+                        >
+                          {hideCompleted ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>{hideCompleted ? "Show all jobs" : "Hide completed jobs"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Select value={String(jobLimit)} onValueChange={(v) => {
+                    const val = Number(v)
+                    setJobLimit(val)
+                    localStorage.setItem("nomad-karaoke-job-limit", String(val))
+                  }}>
                     <SelectTrigger className="h-7 w-[80px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -249,7 +289,11 @@ function AppPageContent() {
                 </div>
               </div>
               <CardDescription style={{ color: 'var(--text-muted)' }}>
-                {jobs.length} job{jobs.length !== 1 ? 's' : ''} shown
+                {hideCompleted
+                  ? `${jobs.length} incomplete of ${totalFetched} total`
+                  : jobs.length < totalFetched
+                    ? `Showing ${jobs.length} of ${totalFetched} jobs`
+                    : `${jobs.length} job${jobs.length !== 1 ? 's' : ''}`}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-3 sm:px-6">
