@@ -211,8 +211,10 @@ class FirestoreService:
             if status:
                 query = query.where(filter=FieldFilter('status', '==', status.value))
 
-            if exclude_statuses:
-                query = query.where(filter=FieldFilter('status', 'not-in', exclude_statuses))
+            # NOTE: exclude_statuses is filtered in Python after the query
+            # because Firestore's not-in filter combined with order_by(created_at)
+            # requires a composite index. Since documents are tiny after select(),
+            # Python filtering is fast and avoids the index requirement.
 
             if environment:
                 query = query.where(filter=FieldFilter('request_metadata.environment', '==', environment))
@@ -236,7 +238,13 @@ class FirestoreService:
             query = query.select(self.SUMMARY_FIELD_PATHS)
 
             docs = query.stream()
-            return [doc.to_dict() for doc in docs]
+            results = [doc.to_dict() for doc in docs]
+
+            # Apply exclude_statuses filter in Python (see note above)
+            if exclude_statuses:
+                results = [r for r in results if r.get('status') not in exclude_statuses]
+
+            return results
         except Exception as e:
             logger.error(f"Error listing jobs summary: {e}")
             raise
