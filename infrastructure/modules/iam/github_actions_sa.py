@@ -66,7 +66,7 @@ def create_workload_identity_provider(
             "attribute.repository": "assertion.repository",
             "attribute.repository_owner": "assertion.repository_owner",
         },
-        attribute_condition="assertion.repository_owner == 'nomadkaraoke'",
+        attribute_condition="assertion.repository_owner == 'nomadkaraoke' || assertion.repository_owner == 'beveradb'",
         oidc=iam.WorkloadIdentityPoolProviderOidcArgs(
             issuer_uri="https://token.actions.githubusercontent.com",
         ),
@@ -170,7 +170,7 @@ def grant_github_actions_permissions(
     )
 
     # Allow GitHub Actions to impersonate the service account
-    # All nomadkaraoke repos that deploy to GCP need access
+    # All repos that deploy to GCP need access (nomadkaraoke org + beveradb personal)
     bindings["wif_binding"] = serviceaccount.IAMBinding(
         "github-actions-wif-binding",
         service_account_id=service_account.name,
@@ -184,6 +184,9 @@ def grant_github_actions_permissions(
             ),
             pool.name.apply(
                 lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/nomadkaraoke/karaoke-decide"
+            ),
+            pool.name.apply(
+                lambda pool_name: f"principalSet://iam.googleapis.com/{pool_name}/attribute.repository/beveradb/cryptotrader"
             ),
         ],
     )
