@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, Youtube, Music, Loader2, ChevronDown, ChevronRight } from "lucide-react"
+import { Upload, Youtube, Music, Loader2, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react"
+import Link from "next/link"
 
 interface JobSubmissionProps {
   onJobCreated: () => void
@@ -41,6 +42,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   }, [availableTabs, activeTab])
 
   const [error, setError] = useState("")
+  const [isCreditError, setIsCreditError] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Upload form
@@ -67,9 +69,13 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   // Private (non-published) mode - Dropbox only, no YouTube/GDrive
   const [isPrivate, setIsPrivate] = useState(false)
 
+  // Credit enforcement
+  const noCredits = !isAdmin && user?.credits === 0
+
   async function handleUploadSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setIsCreditError(false)
 
     if (!uploadFile) {
       setError("Please select an audio file")
@@ -91,7 +97,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       setUploadTitle("")
       onJobCreated()
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 402) {
+        setIsCreditError(true)
+        setError("You're out of credits. Buy more to continue creating karaoke videos.")
+      } else if (err instanceof ApiError) {
         setError(err.message)
       } else {
         setError("Failed to create job")
@@ -104,6 +113,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   async function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setIsCreditError(false)
 
     if (!youtubeUrl.trim()) {
       setError("Please enter a URL")
@@ -130,7 +140,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       setYoutubeTitle("")
       onJobCreated()
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 402) {
+        setIsCreditError(true)
+        setError("You're out of credits. Buy more to continue creating karaoke videos.")
+      } else if (err instanceof ApiError) {
         setError(err.message)
       } else {
         setError("Failed to create job")
@@ -143,6 +156,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   async function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setIsCreditError(false)
 
     if (!searchArtist.trim() || !searchTitle.trim()) {
       setError("Please enter both artist and title")
@@ -164,7 +178,10 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
       setDisplayTitle("")
       onJobCreated()
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 402) {
+        setIsCreditError(true)
+        setError("You're out of credits. Buy more to continue creating karaoke videos.")
+      } else if (err instanceof ApiError) {
         setError(err.message)
       } else {
         setError("Failed to search for audio")
@@ -184,6 +201,23 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab}>
+      {/* Zero-credit warning banner */}
+      {noCredits && (
+        <div className="flex items-start gap-2 rounded-lg p-3 mb-4 border border-amber-500/30 bg-amber-500/10">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-sm" style={{ color: 'var(--text)' }}>
+            <p>You have no credits remaining. Buy credits to create new karaoke videos.</p>
+            <Link
+              href="/#pricing"
+              className="inline-block mt-1 text-sm font-medium underline"
+              style={{ color: 'var(--brand-pink)' }}
+            >
+              Buy Credits
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Only show tabs bar when there are multiple options */}
       {availableTabs.length > 1 && (
         <TabsList
@@ -336,13 +370,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
           </div>
 
           {error && activeTab === "upload" && (
-            <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
+            <div className="text-sm text-red-400 bg-red-500/10 rounded p-2">
+              <p>{error}</p>
+              {isCreditError && (
+                <Link href="/#pricing" className="inline-block mt-1 font-medium underline" style={{ color: 'var(--brand-pink)' }}>Buy Credits</Link>
+              )}
+            </div>
           )}
 
           <Button
             type="submit"
             className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
-            disabled={isSubmitting}
+            disabled={isSubmitting || noCredits}
           >
             {isSubmitting ? (
               <>
@@ -453,13 +492,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
           </div>
 
           {error && activeTab === "url" && (
-            <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
+            <div className="text-sm text-red-400 bg-red-500/10 rounded p-2">
+              <p>{error}</p>
+              {isCreditError && (
+                <Link href="/#pricing" className="inline-block mt-1 font-medium underline" style={{ color: 'var(--brand-pink)' }}>Buy Credits</Link>
+              )}
+            </div>
           )}
 
           <Button
             type="submit"
             className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
-            disabled={isSubmitting}
+            disabled={isSubmitting || noCredits}
           >
             {isSubmitting ? (
               <>
@@ -608,13 +652,18 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
           </div>
 
           {error && activeTab === "search" && (
-            <p className="text-sm text-red-400 bg-red-500/10 rounded p-2">{error}</p>
+            <div className="text-sm text-red-400 bg-red-500/10 rounded p-2">
+              <p>{error}</p>
+              {isCreditError && (
+                <Link href="/#pricing" className="inline-block mt-1 font-medium underline" style={{ color: 'var(--brand-pink)' }}>Buy Credits</Link>
+              )}
+            </div>
           )}
 
           <Button
             type="submit"
             className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
-            disabled={isSubmitting}
+            disabled={isSubmitting || noCredits}
           >
             {isSubmitting ? (
               <>
