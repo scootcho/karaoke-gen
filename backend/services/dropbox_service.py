@@ -111,6 +111,10 @@ class DropboxService:
         """
         Calculate next brand code from existing folders, filling gaps in the sequence.
 
+        NOTE: This method is only used for one-time initialization of the Firestore
+        counter (see brand_code_service.py). All runtime brand code allocation now
+        goes through BrandCodeService.allocate_brand_code() for atomic safety.
+
         Scans the folder for existing brand codes like "NOMAD-0001" and
         returns the first available code, filling any gaps left by deleted outputs.
 

@@ -468,18 +468,15 @@ class VideoWorkerOrchestrator:
         # Generate brand code from Dropbox if configured
         if self.config.dropbox_path and self.config.brand_prefix:
             try:
-                from backend.services.dropbox_service import get_dropbox_service
+                from backend.services.brand_code_service import get_brand_code_service
 
-                dropbox = get_dropbox_service()
-                if dropbox.is_configured:
-                    brand_code = dropbox.get_next_brand_code(
-                        self.config.dropbox_path,
-                        self.config.brand_prefix
-                    )
-                    self.result.brand_code = brand_code
-                    self.job_log.info(f"Generated brand code: {brand_code}")
-                else:
-                    self.job_log.warning("Dropbox not configured, skipping brand code generation")
+                brand_code_service = get_brand_code_service()
+                brand_code = brand_code_service.allocate_brand_code(
+                    self.config.brand_prefix,
+                    self.config.dropbox_path
+                )
+                self.result.brand_code = brand_code
+                self.job_log.info(f"Generated brand code: {brand_code}")
 
             except Exception as e:
                 self.job_log.error(f"Brand code generation failed: {e}")

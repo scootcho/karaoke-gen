@@ -611,7 +611,7 @@ class TestVideoWorkerOrchestratorOrganization:
 
     @pytest.mark.asyncio
     async def test_run_organization_generate_brand_code(self):
-        """Test brand code generation from Dropbox."""
+        """Test brand code generation via atomic BrandCodeService."""
         config = OrchestratorConfig(
             job_id="test-job",
             artist="Test Artist",
@@ -624,15 +624,15 @@ class TestVideoWorkerOrchestratorOrganization:
         )
         orchestrator = VideoWorkerOrchestrator(config)
 
-        with patch("backend.services.dropbox_service.get_dropbox_service") as mock_get:
-            mock_dropbox = MagicMock()
-            mock_dropbox.is_configured = True
-            mock_dropbox.get_next_brand_code.return_value = "TEST-0001"
-            mock_get.return_value = mock_dropbox
+        with patch("backend.services.brand_code_service.get_brand_code_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.allocate_brand_code.return_value = "TEST-0001"
+            mock_get.return_value = mock_service
 
             await orchestrator._run_organization()
 
             assert orchestrator.result.brand_code == "TEST-0001"
+            mock_service.allocate_brand_code.assert_called_once_with("TEST", "/Karaoke/Tracks")
 
 
 class TestVideoWorkerOrchestratorDistribution:

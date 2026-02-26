@@ -1524,6 +1524,18 @@ async def cleanup_distribution(
                     "status": "success" if success else "failed",
                     "path": full_path
                 }
+                # Recycle the brand code number so it can be reused
+                if success:
+                    try:
+                        from backend.services.brand_code_service import (
+                            BrandCodeService, get_brand_code_service
+                        )
+                        prefix, number = BrandCodeService.parse_brand_code(brand_code)
+                        get_brand_code_service().recycle_brand_code(prefix, number)
+                        results["dropbox"]["recycled_brand_code"] = True
+                    except (ValueError, Exception) as e:
+                        logger.warning(f"Failed to recycle brand code {brand_code}: {e}")
+                        results["dropbox"]["recycled_brand_code"] = False
             else:
                 results["dropbox"] = {"status": "failed", "reason": "Dropbox credentials not configured"}
         except Exception as e:
