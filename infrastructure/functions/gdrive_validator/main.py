@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "1laRKAyxo0v817SstfM5XkpbWiNKNAMSX")
-PUSHBULLET_API_KEY = os.environ.get("PUSHBULLET_API_KEY", "")
+PUSHBULLET_API_KEY = os.environ.get("PUSHBULLET_API_KEY", "").strip()
 
 # Set to "true" to receive daily summary even when no issues found
 # Set to "false" to only receive notifications when issues are detected

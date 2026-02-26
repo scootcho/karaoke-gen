@@ -197,7 +197,7 @@ gdrive_validator_function = cloudfunctionsv2.Function(
     ),
 )
 
-# Allow Cloud Scheduler to invoke the function
+# Allow Cloud Scheduler to invoke the function (Cloud Functions v2 IAM)
 gdrive_validator_invoker = cloudfunctionsv2.FunctionIamMember(
     "gdrive-validator-scheduler-invoker",
     project=PROJECT_ID,
@@ -207,13 +207,28 @@ gdrive_validator_invoker = cloudfunctionsv2.FunctionIamMember(
     member=f"serviceAccount:service-{get_project_number()}@gcp-sa-cloudscheduler.iam.gserviceaccount.com",
 )
 
-# Allow function's service account to invoke itself (for Cloud Scheduler)
+# Allow function's service account to invoke itself (Cloud Functions v2 IAM)
 gdrive_validator_sa_invoker = cloudfunctionsv2.FunctionIamMember(
     "gdrive-validator-sa-invoker",
     project=PROJECT_ID,
     location=REGION,
     cloud_function=gdrive_validator_function.name,
     role="roles/cloudfunctions.invoker",
+    member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
+# Gen 2 Cloud Functions are backed by Cloud Run - the Cloud Run service also needs
+# roles/run.invoker for the OIDC token from Cloud Scheduler to be accepted.
+# The cloudfunctionsv2.FunctionIamMember above sets IAM on the Cloud Function resource,
+# but the actual HTTP invocation hits Cloud Run which has its own IAM policy.
+gdrive_validator_run_invoker = cloudrun.IamMember(
+    "gdrive-validator-run-invoker",
+    project=PROJECT_ID,
+    location=REGION,
+    service=gdrive_validator_function.service_config.service.apply(
+        lambda svc: svc.split("/")[-1] if svc else "gdrive-validator"
+    ),
+    role="roles/run.invoker",
     member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
