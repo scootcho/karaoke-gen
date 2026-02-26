@@ -675,6 +675,9 @@ When adding alternative implementations (GCE vs local encoding), audit ALL side 
 ### External Response Validation
 Add defensive type checking for all external service responses. Lists vs dicts, missing fields cause cryptic failures.
 
+### Brand Code Allocation Must Be Atomic (Feb 2026)
+Two concurrent jobs both got brand code `NOMADNP-0012` because `get_next_brand_code()` scanned Dropbox folders to find the next number — a classic TOCTOU race condition. Jobs processed 0.86s apart both saw the same state. **Fix**: `brand_code_service.py` uses Firestore transactions to atomically allocate codes. Counter doc per prefix (`NOMAD`, `NOMADNP`) with `next_number` and `recycled` pool. E2E cleanup recycles numbers via `recycle_brand_code()`.
+
 ---
 
 ## Frontend Patterns

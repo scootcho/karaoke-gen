@@ -800,9 +800,11 @@ async def _handle_native_distribution(
             else:
                 job_log.info(f"Starting native Dropbox upload to {dropbox_path}")
                 
-                # Calculate brand code from existing folders (if not already generated)
+                # Calculate brand code atomically (if not already generated)
                 if not brand_code:
-                    brand_code = dropbox.get_next_brand_code(dropbox_path, brand_prefix)
+                    from backend.services.brand_code_service import get_brand_code_service
+                    brand_code_service = get_brand_code_service()
+                    brand_code = brand_code_service.allocate_brand_code(brand_prefix, dropbox_path)
                     result['brand_code'] = brand_code
                     job_log.info(f"Generated brand code: {brand_code}")
                 
