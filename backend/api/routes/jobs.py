@@ -1655,6 +1655,7 @@ async def cleanup_distribution(
     # Clean up Dropbox
     brand_code = state_data.get('brand_code')
     dropbox_path = getattr(job, 'dropbox_path', None)
+    dropbox_cleaned = False
     if brand_code and dropbox_path:
         try:
             from backend.services.dropbox_service import get_dropbox_service
@@ -1664,22 +1665,11 @@ async def cleanup_distribution(
                 folder_name = f"{brand_code} - {base_name}"
                 full_path = f"{dropbox_path}/{folder_name}"
                 success = dropbox.delete_folder(full_path)
+                dropbox_cleaned = success
                 results["dropbox"] = {
                     "status": "success" if success else "failed",
                     "path": full_path
                 }
-                # Recycle the brand code number so it can be reused
-                if success:
-                    try:
-                        from backend.services.brand_code_service import (
-                            BrandCodeService, get_brand_code_service
-                        )
-                        prefix, number = BrandCodeService.parse_brand_code(brand_code)
-                        get_brand_code_service().recycle_brand_code(prefix, number)
-                        results["dropbox"]["recycled_brand_code"] = True
-                    except (ValueError, Exception) as e:
-                        logger.warning(f"Failed to recycle brand code {brand_code}: {e}")
-                        results["dropbox"]["recycled_brand_code"] = False
             else:
                 results["dropbox"] = {"status": "failed", "reason": "Dropbox credentials not configured"}
         except Exception as e:
@@ -1687,25 +1677,92 @@ async def cleanup_distribution(
             results["dropbox"] = {"status": "error", "error": str(e)}
 
     # Clean up Google Drive
+    # Use tracked file IDs if available; otherwise fall back to searching by brand code.
+    # This handles old jobs where gdrive_files was not persisted (e.g., uploaded before
+    # file ID tracking was implemented, or when GDrive upload silently failed and a
+    # previous test run left files behind).
     gdrive_files = state_data.get('gdrive_files')
-    if gdrive_files:
+    gdrive_folder_id = getattr(job, 'gdrive_folder_id', None)
+    gdrive_cleaned = False
+
+    if gdrive_files or (gdrive_folder_id and brand_code):
         try:
             from backend.services.gdrive_service import get_gdrive_service
             gdrive = get_gdrive_service()
             if gdrive.is_configured:
-                # gdrive_files is a dict like {"mp4": "file_id", "mp4_720p": "file_id", "cdg": "file_id"}
-                file_ids = list(gdrive_files.values()) if isinstance(gdrive_files, dict) else []
-                delete_results = gdrive.delete_files(file_ids)
-                all_success = all(delete_results.values())
-                results["gdrive"] = {
-                    "status": "success" if all_success else "partial",
-                    "files": delete_results
-                }
+                file_ids: list = []
+                gdrive_method = None  # track how files were located for response
+
+                if gdrive_files and isinstance(gdrive_files, dict):
+                    # Fast path: delete using tracked file IDs from state_data
+                    file_ids = [v for v in gdrive_files.values() if v]
+                    logger.info(
+                        f"GDrive cleanup for job {job_id}: "
+                        f"using {len(file_ids)} tracked file IDs"
+                    )
+
+                if not file_ids and gdrive_folder_id and brand_code:
+                    # Fallback: search by brand code prefix in CDG/, MP4/, MP4-720p/ subfolders.
+                    # Handles jobs where gdrive_files was not tracked (old jobs, or jobs where
+                    # GDrive upload succeeded but file IDs were lost).
+                    logger.info(
+                        f"GDrive cleanup for job {job_id}: "
+                        f"no tracked file IDs, searching by brand_code '{brand_code}'"
+                    )
+                    file_ids = gdrive.find_files_by_brand_code(gdrive_folder_id, brand_code)
+                    gdrive_method = "brand_code_search"
+
+                if file_ids:
+                    delete_results = gdrive.delete_files(file_ids)
+                    all_success = all(delete_results.values())
+                    gdrive_cleaned = all_success
+                    results["gdrive"] = {
+                        "status": "success" if all_success else "partial",
+                        "files": delete_results,
+                    }
+                    if gdrive_method:
+                        results["gdrive"]["method"] = gdrive_method
+                else:
+                    gdrive_cleaned = True  # Nothing to delete
+                    results["gdrive"] = {
+                        "status": "skipped",
+                        "reason": "no files found to delete",
+                    }
             else:
-                results["gdrive"] = {"status": "failed", "reason": "Google Drive credentials not configured"}
+                results["gdrive"] = {
+                    "status": "failed",
+                    "reason": "Google Drive credentials not configured",
+                }
         except Exception as e:
-            logger.error(f"Error cleaning up Google Drive for job {job_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error cleaning up Google Drive for job {job_id}: {e}", exc_info=True
+            )
             results["gdrive"] = {"status": "error", "error": str(e)}
+    else:
+        if not gdrive_folder_id:
+            results["gdrive"]["reason"] = "no gdrive_folder_id on job and no tracked file IDs"
+
+    # Recycle the brand code so it can be reused — but only after GDrive is confirmed clean.
+    # If we recycle before GDrive cleanup, a new job could claim the same brand code and
+    # collide with leftover files on GDrive (duplicate brand code in public share).
+    if dropbox_cleaned and brand_code and gdrive_cleaned:
+        try:
+            from backend.services.brand_code_service import (
+                BrandCodeService, get_brand_code_service
+            )
+            prefix, number = BrandCodeService.parse_brand_code(brand_code)
+            get_brand_code_service().recycle_brand_code(prefix, number)
+            results["dropbox"]["recycled_brand_code"] = True
+            logger.info(f"Recycled brand code {brand_code} after full distribution cleanup")
+        except (ValueError, Exception) as e:
+            logger.warning(f"Failed to recycle brand code {brand_code}: {e}")
+            results["dropbox"]["recycled_brand_code"] = False
+    elif dropbox_cleaned and brand_code:
+        logger.warning(
+            f"Brand code {brand_code} NOT recycled: GDrive cleanup did not confirm success "
+            f"(gdrive_cleaned={gdrive_cleaned}). Brand code will remain reserved to prevent "
+            f"collisions with leftover GDrive files."
+        )
 
     # Delete the job if requested
     if delete_job:
