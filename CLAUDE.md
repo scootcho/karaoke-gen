@@ -19,6 +19,7 @@
 | **Testing & code quality** | `docs/TESTING.md` |
 | API reference | `docs/API.md` |
 | Past learnings | `docs/LESSONS-LEARNED.md` |
+| **Operational runbooks** | `docs/TROUBLESHOOTING.md` |
 | **Product communication** | `docs/PRODUCT-COMMUNICATION-GUIDE.md` |
 | Brand style guide | `docs/BRAND-STYLE-GUIDE.md` |
 
@@ -128,14 +129,16 @@ EOF
 
 ### GCE Encoding Worker
 ```bash
-# SSH to restart service (clears in-memory job queue)
-gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
-  --command="sudo systemctl restart encoding-worker"
-
-# Check health
+# Check health (includes wheel_version)
 gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
   --command="curl -s http://localhost:8080/health"
+
+# Restart service (pick up new wheel after a deploy)
+gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
+  --command="sudo systemctl restart encoding-worker"
 ```
+
+For job stuck at `encoding` status, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ### What Doesn't Work
 - `gcloud auth print-identity-token` - Wrong token type for internal endpoints
