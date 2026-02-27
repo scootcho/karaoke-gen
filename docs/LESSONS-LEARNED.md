@@ -58,6 +58,15 @@ When multiple code paths create jobs (file upload, audio search, webhooks), use 
 
 **Pattern**: When a function can fail, prefer exceptions over boolean returns. Silent failures accumulate into production bugs. Use centralized helpers for multi-step operations (state change + side effects) to prevent divergent implementations.
 
+### Validate Pipeline Stage Outputs Before Proceeding (Feb 2026)
+**What happened**: Jobs 5b6aba25 and 5161b069 completed with `enable_cdg=True` but no CDG ZIP was produced. The orchestrator silently caught a `FileNotFoundError` during CDG generation and proceeded to 11+ minutes of GPU encoding, distribution, and notifications — all for an incomplete output.
+
+**Root cause**: CDG generation failed because `instrumental_selection: custom` had no case in the filename construction (fell through to "Backing" suffix). The `FileNotFoundError` was caught by a broad `except Exception` that just logged and continued, since "CDG is optional."
+
+**Fix**: Add validation gates between pipeline stages. After packaging completes but before expensive encoding begins, verify that all enabled outputs were actually produced. If `enable_cdg=True` but no CDG ZIP exists, raise `RuntimeError` immediately. This fails fast, saves encoding costs, and makes the error visible.
+
+**Pattern**: When a pipeline stage produces optional outputs that were explicitly requested, validate their existence before proceeding to the next stage. "Optional" means "can be disabled," not "can silently fail when enabled."
+
 ### Fix Both Sides of Dual Code Paths
 When fixing a bug in a system with multiple code paths (e.g., legacy vs orchestrator, local vs cloud), verify ALL paths are fixed. PR #271 fixed the GCE worker to READ `instrumental_selection` but only checked the legacy path which was already SENDING it. The orchestrator path (production default) wasn't sending it. **Pattern**: If a component receives config from multiple callers, check ALL callers when fixing the receiving side. Write integration tests that cover each path.
 

@@ -250,8 +250,28 @@ class TestVideoWorkerOrchestratorPackaging:
     """Test packaging stage."""
 
     @pytest.mark.asyncio
-    async def test_run_packaging_no_lrc(self):
-        """Test packaging stage with no LRC file."""
+    async def test_run_packaging_no_lrc_cdg_disabled(self):
+        """Test packaging stage with no LRC file and CDG disabled skips silently."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=False,
+            lrc_file_path=None,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        # Should not raise, just skip
+        await orchestrator._run_packaging()
+
+        assert orchestrator.result.final_karaoke_cdg_zip is None
+
+    @pytest.mark.asyncio
+    async def test_run_packaging_no_lrc_cdg_enabled_raises(self):
+        """Test packaging stage raises when CDG enabled but no LRC file."""
         config = OrchestratorConfig(
             job_id="test-job",
             artist="Test Artist",
@@ -264,10 +284,8 @@ class TestVideoWorkerOrchestratorPackaging:
         )
         orchestrator = VideoWorkerOrchestrator(config)
 
-        # Should not raise, just skip
-        await orchestrator._run_packaging()
-
-        assert orchestrator.result.final_karaoke_cdg_zip is None
+        with pytest.raises(RuntimeError, match="LRC file not available"):
+            await orchestrator._run_packaging()
 
     @pytest.mark.asyncio
     async def test_run_packaging_cdg(self):
@@ -366,6 +384,209 @@ class TestVideoWorkerOrchestratorPackaging:
                     "lrc_has_countdown_padding must be passed to packaging service for CDG sync fix"
                 assert call_kwargs.get("countdown_padding_seconds") == 3.0, \
                     "countdown_padding_seconds must be passed for CDG timestamp adjustment"
+
+
+class TestPackagingValidation:
+    """Test CDG/TXT packaging validation checks.
+
+    These tests verify that the orchestrator fails fast when CDG/TXT
+    generation is enabled but fails, rather than silently proceeding
+    to expensive encoding. This prevents jobs from completing without
+    their requested CDG/TXT packages.
+
+    Added after jobs 5b6aba25 and 5161b069 completed with enable_cdg=True
+    but no CDG ZIP was produced due to a FileNotFoundError being silently caught.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cdg_validation_fails_when_enabled_but_not_produced(self):
+        """Test that orchestrator raises when CDG enabled but not produced."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=True,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        # Mock _run_packaging to NOT set result.final_karaoke_cdg_zip (simulates failure)
+        async def mock_packaging():
+            pass  # CDG generation "failed" silently
+
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
+
+            result = await orchestrator.run()
+
+            assert result.success is False
+            assert "CDG generation was enabled but failed" in result.error_message
+            mock_encoding.assert_not_called()  # Should not reach encoding
+
+    @pytest.mark.asyncio
+    async def test_txt_validation_fails_when_enabled_but_not_produced(self):
+        """Test that orchestrator raises when TXT enabled but not produced."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_txt=True,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        async def mock_packaging():
+            pass  # TXT generation "failed" silently
+
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
+
+            result = await orchestrator.run()
+
+            assert result.success is False
+            assert "TXT generation was enabled but failed" in result.error_message
+            mock_encoding.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pipeline_succeeds_when_cdg_disabled(self):
+        """Test that pipeline succeeds normally when CDG is not enabled."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=False,
+            enable_txt=False,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        with patch.object(orchestrator, "_run_packaging", new_callable=AsyncMock) as mock_pkg, \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_organization", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_distribution", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_notifications", new_callable=AsyncMock):
+
+            result = await orchestrator.run()
+
+            assert result.success is True
+            mock_pkg.assert_not_called()  # Packaging skipped entirely
+
+    @pytest.mark.asyncio
+    async def test_cdg_validation_passes_when_cdg_produced(self):
+        """Test that validation passes when CDG is successfully produced."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=True,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        async def mock_packaging_success():
+            orchestrator.result.final_karaoke_cdg_zip = "/output/cdg.zip"
+
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging_success), \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_organization", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_distribution", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_notifications", new_callable=AsyncMock):
+
+            result = await orchestrator.run()
+
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_both_cdg_and_txt_validation_fail_together(self):
+        """Test that orchestrator catches CDG failure when both CDG and TXT enabled."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=True,
+            enable_txt=True,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        async def mock_packaging():
+            pass  # Both CDG and TXT "failed" silently
+
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
+
+            result = await orchestrator.run()
+
+            assert result.success is False
+            # CDG validation is checked first
+            assert "CDG generation was enabled but failed" in result.error_message
+            mock_encoding.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lrc_missing_raises_when_cdg_enabled(self):
+        """Test that missing LRC file raises when CDG is enabled."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=True,
+            lrc_file_path="/nonexistent/path.lrc",
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        with pytest.raises(RuntimeError, match="LRC file not available"):
+            await orchestrator._run_packaging()
+
+    @pytest.mark.asyncio
+    async def test_lrc_missing_raises_when_txt_enabled(self):
+        """Test that missing LRC file raises when TXT is enabled."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_txt=True,
+            lrc_file_path=None,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        with pytest.raises(RuntimeError, match="LRC file not available"):
+            await orchestrator._run_packaging()
+
+    @pytest.mark.asyncio
+    async def test_lrc_missing_skips_when_cdg_disabled(self):
+        """Test that missing LRC file just skips packaging when CDG/TXT disabled."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=False,
+            enable_txt=False,
+            lrc_file_path=None,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        # Should not raise, just skip
+        await orchestrator._run_packaging()
+        assert orchestrator.result.final_karaoke_cdg_zip is None
 
 
 class TestVideoWorkerOrchestratorEncoding:
@@ -772,8 +993,12 @@ class TestVideoWorkerOrchestratorFullPipeline:
         )
         orchestrator = VideoWorkerOrchestrator(config)
 
+        # Mock packaging to set CDG result (validation requires it when enable_cdg=True)
+        async def mock_packaging_with_result():
+            orchestrator.result.final_karaoke_cdg_zip = "/output/cdg.zip"
+
         # Mock all stages
-        with patch.object(orchestrator, "_run_packaging", new_callable=AsyncMock) as mock_packaging, \
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging_with_result) as mock_packaging, \
              patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding, \
              patch.object(orchestrator, "_run_organization", new_callable=AsyncMock) as mock_org, \
              patch.object(orchestrator, "_run_distribution", new_callable=AsyncMock) as mock_dist, \

@@ -33,6 +33,28 @@ curl -X POST "https://api.nomadkaraoke.com/api/internal/workers/video" \
 
 ---
 
+## CDG/TXT packages missing from completed job
+
+**Cause:** Before v0.119.7, CDG/TXT generation failures were silently caught. Jobs would complete with `enable_cdg=True` but no CDG ZIP in outputs. Fixed in v0.119.7 with fail-fast validation — new jobs will now fail loudly if CDG/TXT generation fails.
+
+**Recovery** (for jobs that already completed without CDG/TXT):
+
+```bash
+# Regenerate and distribute CDG/TXT packages for specific jobs
+GCS_BUCKET_NAME=karaoke-gen-storage-nomadkaraoke \
+GOOGLE_CLOUD_PROJECT=nomadkaraoke \
+python -m scripts.regenerate_cdg JOB_ID [JOB_ID ...]
+
+# Example:
+GCS_BUCKET_NAME=karaoke-gen-storage-nomadkaraoke \
+GOOGLE_CLOUD_PROJECT=nomadkaraoke \
+python -m scripts.regenerate_cdg 5b6aba25 5161b069
+```
+
+The script is idempotent — re-running it skips regeneration if the CDG ZIP already exists in GCS and proceeds to any missing distribution steps (GDrive, Dropbox).
+
+---
+
 ## GCE encoding worker on wrong wheel version
 
 **Cause:** Worker picks up a new deploy but doesn't restart automatically.
