@@ -34,13 +34,15 @@
 
 ## Known Issues
 
-- CDG format generation requires additional style configuration
+(No known issues)
 
 ## Pending Work
 
 (No pending work items)
 
 ## Recent Changes
+
+- **CDG Packaging Fail-Fast Validation** (2026-02-27): Fixed silent CDG generation failures where jobs completed with `enable_cdg=True` but no CDG ZIP was produced. **Root cause**: Jobs 5b6aba25 and 5161b069 had `instrumental_selection: custom` but before commit b671b83f, the orchestrator had no `custom` case — it fell through to `"Backing"` suffix. The CDG generator then hit a `FileNotFoundError` looking for the wrong filename, which was silently caught. **Fix**: (1) Orchestrator now validates CDG/TXT outputs after packaging stage and before encoding — if `enable_cdg=True` but no CDG ZIP was produced, the pipeline fails fast instead of silently continuing to expensive encoding, (2) Missing LRC file now raises when CDG/TXT is enabled instead of silently skipping, (3) Added `scripts/regenerate_cdg.py` remediation script for affected jobs. Removed "CDG requires additional style configuration" known issue (the nomad theme has complete CDG styles). Added 7 new tests for validation logic.
 
 - **GCE Encoding Pipeline Resilience** (2026-02-26): Made encoding pipeline resilient to Cloud Run deployment interruptions. A deployment killed a poller mid-encoding, leaving job a03ad39c permanently stuck at `encoding` status. Three fixes: (1) GCE worker `/encode` endpoint now idempotent — returns cached results for completed jobs, allows retry on failure, returns status for in-progress (previously hard 409 reject), (2) `encoding_service.py` handles cached/in_progress responses and falls back to status check on 409, (3) Health service detects jobs stuck in `encoding` >50 min. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#resilient-remote-worker-interactions-feb-2026).
 

@@ -228,6 +228,18 @@ class VideoWorkerOrchestrator:
                 if self.config.enable_cdg or self.config.enable_txt:
                     await self._run_packaging()
 
+                # Validate required packaging outputs before expensive encoding
+                if self.config.enable_cdg and not self.result.final_karaoke_cdg_zip:
+                    raise RuntimeError(
+                        "CDG generation was enabled but failed. "
+                        "Check worker logs for CDG-related errors."
+                    )
+                if self.config.enable_txt and not self.result.final_karaoke_txt_zip:
+                    raise RuntimeError(
+                        "TXT generation was enabled but failed. "
+                        "Check worker logs for TXT-related errors."
+                    )
+
                 # Stage 2: Encoding
                 await self._run_encoding()
 
@@ -259,6 +271,10 @@ class VideoWorkerOrchestrator:
         self.job_log.info("Starting packaging stage (CDG/TXT)")
 
         if not self.config.lrc_file_path or not os.path.isfile(self.config.lrc_file_path):
+            if self.config.enable_cdg or self.config.enable_txt:
+                raise RuntimeError(
+                    f"CDG/TXT generation enabled but LRC file not available: {self.config.lrc_file_path}"
+                )
             self.job_log.warning("No LRC file available, skipping CDG/TXT packaging")
             return
 
