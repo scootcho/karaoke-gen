@@ -682,24 +682,271 @@ class TestRetryBehavior:
         assert mock_list_result.execute.call_count == 1
 
 
+class TestDeleteFile:
+    """Test delete_file and delete_files methods."""
+
+    def _make_service(self, mock_get_settings):
+        """Helper: make a GoogleDriveService with fake credentials pre-loaded."""
+        from backend.services.gdrive_service import GoogleDriveService
+        mock_settings = Mock()
+        mock_get_settings.return_value = mock_settings
+        service = GoogleDriveService()
+        service._loaded = True
+        service._credentials_data = {"refresh_token": "token", "client_id": "id", "client_secret": "secret"}
+        return service
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_delete_file_success(self, mock_get_settings):
+        """Successful delete returns True."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_delete = Mock()
+        mock_delete.execute.return_value = None
+        mock_files_api.delete.return_value = mock_delete
+
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.delete_file("file-id-123")
+
+        assert result is True
+        mock_files_api.delete.assert_called_once_with(fileId="file-id-123")
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_delete_file_returns_true_on_404(self, mock_get_settings):
+        """404 (already deleted) returns True — idempotent cleanup."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_delete = Mock()
+        not_found = Exception("File not found")
+        not_found.resp = Mock()
+        not_found.resp.status = 404
+        mock_delete.execute.side_effect = not_found
+        mock_files_api.delete.return_value = mock_delete
+
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.delete_file("already-gone-id")
+
+        assert result is True
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_delete_file_returns_false_on_error(self, mock_get_settings):
+        """Non-404 errors return False."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_delete = Mock()
+        mock_delete.execute.side_effect = Exception("Permission denied")
+        mock_files_api.delete.return_value = mock_delete
+
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.delete_file("restricted-file")
+
+        assert result is False
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_delete_files_calls_delete_file_for_each_id(self, mock_get_settings):
+        """delete_files returns a per-ID success dict."""
+        service = self._make_service(mock_get_settings)
+
+        # Stub delete_file: first ID succeeds, second fails
+        results_by_id = {"id-1": True, "id-2": False}
+        service.delete_file = lambda fid: results_by_id[fid]
+
+        result = service.delete_files(["id-1", "id-2"])
+
+        assert result == {"id-1": True, "id-2": False}
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_delete_files_empty_list(self, mock_get_settings):
+        """delete_files with empty list returns empty dict."""
+        service = self._make_service(mock_get_settings)
+        result = service.delete_files([])
+        assert result == {}
+
+
+class TestFindFilesByBrandCode:
+    """Test find_files_by_brand_code method — used as fallback in cleanup-distribution."""
+
+    def _make_service(self, mock_get_settings):
+        """Helper: make a GoogleDriveService with fake credentials pre-loaded."""
+        from backend.services.gdrive_service import GoogleDriveService
+        mock_settings = Mock()
+        mock_settings.get_secret.return_value = json.dumps({
+            "refresh_token": "token", "client_id": "id", "client_secret": "secret",
+        })
+        mock_get_settings.return_value = mock_settings
+        service = GoogleDriveService()
+        service._loaded = True
+        service._credentials_data = {
+            "refresh_token": "token", "client_id": "id", "client_secret": "secret",
+        }
+        return service
+
+    def _attach_mock_drive(self, service, list_side_effects):
+        """Attach a mock Drive client whose files().list().execute() returns given values."""
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        mock_list_result.execute.side_effect = list_side_effects
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+        return mock_files_api
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_finds_files_in_all_subfolders(self, mock_get_settings):
+        """Test finds matching files across CDG/, MP4/, MP4-720p/ subfolders."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        # Responses: for each subfolder: (1) find subfolder, (2) search for files
+        mock_list_result.execute.side_effect = [
+            {"files": [{"id": "cdg-folder"}]},           # CDG subfolder found
+            {"files": [{"id": "cdg-file-1", "name": "NOMAD-1271 - piri - dog.zip"}]},
+            {"files": [{"id": "mp4-folder"}]},            # MP4 subfolder found
+            {"files": [{"id": "mp4-file-1", "name": "NOMAD-1271 - piri - dog.mp4"}]},
+            {"files": [{"id": "mp4720-folder"}]},         # MP4-720p subfolder found
+            {"files": [{"id": "mp4720-file-1", "name": "NOMAD-1271 - piri - dog.mp4"}]},
+        ]
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.find_files_by_brand_code("root-folder", "NOMAD-1271")
+
+        assert len(result) == 3
+        assert "cdg-file-1" in result
+        assert "mp4-file-1" in result
+        assert "mp4720-file-1" in result
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_returns_empty_when_subfolder_not_found(self, mock_get_settings):
+        """Test returns empty list when public share subfolders don't exist."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        # All subfolder lookups return empty
+        mock_list_result.execute.return_value = {"files": []}
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.find_files_by_brand_code("root-folder", "NOMAD-1271")
+
+        assert result == []
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_filters_by_exact_brand_code_prefix(self, mock_get_settings):
+        """Test only returns files whose name starts with '{brand_code} - '."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        mock_list_result.execute.side_effect = [
+            {"files": [{"id": "cdg-folder"}]},
+            {
+                "files": [
+                    {"id": "match-id", "name": "NOMAD-1271 - piri - dog.zip"},
+                    # This one contains NOMAD-1271 but doesn't START with it — should be excluded
+                    {"id": "no-match-id", "name": "BONUS-NOMAD-1271 - other.zip"},
+                ]
+            },
+            {"files": []},  # MP4 subfolder not found
+            {"files": []},  # MP4-720p subfolder not found
+        ]
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.find_files_by_brand_code("root-folder", "NOMAD-1271")
+
+        assert result == ["match-id"]
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_returns_empty_when_no_files_match_brand_code(self, mock_get_settings):
+        """Test returns empty list when subfolder exists but has no matching files."""
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        mock_list_result.execute.side_effect = [
+            {"files": [{"id": "cdg-folder"}]},
+            {"files": [{"id": "other-id", "name": "NOMAD-1300 - someone else.zip"}]},
+            {"files": []},  # MP4 not found
+            {"files": []},  # MP4-720p not found
+        ]
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        result = service.find_files_by_brand_code("root-folder", "NOMAD-1271")
+
+        assert result == []
+
+    @patch("backend.services.gdrive_service.get_settings")
+    def test_raises_after_all_subfolders_when_any_error(self, mock_get_settings):
+        """When any subfolder search errors, raises RuntimeError after processing all subfolders.
+
+        This prevents the cleanup endpoint from treating an incomplete search result
+        as "GDrive is clean" and incorrectly recycling the brand code.
+        """
+        service = self._make_service(mock_get_settings)
+
+        mock_files_api = Mock()
+        mock_list_result = Mock()
+        mock_list_result.execute.side_effect = [
+            {"files": [{"id": "cdg-folder"}]},
+            Exception("API error"),                        # CDG file search fails
+            {"files": [{"id": "mp4-folder"}]},
+            {"files": [{"id": "mp4-file-1", "name": "NOMAD-1271 - piri - dog.mp4"}]},
+            {"files": [{"id": "mp4720-folder"}]},
+            {"files": []},
+        ]
+        mock_files_api.list.return_value = mock_list_result
+        mock_drive = Mock()
+        mock_drive.files.return_value = mock_files_api
+        service._service = mock_drive
+
+        # Should raise after processing all subfolders — an incomplete search must not
+        # be silently treated as "nothing found" by the caller
+        with pytest.raises(RuntimeError, match="search incomplete"):
+            service.find_files_by_brand_code("root-folder", "NOMAD-1271")
+
+
 class TestGetGdriveService:
     """Test get_gdrive_service singleton."""
-    
+
     @patch("backend.services.gdrive_service.get_settings")
     def test_get_gdrive_service_singleton(self, mock_get_settings):
         """Test get_gdrive_service returns singleton instance."""
         from backend.services.gdrive_service import get_gdrive_service
         import backend.services.gdrive_service as gdrive_module
-        
+
         # Reset singleton
         gdrive_module._gdrive_service = None
-        
+
         mock_settings = Mock()
         mock_settings.get_secret.return_value = None
         mock_get_settings.return_value = mock_settings
-        
+
         service1 = get_gdrive_service()
         service2 = get_gdrive_service()
-        
+
         assert service1 is service2
 
