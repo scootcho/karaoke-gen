@@ -6,7 +6,7 @@ import { setupApiFixtures, setAuthToken } from '../fixtures/test-helper';
  *
  * Tests the 3-step guided job creation:
  *   Step 1: Song Info (artist/title inputs)
- *   Step 2: Find Audio (search results with "Our Pick" + fallback options)
+ *   Step 2: Choose Audio (search results with "Our Pick" + fallback options)
  *   Step 3: Customize & Create (title card, display overrides, privacy, submit)
  *
  * Uses mocked API responses — runs offline in CI.
@@ -127,7 +127,7 @@ test.describe('Step 1: Song Info', () => {
 
     await expect(page.getByTestId('guided-artist-input')).toBeVisible();
     await expect(page.getByTestId('guided-title-input')).toBeVisible();
-    await expect(page.getByRole('button', { name: /find audio/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /choose audio/i })).toBeVisible();
   });
 
   test('shows step indicator with 3 steps', async ({ page }) => {
@@ -138,20 +138,20 @@ test.describe('Step 1: Song Info', () => {
     // Step indicator should show 3 labels (use navigation region to avoid matching headings/buttons)
     const stepNav = page.getByLabel('Progress');
     await expect(stepNav.getByText('Song Info')).toBeVisible();
-    await expect(stepNav.getByText('Find Audio')).toBeVisible();
+    await expect(stepNav.getByText('Choose Audio')).toBeVisible();
     await expect(stepNav.getByText('Customize & Create')).toBeVisible();
   });
 
-  test('Find Audio button is disabled without inputs', async ({ page }) => {
+  test('Choose Audio button is disabled without inputs', async ({ page }) => {
     await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
 
-    const btn = page.getByRole('button', { name: /find audio/i });
+    const btn = page.getByRole('button', { name: /choose audio/i });
     await expect(btn).toBeDisabled();
   });
 
-  test('Find Audio button enables after filling both fields', async ({ page }) => {
+  test('Choose Audio button enables after filling both fields', async ({ page }) => {
     await setupApiFixtures(page, { mocks: APP_PAGE_MOCKS });
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -159,7 +159,7 @@ test.describe('Step 1: Song Info', () => {
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
 
-    const btn = page.getByRole('button', { name: /find audio/i });
+    const btn = page.getByRole('button', { name: /choose audio/i });
     await expect(btn).toBeEnabled();
   });
 
@@ -185,7 +185,7 @@ test.describe('Step 1: Song Info', () => {
   });
 });
 
-test.describe('Step 2: Find Audio - Search Results', () => {
+test.describe('Step 2: Choose Audio - Search Results', () => {
   test.beforeEach(async ({ page }) => {
     await setAuthToken(page, 'test-token');
   });
@@ -218,7 +218,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
     // Fill and submit Step 1
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Should show searching state
     await expect(page.getByText('Searching for audio sources')).toBeVisible();
@@ -231,7 +231,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Wait for results to load
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
@@ -248,7 +248,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Wait for results
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
@@ -264,7 +264,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -282,7 +282,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -298,7 +298,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -317,7 +317,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -346,7 +346,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -384,7 +384,7 @@ test.describe('Step 2: Find Audio - Search Results', () => {
 
     await page.getByTestId('guided-artist-input').fill('Nonexistent Artist');
     await page.getByTestId('guided-title-input').fill('Unknown Song');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Wait for empty results
     await expect(page.getByText('No audio sources found')).toBeVisible({ timeout: 15000 });
@@ -407,7 +407,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 
@@ -426,7 +426,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -447,7 +447,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -464,7 +464,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -479,7 +479,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -500,7 +500,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -520,7 +520,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -562,7 +562,7 @@ test.describe('Fallback Paths: YouTube URL and Upload', () => {
 
     await page.getByTestId('guided-artist-input').fill('Queen');
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
-    await page.getByRole('button', { name: /find audio/i }).click();
+    await page.getByRole('button', { name: /choose audio/i }).click();
 
     await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
 

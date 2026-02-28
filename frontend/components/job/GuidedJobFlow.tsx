@@ -17,7 +17,7 @@ interface GuidedJobFlowProps {
 
 type Step = 1 | 2 | 3
 
-const STEP_LABELS = ["Song Info", "Find Audio", "Customize & Create"]
+const STEP_LABELS = ["Song Info", "Choose Audio", "Customize & Create"]
 
 export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
   const { user } = useAuth()
@@ -265,7 +265,7 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
 
           return (
             <div key={label} className="flex items-center gap-1 flex-1">
-              <div className="flex items-center gap-1.5 flex-1">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <div
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 transition-colors ${
                     isActive
@@ -278,7 +278,7 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
                   {isCompleted ? "\u2713" : stepNum}
                 </div>
                 <span
-                  className={`text-[10px] hidden sm:inline transition-colors ${
+                  className={`text-[10px] whitespace-nowrap transition-colors ${
                     isActive ? 'font-medium' : ''
                   }`}
                   style={{ color: isActive ? 'var(--text)' : 'var(--text-muted)' }}
@@ -288,7 +288,7 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
               </div>
               {i < STEP_LABELS.length - 1 && (
                 <div
-                  className="h-px flex-1 mx-1"
+                  className="h-px flex-1 mx-1 hidden sm:block"
                   style={{
                     backgroundColor: isCompleted ? 'var(--brand-pink)' : 'var(--card-border)',
                     opacity: isCompleted ? 0.4 : 1,

@@ -97,7 +97,7 @@ export function SongInfoStep({
         disabled={!canProceed || disabled}
         className="w-full bg-[var(--brand-pink)] hover:bg-[var(--brand-pink-hover)] text-white shadow-[0_0_15px_rgba(255,122,204,0.3)] hover:shadow-[0_0_20px_rgba(255,122,204,0.5)]"
       >
-        Find Audio
+        Choose Audio
         <ArrowRight className="w-4 h-4 ml-2" />
       </Button>
     </form>
