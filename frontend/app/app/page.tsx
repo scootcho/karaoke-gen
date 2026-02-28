@@ -19,7 +19,7 @@ import { Music2, RefreshCw, Loader2, Moon, Sun, Eye, EyeOff } from "lucide-react
 import { sortJobsByPriority, getDisplayJobs } from "@/lib/job-status"
 import { WarmingUpLoader } from "@/components/WarmingUpLoader"
 import { JobCard } from "@/components/job"
-import { JobSubmission } from "@/components/job/JobSubmission"
+import { GuidedJobFlow } from "@/components/job/GuidedJobFlow"
 import { AuthStatus } from "@/components/auth"
 import { AutoProcessor } from "@/components/AutoProcessor"
 import { VersionFooter } from "@/components/version-footer"
@@ -57,10 +57,16 @@ function AppPageContent() {
   // Check if user is admin (for exclude_test parameter)
   const isAdmin = user?.role === "admin" || user?.email?.endsWith("@nomadkaraoke.com")
 
-  // Derive displayed jobs from allJobs + display limit + filter (instant, no re-fetch)
+  // Filter out in-progress search jobs (managed by the guided flow, not standalone cards)
+  const visibleJobs = useMemo(
+    () => allJobs.filter(job => job.status !== 'awaiting_audio_selection'),
+    [allJobs]
+  )
+
+  // Derive displayed jobs from visibleJobs + display limit + filter (instant, no re-fetch)
   const { displayedJobs: jobs, totalFetched } = useMemo(
-    () => getDisplayJobs(allJobs, jobLimit, hideCompleted),
-    [allJobs, jobLimit, hideCompleted]
+    () => getDisplayJobs(visibleJobs, jobLimit, hideCompleted),
+    [visibleJobs, jobLimit, hideCompleted]
   )
 
   // Memoize loadJobs for use with visibility refresh
@@ -236,11 +242,11 @@ function AppPageContent() {
             <CardHeader>
               <CardTitle style={{ color: 'var(--text)' }}>Create Karaoke Video</CardTitle>
               <CardDescription style={{ color: 'var(--text-muted)' }}>
-                Upload an audio file, provide a YouTube URL, or search for audio by artist & title
+                Turn any song into a karaoke video with synced lyrics
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <JobSubmission onJobCreated={loadJobs} />
+              <GuidedJobFlow onJobCreated={loadJobs} />
             </CardContent>
           </Card>
 

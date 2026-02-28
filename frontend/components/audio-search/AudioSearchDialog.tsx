@@ -1,7 +1,15 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { api, AudioSearchResult } from "@/lib/api"
+import { api } from "@/lib/api"
+import {
+  ExtendedAudioSearchResult,
+  groupResults,
+  getDisplayName,
+  formatCount,
+  formatMetadata,
+  formatQuality,
+} from "@/lib/audio-search-utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Loader2, Music2, ChevronDown, ChevronUp } from "lucide-react"
@@ -14,109 +22,6 @@ interface AudioSearchDialogProps {
   open: boolean
   onClose: () => void
   onSelect: () => void
-}
-
-// Extended result type to include all backend fields
-interface ExtendedAudioSearchResult extends AudioSearchResult {
-  channel?: string
-  view_count?: number
-  formatted_duration?: string
-  formatted_size?: string
-  release_type?: string
-  label?: string
-  edition_info?: string
-  target_file?: string
-  quality_data?: {
-    format?: string
-    bit_depth?: number
-    sample_rate?: number
-    bitrate?: number
-    media?: string
-  }
-}
-
-// Category configuration matching flacfetch
-interface CategoryConfig {
-  name: string
-  maxDisplay: number
-  color: string
-  borderColor: string
-}
-
-const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  'BEST CHOICE': { name: 'BEST CHOICE', maxDisplay: 3, color: 'text-amber-400', borderColor: 'border-amber-500/30' },
-  'HI-RES 24-BIT': { name: 'HI-RES 24-BIT', maxDisplay: 3, color: 'text-purple-400', borderColor: 'border-purple-500/30' },
-  'STUDIO ALBUMS': { name: 'STUDIO ALBUMS', maxDisplay: 3, color: 'text-blue-400', borderColor: 'border-blue-500/30' },
-  'SINGLES': { name: 'SINGLES', maxDisplay: 2, color: 'text-cyan-400', borderColor: 'border-cyan-500/30' },
-  'LIVE VERSIONS': { name: 'LIVE VERSIONS', maxDisplay: 2, color: 'text-pink-400', borderColor: 'border-pink-500/30' },
-  'COMPILATIONS': { name: 'COMPILATIONS', maxDisplay: 2, color: 'text-teal-400', borderColor: 'border-teal-500/30' },
-  'VINYL RIPS': { name: 'VINYL RIPS', maxDisplay: 2, color: 'text-orange-400', borderColor: 'border-orange-500/30' },
-  'YOUTUBE/LOSSY': { name: 'YOUTUBE/LOSSY', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
-  'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-muted-foreground', borderColor: 'border-border' },
-}
-
-const CATEGORY_ORDER = [
-  'BEST CHOICE',
-  'HI-RES 24-BIT',
-  'STUDIO ALBUMS',
-  'SINGLES',
-  'LIVE VERSIONS',
-  'COMPILATIONS',
-  'VINYL RIPS',
-  'YOUTUBE/LOSSY',
-  'OTHER'
-]
-
-// Categorize a single result based on flacfetch logic
-function categorizeResult(result: ExtendedAudioSearchResult): string {
-  const isLossless = result.is_lossless === true
-  const is24Bit = result.quality_data?.bit_depth === 24
-  const seeders = result.seeders ?? 0
-  const provider = result.provider?.toLowerCase() ?? ''
-  const releaseType = result.release_type?.toLowerCase() ?? ''
-  const media = result.quality_data?.media?.toLowerCase() ?? ''
-
-  // YouTube and lossy sources
-  if (provider === 'youtube' || !isLossless) {
-    return 'YOUTUBE/LOSSY'
-  }
-
-  // Best choice (50+ seeders, lossless)
-  if (isLossless && seeders >= 50) {
-    return 'BEST CHOICE'
-  }
-
-  // Hi-res 24-bit
-  if (isLossless && is24Bit) {
-    return 'HI-RES 24-BIT'
-  }
-
-  // Vinyl rips
-  if (isLossless && media === 'vinyl') {
-    return 'VINYL RIPS'
-  }
-
-  // Live versions
-  if (isLossless && (releaseType === 'live album' || releaseType === 'bootleg' || releaseType.includes('live'))) {
-    return 'LIVE VERSIONS'
-  }
-
-  // Compilations
-  if (isLossless && (releaseType === 'compilation' || releaseType === 'soundtrack' || releaseType === 'anthology')) {
-    return 'COMPILATIONS'
-  }
-
-  // Singles/EPs
-  if (isLossless && (releaseType === 'single' || releaseType === 'ep')) {
-    return 'SINGLES'
-  }
-
-  // Studio albums
-  if (isLossless && (releaseType === 'album' || !releaseType)) {
-    return 'STUDIO ALBUMS'
-  }
-
-  return 'OTHER'
 }
 
 export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearchDialogProps) {
@@ -158,31 +63,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
   }
 
   // Group results by category
-  const groupedResults = useMemo(() => {
-    const groups: Record<string, ExtendedAudioSearchResult[]> = {}
-
-    for (const result of results) {
-      const category = categorizeResult(result)
-      if (!groups[category]) {
-        groups[category] = []
-      }
-      groups[category].push(result)
-    }
-
-    // Sort by category order
-    const sortedGroups: Array<{ category: string; results: ExtendedAudioSearchResult[]; config: CategoryConfig }> = []
-    for (const cat of CATEGORY_ORDER) {
-      if (groups[cat] && groups[cat].length > 0) {
-        sortedGroups.push({
-          category: cat,
-          results: groups[cat],
-          config: CATEGORY_CONFIG[cat]
-        })
-      }
-    }
-
-    return sortedGroups
-  }, [results])
+  const groupedResults = useMemo(() => groupResults(results), [results])
 
   // Count total categories
   const totalCategories = groupedResults.length
@@ -212,51 +93,6 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
       }
       return next
     })
-  }
-
-  // Get display name - use channel for YouTube, artist for others
-  function getDisplayName(result: ExtendedAudioSearchResult): string {
-    if (result.provider === "YouTube" && result.channel) {
-      return result.channel
-    }
-    return result.artist || ""
-  }
-
-  // Format views/seeders compactly
-  function formatCount(count?: number): string {
-    if (!count && count !== 0) return "-"
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`
-    return count.toString()
-  }
-
-  // Format release metadata line
-  function formatMetadata(result: ExtendedAudioSearchResult): string {
-    const parts: string[] = []
-
-    if (result.release_type) parts.push(result.release_type)
-    if (result.year) parts.push(result.year.toString())
-    if (result.label) parts.push(result.label)
-    if (result.edition_info) parts.push(result.edition_info)
-    if (result.quality_data?.media) parts.push(result.quality_data.media)
-
-    return parts.length > 0 ? `[${parts.join(' / ')}]` : ''
-  }
-
-  // Get quality display string
-  function formatQuality(result: ExtendedAudioSearchResult): string {
-    if (result.quality) return result.quality
-
-    const qd = result.quality_data
-    if (!qd) return '-'
-
-    const parts: string[] = []
-    if (qd.format) parts.push(qd.format)
-    if (qd.bit_depth) parts.push(`${qd.bit_depth}bit`)
-    if (qd.bitrate) parts.push(`${qd.bitrate}kbps`)
-    if (qd.media) parts.push(qd.media)
-
-    return parts.join(' ') || '-'
   }
 
   return (
