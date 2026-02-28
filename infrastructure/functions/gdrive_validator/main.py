@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "1laRKAyxo0v817SstfM5XkpbWiNKNAMSX")
-PUSHBULLET_API_KEY = os.environ.get("PUSHBULLET_API_KEY", "")
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+PUSHBULLET_API_KEY = os.environ.get("PUSHBULLET_API_KEY", "").strip()
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "").strip()
 EMAIL_TO = os.environ.get("EMAIL_TO", "gen@nomadkaraoke.com")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "gen@nomadkaraoke.com")
 

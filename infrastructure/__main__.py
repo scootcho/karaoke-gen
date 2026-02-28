@@ -225,6 +225,17 @@ gdrive_validator_sa_invoker = cloudfunctionsv2.FunctionIamMember(
     member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
 )
 
+# Gen2 functions need Cloud Run invoker for the validator's own SA too
+# (Cloud Scheduler OIDC token hits Cloud Run, not Cloud Functions IAM)
+gdrive_validator_sa_run_invoker = gcp.cloudrunv2.ServiceIamMember(
+    "gdrive-validator-sa-run-invoker",
+    project=PROJECT_ID,
+    location=REGION,
+    name=gdrive_validator_function.name,
+    role="roles/run.invoker",
+    member=gdrive_validator_sa.email.apply(lambda email: f"serviceAccount:{email}"),
+)
+
 # Allow backend service account to invoke the validator (post-job trigger)
 gdrive_validator_backend_invoker = cloudfunctionsv2.FunctionIamMember(
     "gdrive-validator-backend-invoker",
