@@ -41,6 +41,9 @@ def create_secrets() -> dict[str, secretmanager.Secret]:
         # Notifications
         "pushbullet-api-key",
 
+        # Internal service URLs
+        "gdrive-validator-url",
+
         # Web Push (VAPID keys for mobile push notifications)
         "vapid-public-key",
         "vapid-private-key",

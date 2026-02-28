@@ -6,9 +6,10 @@ Validates the Nomad Karaoke public share folder for:
 - Invalid filename formats
 - Sequence gaps (with configurable known gaps)
 
-Sends Pushbullet notification if issues are detected.
+Sends email notification (via SendGrid) if issues are detected.
+Pushbullet is kept as a secondary fallback.
 
-Triggered daily via Cloud Scheduler.
+Triggered daily via Cloud Scheduler and after each job completion.
 """
 import os
 import re
@@ -29,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Configuration from environment variables
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "1laRKAyxo0v817SstfM5XkpbWiNKNAMSX")
 PUSHBULLET_API_KEY = os.environ.get("PUSHBULLET_API_KEY", "")
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+EMAIL_TO = os.environ.get("EMAIL_TO", "gen@nomadkaraoke.com")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "gen@nomadkaraoke.com")
 
 # Set to "true" to receive daily summary even when no issues found
 # Set to "false" to only receive notifications when issues are detected
@@ -317,12 +321,50 @@ def format_notification(issues: dict) -> tuple[str, str]:
     return title, body
 
 
-def send_pushbullet_notification(title: str, body: str) -> bool:
-    """Send a notification via Pushbullet API."""
-    if not PUSHBULLET_API_KEY:
-        logger.warning("PUSHBULLET_API_KEY not set, skipping notification")
+def send_email_notification(subject: str, body: str) -> bool:
+    """Send a notification via SendGrid email API."""
+    if not SENDGRID_API_KEY:
+        logger.warning("SENDGRID_API_KEY not set, skipping email notification")
         return False
-    
+
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail, Email, To, Content
+
+        sg = SendGridAPIClient(api_key=SENDGRID_API_KEY)
+
+        # Convert plain text body to simple HTML (preserve whitespace/newlines)
+        html_body = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        html_body = html_body.replace("\n", "<br>\n")
+        html_body = f"<pre style='font-family: monospace; white-space: pre-wrap;'>{html_body}</pre>"
+
+        message = Mail(
+            from_email=Email(EMAIL_FROM, "Nomad Karaoke GDrive Validator"),
+            to_emails=To(EMAIL_TO),
+            subject=subject,
+            html_content=Content("text/html", html_body),
+        )
+
+        response = sg.send(message)
+
+        if 200 <= response.status_code < 300:
+            logger.info(f"Email notification sent to {EMAIL_TO}")
+            return True
+        else:
+            logger.error(f"SendGrid returned status {response.status_code}")
+            return False
+
+    except Exception:
+        logger.exception("Failed to send email notification via SendGrid")
+        return False
+
+
+def send_pushbullet_notification(title: str, body: str) -> bool:
+    """Send a notification via Pushbullet API (secondary fallback)."""
+    if not PUSHBULLET_API_KEY:
+        logger.warning("PUSHBULLET_API_KEY not set, skipping Pushbullet notification")
+        return False
+
     try:
         response = requests.post(
             "https://api.pushbullet.com/v2/pushes",
@@ -343,6 +385,13 @@ def send_pushbullet_notification(title: str, body: str) -> bool:
     except requests.RequestException:
         logger.exception("Failed to send Pushbullet notification")
         return False
+
+
+def send_notification(title: str, body: str) -> bool:
+    """Send notification via email (primary) and Pushbullet (fallback). Returns True if any succeeded."""
+    email_sent = send_email_notification(title, body)
+    pushbullet_sent = send_pushbullet_notification(title, body)
+    return email_sent or pushbullet_sent
 
 
 @functions_framework.http
@@ -376,11 +425,10 @@ def validate_gdrive(request):
         # Check if there are any issues
         if has_issues(issues):
             logger.warning(f"Validation issues found: {issues}")
-            
-            # Send Pushbullet notification
+
             title, body = format_notification(issues)
-            notification_sent = send_pushbullet_notification(title, body)
-            
+            notification_sent = send_notification(title, body)
+
             return json.dumps({
                 "status": "issues_found",
                 "issues": issues,
@@ -389,7 +437,7 @@ def validate_gdrive(request):
         else:
             logger.info("No validation issues found")
             summary = issues['summary']
-            
+
             # Send daily summary notification if enabled
             if NOTIFY_ON_SUCCESS:
                 title = "✅ Karaoke GDrive: All Clear"
@@ -404,10 +452,10 @@ def validate_gdrive(request):
                     f"✓ No invalid filenames\n"
                     f"✓ No sequence gaps"
                 )
-                notification_sent = send_pushbullet_notification(title, body)
+                notification_sent = send_notification(title, body)
             else:
                 notification_sent = False
-            
+
             return json.dumps({
                 "status": "ok",
                 "message": "No validation issues found",
@@ -420,7 +468,7 @@ def validate_gdrive(request):
         
         # Try to send error notification
         try:
-            send_pushbullet_notification(
+            send_notification(
                 "❌ Karaoke GDrive Validator Error",
                 f"Validation failed with error:\n\n{e!s}"
             )
