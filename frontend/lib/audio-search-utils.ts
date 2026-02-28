@@ -65,7 +65,13 @@ export function categorizeResult(result: ExtendedAudioSearchResult): string {
     return 'YOUTUBE/LOSSY'
   }
 
-  // Best choice (50+ seeders, lossless)
+  // Vinyl rips — check BEFORE best choice so high-seeder vinyl doesn't become "Our Pick"
+  // (vinyl surface noise makes them poor sources for karaoke)
+  if (isLossless && media === 'vinyl') {
+    return 'VINYL RIPS'
+  }
+
+  // Best choice (50+ seeders, lossless, non-vinyl)
   if (isLossless && seeders >= 50) {
     return 'BEST CHOICE'
   }
@@ -73,11 +79,6 @@ export function categorizeResult(result: ExtendedAudioSearchResult): string {
   // Hi-res 24-bit
   if (isLossless && is24Bit) {
     return 'HI-RES 24-BIT'
-  }
-
-  // Vinyl rips
-  if (isLossless && media === 'vinyl') {
-    return 'VINYL RIPS'
   }
 
   // Live versions
