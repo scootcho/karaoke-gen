@@ -165,6 +165,47 @@ export interface HighlightInfo {
 
 export type InteractionMode = 'highlight' | 'edit' | 'delete_word'
 
+// Edit Log Types — captures user edits for training data / feedback
+export type EditOperationType =
+  | 'word_change' | 'word_delete' | 'word_add'
+  | 'word_split' | 'word_merge'
+  | 'segment_delete' | 'segment_add' | 'segment_split' | 'segment_merge'
+  | 'find_replace' | 'replace_all_lyrics'
+  | 'timing_change' | 'revert_correction' | 'revert_all'
+
+export type EditFeedbackReason =
+  | 'misheard_word' | 'wrong_lyrics' | 'spelling_punctuation'
+  | 'phantom_word' | 'duplicate_word'
+  | 'missing_word' | 'split_word'
+  | 'other' | 'no_response'
+
+export interface EditFeedback {
+  reason: EditFeedbackReason
+  timestamp: string
+}
+
+export interface EditLogEntry {
+  id: string
+  timestamp: string
+  operation: EditOperationType
+  segment_id: string | null
+  segment_index: number | null
+  word_ids_before: string[]
+  word_ids_after: string[]
+  text_before: string
+  text_after: string
+  details?: Record<string, unknown>
+  feedback?: EditFeedback | null
+}
+
+export interface EditLog {
+  session_id: string
+  job_id: string
+  audio_hash: string
+  started_at: string
+  entries: EditLogEntry[]
+}
+
 // Correction Annotation Types
 export type CorrectionAnnotationType =
   | 'PUNCTUATION_ONLY'

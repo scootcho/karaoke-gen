@@ -644,6 +644,55 @@ async def submit_corrections(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{job_id}/edit-log")
+async def submit_edit_log(
+    job_id: str,
+    edit_log: Dict[str, Any],
+    auth_result: AuthResult = Depends(require_auth)
+) -> dict:
+    """
+    Store an edit log from a lyrics review session.
+
+    Edit logs capture what edits users made and optional feedback on why,
+    for use as training data to improve transcription models.
+
+    Stored to GCS as jobs/{job_id}/lyrics/edit_log_{session_id}.json.
+    """
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if not _check_job_ownership(job, auth_result):
+        raise HTTPException(status_code=403, detail="You don't have permission to modify this job")
+
+    session_id = edit_log.get("session_id", "unknown")
+    entries = edit_log.get("entries", [])
+    feedback_count = sum(1 for e in entries if e.get("feedback") and e["feedback"].get("reason") != "no_response")
+
+    try:
+        storage = StorageService()
+        gcs_path = f"jobs/{job_id}/lyrics/edit_log_{session_id}.json"
+        storage.upload_json(gcs_path, edit_log)
+
+        job_manager.update_state_data(job_id, 'last_edit_log_path', gcs_path)
+        job_manager.update_state_data(job_id, 'last_edit_log_session', session_id)
+
+        logger.info(
+            f"Job {job_id}: Edit log saved — {len(entries)} entries, "
+            f"{feedback_count} with feedback, session {session_id}"
+        )
+
+        return {
+            "status": "success",
+            "entries_count": len(entries),
+            "feedback_count": feedback_count,
+        }
+
+    except Exception as e:
+        logger.error(f"Error saving edit log for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{job_id}/create-custom-instrumental")
 async def create_custom_instrumental(
     job_id: str,

@@ -14,12 +14,12 @@ import {
   LyricsSegment,
   ReferenceSource,
   WordCorrection,
-  CorrectionAnnotation,
   FlashType,
   Word,
   WordClickInfo,
   ModalContent,
 } from '@/lib/lyrics-review/types'
+import type { EditLog, EditLogEntry, EditFeedbackReason } from '@/lib/lyrics-review/types'
 import type { InstrumentalSelectionType } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import ReferenceView from './ReferenceView'
@@ -27,11 +27,11 @@ import TranscriptionView from './TranscriptionView'
 import { EditModal } from './modals'
 import { ReviewChangesModal } from './modals'
 import { ReplaceAllLyricsModal } from './modals'
-import { CorrectionAnnotationModal } from './modals'
 import { AddLyricsModal } from './modals'
 import { FindReplaceModal } from './modals'
 import { TimingOffsetModal } from './modals'
 import CorrectionDetailCard from './CorrectionDetailCard'
+import EditFeedbackBar from './EditFeedbackBar'
 import {
   addSegmentBefore,
   splitSegment,
@@ -46,6 +46,7 @@ import {
   setModalHandler,
   getModalState,
 } from '@/lib/lyrics-review/utils/keyboardHandlers'
+import { createEditLog, addEditEntry, attachFeedback } from '@/lib/lyrics-review/utils/editLog'
 import Header from './Header'
 import GapNavigator from './GapNavigator'
 import { getWordsFromIds } from '@/lib/lyrics-review/utils/wordUtils'
@@ -63,7 +64,8 @@ declare global {
 
 interface ApiClient {
   submitCorrections: (data: CorrectionData) => Promise<void>
-  submitAnnotations: (annotations: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]) => Promise<void>
+  submitAnnotations: (annotations: never[]) => Promise<void>
+  submitEditLog: (editLog: EditLog) => Promise<void>
   updateHandlers: (handlers: string[]) => Promise<CorrectionData>
   addLyrics: (source: string, lyrics: string) => Promise<CorrectionData>
   getAudioUrl: (hash: string) => string
@@ -137,20 +139,10 @@ export default function LyricsAnalyzer({
   const [countdown, setCountdown] = useState(2)
   const [showInstrumentalReview, setShowInstrumentalReview] = useState(false)
 
-  // Annotation state
-  const [annotations, setAnnotations] = useState<Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]>([])
-  const [isAnnotationModalOpen, setIsAnnotationModalOpen] = useState(false)
-  const [pendingAnnotation, setPendingAnnotation] = useState<{
-    originalText: string
-    correctedText: string
-    wordIdsAffected: string[]
-    gapId?: string
-  } | null>(null)
-  const [annotationsEnabled, setAnnotationsEnabled] = useState(() => {
-    if (typeof window === 'undefined') return true
-    const saved = localStorage.getItem('annotationsEnabled')
-    return saved !== null ? saved === 'true' : true
-  })
+  // Edit log state
+  const [editLog] = useState<EditLog>(() => createEditLog(jobId ?? 'unknown', audioHash))
+  const [lastEditEntry, setLastEditEntry] = useState<EditLogEntry | null>(null)
+  const [showFeedbackBar, setShowFeedbackBar] = useState(false)
 
   // Stats panel visibility
   const [statsVisible, setStatsVisible] = useState(false)
@@ -384,24 +376,13 @@ export default function LyricsAnalyzer({
   // Calculate effective mode based on modifier key states
   const effectiveMode = isCtrlPressed ? 'delete_word' : isShiftPressed ? 'highlight' : interactionMode
 
-  // Annotation handlers
-  const handleSaveAnnotation = useCallback(
-    (annotation: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>) => {
-      setAnnotations((prev) => [...prev, annotation])
+  // Edit feedback handler
+  const handleEditFeedback = useCallback(
+    (entryId: string, reason: EditFeedbackReason) => {
+      attachFeedback(editLog, entryId, reason)
     },
-    []
+    [editLog]
   )
-
-  const handleSkipAnnotation = useCallback(() => {
-    // No-op for now
-  }, [])
-
-  const handleAnnotationsToggle = useCallback((enabled: boolean) => {
-    setAnnotationsEnabled(enabled)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('annotationsEnabled', String(enabled))
-    }
-  }, [])
 
   const handleAdvancedModeToggle = useCallback((enabled: boolean) => {
     setAdvancedMode(enabled)
@@ -410,13 +391,18 @@ export default function LyricsAnalyzer({
     }
   }, [])
 
-  const triggerAnnotationModal = useCallback(
-    (originalText: string, correctedText: string, wordIdsAffected: string[], gapId?: string) => {
-      if (!annotationsEnabled || isReadOnly) return
-      setPendingAnnotation({ originalText, correctedText, wordIdsAffected, gapId })
-      setIsAnnotationModalOpen(true)
+  const showFeedbackForEntry = useCallback(
+    (entry: EditLogEntry) => {
+      // Only show for single-word edits
+      if (!['word_change', 'word_delete', 'word_add'].includes(entry.operation)) return
+      // Dismiss previous entry with no_response if still showing
+      if (lastEditEntry && lastEditEntry.id !== entry.id) {
+        attachFeedback(editLog, lastEditEntry.id, 'no_response')
+      }
+      setLastEditEntry(entry)
+      setShowFeedbackBar(true)
     },
-    [annotationsEnabled, isReadOnly]
+    [editLog, lastEditEntry]
   )
 
   // Show correction detail
@@ -452,9 +438,18 @@ export default function LyricsAnalyzer({
   const handleWordClick = useCallback(
     (info: WordClickInfo) => {
       if (effectiveMode === 'delete_word') {
+        const deletedWord = data.corrected_segments.flatMap((s) => s.words).find((w) => w.id === info.word_id)
+        const segment = data.corrected_segments.find((s) => s.words.some((w) => w.id === info.word_id))
+        const entry = addEditEntry(editLog, 'word_delete', {
+          segment_id: segment?.id,
+          segment_index: segment ? data.corrected_segments.indexOf(segment) : null,
+          word_ids_before: [info.word_id],
+          text_before: deletedWord?.text ?? '',
+        })
         const newData = deleteWord(data, info.word_id)
         updateDataWithHistory(newData, 'delete word')
         handleFlash('word')
+        showFeedbackForEntry(entry)
         return
       }
 
@@ -551,26 +546,75 @@ export default function LyricsAnalyzer({
         corrected_segments: newSegments,
       }
 
-      updateDataWithHistory(newData, 'update segment')
-
+      // Diff original vs updated words to create edit log entries
       const originalSegment = editModalSegment.originalSegment || editModalSegment.segment
+      const entries: EditLogEntry[] = []
       if (originalSegment && originalSegment.text !== updatedSegment.text) {
-        const wordIds = updatedSegment.words.map((w) => w.id)
-        triggerAnnotationModal(originalSegment.text, updatedSegment.text, wordIds)
+        const origWordMap = new Map(originalSegment.words.map((w) => [w.id, w]))
+        const updatedWordMap = new Map(updatedSegment.words.map((w) => [w.id, w]))
+
+        // Changed or deleted words
+        for (const origWord of originalSegment.words) {
+          const updatedWord = updatedWordMap.get(origWord.id)
+          if (!updatedWord) {
+            entries.push(addEditEntry(editLog, 'word_delete', {
+              segment_id: originalSegment.id,
+              segment_index: editModalSegment.index,
+              word_ids_before: [origWord.id],
+              text_before: origWord.text,
+            }))
+          } else if (updatedWord.text !== origWord.text) {
+            entries.push(addEditEntry(editLog, 'word_change', {
+              segment_id: originalSegment.id,
+              segment_index: editModalSegment.index,
+              word_ids_before: [origWord.id],
+              word_ids_after: [updatedWord.id],
+              text_before: origWord.text,
+              text_after: updatedWord.text,
+            }))
+          }
+        }
+
+        // Added words
+        for (const updatedWord of updatedSegment.words) {
+          if (!origWordMap.has(updatedWord.id)) {
+            entries.push(addEditEntry(editLog, 'word_add', {
+              segment_id: originalSegment.id,
+              segment_index: editModalSegment.index,
+              word_ids_after: [updatedWord.id],
+              text_after: updatedWord.text,
+            }))
+          }
+        }
+
+        // Show feedback bar only for single-word edits
+        if (entries.length === 1) {
+          showFeedbackForEntry(entries[0])
+        }
       }
 
+      updateDataWithHistory(newData, 'update segment')
       setEditModalSegment(null)
     },
-    [history, historyIndex, editModalSegment, updateDataWithHistory, triggerAnnotationModal]
+    [history, historyIndex, editModalSegment, updateDataWithHistory, editLog, showFeedbackForEntry]
   )
 
   // Delete segment handler
   const handleDeleteSegment = useCallback(
     (segmentIndex: number) => {
+      const segment = data.corrected_segments[segmentIndex]
+      if (segment) {
+        addEditEntry(editLog, 'segment_delete', {
+          segment_id: segment.id,
+          segment_index: segmentIndex,
+          word_ids_before: segment.words.map((w) => w.id),
+          text_before: segment.text,
+        })
+      }
       const newData = deleteSegment(data, segmentIndex)
       updateDataWithHistory(newData, 'delete segment')
     },
-    [data, updateDataWithHistory]
+    [data, updateDataWithHistory, editLog]
   )
 
   // Correction action handlers
@@ -613,9 +657,18 @@ export default function LyricsAnalyzer({
         corrections: newCorrections,
       }
 
+      addEditEntry(editLog, 'revert_correction', {
+        segment_id: segment.id,
+        segment_index: segmentIndex,
+        word_ids_before: [wordId],
+        word_ids_after: [correction.word_id],
+        text_before: correction.corrected_word,
+        text_after: correction.original_word,
+      })
+
       updateDataWithHistory(newData, 'revert correction')
     },
-    [data, updateDataWithHistory]
+    [data, updateDataWithHistory, editLog]
   )
 
   const handleEditCorrection = useCallback(
@@ -663,6 +716,10 @@ export default function LyricsAnalyzer({
       return
     }
 
+    addEditEntry(editLog, 'revert_all', {
+      details: { count: data.corrections?.length ?? 0 },
+    })
+
     const corrections = [...(data.corrections || [])].reverse()
     let newData = data
 
@@ -698,7 +755,7 @@ export default function LyricsAnalyzer({
     }
 
     updateDataWithHistory(newData, 'revert all corrections')
-  }, [data, updateDataWithHistory])
+  }, [data, updateDataWithHistory, editLog])
 
   // Finish review - opens preview modal
   const handleFinishReview = useCallback(() => {
@@ -721,12 +778,12 @@ export default function LyricsAnalyzer({
       // 1. Save corrections (not final submission yet)
       await apiClient.submitCorrections(dataToSubmit)
 
-      // 2. Save annotations
-      if (annotations.length > 0) {
+      // 2. Save edit log (non-blocking)
+      if (editLog.entries.length > 0) {
         try {
-          await apiClient.submitAnnotations(annotations)
+          await apiClient.submitEditLog(editLog)
         } catch (error) {
-          console.error('Failed to submit annotations:', error)
+          console.error('Failed to submit edit log:', error)
         }
       }
 
@@ -754,7 +811,7 @@ export default function LyricsAnalyzer({
       toast.error('Failed to submit corrections. Please try again.')
       setIsSubmitting(false) // Reset on error so user can retry
     }
-  }, [apiClient, data, timingOffsetMs, annotations, isLocalMode, jobId])
+  }, [apiClient, data, timingOffsetMs, editLog, isLocalMode, jobId])
 
   // Play segment handler
   const handlePlaySegment = useCallback(
@@ -886,9 +943,23 @@ export default function LyricsAnalyzer({
       options: { caseSensitive: boolean; useRegex: boolean; fullTextMode: boolean }
     ) => {
       const newData = findAndReplace(data, findText, replaceText, options)
+      // Count how many segments changed
+      const changedSegments = newData.corrected_segments.filter(
+        (seg, i) => seg.text !== data.corrected_segments[i]?.text
+      )
+      addEditEntry(editLog, 'find_replace', {
+        text_before: findText,
+        text_after: replaceText,
+        details: {
+          pattern: findText,
+          replacement: replaceText,
+          segments_affected: changedSegments.length,
+          ...options,
+        },
+      })
       updateDataWithHistory(newData, 'find/replace')
     },
-    [data, updateDataWithHistory]
+    [data, updateDataWithHistory, editLog]
   )
 
   // Un-correct all
@@ -914,11 +985,17 @@ export default function LyricsAnalyzer({
 
   const handleSaveReplaceAllLyrics = useCallback(
     (newSegments: LyricsSegment[]) => {
+      addEditEntry(editLog, 'replace_all_lyrics', {
+        details: {
+          segments_before: data.corrected_segments.length,
+          segments_after: newSegments.length,
+        },
+      })
       const newData = { ...data, corrected_segments: newSegments }
       updateDataWithHistory(newData, 'replace all lyrics')
       setIsReplaceAllLyricsModalOpen(false)
     },
-    [data, updateDataWithHistory]
+    [data, updateDataWithHistory, editLog]
   )
 
   // Undo/Redo
@@ -1192,26 +1269,12 @@ export default function LyricsAnalyzer({
         existingSegments={data.corrected_segments}
       />
 
-      {pendingAnnotation && (
-        <CorrectionAnnotationModal
-          open={isAnnotationModalOpen}
-          onClose={() => {
-            setIsAnnotationModalOpen(false)
-            setPendingAnnotation(null)
-          }}
-          onSave={handleSaveAnnotation}
-          onSkip={handleSkipAnnotation}
-          originalText={pendingAnnotation.originalText}
-          correctedText={pendingAnnotation.correctedText}
-          wordIdsAffected={pendingAnnotation.wordIdsAffected}
-          referenceSources={Object.keys(data.reference_lyrics || {})}
-          audioHash={audioHash}
-          artist={data.metadata?.audio_filepath?.split('/').pop()?.split('.')[0] || 'Unknown'}
-          title={data.metadata?.audio_filepath?.split('/').pop()?.split('.')[0] || 'Unknown'}
-          sessionId={audioHash}
-          gapId={pendingAnnotation.gapId}
-        />
-      )}
+      <EditFeedbackBar
+        entry={lastEditEntry}
+        visible={showFeedbackBar}
+        onFeedback={handleEditFeedback}
+        onDismiss={() => setShowFeedbackBar(false)}
+      />
 
       {selectedCorrection && (
         <CorrectionDetailCard

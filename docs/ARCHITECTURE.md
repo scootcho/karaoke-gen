@@ -119,6 +119,8 @@ jobs/{job_id}/
 ├── lyrics/
 │   ├── corrections.json           # Auto-corrected
 │   ├── corrections_updated.json   # After human review
+│   ├── edit_log_{session}.json    # User edit log with feedback
+│   ├── annotations.json           # Correction annotations
 │   └── karaoke.ass
 ├── screens/
 │   ├── title.mov
