@@ -255,6 +255,11 @@ class VideoWorkerOrchestrator:
                 # Stage 5: Notifications (Discord)
                 await self._run_notifications()
 
+                # Stage 6: Post-distribution GDrive validation
+                # Only for jobs that uploaded to the public share (non-private)
+                if self.config.gdrive_folder_id:
+                    await self._trigger_gdrive_validation()
+
                 self.result.success = True
                 self.result.total_time_seconds = time.time() - start_time
 
@@ -702,6 +707,16 @@ class VideoWorkerOrchestrator:
         except Exception as e:
             self.job_log.error(f"Discord notification failed: {e}")
             # Don't fail the pipeline - notifications are optional
+
+    async def _trigger_gdrive_validation(self):
+        """Trigger GDrive validation after uploading to the public share."""
+        try:
+            from backend.services.gdrive_validator_client import trigger_gdrive_validation
+            self.job_log.info("Triggering post-job GDrive validation")
+            trigger_gdrive_validation()
+        except Exception as e:
+            self.job_log.warning(f"GDrive validation trigger failed (non-fatal): {e}")
+            # Never fail the pipeline for validation
 
 
 def create_orchestrator_config_from_job(

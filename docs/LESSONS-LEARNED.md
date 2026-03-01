@@ -40,6 +40,17 @@ When two sequential human review steps can be combined into one, do it. We origi
 
 ## Common Gotchas
 
+### Gate Resource Recycling on Full Cleanup Confirmation (Feb 2026)
+**What happened**: Brand code NOMAD-1271 was recycled and reused for a real song while old E2E test job files still existed in Google Drive, creating a duplicate in the public share.
+
+**Root causes**:
+1. `if gdrive_files:` skips cleanup when `gdrive_files = {}` (empty dict is falsy) — any falsy check on a collection will silently skip work
+2. Brand code recycled after Dropbox cleanup success, *before* confirming GDrive was clean — partial cleanup allowed resource reuse with orphaned files
+
+**Fix**: Use `if gdrive_files is not None` (or check explicitly). Gate resource recycling on **all** cleanup steps succeeding, not just the first one. When a resource has been distributed to N places, it's only safe to recycle when all N locations are confirmed clean.
+
+**Pattern**: Treat resource IDs (brand codes, sequential IDs) like distributed transactions — either all distribution points are cleaned, or the ID stays reserved.
+
 ### Fail Fast, Don't Fall Back
 Silent fallbacks hide configuration errors. When critical configuration is missing (themes, credentials, etc.), raise clear errors instead of falling back to defaults. Better to fail loudly during testing than silently produce incorrect output in production. Example: Theme validation (v0.109.0) now raises `ValueError` on incomplete themes instead of merging with defaults. This ensures all cloud jobs use complete, explicit themes with no silent degradation.
 
@@ -667,6 +678,9 @@ Langfuse v3 is built on OpenTelemetry. If `CallbackHandler()` is created without
 
 ### Cold Start Mitigation
 Set `min-instances > 0` for Cloud Run services with heavy initialization.
+
+### Never Call sync-over-async from FastAPI async Routes (Feb 2026)
+Sync methods that internally create new event loops (`asyncio.new_event_loop()` + `loop.run_until_complete()`) will **block the FastAPI event loop** when called from `async def` routes or background tasks. The response body gets queued but never flushed because the blocked loop can't process I/O — causing 20-36s endpoint latency instead of <1s. **Fix**: Either (a) call the underlying async client directly with `await` (preferred — e.g., `await flacfetch_client.download_by_id()`), or (b) wrap sync calls in `await asyncio.to_thread()` / `loop.run_in_executor()` to run them in a thread pool. The `nest_asyncio` library is NOT a reliable workaround — it patches CPython internals and can cause deadlocks. See `audio_search.py` and `youtube_download_service.py` for the correct async patterns.
 
 ---
 

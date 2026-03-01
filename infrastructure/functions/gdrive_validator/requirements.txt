@@ -8,3 +8,6 @@ functions-framework>=3.0.0
 # HTTP requests for Pushbullet API
 requests>=2.31.0
 
+# Email notifications via SendGrid
+sendgrid>=6.0.0
+

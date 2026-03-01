@@ -387,6 +387,85 @@ class GoogleDriveService:
             results[file_id] = self.delete_file(file_id)
         return results
 
+    def find_files_by_brand_code(self, root_folder_id: str, brand_code: str) -> list[str]:
+        """
+        Search for files in public share subfolders matching a brand code prefix.
+
+        Used as a fallback when gdrive_files is not tracked in state_data (e.g., old
+        jobs uploaded before file ID tracking was implemented, or jobs where GDrive
+        upload succeeded but file IDs were not saved due to a bug).
+
+        Searches CDG/, MP4/, MP4-720p/ subfolders for files whose name starts with
+        '{brand_code} - '.
+
+        Args:
+            root_folder_id: Root Google Drive folder ID for the public share
+            brand_code: Brand code prefix to search for (e.g., "NOMAD-1271")
+
+        Returns:
+            List of file IDs found matching the brand code
+        """
+        found_ids = []
+        subfolders = ["CDG", "MP4", "MP4-720p"]
+        search_errors: list[Exception] = []
+
+        for subfolder in subfolders:
+            try:
+                # Find the subfolder
+                escaped_subfolder = subfolder.replace("'", "\\'")
+                query = (
+                    f"name='{escaped_subfolder}' and '{root_folder_id}' in parents "
+                    f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                )
+                results = self.service.files().list(
+                    q=query, fields="files(id, name)", supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+
+                if not results.get("files"):
+                    logger.debug(f"Subfolder '{subfolder}' not found in {root_folder_id}")
+                    continue
+
+                subfolder_id = results["files"][0]["id"]
+
+                # Search for files whose name starts with the brand code
+                # Use contains for efficiency, then filter by exact prefix
+                escaped_brand = brand_code.replace("'", "\\'")
+                file_query = (
+                    f"name contains '{escaped_brand}' and '{subfolder_id}' in parents "
+                    f"and trashed=false"
+                )
+                file_results = self.service.files().list(
+                    q=file_query, fields="files(id, name)", supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+
+                for f in file_results.get("files", []):
+                    if f["name"].startswith(f"{brand_code} - "):
+                        found_ids.append(f["id"])
+                        logger.info(
+                            f"Found GDrive file to clean up in {subfolder}/: "
+                            f"{f['name']} ({f['id']})"
+                        )
+
+            except Exception as e:
+                logger.error(
+                    f"Error searching for brand_code '{brand_code}' in '{subfolder}': {e}",
+                    exc_info=True,
+                )
+                search_errors.append(e)
+
+        if search_errors:
+            # Raise so the caller knows the search was incomplete.
+            # This prevents the cleanup endpoint from treating an uncertain result
+            # as "GDrive is clean" and incorrectly recycling the brand code.
+            raise RuntimeError(
+                f"GDrive brand_code search incomplete: "
+                f"{len(search_errors)}/{len(subfolders)} subfolder(s) failed"
+            )
+
+        return found_ids
+
 
 # Singleton instance
 _gdrive_service: Optional[GoogleDriveService] = None
