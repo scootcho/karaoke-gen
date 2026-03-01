@@ -83,6 +83,17 @@ describe('categorizeResult', () => {
     const result = makeResult({ index: 0, is_lossless: true, seeders: 5, release_type: 'Interview' })
     expect(categorizeResult(result)).toBe('OTHER')
   })
+
+  it('categorizes Spotify provider as SPOTIFY', () => {
+    const result = makeResult({ index: 0, provider: 'Spotify', is_lossless: false })
+    expect(categorizeResult(result)).toBe('SPOTIFY')
+  })
+
+  it('categorizes Spotify before checking lossless status', () => {
+    // Spotify results report FLAC quality but is_lossless may vary
+    const result = makeResult({ index: 0, provider: 'Spotify', is_lossless: true, seeders: 100 })
+    expect(categorizeResult(result)).toBe('SPOTIFY')
+  })
 })
 
 describe('getBestResult', () => {
@@ -304,6 +315,45 @@ describe('checkFilenameMismatch', () => {
 
     const mismatchResult = makeResult({ index: 0, provider: 'YouTube', title: 'Something Else' })
     expect(checkFilenameMismatch('Yellow', mismatchResult).isMismatch).toBe(true)
+  })
+
+  it('treats underscores as word separators', () => {
+    const result = makeResult({ index: 0, target_file: '10-Pyro_Sets_A_Wildfire.flac' })
+    const check = checkFilenameMismatch('Pyro Sets a Wildfire', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('treats hyphens and dots as word separators', () => {
+    const result = makeResult({ index: 0, target_file: 'My-Song.Name.Here.flac' })
+    const check = checkFilenameMismatch('My Song Name Here', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('returns indeterminate for non-Latin filenames (no false match)', () => {
+    const result = makeResult({ index: 0, target_file: 'תמיד אוהב אותי' })
+    const check = checkFilenameMismatch('I Love You, KoREH', result)
+    // Can't determine match — should return isMismatch: false with empty filename
+    expect(check.isMismatch).toBe(false)
+    expect(check.filename).toBe('')
+  })
+
+  it('rejects very short filenames to avoid false substring matches', () => {
+    const result = makeResult({ index: 0, target_file: 'K.' })
+    const check = checkFilenameMismatch('I Love You, KoREH', result)
+    expect(check.isMismatch).toBe(true)
+  })
+
+  it('uses result.title for Spotify results without target_file', () => {
+    const result = makeResult({ index: 0, provider: 'Spotify', title: 'Yellow', target_file: undefined })
+    // Falls back to title since no target_file
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('prefers target_file over title when both exist', () => {
+    const result = makeResult({ index: 0, provider: 'Spotify', title: 'Wrong Album', target_file: 'Yellow.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(false)
   })
 
   it('skips check for very short titles (< 3 chars)', () => {
