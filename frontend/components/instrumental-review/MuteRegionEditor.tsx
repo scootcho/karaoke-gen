@@ -14,6 +14,8 @@ interface MuteRegionEditorProps {
   onCreateCustom: () => void
   onSeekTo: (time: number) => void
   onAddSegment: (index: number) => void
+  onHoverRegion?: (index: number | null) => void
+  onHoverSegment?: (index: number | null) => void
 }
 
 function formatTime(seconds: number): string {
@@ -33,16 +35,18 @@ export function MuteRegionEditor({
   onCreateCustom,
   onSeekTo,
   onAddSegment,
+  onHoverRegion,
+  onHoverSegment,
 }: MuteRegionEditorProps) {
   const hasRegions = regions.length > 0
   const hasSegments = audibleSegments.length > 0
 
   return (
-    <div className="flex-1 bg-card border border-border rounded-lg p-3 flex flex-col gap-2 max-h-[140px]">
+    <div className="bg-card border border-border rounded-lg p-3 flex flex-col gap-2 max-h-[180px] lg:max-h-[140px]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold">
-          Mute Regions {hasRegions && `(${regions.length})`}
+          Custom Mix {hasRegions && `(${regions.length} muted)`}
         </span>
         {hasRegions && (
           <div className="flex gap-1.5">
@@ -75,6 +79,8 @@ export function MuteRegionEditor({
             <div
               key={index}
               className="inline-flex items-center gap-1 px-2 py-1 bg-secondary rounded text-xs"
+              onMouseEnter={() => onHoverRegion?.(index)}
+              onMouseLeave={() => onHoverRegion?.(null)}
             >
               <button
                 type="button"
@@ -94,10 +100,24 @@ export function MuteRegionEditor({
           ))}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground">
-          {hasSegments
-            ? "Click segments below or Shift + drag on waveform"
-            : "No backing vocals detected - clean instrumental recommended"}
+        <div className="text-xs text-muted-foreground space-y-1">
+          {hasSegments ? (
+            <>
+              <p>
+                Want backing vocals but hear lead vocal bleed in some sections?
+                Mute those sections to create a custom mix.
+              </p>
+              <p className="text-muted-foreground/70">
+                Click a segment below to mute it, or{" "}
+                <kbd className="px-1 py-0.5 rounded bg-muted text-[0.65rem] font-mono">
+                  Shift
+                </kbd>
+                +drag on the waveform to mark a custom region.
+              </p>
+            </>
+          ) : (
+            <p>No backing vocals detected — clean instrumental recommended.</p>
+          )}
         </div>
       )}
 
@@ -109,6 +129,8 @@ export function MuteRegionEditor({
               key={index}
               type="button"
               onClick={() => onAddSegment(index)}
+              onMouseEnter={() => onHoverSegment?.(index)}
+              onMouseLeave={() => onHoverSegment?.(null)}
               title="Add to mute regions"
               className="px-1.5 py-0.5 bg-background border border-border rounded text-[10px] text-muted-foreground hover:border-primary hover:text-primary transition-colors"
             >

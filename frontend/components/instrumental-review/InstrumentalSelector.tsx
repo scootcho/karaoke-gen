@@ -21,6 +21,7 @@ import { WaveformViewer } from "./WaveformViewer"
 import { MuteRegionEditor } from "./MuteRegionEditor"
 import { SelectionOptions } from "./SelectionOptions"
 import { CustomUpload } from "./CustomUpload"
+import { InstrumentalGuidancePanel } from "./InstrumentalGuidancePanel"
 
 interface InstrumentalSelectorProps {
   job: Job
@@ -78,6 +79,12 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
   const [isShiftHeld, setIsShiftHeld] = useState(false)
   const [isAudioLoading, setIsAudioLoading] = useState(false)
 
+  // Hover highlight state
+  const [hoveredItem, setHoveredItem] = useState<{
+    type: "region" | "segment"
+    index: number
+  } | null>(null)
+
   // Derived state
   const hasOriginal = analysisData?.has_original ?? false
   const hasWithBacking = !!analysisData?.audio_urls.with_backing
@@ -85,6 +92,13 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
     () => analysisData?.analysis.audible_segments ?? [],
     [analysisData?.analysis.audible_segments]
   )
+
+  const highlightedTimeRange = useMemo(() => {
+    if (!hoveredItem) return null
+    const source = hoveredItem.type === "region" ? muteRegions : audibleSegments
+    const item = source[hoveredItem.index]
+    return item ? { start: item.start_seconds, end: item.end_seconds } : null
+  }, [hoveredItem, muteRegions, audibleSegments])
 
   // Toggle play/pause - defined early so it can be used in keyboard shortcuts
   const togglePlayPause = useCallback(() => {
@@ -543,36 +557,27 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
   const amplitudes = waveformData?.amplitudes ?? []
 
   return (
-    <div className="flex flex-col h-screen bg-background p-4 gap-3 overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-background p-2 md:p-4 gap-2 md:gap-3">
       {/* Header */}
-      <header className="flex items-center justify-between flex-shrink-0">
+      <header className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold flex items-center gap-2">
             <img
               src="https://gen.nomadkaraoke.com/nomad-karaoke-logo.svg"
               alt="Nomad Karaoke"
-              className="h-10"
+              className="h-8 md:h-10"
               onError={(e) => {
                 e.currentTarget.style.display = "none"
               }}
             />
-            Instrumental Review
+            <span className="sm:hidden">Review</span>
+            <span className="hidden sm:inline">Instrumental Review</span>
           </span>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs md:text-sm text-muted-foreground truncate">
             {job.artist} {job.artist && job.title ? "-" : ""} {job.title}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {audibleSegments.length > 0 && (
-            <>
-              <span className="px-2.5 py-1 rounded-full text-xs bg-secondary text-muted-foreground">
-                {audibleSegments.length} segments
-              </span>
-              <span className="px-2.5 py-1 rounded-full text-xs bg-secondary text-muted-foreground">
-                {analysisData?.analysis.audible_percentage.toFixed(0)}% backing vocals
-              </span>
-            </>
-          )}
           <span
             className={`px-2.5 py-1 rounded-full text-xs ${
               analysisData?.analysis.recommended_selection === "clean"
@@ -582,20 +587,28 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
           >
             {analysisData?.analysis.recommended_selection === "clean"
               ? "Clean recommended"
-              : "Review needed"}
+              : "Review backing vocals"}
           </span>
         </div>
       </header>
 
+      {/* Guidance panel */}
+      {analysisData && (
+        <InstrumentalGuidancePanel
+          analysis={analysisData.analysis}
+          audibleSegments={audibleSegments}
+        />
+      )}
+
       {/* Waveform Player */}
-      <div className="flex-1 flex flex-col bg-card border border-border rounded-xl overflow-hidden min-h-0">
+      <div className="min-h-[200px] md:min-h-[250px] lg:flex-1 lg:min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-secondary border-b border-border gap-3 flex-shrink-0 flex-wrap">
+        <div className="flex items-center justify-between px-2 md:px-4 py-2 md:py-2.5 bg-secondary border-b border-border gap-3 flex-shrink-0 flex-wrap">
           <div className="flex items-center gap-2">
             <Button
               size="icon"
               onClick={togglePlayPause}
-              className="rounded-full w-8 h-8"
+              className="rounded-full w-9 h-9 md:w-8 md:h-8"
             >
               {isPlaying ? (
                 <Pause className="w-4 h-4" />
@@ -620,7 +633,6 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
               uploadedFilename={uploadedFilename}
               isLoading={isAudioLoading}
             />
-            <CustomUpload onUpload={handleUpload} isUploading={isUploading} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -630,7 +642,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
                   key={level}
                   type="button"
                   onClick={() => setZoomLevel(level)}
-                  className={`w-7 h-7 rounded text-xs font-medium transition-colors ${
+                  className={`w-9 h-9 md:w-7 md:h-7 rounded text-xs font-medium transition-colors ${
                     zoomLevel === level
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -640,13 +652,13 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="hidden md:inline text-[10px] text-muted-foreground">
               <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-[10px] font-mono">
                 Shift
               </kbd>
               +drag
             </span>
-            <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-[10px] font-mono">
+            <kbd className="hidden md:inline px-1.5 py-0.5 bg-background border border-border rounded text-[10px] font-mono">
               Space
             </kbd>
           </div>
@@ -664,6 +676,7 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
             onSeek={seekTo}
             onRegionCreate={addRegion}
             isShiftHeld={isShiftHeld}
+            highlightedTimeRange={highlightedTimeRange}
           />
           {isAudioLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm">
@@ -674,37 +687,54 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
             </div>
           )}
         </div>
-
-        {/* Time axis */}
-        <div className="flex justify-between px-3 py-1 text-[10px] text-muted-foreground bg-black/40 flex-shrink-0">
-          <span>0:00</span>
-          <span>{formatTime(duration * 0.25)}</span>
-          <span>{formatTime(duration * 0.5)}</span>
-          <span>{formatTime(duration * 0.75)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
       </div>
 
       {/* Hidden audio element */}
       <audio ref={audioRef} src={getAudioUrl()} className="hidden" />
 
       {/* Bottom section */}
-      <div className="flex gap-3 flex-shrink-0">
-        {/* Mute regions panel */}
-        <MuteRegionEditor
-          regions={muteRegions}
-          audibleSegments={audibleSegments}
-          hasCustom={hasCustom}
-          isCreatingCustom={isCreatingCustom}
-          onRemoveRegion={removeRegion}
-          onClearAll={clearAllRegions}
-          onCreateCustom={handleCreateCustom}
-          onSeekTo={seekTo}
-          onAddSegment={addSegmentAsRegion}
-        />
+      <div className="flex flex-col lg:flex-row gap-2 md:gap-3 flex-shrink-0">
+        {/* Left column: Custom Mix + Alternate Instrumental */}
+        <div className="flex flex-col gap-2 md:gap-3 lg:flex-1 lg:min-w-0">
+          <MuteRegionEditor
+            regions={muteRegions}
+            audibleSegments={audibleSegments}
+            hasCustom={hasCustom}
+            isCreatingCustom={isCreatingCustom}
+            onRemoveRegion={removeRegion}
+            onClearAll={clearAllRegions}
+            onCreateCustom={handleCreateCustom}
+            onSeekTo={seekTo}
+            onAddSegment={addSegmentAsRegion}
+            onHoverRegion={(index) =>
+              setHoveredItem(index !== null ? { type: "region", index } : null)
+            }
+            onHoverSegment={(index) =>
+              setHoveredItem(index !== null ? { type: "segment", index } : null)
+            }
+          />
 
-        {/* Selection panel */}
-        <div className="w-[340px] bg-card border border-border rounded-lg p-3 flex flex-col gap-2">
+          {/* Alternate Instrumental section */}
+          <div className="bg-card border border-border rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Alternate Instrumental</span>
+              <CustomUpload onUpload={handleUpload} isUploading={isUploading} />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Have your own instrumental track? Upload it here. The file must be the
+              same duration as the original audio ({formatTime(duration)}) so the
+              synced lyrics stay aligned.
+            </p>
+            {hasUploaded && uploadedFilename && (
+              <p className="text-xs text-green-500 mt-1">
+                ✓ Using: {uploadedFilename}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Right column: Selection panel */}
+        <div className="w-full lg:w-[340px] lg:flex-shrink-0 bg-card border border-border rounded-lg p-3 flex flex-col gap-2">
           <SelectionOptions
             value={selectedOption}
             onChange={setSelectedOption}
@@ -720,9 +750,10 @@ export function InstrumentalSelector({ job, isLocalMode = false }: InstrumentalS
             id="submit-btn"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="mt-auto w-full"
+            size="lg"
+            className="mt-auto w-full min-h-[44px] text-base font-semibold"
           >
-            <Check className="w-4 h-4 mr-2" />
+            <Check className="w-5 h-5 mr-2" />
             {isSubmitting ? "Submitting..." : "Confirm & Continue"}
           </Button>
         </div>
