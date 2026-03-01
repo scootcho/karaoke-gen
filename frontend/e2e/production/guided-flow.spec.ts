@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import * as path from 'path';
 import { setAuthToken, getEnvAuthToken } from '../helpers/auth';
 import { createCleanupTracker } from '../helpers/test-cleanup';
@@ -10,6 +10,11 @@ import { TEST_SONG, URLS, TIMEOUTS } from '../helpers/constants';
  * Tests the 3-step guided job creation flow (Song Info → Choose Audio → Customize & Create)
  * against the real production backend. Uses route interception to capture outgoing
  * request bodies while still letting them hit the real API.
+ *
+ * The audio search step uses a confidence tier system:
+ *   - Tier 1 ("Perfect match found"): High-confidence lossless result
+ *   - Tier 2 ("Recommended"): Good result with caveats
+ *   - Tier 3 ("Limited sources found"): Guidance-first, no prominent pick
  *
  * Supports two modes:
  *   - Production frontend (default): tests against gen.nomadkaraoke.com
@@ -56,6 +61,36 @@ async function fetchAndCapture(
   return { body, json, status: response.status(), headers: response.headers() };
 }
 
+/**
+ * Wait for search results to appear. Matches any confidence tier indicator
+ * or no-results message, since we don't know what tier a real search will produce.
+ */
+function waitForSearchComplete(page: Page) {
+  return expect(
+    page.getByText('Perfect match found')
+      .or(page.getByText('Recommended'))
+      .or(page.getByText('Limited sources found'))
+      .or(page.getByText(/no audio sources/i))
+      .or(page.getByText(/taking longer than expected/i))
+  ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+}
+
+/**
+ * Wait for a pick card (Tier 1 or Tier 2) to appear. If Tier 3 (no pick card),
+ * returns false so tests can adapt.
+ */
+async function waitForPickCard(page: Page): Promise<boolean> {
+  try {
+    await expect(
+      page.getByText('Perfect match found')
+        .or(page.getByText('Recommended'))
+    ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test.describe('Guided Job Creation Flow', () => {
   let cleanup: ReturnType<typeof createCleanupTracker>;
 
@@ -82,9 +117,9 @@ test.describe('Guided Job Creation Flow', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Test 1: Search → Our Pick → Create with defaults
+  // Test 1: Search → Pick card → Create with defaults
   // ---------------------------------------------------------------------------
-  test('search → select Our Pick → create with defaults', async ({ page, request }) => {
+  test('search → select pick card → create with defaults', async ({ page, request }) => {
     test.setTimeout(TIMEOUTS.apiCall * 2);
 
     // Intercept API calls to capture params
@@ -124,12 +159,13 @@ test.describe('Guided Job Creation Flow', () => {
 
     console.log('  Step 1 complete: submitted search');
 
-    // Step 2: Wait for "Our Pick" and click "Use This Audio"
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: TIMEOUTS.apiCall });
-    console.log('  Step 2: Our Pick visible');
+    // Step 2: Wait for pick card (Tier 1 or 2) and click "Use This Audio"
+    const hasPickCard = await waitForPickCard(page);
+    test.skip(!hasPickCard, 'Search returned Tier 3 (no pick card) — skipping pick card test');
+    console.log('  Step 2: Pick card visible');
 
     await page.getByRole('button', { name: /use this audio/i }).click();
-    console.log('  Step 2 complete: selected Our Pick');
+    console.log('  Step 2 complete: selected pick card');
 
     // Step 3: Click "Create Karaoke Video" with defaults (no overrides, not private)
     await expect(page.getByRole('heading', { name: 'Customize & Create' })).toBeVisible({ timeout: TIMEOUTS.action });
@@ -200,8 +236,9 @@ test.describe('Guided Job Creation Flow', () => {
     await page.getByTestId('guided-title-input').fill(TEST_SONG.title);
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    // Step 2: Select Our Pick
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    // Step 2: Wait for pick card and select it
+    const hasPickCard = await waitForPickCard(page);
+    test.skip(!hasPickCard, 'Search returned Tier 3 — skipping pick card test');
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     // Step 3: Fill display overrides, check private, and confirm
@@ -286,11 +323,8 @@ test.describe('Guided Job Creation Flow', () => {
     await page.getByTestId('guided-title-input').fill(TEST_SONG.title);
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    // Step 2: Wait for search to complete, then click YouTube URL button
-    // Wait for search loading to finish (either "Our Pick" appears or "No audio sources")
-    await expect(
-      page.getByText('Our Pick').or(page.getByText(/no audio sources/i))
-    ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    // Wait for search to complete (any tier indicator or no results)
+    await waitForSearchComplete(page);
     console.log('  Search complete, clicking YouTube URL fallback');
 
     await page.getByRole('button', { name: 'YouTube URL', exact: true }).click();
@@ -351,10 +385,8 @@ test.describe('Guided Job Creation Flow', () => {
     await page.getByTestId('guided-title-input').fill(TEST_SONG.title);
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    // Step 2: Wait for search to complete, then click Upload button
-    await expect(
-      page.getByText('Our Pick').or(page.getByText(/no audio sources/i))
-    ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    // Wait for search to complete
+    await waitForSearchComplete(page);
     console.log('  Search complete, clicking Upload fallback');
 
     await page.getByRole('button', { name: 'Upload file', exact: true }).click();
@@ -422,9 +454,7 @@ test.describe('Guided Job Creation Flow', () => {
     await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Step 2: Wait for results to appear
-    await expect(
-      page.getByText('Our Pick').or(page.getByText(/no audio sources/i))
-    ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    await waitForSearchComplete(page);
     console.log(`  Search complete, job ID: ${searchJobId}`);
 
     // Click "Back"
@@ -472,23 +502,87 @@ test.describe('Guided Job Creation Flow', () => {
     await page.getByRole('button', { name: /choose audio/i }).click();
     console.log('  Submitted search');
 
-    // Wait for search to complete (results or no-results or error message)
-    await expect(
-      page.getByText('Our Pick')
-        .or(page.getByText(/no audio sources/i))
-        .or(page.getByText(/taking longer than expected/i))
-    ).toBeVisible({ timeout: TIMEOUTS.apiCall });
+    // Wait for search to complete (any tier)
+    await waitForSearchComplete(page);
     console.log('  Search complete');
 
-    // Assert: fallback options ("Not finding what you need?" section) are visible
-    // These buttons should always appear after search completes, regardless of results
+    // Assert: fallback options are visible
     await expect(page.getByRole('button', { name: 'YouTube URL', exact: true })).toBeVisible({ timeout: TIMEOUTS.action });
     await expect(page.getByRole('button', { name: 'Upload file', exact: true })).toBeVisible({ timeout: TIMEOUTS.action });
     console.log('  Fallback options (YouTube URL, Upload file) visible');
 
-    // Also verify the explanatory text
-    await expect(page.getByText(/not finding what you need/i)).toBeVisible();
-    console.log('  "Not finding what you need?" helper text visible');
+    // Verify fallback section text (varies by tier)
+    await expect(
+      page.getByText(/not finding what you need/i)
+        .or(page.getByText(/can't find the right version/i))
+    ).toBeVisible();
+    console.log('  Fallback helper text visible');
+
+    console.log(`  Search job tracked for cleanup: ${searchJobId}`);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Test 7: Confidence tier indicator present after search
+  // ---------------------------------------------------------------------------
+  test('shows confidence tier indicator after search', async ({ page }) => {
+    test.setTimeout(TIMEOUTS.apiCall * 2);
+
+    let searchJobId: string | null = null;
+
+    await page.route('**/api/audio-search/search', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        const { body, json, status, headers } = await fetchAndCapture(route);
+        searchJobId = json?.job_id;
+        if (searchJobId) cleanup.trackJob(searchJobId);
+        await route.fulfill({ status, headers, body });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.goto(`${FRONTEND_URL}/app`);
+    await page.waitForLoadState('networkidle');
+
+    await page.getByTestId('guided-artist-input').fill(TEST_SONG.artist);
+    await page.getByTestId('guided-title-input').fill(TEST_SONG.title);
+    await page.getByRole('button', { name: /choose audio/i }).click();
+
+    // Wait for any tier indicator
+    await waitForSearchComplete(page);
+
+    // Verify one of the tier-specific elements is present
+    const pickCard = page.getByTestId('pick-card');
+    const guidanceBanner = page.getByTestId('guidance-banner');
+
+    const hasPickCard = await pickCard.isVisible().catch(() => false);
+    const hasGuidanceBanner = await guidanceBanner.isVisible().catch(() => false);
+
+    // At least one must be present (unless no results at all)
+    const noResults = await page.getByText(/no audio sources/i).isVisible().catch(() => false);
+    if (!noResults) {
+      expect(hasPickCard || hasGuidanceBanner).toBe(true);
+      console.log(`  Tier indicator: pick-card=${hasPickCard}, guidance-banner=${hasGuidanceBanner}`);
+    } else {
+      console.log('  No results returned — no tier indicator expected');
+    }
+
+    // If pick card is visible, verify "Use This Audio" button exists
+    if (hasPickCard) {
+      await expect(page.getByRole('button', { name: /use this audio/i })).toBeVisible();
+      console.log('  "Use This Audio" button visible in pick card');
+
+      // Check for tier-specific text
+      const isPerfect = await page.getByText('Perfect match found').isVisible().catch(() => false);
+      const isRecommended = await page.getByText('Recommended').isVisible().catch(() => false);
+      console.log(`  Tier: ${isPerfect ? 'Tier 1 (Perfect)' : isRecommended ? 'Tier 2 (Recommended)' : 'Unknown'}`);
+    }
+
+    // If guidance banner, verify tips are shown
+    if (hasGuidanceBanner) {
+      await expect(page.getByText(/check the filename/i)).toBeVisible();
+      console.log('  Guidance tips visible in Tier 3 banner');
+    }
 
     console.log(`  Search job tracked for cleanup: ${searchJobId}`);
   });

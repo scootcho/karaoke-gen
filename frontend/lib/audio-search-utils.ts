@@ -35,7 +35,8 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   'LIVE VERSIONS': { name: 'LIVE VERSIONS', maxDisplay: 2, color: 'text-pink-400', borderColor: 'border-pink-500/30' },
   'COMPILATIONS': { name: 'COMPILATIONS', maxDisplay: 2, color: 'text-teal-400', borderColor: 'border-teal-500/30' },
   'VINYL RIPS': { name: 'VINYL RIPS', maxDisplay: 2, color: 'text-orange-400', borderColor: 'border-orange-500/30' },
-  'YOUTUBE/LOSSY': { name: 'YOUTUBE/LOSSY', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
+  'SPOTIFY': { name: 'SPOTIFY', maxDisplay: 3, color: 'text-green-400', borderColor: 'border-green-500/30' },
+  'YOUTUBE': { name: 'YOUTUBE', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
   'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-muted-foreground', borderColor: 'border-border' },
 }
 
@@ -47,7 +48,8 @@ export const CATEGORY_ORDER = [
   'LIVE VERSIONS',
   'COMPILATIONS',
   'VINYL RIPS',
-  'YOUTUBE/LOSSY',
+  'SPOTIFY',
+  'YOUTUBE',
   'OTHER'
 ]
 
@@ -60,12 +62,17 @@ export function categorizeResult(result: ExtendedAudioSearchResult): string {
   const releaseType = result.release_type?.toLowerCase() ?? ''
   const media = result.quality_data?.media?.toLowerCase() ?? ''
 
-  // YouTube and lossy sources
-  if (provider === 'youtube' || !isLossless) {
-    return 'YOUTUBE/LOSSY'
+  // Spotify (higher quality than YouTube, separate category)
+  if (provider === 'spotify') {
+    return 'SPOTIFY'
   }
 
-  // Vinyl rips — check BEFORE best choice so high-seeder vinyl doesn't become "Our Pick"
+  // YouTube and lossy sources
+  if (provider === 'youtube' || !isLossless) {
+    return 'YOUTUBE'
+  }
+
+  // Vinyl rips — check BEFORE best choice so high-seeder vinyl doesn't get recommended
   // (vinyl surface noise makes them poor sources for karaoke)
   if (isLossless && media === 'vinyl') {
     return 'VINYL RIPS'
@@ -143,12 +150,13 @@ const BEST_RESULT_PRIORITY = [
   'HI-RES 24-BIT',
   'SINGLES',
   'COMPILATIONS',
-  'YOUTUBE/LOSSY',
+  'SPOTIFY',
+  'YOUTUBE',
   'OTHER',
 ]
 
 // Returns the single best result from the array
-// Priority: BEST CHOICE > STUDIO ALBUMS > HI-RES 24-BIT > SINGLES > COMPILATIONS > YOUTUBE/LOSSY > OTHER
+// Priority: BEST CHOICE > STUDIO ALBUMS > HI-RES 24-BIT > SINGLES > COMPILATIONS > SPOTIFY > YOUTUBE > OTHER
 // Skips VINYL RIPS (surface noise issues for karaoke) and LIVE VERSIONS (unless nothing else)
 // Within a category, prefers highest seeders
 export function getBestResult(results: ExtendedAudioSearchResult[]): ExtendedAudioSearchResult | null {
@@ -181,6 +189,199 @@ export function getBestResult(results: ExtendedAudioSearchResult[]): ExtendedAud
 
   // If nothing found (all vinyl rips), fall back to first result
   return best ?? results[0]
+}
+
+// --- Confidence tier types and utilities ---
+
+export type ConfidenceTier = 1 | 2 | 3
+
+export interface SearchConfidence {
+  tier: ConfidenceTier
+  reason: string
+  bestResult: ExtendedAudioSearchResult | null
+  bestCategory: string | null
+  warnings: string[]
+}
+
+export interface FilenameMismatchResult {
+  isMismatch: boolean
+  searchTitle: string
+  filename: string
+  suggestedTrack?: string
+}
+
+/**
+ * Check if a result's track name doesn't match the search title.
+ * Uses target_file for torrent/Spotify results, result.title for YouTube.
+ */
+export function checkFilenameMismatch(
+  searchTitle: string,
+  result: ExtendedAudioSearchResult
+): FilenameMismatchResult {
+  const empty: FilenameMismatchResult = { isMismatch: false, searchTitle, filename: '' }
+
+  if (searchTitle.length < 3) return empty
+
+  // Determine the comparison string:
+  // - For results with target_file: use the filename (track name from torrent/Spotify)
+  // - For YouTube results (no target_file): use result.title (video/track title)
+  let filename: string
+  if (result.target_file) {
+    // Extract filename: strip directory path
+    const rawFilename = result.target_file.split('/').pop() || result.target_file
+    // Strip extension
+    const withoutExt = rawFilename.replace(/\.[^.]+$/, '')
+    // Strip leading track number prefixes like "01 - ", "01. ", "1 ", "01-"
+    filename = withoutExt.replace(/^\d{1,3}\s*[-.\s]\s*/, '')
+  } else if (result.title) {
+    filename = result.title
+  } else {
+    return empty
+  }
+
+  // Normalize for comparison: treat underscores, hyphens, dots as word separators
+  const normalize = (s: string) => s.toLowerCase().replace(/[_\-.]+/g, ' ').replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+
+  const normTitle = normalize(searchTitle)
+  const normFile = normalize(filename)
+
+  // Can't compare if filename normalizes to empty (e.g. all non-Latin characters)
+  if (!normFile) return empty
+
+  // Substring match — but require the shorter string to be at least 3 chars
+  // to avoid false positives like filename "K" matching title "KoREH"
+  const shorter = normFile.length <= normTitle.length ? normFile : normTitle
+  const longer = normFile.length <= normTitle.length ? normTitle : normFile
+  const matches = shorter.length >= 3 && longer.includes(shorter)
+
+  if (matches) return { isMismatch: false, searchTitle, filename }
+
+  return {
+    isMismatch: true,
+    searchTitle,
+    filename,
+    suggestedTrack: filename,
+  }
+}
+
+/**
+ * Get a human-readable availability label + tooltip for a seeder count.
+ */
+export function getAvailabilityLabel(seeders: number | undefined | null): { text: string; tooltip: string } {
+  if (seeders === undefined || seeders === null) return { text: '', tooltip: '' }
+
+  if (seeders >= 50) return { text: 'High', tooltip: 'Well-seeded, downloads reliably' }
+  if (seeders >= 10) return { text: 'Medium', tooltip: 'Should download but may be slower' }
+  return { text: 'Low', tooltip: 'Few seeders — may take a bit more time to prepare' }
+}
+
+/**
+ * Analyze search results and return a confidence assessment with tier, reasoning, and warnings.
+ */
+export function getSearchConfidence(
+  results: ExtendedAudioSearchResult[],
+  searchTitle: string
+): SearchConfidence {
+  if (results.length === 0) {
+    return {
+      tier: 3,
+      reason: 'No audio sources found for this song.',
+      bestResult: null,
+      bestCategory: null,
+      warnings: [],
+    }
+  }
+
+  const best = getBestResult(results)
+  const bestCat = best ? categorizeResult(best) : null
+  const warnings: string[] = []
+
+  // Check filename mismatch on best result
+  let bestHasMismatch = false
+  if (best) {
+    const mismatch = checkFilenameMismatch(searchTitle, best)
+    if (mismatch.isMismatch) {
+      bestHasMismatch = true
+      const suggestion = mismatch.suggestedTrack
+        ? `Filename suggests different track: ${mismatch.suggestedTrack}`
+        : 'Filename may not match your song'
+      warnings.push(suggestion)
+    }
+  }
+
+  // Check if only lossy/vinyl results exist
+  const hasLossless = results.some(r => {
+    const cat = categorizeResult(r)
+    return cat !== 'YOUTUBE' && cat !== 'SPOTIFY' && cat !== 'VINYL RIPS'
+  })
+
+  if (!hasLossless) {
+    warnings.push('No lossless sources available — only YouTube/lossy or vinyl rips found')
+  }
+
+  // Check availability on best result
+  if (best && best.seeders !== undefined && best.seeders !== null && best.seeders < 10) {
+    warnings.push('Low availability — may take a bit more time to prepare for your review')
+  }
+
+  // Build reason string
+  const reason = buildConfidenceReason(best, bestCat)
+
+  // Tier 1: Best result is BEST CHOICE and no filename mismatch
+  if (bestCat === 'BEST CHOICE' && !bestHasMismatch) {
+    return { tier: 1, reason, bestResult: best, bestCategory: bestCat, warnings }
+  }
+
+  // Tier 3: No results, or only lossy/vinyl, or mismatch with low availability
+  if (!hasLossless) {
+    return { tier: 3, reason, bestResult: best, bestCategory: bestCat, warnings }
+  }
+
+  if (bestHasMismatch && best && (best.seeders === undefined || best.seeders === null || best.seeders < 10)) {
+    return { tier: 3, reason, bestResult: best, bestCategory: bestCat, warnings }
+  }
+
+  // Tier 2: Has lossless options but not clearly the right pick
+  return { tier: 2, reason, bestResult: best, bestCategory: bestCat, warnings }
+}
+
+function buildConfidenceReason(
+  best: ExtendedAudioSearchResult | null,
+  bestCat: string | null
+): string {
+  if (!best || !bestCat) return 'No suitable audio sources found.'
+
+  const parts: string[] = []
+
+  // Quality descriptor
+  if (bestCat === 'BEST CHOICE') {
+    parts.push('High-quality lossless')
+  } else if (best.is_lossless) {
+    parts.push('Lossless')
+  } else if (best.provider === 'YouTube') {
+    parts.push('YouTube audio')
+  } else {
+    parts.push('Lossy audio')
+  }
+
+  // Album/year context
+  if (best.title) {
+    const albumParts: string[] = []
+    if (best.release_type) albumParts.push(best.release_type)
+    if ((best as any).year) albumParts.push(`${(best as any).year}`)
+    if (albumParts.length > 0) {
+      parts.push(`from ${albumParts.join(', ')}`)
+    }
+  }
+
+  // Availability
+  if (best.seeders !== undefined && best.seeders !== null) {
+    if (best.seeders >= 50) parts.push('reliable download')
+    else if (best.seeders >= 10) parts.push('available but may be slower')
+    else parts.push('low availability')
+  }
+
+  return parts.join(', ')
 }
 
 // Get display name - use channel for YouTube, artist for others

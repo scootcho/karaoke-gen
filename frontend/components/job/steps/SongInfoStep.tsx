@@ -3,7 +3,7 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Lightbulb, Search, Upload, Youtube } from "lucide-react"
+import { ArrowRight, Lightbulb, Pencil, Search, Upload, Youtube } from "lucide-react"
 
 interface SongInfoStepProps {
   artist: string
@@ -31,7 +31,7 @@ export function SongInfoStep({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* How it works — compact visual */}
+      {/* How it works - compact visual */}
       <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
         <div className="flex items-center gap-1.5">
           <Search className="w-3.5 h-3.5" style={{ color: 'var(--brand-pink)' }} />
@@ -89,6 +89,17 @@ export function SongInfoStep({
           Looking for a specific version (live, cover, remix)? Include those details in the title - e.g. &quot;Bohemian Rhapsody - Live at Wembley&quot;.
           <br className="mt-1" />
           If we can&apos;t find the right audio, you can provide a YouTube URL or upload a file on the next page.
+        </p>
+      </div>
+
+      {/* Custom lyrics note */}
+      <div
+        className="flex items-start gap-2.5 rounded-lg p-3 text-xs"
+        style={{ backgroundColor: 'var(--secondary)', color: 'var(--text-muted)' }}
+      >
+        <Pencil className="w-4 h-4 shrink-0 mt-0.5 text-purple-400" />
+        <p>
+          Making a video with custom lyrics? Start with the artist/title of the original song here - you can change the title screen and lyrics later.
         </p>
       </div>
 

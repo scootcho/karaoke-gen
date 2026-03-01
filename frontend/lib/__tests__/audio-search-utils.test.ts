@@ -6,6 +6,9 @@ import {
   formatCount,
   formatMetadata,
   formatQuality,
+  checkFilenameMismatch,
+  getAvailabilityLabel,
+  getSearchConfidence,
   ExtendedAudioSearchResult,
 } from '../audio-search-utils'
 
@@ -21,14 +24,14 @@ function makeResult(overrides: Partial<ExtendedAudioSearchResult> & { index: num
 }
 
 describe('categorizeResult', () => {
-  it('categorizes YouTube provider as YOUTUBE/LOSSY', () => {
+  it('categorizes YouTube provider as YOUTUBE', () => {
     const result = makeResult({ index: 0, provider: 'YouTube', is_lossless: false })
-    expect(categorizeResult(result)).toBe('YOUTUBE/LOSSY')
+    expect(categorizeResult(result)).toBe('YOUTUBE')
   })
 
-  it('categorizes non-lossless as YOUTUBE/LOSSY', () => {
+  it('categorizes non-lossless as YOUTUBE', () => {
     const result = makeResult({ index: 0, is_lossless: false })
-    expect(categorizeResult(result)).toBe('YOUTUBE/LOSSY')
+    expect(categorizeResult(result)).toBe('YOUTUBE')
   })
 
   it('categorizes lossless with 50+ seeders as BEST CHOICE', () => {
@@ -98,7 +101,7 @@ describe('getBestResult', () => {
     expect(getBestResult([studioAlbum, bestChoice])).toBe(bestChoice)
   })
 
-  it('prefers STUDIO ALBUMS over YOUTUBE/LOSSY', () => {
+  it('prefers STUDIO ALBUMS over YOUTUBE', () => {
     const studio = makeResult({ index: 0, is_lossless: true, seeders: 10, release_type: 'Album' })
     const youtube = makeResult({ index: 1, provider: 'YouTube', is_lossless: false })
     expect(getBestResult([youtube, studio])).toBe(studio)
@@ -123,7 +126,7 @@ describe('getBestResult', () => {
     expect(getBestResult([vinyl1, vinyl2])).toBe(vinyl1)
   })
 
-  it('prefers SINGLES over YOUTUBE/LOSSY', () => {
+  it('prefers SINGLES over YOUTUBE', () => {
     const single = makeResult({ index: 0, is_lossless: true, seeders: 3, release_type: 'Single' })
     const youtube = makeResult({ index: 1, provider: 'YouTube', is_lossless: false, view_count: 1000000 })
     expect(getBestResult([youtube, single])).toBe(single)
@@ -131,7 +134,7 @@ describe('getBestResult', () => {
 
   it('handles mixed results and picks best category', () => {
     const results = [
-      makeResult({ index: 0, provider: 'YouTube', is_lossless: false }), // YOUTUBE/LOSSY
+      makeResult({ index: 0, provider: 'YouTube', is_lossless: false }), // YOUTUBE
       makeResult({ index: 1, is_lossless: true, seeders: 3, release_type: 'Single' }), // SINGLES
       makeResult({ index: 2, is_lossless: true, seeders: 80 }), // BEST CHOICE
       makeResult({ index: 3, is_lossless: true, seeders: 5, quality_data: { media: 'Vinyl' } }), // VINYL (skipped)
@@ -161,12 +164,12 @@ describe('groupResults', () => {
 
   it('sorts groups by category order', () => {
     const results = [
-      makeResult({ index: 0, provider: 'YouTube', is_lossless: false }), // YOUTUBE/LOSSY (lower priority)
+      makeResult({ index: 0, provider: 'YouTube', is_lossless: false }), // YOUTUBE (lower priority)
       makeResult({ index: 1, is_lossless: true, seeders: 100 }), // BEST CHOICE (higher priority)
     ]
     const groups = groupResults(results)
     expect(groups[0].category).toBe('BEST CHOICE')
-    expect(groups[1].category).toBe('YOUTUBE/LOSSY')
+    expect(groups[1].category).toBe('YOUTUBE')
   })
 
   it('includes config for each group', () => {
@@ -248,5 +251,208 @@ describe('formatQuality', () => {
   it('returns dash when no quality info', () => {
     const result = makeResult({ index: 0 })
     expect(formatQuality(result)).toBe('-')
+  })
+})
+
+describe('checkFilenameMismatch', () => {
+  it('returns no mismatch when filename contains search title', () => {
+    const result = makeResult({ index: 0, target_file: 'Coldplay/Parachutes/01 - Yellow.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('returns no mismatch when search title contains filename', () => {
+    const result = makeResult({ index: 0, target_file: 'Yellow.flac' })
+    const check = checkFilenameMismatch('Yellow (Radio Edit)', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('detects mismatch when filename is a different track', () => {
+    const result = makeResult({ index: 0, target_file: 'Coldplay/Parachutes/03 - Spies.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(true)
+    expect(check.suggestedTrack).toBe('Spies')
+  })
+
+  it('strips track number prefixes from filename', () => {
+    const result = makeResult({ index: 0, target_file: '01 - Yellow.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('strips "01. " prefix', () => {
+    const result = makeResult({ index: 0, target_file: '01. Yellow.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('is case-insensitive', () => {
+    const result = makeResult({ index: 0, target_file: 'YELLOW.flac' })
+    const check = checkFilenameMismatch('yellow', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('ignores punctuation differences', () => {
+    const result = makeResult({ index: 0, target_file: "Don't Look Back in Anger.flac" })
+    const check = checkFilenameMismatch('Dont Look Back in Anger', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('checks YouTube results using result.title instead of target_file', () => {
+    const matchingResult = makeResult({ index: 0, provider: 'YouTube', title: 'Yellow' })
+    expect(checkFilenameMismatch('Yellow', matchingResult).isMismatch).toBe(false)
+
+    const mismatchResult = makeResult({ index: 0, provider: 'YouTube', title: 'Something Else' })
+    expect(checkFilenameMismatch('Yellow', mismatchResult).isMismatch).toBe(true)
+  })
+
+  it('skips check for very short titles (< 3 chars)', () => {
+    const result = makeResult({ index: 0, target_file: 'Something Else.flac' })
+    const check = checkFilenameMismatch('Go', result)
+    expect(check.isMismatch).toBe(false)
+  })
+
+  it('returns filename in result', () => {
+    const result = makeResult({ index: 0, target_file: 'Coldplay/03 - Spies.flac' })
+    const check = checkFilenameMismatch('Yellow', result)
+    expect(check.filename).toBe('Spies')
+  })
+})
+
+describe('getAvailabilityLabel', () => {
+  it('returns High with tooltip for 50+ seeders', () => {
+    const label = getAvailabilityLabel(75)
+    expect(label.text).toBe('High')
+    expect(label.tooltip).toBe('Well-seeded, downloads reliably')
+  })
+
+  it('returns Medium with tooltip for 10-49 seeders', () => {
+    const label = getAvailabilityLabel(25)
+    expect(label.text).toBe('Medium')
+    expect(label.tooltip).toBe('Should download but may be slower')
+  })
+
+  it('returns Low with tooltip for < 10 seeders', () => {
+    const label = getAvailabilityLabel(3)
+    expect(label.text).toBe('Low')
+    expect(label.tooltip).toBe('Few seeders — may take a bit more time to prepare')
+  })
+
+  it('returns empty for undefined', () => {
+    const label = getAvailabilityLabel(undefined)
+    expect(label.text).toBe('')
+    expect(label.tooltip).toBe('')
+  })
+
+  it('returns empty for null', () => {
+    const label = getAvailabilityLabel(null)
+    expect(label.text).toBe('')
+    expect(label.tooltip).toBe('')
+  })
+
+  it('returns Low for 0 seeders', () => {
+    const label = getAvailabilityLabel(0)
+    expect(label.text).toBe('Low')
+  })
+
+  it('returns High for exactly 50 seeders', () => {
+    const label = getAvailabilityLabel(50)
+    expect(label.text).toBe('High')
+  })
+
+  it('returns Medium for exactly 10 seeders', () => {
+    const label = getAvailabilityLabel(10)
+    expect(label.text).toBe('Medium')
+  })
+})
+
+describe('getSearchConfidence', () => {
+  it('returns tier 3 for empty results', () => {
+    const confidence = getSearchConfidence([], 'Yellow')
+    expect(confidence.tier).toBe(3)
+    expect(confidence.bestResult).toBeNull()
+    expect(confidence.bestCategory).toBeNull()
+  })
+
+  it('returns tier 1 for BEST CHOICE with no mismatch', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 100, target_file: '01 - Yellow.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(1)
+    expect(confidence.bestCategory).toBe('BEST CHOICE')
+    expect(confidence.warnings).toHaveLength(0)
+  })
+
+  it('returns tier 2 when BEST CHOICE has filename mismatch (but high availability)', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 100, target_file: '03 - Spies.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(2)
+    expect(confidence.warnings.length).toBeGreaterThan(0)
+    expect(confidence.warnings.some(w => w.includes('Spies'))).toBe(true)
+  })
+
+  it('returns tier 2 for studio album with moderate seeders', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 20, release_type: 'Album', target_file: '01 - Yellow.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(2)
+    expect(confidence.bestCategory).toBe('STUDIO ALBUMS')
+  })
+
+  it('returns tier 3 when only YouTube/lossy results', () => {
+    const results = [
+      makeResult({ index: 0, provider: 'YouTube', is_lossless: false }),
+      makeResult({ index: 1, is_lossless: false }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(3)
+    expect(confidence.warnings.some(w => w.includes('lossless'))).toBe(true)
+  })
+
+  it('returns tier 3 when only vinyl rips', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 20, quality_data: { media: 'Vinyl' } }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(3)
+  })
+
+  it('returns tier 3 for mismatch + low availability', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 3, target_file: '03 - Spies.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.tier).toBe(3)
+    expect(confidence.warnings.some(w => w.includes('Spies'))).toBe(true)
+    expect(confidence.warnings.some(w => w.includes('availability'))).toBe(true)
+  })
+
+  it('includes low availability warning when seeders < 10', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 5, target_file: '01 - Yellow.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.warnings.some(w => w.includes('availability'))).toBe(true)
+  })
+
+  it('builds reason string with quality context', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 100, release_type: 'Album', target_file: '01 - Yellow.flac' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Yellow')
+    expect(confidence.reason).toContain('lossless')
+  })
+
+  it('bestResult matches getBestResult output', () => {
+    const results = [
+      makeResult({ index: 0, is_lossless: true, seeders: 100 }),
+      makeResult({ index: 1, is_lossless: true, seeders: 5, release_type: 'Album' }),
+    ]
+    const confidence = getSearchConfidence(results, 'Test Song')
+    expect(confidence.bestResult?.index).toBe(0)
   })
 })

@@ -9,10 +9,12 @@ import {
   formatCount,
   formatMetadata,
   formatQuality,
+  getAvailabilityLabel,
+  checkFilenameMismatch,
 } from "@/lib/audio-search-utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Music2, ChevronDown, ChevronUp } from "lucide-react"
+import { Loader2, Music2, ChevronDown, ChevronUp, Lightbulb } from "lucide-react"
 
 // Version from pyproject.toml (single source of truth)
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"
@@ -22,14 +24,16 @@ interface AudioSearchDialogProps {
   open: boolean
   onClose: () => void
   onSelect: () => void
+  searchTitle?: string
 }
 
-export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearchDialogProps) {
+export function AudioSearchDialog({ jobId, open, onClose, onSelect, searchTitle }: AudioSearchDialogProps) {
   const [results, setResults] = useState<ExtendedAudioSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSelecting, setIsSelecting] = useState<number | null>(null)
   const [error, setError] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const [showGuidance, setShowGuidance] = useState(false)
 
   // Debug: Log component version on mount
   useEffect(() => {
@@ -42,6 +46,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
       console.log(`[AudioSearchDialog v${APP_VERSION}] Dialog opened for job: ${jobId}`)
       loadResults()
       setExpandedCategories(new Set()) // Reset expanded state
+      setShowGuidance(false)
     }
   }, [open, jobId])
 
@@ -108,6 +113,29 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
           </DialogTitle>
         </div>
 
+        {/* Guidance header (collapsed by default) */}
+        {!isLoading && results.length > 0 && (
+          <div className="px-4 py-1.5 border-b border-border bg-secondary/30">
+            <button
+              onClick={() => setShowGuidance(!showGuidance)}
+              className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Lightbulb className="w-3 h-3" />
+              Tips for choosing
+              {showGuidance ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            {showGuidance && (
+              <ul className="text-[10px] text-muted-foreground mt-1.5 ml-5 space-y-0.5 pb-1">
+                <li>Check the filename matches your song title</li>
+                <li>Green availability badge = more reliable download</li>
+                <li>Studio album versions produce the best karaoke results</li>
+                <li>Avoid vinyl rips (surface noise affects separation)</li>
+                <li>YouTube is a last resort — lossless sources sound better</li>
+              </ul>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-b border-border">
             {error}
@@ -158,89 +186,112 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
                     {/* Results in category */}
                     <div className="divide-y divide-slate-700/50">
-                      {displayResults.map((result) => (
-                        <div
-                          key={result.index}
-                          className="px-3 py-1.5 hover:bg-secondary/50 flex items-center gap-2 text-xs"
-                        >
-                          {/* Index */}
-                          <span className="w-5 text-muted-foreground font-mono shrink-0 text-[10px]">
-                            {result.index + 1}.
-                          </span>
+                      {displayResults.map((result) => {
+                        const mismatch = searchTitle ? checkFilenameMismatch(searchTitle, result) : null
+                        const hasMismatch = mismatch?.isMismatch ?? false
 
-                          {/* Main content - 2 lines */}
-                          <div className="flex-1 min-w-0">
-                            {/* Line 1: badges + artist + title + quality + size + availability */}
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {result.is_lossless && (
-                                <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
-                                  LOSSLESS
+                        return (
+                          <div
+                            key={result.index}
+                            className={`px-3 py-1.5 hover:bg-secondary/50 flex items-center gap-2 text-xs ${
+                              hasMismatch ? 'opacity-60' : ''
+                            }`}
+                          >
+                            {/* Index */}
+                            <span className="w-5 text-muted-foreground font-mono shrink-0 text-[10px]">
+                              {result.index + 1}.
+                            </span>
+
+                            {/* Main content - 2 lines */}
+                            <div className="flex-1 min-w-0">
+                              {/* Line 1: badges + artist + title + quality + size + availability */}
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {result.is_lossless && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
+                                    LOSSLESS
+                                  </span>
+                                )}
+                                {result.quality_data?.media?.toLowerCase() === 'vinyl' && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded bg-red-600/20 text-red-400 font-medium">
+                                    VINYL
+                                  </span>
+                                )}
+                                {result.provider === "YouTube" && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded font-medium bg-red-600/20 text-red-400">
+                                    YouTube
+                                  </span>
+                                )}
+                                {hasMismatch && (
+                                  <span
+                                    title={`Expected "${searchTitle}" but filename is "${mismatch!.filename}"${mismatch!.suggestedTrack ? ` (looks like "${mismatch!.suggestedTrack}")` : ''}`}
+                                    className="text-[8px] px-1 py-0.5 rounded font-medium bg-yellow-600/20 text-yellow-400 cursor-help"
+                                  >
+                                    Wrong track?
+                                  </span>
+                                )}
+                                <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
+                                <span className="text-muted-foreground">-</span>
+                                <span className="text-foreground">{result.title}</span>
+                                <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-muted-foreground"}`}>
+                                  ({formatQuality(result)})
                                 </span>
+                                <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
+                                {result.seeders !== undefined && result.seeders !== null ? (
+                                  (() => {
+                                    const { text, tooltip } = getAvailabilityLabel(result.seeders)
+                                    return (
+                                      <span
+                                        title={tooltip}
+                                        className={`text-[8px] px-1 py-0.5 rounded font-medium cursor-help ${
+                                          result.seeders >= 50 ? 'bg-green-600/20 text-green-400' :
+                                          result.seeders >= 10 ? 'bg-yellow-600/20 text-yellow-400' :
+                                          'bg-red-600/20 text-red-400'
+                                        }`}
+                                      >
+                                        {text} availability
+                                      </span>
+                                    )
+                                  })()
+                                ) : result.view_count !== undefined ? (
+                                  <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
+                                    result.view_count >= 1000000 ? 'bg-green-600/20 text-green-400' :
+                                    result.view_count >= 10000 ? 'bg-yellow-600/20 text-yellow-400' :
+                                    'bg-muted text-muted-foreground'
+                                  }`}>
+                                    {formatCount(result.view_count)} views
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Line 2: metadata + filename */}
+                              {(formatMetadata(result) || result.target_file) && (
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                  {formatMetadata(result) && (
+                                    <span className="truncate">{formatMetadata(result)}</span>
+                                  )}
+                                  {result.target_file && (
+                                    <span className="font-mono truncate">&quot;{result.target_file}&quot;</span>
+                                  )}
+                                </div>
                               )}
-                              {result.quality_data?.media?.toLowerCase() === 'vinyl' && (
-                                <span className="text-[8px] px-1 py-0.5 rounded bg-red-600/20 text-red-400 font-medium">
-                                  VINYL
-                                </span>
-                              )}
-                              {result.provider === "YouTube" && (
-                                <span className="text-[8px] px-1 py-0.5 rounded font-medium bg-red-600/20 text-red-400">
-                                  YouTube
-                                </span>
-                              )}
-                              <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
-                              <span className="text-muted-foreground">-</span>
-                              <span className="text-foreground">{result.title}</span>
-                              <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-muted-foreground"}`}>
-                                ({formatQuality(result)})
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
-                              {result.seeders !== undefined && result.seeders !== null ? (
-                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
-                                  result.seeders >= 50 ? 'bg-green-600/20 text-green-400' :
-                                  result.seeders >= 10 ? 'bg-yellow-600/20 text-yellow-400' :
-                                  'bg-red-600/20 text-red-400'
-                                }`}>
-                                  {result.seeders >= 50 ? 'High' : result.seeders >= 10 ? 'Medium' : 'Low'} availability
-                                </span>
-                              ) : result.view_count !== undefined ? (
-                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
-                                  result.view_count >= 1000000 ? 'bg-green-600/20 text-green-400' :
-                                  result.view_count >= 10000 ? 'bg-yellow-600/20 text-yellow-400' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {formatCount(result.view_count)} views
-                                </span>
-                              ) : null}
                             </div>
 
-                            {/* Line 2: metadata + filename */}
-                            {(formatMetadata(result) || result.target_file) && (
-                              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                {formatMetadata(result) && (
-                                  <span className="truncate">{formatMetadata(result)}</span>
-                                )}
-                                {result.target_file && (
-                                  <span className="font-mono truncate">&quot;{result.target_file}&quot;</span>
-                                )}
-                              </div>
-                            )}
+                            {/* Select button */}
+                            <Button
+                              size="sm"
+                              onClick={() => handleSelect(result.index)}
+                              disabled={isSelecting !== null}
+                              className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-foreground px-2 shrink-0"
+                            >
+                              {isSelecting === result.index ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                "Select"
+                              )}
+                            </Button>
                           </div>
-
-                          {/* Select button */}
-                          <Button
-                            size="sm"
-                            onClick={() => handleSelect(result.index)}
-                            disabled={isSelecting !== null}
-                            className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-foreground px-2 shrink-0"
-                          >
-                            {isSelecting === result.index ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              "Select"
-                            )}
-                          </Button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )

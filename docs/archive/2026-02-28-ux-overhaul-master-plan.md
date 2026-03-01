@@ -1,6 +1,6 @@
 # UX Overhaul - Master Plan
 
-> **Status**: Planning (walkthrough complete for all 4 phases)
+> **Status**: Phase 1 complete, Phase 2 in progress
 > **Created**: 2026-02-28
 > **Branch**: feat/sess-20260227-1637-ux-overhaul
 > **Worktree**: /Users/andrew/Projects/nomadkaraoke/karaoke-gen-ux-overhaul
@@ -13,11 +13,13 @@ The karaoke generation platform was built for personal/power-user use. New users
 
 The system has several distinct stages of human interaction, each requiring dedicated UX thought. We're breaking this into phases, with a detailed plan for each phase created through live UI walkthrough with screenshots and user feedback.
 
-### Phase 1: Job Creation & Audio Input
+### Phase 1: Job Creation & Audio Input ✅
 **Plan**: [2026-02-28-ux-phase1-job-creation.md](2026-02-28-ux-phase1-job-creation.md)
+**Implementation**: [2026-02-28-ux-phase1-implementation.md](2026-02-28-ux-phase1-implementation.md)
 **Scope**: Restructure the job creation form as a guided flow. Steer users toward Search as the default path, with Upload/URL as fallbacks.
+**Done**: Removed "Skip lyrics review" checkbox, renamed Private label, built 3-step GuidedJobFlow wizard, title card preview, production E2E tests. Renamed "Find Audio" → "Choose Audio".
 
-### Phase 2: Audio Source Selection
+### Phase 2: Audio Source Selection ← CURRENT
 **Plan**: [2026-02-28-ux-phase2-audio-selection.md](2026-02-28-ux-phase2-audio-selection.md)
 **Scope**: Auto-select audio for simple cases, improve guidance for complex cases, build heuristics from real usage data.
 

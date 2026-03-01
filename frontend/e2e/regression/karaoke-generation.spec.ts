@@ -6,7 +6,7 @@ import { setupApiFixtures, setAuthToken } from '../fixtures/test-helper';
  *
  * Tests the 3-step guided job creation:
  *   Step 1: Song Info (artist/title inputs)
- *   Step 2: Choose Audio (search results with "Our Pick" + fallback options)
+ *   Step 2: Choose Audio (search results with confidence tier UI + fallback options)
  *   Step 3: Customize & Create (title card, display overrides, privacy, submit)
  *
  * Uses mocked API responses — runs offline in CI.
@@ -224,7 +224,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await expect(page.getByText('Searching for audio sources')).toBeVisible();
   });
 
-  test('shows "Our Pick" with best result after search completes', async ({ page }) => {
+  test('shows pick card with best result after search completes', async ({ page }) => {
     await setupApiFixtures(page, { mocks: SEARCH_FLOW_MOCKS });
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -234,7 +234,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Wait for results to load
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Best result should be the high-seeder lossless one
     await expect(page.getByText('LOSSLESS').first()).toBeVisible();
@@ -251,10 +251,10 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByRole('button', { name: /choose audio/i }).click();
 
     // Wait for results
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Should show expandable "other options"
-    await expect(page.getByText(/show.*other option/i)).toBeVisible();
+    await expect(page.getByText(/(?:show|see).*other option/i)).toBeVisible();
   });
 
   test('expands other options and shows categorized results', async ({ page }) => {
@@ -266,10 +266,10 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Expand other options
-    await page.getByText(/show.*other option/i).click();
+    await page.getByText(/(?:show|see).*other option/i).click();
 
     // Should show category headers for remaining results
     await expect(page.getByText(/hide other options/i)).toBeVisible();
@@ -284,7 +284,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Fallback buttons should be visible
     await expect(page.getByRole('button', { name: /youtube url/i })).toBeVisible();
@@ -300,7 +300,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Click YouTube URL button
     await page.getByRole('button', { name: /youtube url/i }).click();
@@ -319,7 +319,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Click Upload button
     await page.getByRole('button', { name: /upload file/i }).click();
@@ -348,7 +348,7 @@ test.describe('Step 2: Choose Audio - Search Results', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Click Back
     await page.getByRole('button', { name: /back/i }).click();
@@ -400,7 +400,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await setAuthToken(page, 'test-token');
   });
 
-  test('selecting "Our Pick" advances to Step 3', async ({ page }) => {
+  test('selecting pick card advances to Step 3', async ({ page }) => {
     await setupApiFixtures(page, { mocks: SEARCH_FLOW_MOCKS });
     await page.goto('/app');
     await page.waitForLoadState('networkidle');
@@ -409,7 +409,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Click "Use This Audio"
     await page.getByRole('button', { name: /use this audio/i }).click();
@@ -428,7 +428,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     // Should show display override fields with placeholders matching search values
@@ -449,7 +449,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     // Privacy toggle should be visible
@@ -466,7 +466,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     await expect(page.getByRole('button', { name: /create karaoke video/i })).toBeVisible();
@@ -481,7 +481,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     // Click create
@@ -502,7 +502,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
     await page.getByRole('button', { name: /create karaoke video/i }).click();
 
@@ -522,7 +522,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /use this audio/i }).click();
 
     await expect(page.getByRole('heading', { name: 'Customize & Create' })).toBeVisible();
@@ -531,7 +531,7 @@ test.describe('Step 2 → Step 3: Audio Selection to Customize', () => {
     await page.getByRole('button', { name: /back/i }).click();
 
     // Should return to Step 2 with results still visible
-    await expect(page.getByText('Our Pick')).toBeVisible();
+    await expect(page.getByText('Perfect match found')).toBeVisible();
   });
 });
 
@@ -564,7 +564,7 @@ test.describe('Fallback Paths: YouTube URL and Upload', () => {
     await page.getByTestId('guided-title-input').fill('Bohemian Rhapsody');
     await page.getByRole('button', { name: /choose audio/i }).click();
 
-    await expect(page.getByText('Our Pick')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Perfect match found')).toBeVisible({ timeout: 10000 });
 
     // Click YouTube URL fallback
     await page.getByRole('button', { name: /youtube url/i }).click();
