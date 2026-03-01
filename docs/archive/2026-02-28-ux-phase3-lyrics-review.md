@@ -1,7 +1,38 @@
 # Phase 3: Lyrics Review - UX Plan
 
-> **Status**: User feedback captured, ready for detailed design
+> **Status**: Implemented
 > **Screenshots**: `phase3-lyrics-review-top.png`, `phase3-lyrics-review-bottom.png`
+
+## Implementation Summary (2026-03-01)
+
+### Guidance Panel (replaces stats bar)
+- `GuidancePanel.tsx` — collapsible panel with color coding legend, workflow tips
+- Stats hidden behind toggle (previously always visible, overwhelming for new users)
+- Contextual tips for common correction types (phantom words, mis-heard words, etc.)
+
+### Gap Navigator
+- `GapNavigator.tsx` — "Gap 3 of 9" with prev/next buttons
+- Keyboard shortcuts: J (next gap), K (previous gap)
+- Auto-scrolls to gap and flashes the relevant words
+- Scoped to uncorrected gaps only
+
+### Simplified Toolbar
+- Advanced Mode toggle (persisted in localStorage)
+- Default: hides line numbers, delete icons, power-user tools
+- Advanced: shows Find/Replace, Edit All, Undo Auto Corrections, Timing Offset
+
+### Edit Tracking & Feedback System
+- `editLog.ts` — session-based edit log capturing all user edits (word changes, deletions, additions, find/replace, segment operations, reverts)
+- `EditFeedbackBar.tsx` — slim feedback bar above sticky footer, appears after single-word edits with contextual "why?" buttons (Mis-heard word, Wrong lyrics, Spelling/punctuation, etc.)
+- Auto-dismisses after 10 seconds, pauses timer while hovered
+- Edit logs submitted to backend on review completion for transcription model improvement
+- Replaces the old high-friction `CorrectionAnnotationModal` (9 categories, confidence slider — nobody used it)
+- Backend endpoints: `POST /api/jobs/{job_id}/edit-log` (GCS storage), `POST /api/review/{job_id}/v1/annotations` (fixed from stub)
+- 40 tests across frontend and backend
+
+### Word Component Improvements
+- Active gap ring indicator (persistent highlight for currently navigated gap)
+- Color coding preserved: blue = matched/confident, orange = needs review
 
 ## Current State
 

@@ -1,6 +1,6 @@
 # UX Overhaul - Master Plan
 
-> **Status**: Phase 1 complete, Phase 2 in progress
+> **Status**: Phases 1-3 complete, Phase 4 remaining
 > **Created**: 2026-02-28
 > **Branch**: feat/sess-20260227-1637-ux-overhaul
 > **Worktree**: /Users/andrew/Projects/nomadkaraoke/karaoke-gen-ux-overhaul
@@ -19,15 +19,17 @@ The system has several distinct stages of human interaction, each requiring dedi
 **Scope**: Restructure the job creation form as a guided flow. Steer users toward Search as the default path, with Upload/URL as fallbacks.
 **Done**: Removed "Skip lyrics review" checkbox, renamed Private label, built 3-step GuidedJobFlow wizard, title card preview, production E2E tests. Renamed "Find Audio" → "Choose Audio".
 
-### Phase 2: Audio Source Selection ← CURRENT
+### Phase 2: Audio Source Selection ✅
 **Plan**: [2026-02-28-ux-phase2-audio-selection.md](2026-02-28-ux-phase2-audio-selection.md)
 **Scope**: Auto-select audio for simple cases, improve guidance for complex cases, build heuristics from real usage data.
+**Done**: 3-tier confidence system (perfect match / recommended / limited sources), guidance-first layout for Tier 3, validated against 41 production fixtures with unit tests.
 
-### Phase 3: Lyrics Review
+### Phase 3: Lyrics Review ✅
 **Plan**: [2026-02-28-ux-phase3-lyrics-review.md](2026-02-28-ux-phase3-lyrics-review.md)
 **Scope**: Add onboarding, explain color coding, guide users through the correction workflow. This is the most complex screen.
+**Done**: Guidance panel replacing stats bar (collapsible, color coding legend, workflow tips), gap navigator with keyboard shortcuts (J/K), simplified toolbar with Advanced Mode toggle, hidden line numbers/delete icons by default, edit tracking system with low-friction feedback bar for transcription improvement data collection. 40 tests.
 
-### Phase 4: Instrumental Review
+### Phase 4: Instrumental Review ← REMAINING
 **Plan**: [2026-02-28-ux-phase4-instrumental-review.md](2026-02-28-ux-phase4-instrumental-review.md)
 **Scope**: Explain what backing vocals are, guide the listen/decide flow, simplify the default case.
 
