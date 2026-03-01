@@ -68,6 +68,8 @@ describe('GuidancePanel', () => {
     onHandlerToggle: jest.fn(),
     isUpdatingHandlers: false,
     onHandlerClick: jest.fn(),
+    statsVisible: false,
+    onStatsToggle: jest.fn(),
   }
 
   beforeEach(() => {
@@ -79,14 +81,14 @@ describe('GuidancePanel', () => {
     render(<GuidancePanel data={makeMockData()} {...defaultProps} />)
 
     expect(screen.getByText('Matched')).toBeInTheDocument()
-    expect(screen.getByText('Needs review')).toBeInTheDocument()
+    expect(screen.getByText('Gaps (needs review)')).toBeInTheDocument()
     expect(screen.getByText('Corrected')).toBeInTheDocument()
   })
 
   it('renders workflow tip by default', () => {
     render(<GuidancePanel data={makeMockData()} {...defaultProps} />)
 
-    expect(screen.getByText(/Focus on the orange highlighted words/)).toBeInTheDocument()
+    expect(screen.getByText(/Synced Lyrics/)).toBeInTheDocument()
   })
 
   it('shows zero-gap message when no gaps exist', () => {
@@ -104,7 +106,7 @@ describe('GuidancePanel', () => {
     await user.click(dismissButton)
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith('lyricsReviewGuidanceDismissed', 'true')
-    expect(screen.queryByText(/Focus on the orange highlighted words/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Synced Lyrics/)).not.toBeInTheDocument()
   })
 
   it('shows "Show tips" link after dismissal', async () => {
@@ -123,29 +125,35 @@ describe('GuidancePanel', () => {
     await user.click(screen.getByLabelText('Dismiss tip'))
     await user.click(screen.getByText('Show tips'))
 
-    expect(screen.getByText(/Focus on the orange highlighted words/)).toBeInTheDocument()
+    expect(screen.getByText(/Synced Lyrics/)).toBeInTheDocument()
     expect(localStorageMock.removeItem).toHaveBeenCalledWith('lyricsReviewGuidanceDismissed')
   })
 
   it('hides workflow tip in read-only mode', () => {
     render(<GuidancePanel data={makeMockData()} {...defaultProps} isReadOnly={true} />)
 
-    expect(screen.queryByText(/Focus on the orange highlighted words/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Synced Lyrics/)).not.toBeInTheDocument()
   })
 
   it('stats are collapsed by default', () => {
     render(<GuidancePanel data={makeMockData()} {...defaultProps} />)
 
-    expect(screen.getByText('Stats & Handlers')).toBeInTheDocument()
+    expect(screen.getByText('Stats')).toBeInTheDocument()
     // Stats content should not be visible
     expect(screen.queryByText('Anchor Sequences')).not.toBeInTheDocument()
   })
 
-  it('expands stats when clicked', async () => {
+  it('calls onStatsToggle when Stats button clicked', async () => {
     const user = userEvent.setup()
     render(<GuidancePanel data={makeMockData()} {...defaultProps} />)
 
-    await user.click(screen.getByText('Stats & Handlers'))
+    await user.click(screen.getByText('Stats'))
+
+    expect(defaultProps.onStatsToggle).toHaveBeenCalled()
+  })
+
+  it('shows stats content when statsVisible is true', () => {
+    render(<GuidancePanel data={makeMockData()} {...defaultProps} statsVisible={true} />)
 
     expect(screen.getByText('Anchor Sequences')).toBeInTheDocument()
     expect(screen.getByText('Corrected Gaps')).toBeInTheDocument()
@@ -159,7 +167,7 @@ describe('GuidancePanel', () => {
     await user.click(screen.getByText('Matched'))
     expect(defaultProps.onMetricClick.anchor).toHaveBeenCalled()
 
-    await user.click(screen.getByText('Needs review'))
+    await user.click(screen.getByText('Gaps (needs review)'))
     expect(defaultProps.onMetricClick.uncorrected).toHaveBeenCalled()
 
     await user.click(screen.getByText('Corrected'))

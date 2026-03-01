@@ -70,9 +70,10 @@ describe('GapNavigator', () => {
     expect(defaultProps.onPrevGap).toHaveBeenCalled()
   })
 
-  it('shows keyboard shortcut hint', () => {
+  it('shows keyboard shortcut hints in tooltips', () => {
     render(<GapNavigator {...defaultProps} currentGapIndex={0} />)
 
-    expect(screen.getByText('(N/P)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Previous gap')).toBeInTheDocument()
+    expect(screen.getByLabelText('Next gap')).toBeInTheDocument()
   })
 })

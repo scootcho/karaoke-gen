@@ -47,6 +47,7 @@ const test = base.extend<object, { reviewContext: BrowserContext }>({
     await use(context);
     await context.close();
   }, { scope: 'worker' }],
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   page: async ({ reviewContext }, use) => {
     const page = await reviewContext.newPage();
     await use(page);
