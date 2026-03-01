@@ -45,11 +45,10 @@ def client(mock_storage):
          patch('google.auth.default', return_value=(mock_creds, 'test-project')):
 
         from backend.main import app
-        from backend.api.dependencies import require_review_auth_factory
+        from backend.api.dependencies import require_review_auth
 
-        # Override review auth dependency
-        review_auth = require_review_auth_factory()
-        app.dependency_overrides[review_auth] = fake_review_auth
+        # Override review auth dependency (must use the same function object used by routes)
+        app.dependency_overrides[require_review_auth] = fake_review_auth
 
         # Patch StorageService inside the review module
         with patch('backend.api.routes.review.StorageService', return_value=mock_storage):
