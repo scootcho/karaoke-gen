@@ -6,6 +6,16 @@ Key insights for future AI agents working on this codebase.
 
 ---
 
+## UX Patterns
+
+### Fixture-Driven UI Verification
+For UI that renders differently based on data (e.g., audio search result tiers), fetch real production data as fixtures and build a Playwright review tool. The `npm run fixtures:review-ui` pattern (41 fixtures, console-based `next()` advancement) was far more effective than manual testing or screenshots — caught edge cases with non-Latin filenames, single-character filenames, and underscore-separated names that unit tests alone would have missed.
+
+### Filename Matching Normalization
+When comparing filenames to search titles, treat underscores/hyphens/dots as word separators BEFORE stripping non-alphanumeric chars. Also require a minimum substring length (3 chars) to prevent false matches like filename "K" matching title "KoREH". For non-Latin scripts (Hebrew, etc.), return an indeterminate result rather than a false match or false mismatch.
+
+---
+
 ## Architecture Decisions
 
 ### Separate Collections for Multi-App Projects

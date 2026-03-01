@@ -1,7 +1,29 @@
 # Phase 2: Audio Source Selection - UX Plan
 
-> **Status**: Feedback captured, ready for detailed design
+> **Status**: Implemented and verified with 41 production fixtures
 > **Screenshots**: `phase2-audio-search-results.png`, `phase2-audio-search-bottom.png`, `phase2-pony-bradshaw-results.png`
+
+## Implementation Summary (2026-02-28)
+
+### 3-Tier Confidence System
+Built in `frontend/lib/audio-search-utils.ts` and `frontend/components/job/steps/AudioSourceStep.tsx`:
+
+- **Tier 1 ("Perfect match found")**: Green card, best result is lossless with 50+ seeders and no filename mismatch
+- **Tier 2 ("Recommended")**: Amber card with reasoning — has lossless options but not clearly ideal
+- **Tier 3 ("Limited sources found")**: Guidance-first layout — upload/URL fallback shown above search results
+
+### Key Features
+- **Filename mismatch detection**: Compares search title against `target_file` (torrent/Spotify) or `title` (YouTube). Handles underscores as word separators, skips non-Latin scripts gracefully. Shows "Title match" / "Wrong track?" badges.
+- **Spotify separated from YouTube**: Own category with green styling, higher priority than YouTube in best-result selection
+- **Dynamic guidance tips**: The "Limited sources found" box only shows tips relevant to the actual result types found
+- **Color-coded view counts**: Green (1M+), amber (100K+), neutral for YouTube/Spotify results
+- **Availability tooltips**: User-friendly language ("may take a bit more time to prepare")
+
+### Testing
+- 75 unit tests for `audio-search-utils.ts` (96%+ coverage)
+- 47 fixture confidence tests against 41 production search results
+- Fixture review tooling: `npm run fixtures:review-ui` for visual verification
+- E2E regression tests (25 tests) and production E2E tests (7 tests)
 
 ## Current State
 
