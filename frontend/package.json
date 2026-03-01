@@ -23,7 +23,8 @@
     "test:e2e:prod:headed": "playwright test --config=playwright.production.config.ts --headed",
     "test:e2e:prod:debug": "playwright test --config=playwright.production.config.ts --debug",
     "test:all": "npm run test:unit && npm run test:e2e",
-    "fixtures:review": "npx ts-node e2e/fixtures/review-cli.ts"
+    "fixtures:review": "npx ts-node e2e/fixtures/review-cli.ts",
+    "fixtures:review-ui": "playwright test --config=playwright.review.config.ts --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

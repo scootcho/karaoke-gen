@@ -274,10 +274,129 @@ class TestSelectInstrumental:
 
 class TestStartReview:
     """Tests for POST /api/jobs/{job_id}/start-review."""
-    
+
     def test_start_review_endpoint_exists(self, client, mock_job_manager, mock_job, auth_headers):
         """Test start review endpoint exists."""
         response = client.post("/api/jobs/test123/start-review", headers=auth_headers)
         # Should not be 404 or 405
         assert response.status_code not in [404, 405]
+
+
+class TestSubmitEditLog:
+    """Tests for POST /api/jobs/{job_id}/edit-log."""
+
+    def test_submit_edit_log_returns_200(self, client, mock_job_manager, mock_job, auth_headers):
+        """Test submitting a valid edit log returns 200."""
+        edit_log = {
+            "session_id": "sess-abc",
+            "job_id": "test123",
+            "audio_hash": "hash123",
+            "started_at": "2026-03-01T00:00:00.000Z",
+            "entries": [
+                {
+                    "id": "e1",
+                    "timestamp": "2026-03-01T00:01:00.000Z",
+                    "operation": "word_change",
+                    "segment_id": "s1",
+                    "segment_index": 0,
+                    "word_ids_before": ["w1"],
+                    "word_ids_after": ["w1"],
+                    "text_before": "helo",
+                    "text_after": "hello",
+                    "feedback": {"reason": "misheard_word", "timestamp": "2026-03-01T00:01:05.000Z"}
+                }
+            ]
+        }
+        with patch('backend.api.routes.jobs.StorageService') as mock_storage_cls:
+            mock_storage = MagicMock()
+            mock_storage_cls.return_value = mock_storage
+            response = client.post("/api/jobs/test123/edit-log", json=edit_log, headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["entries_count"] == 1
+        assert data["feedback_count"] == 1
+
+    def test_submit_edit_log_stores_to_gcs(self, client, mock_job_manager, mock_job, auth_headers):
+        """Test edit log is stored to GCS with correct path."""
+        edit_log = {
+            "session_id": "sess-xyz",
+            "job_id": "test123",
+            "audio_hash": "hash123",
+            "started_at": "2026-03-01T00:00:00.000Z",
+            "entries": []
+        }
+        with patch('backend.api.routes.jobs.StorageService') as mock_storage_cls:
+            mock_storage = MagicMock()
+            mock_storage_cls.return_value = mock_storage
+            client.post("/api/jobs/test123/edit-log", json=edit_log, headers=auth_headers)
+            mock_storage.upload_json.assert_called_once_with(
+                "jobs/test123/lyrics/edit_log_sess-xyz.json",
+                edit_log
+            )
+
+    def test_submit_edit_log_updates_firestore(self, client, mock_job_manager, mock_job, auth_headers):
+        """Test edit log updates Firestore state_data."""
+        edit_log = {
+            "session_id": "sess-123",
+            "job_id": "test123",
+            "audio_hash": "h",
+            "started_at": "2026-03-01T00:00:00.000Z",
+            "entries": []
+        }
+        with patch('backend.api.routes.jobs.StorageService') as mock_storage_cls:
+            mock_storage_cls.return_value = MagicMock()
+            client.post("/api/jobs/test123/edit-log", json=edit_log, headers=auth_headers)
+        mock_job_manager.update_state_data.assert_any_call(
+            "test123", "last_edit_log_path", "jobs/test123/lyrics/edit_log_sess-123.json"
+        )
+        mock_job_manager.update_state_data.assert_any_call(
+            "test123", "last_edit_log_session", "sess-123"
+        )
+
+    def test_submit_edit_log_nonexistent_job_returns_404(self, mock_worker_service, auth_headers):
+        """Test submitting to nonexistent job returns 404."""
+        mock_jm = MagicMock()
+        mock_jm.get_job.return_value = None
+        mock_creds = MagicMock()
+        mock_creds.universe_domain = 'googleapis.com'
+
+        def mock_jm_factory(*args, **kwargs):
+            return mock_jm
+
+        with patch('backend.api.routes.jobs.job_manager', mock_jm), \
+             patch('backend.api.routes.jobs.worker_service', mock_worker_service), \
+             patch('backend.services.job_manager.JobManager', mock_jm_factory), \
+             patch('backend.services.firestore_service.firestore'), \
+             patch('backend.services.storage_service.storage'), \
+             patch('google.auth.default', return_value=(mock_creds, 'test-project')):
+            from backend.main import app
+            test_client = TestClient(app)
+            response = test_client.post(
+                "/api/jobs/nonexistent/edit-log",
+                json={"session_id": "s", "entries": []},
+                headers=auth_headers
+            )
+            assert response.status_code == 404
+
+    def test_submit_edit_log_counts_feedback_correctly(self, client, mock_job_manager, mock_job, auth_headers):
+        """Test feedback count excludes no_response entries."""
+        edit_log = {
+            "session_id": "sess-1",
+            "job_id": "test123",
+            "audio_hash": "h",
+            "started_at": "2026-03-01T00:00:00.000Z",
+            "entries": [
+                {"id": "e1", "feedback": {"reason": "misheard_word"}},
+                {"id": "e2", "feedback": {"reason": "no_response"}},
+                {"id": "e3", "feedback": None},
+                {"id": "e4", "feedback": {"reason": "wrong_lyrics"}},
+            ]
+        }
+        with patch('backend.api.routes.jobs.StorageService') as mock_storage_cls:
+            mock_storage_cls.return_value = MagicMock()
+            response = client.post("/api/jobs/test123/edit-log", json=edit_log, headers=auth_headers)
+        data = response.json()
+        assert data["entries_count"] == 4
+        assert data["feedback_count"] == 2  # misheard_word + wrong_lyrics
 

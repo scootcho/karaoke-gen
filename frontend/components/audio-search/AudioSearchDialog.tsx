@@ -1,10 +1,20 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { api, AudioSearchResult } from "@/lib/api"
+import { api } from "@/lib/api"
+import {
+  ExtendedAudioSearchResult,
+  groupResults,
+  getDisplayName,
+  formatCount,
+  formatMetadata,
+  formatQuality,
+  getAvailabilityLabel,
+  checkFilenameMismatch,
+} from "@/lib/audio-search-utils"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Music2, ChevronDown, ChevronUp } from "lucide-react"
+import { Loader2, Music2, ChevronDown, ChevronUp, Lightbulb } from "lucide-react"
 
 // Version from pyproject.toml (single source of truth)
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"
@@ -14,117 +24,16 @@ interface AudioSearchDialogProps {
   open: boolean
   onClose: () => void
   onSelect: () => void
+  searchTitle?: string
 }
 
-// Extended result type to include all backend fields
-interface ExtendedAudioSearchResult extends AudioSearchResult {
-  channel?: string
-  view_count?: number
-  formatted_duration?: string
-  formatted_size?: string
-  release_type?: string
-  label?: string
-  edition_info?: string
-  target_file?: string
-  quality_data?: {
-    format?: string
-    bit_depth?: number
-    sample_rate?: number
-    bitrate?: number
-    media?: string
-  }
-}
-
-// Category configuration matching flacfetch
-interface CategoryConfig {
-  name: string
-  maxDisplay: number
-  color: string
-  borderColor: string
-}
-
-const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  'BEST CHOICE': { name: 'BEST CHOICE', maxDisplay: 3, color: 'text-amber-400', borderColor: 'border-amber-500/30' },
-  'HI-RES 24-BIT': { name: 'HI-RES 24-BIT', maxDisplay: 3, color: 'text-purple-400', borderColor: 'border-purple-500/30' },
-  'STUDIO ALBUMS': { name: 'STUDIO ALBUMS', maxDisplay: 3, color: 'text-blue-400', borderColor: 'border-blue-500/30' },
-  'SINGLES': { name: 'SINGLES', maxDisplay: 2, color: 'text-cyan-400', borderColor: 'border-cyan-500/30' },
-  'LIVE VERSIONS': { name: 'LIVE VERSIONS', maxDisplay: 2, color: 'text-pink-400', borderColor: 'border-pink-500/30' },
-  'COMPILATIONS': { name: 'COMPILATIONS', maxDisplay: 2, color: 'text-teal-400', borderColor: 'border-teal-500/30' },
-  'VINYL RIPS': { name: 'VINYL RIPS', maxDisplay: 2, color: 'text-orange-400', borderColor: 'border-orange-500/30' },
-  'YOUTUBE/LOSSY': { name: 'YOUTUBE/LOSSY', maxDisplay: 3, color: 'text-red-400', borderColor: 'border-red-500/30' },
-  'OTHER': { name: 'OTHER', maxDisplay: 3, color: 'text-muted-foreground', borderColor: 'border-border' },
-}
-
-const CATEGORY_ORDER = [
-  'BEST CHOICE',
-  'HI-RES 24-BIT',
-  'STUDIO ALBUMS',
-  'SINGLES',
-  'LIVE VERSIONS',
-  'COMPILATIONS',
-  'VINYL RIPS',
-  'YOUTUBE/LOSSY',
-  'OTHER'
-]
-
-// Categorize a single result based on flacfetch logic
-function categorizeResult(result: ExtendedAudioSearchResult): string {
-  const isLossless = result.is_lossless === true
-  const is24Bit = result.quality_data?.bit_depth === 24
-  const seeders = result.seeders ?? 0
-  const provider = result.provider?.toLowerCase() ?? ''
-  const releaseType = result.release_type?.toLowerCase() ?? ''
-  const media = result.quality_data?.media?.toLowerCase() ?? ''
-
-  // YouTube and lossy sources
-  if (provider === 'youtube' || !isLossless) {
-    return 'YOUTUBE/LOSSY'
-  }
-
-  // Best choice (50+ seeders, lossless)
-  if (isLossless && seeders >= 50) {
-    return 'BEST CHOICE'
-  }
-
-  // Hi-res 24-bit
-  if (isLossless && is24Bit) {
-    return 'HI-RES 24-BIT'
-  }
-
-  // Vinyl rips
-  if (isLossless && media === 'vinyl') {
-    return 'VINYL RIPS'
-  }
-
-  // Live versions
-  if (isLossless && (releaseType === 'live album' || releaseType === 'bootleg' || releaseType.includes('live'))) {
-    return 'LIVE VERSIONS'
-  }
-
-  // Compilations
-  if (isLossless && (releaseType === 'compilation' || releaseType === 'soundtrack' || releaseType === 'anthology')) {
-    return 'COMPILATIONS'
-  }
-
-  // Singles/EPs
-  if (isLossless && (releaseType === 'single' || releaseType === 'ep')) {
-    return 'SINGLES'
-  }
-
-  // Studio albums
-  if (isLossless && (releaseType === 'album' || !releaseType)) {
-    return 'STUDIO ALBUMS'
-  }
-
-  return 'OTHER'
-}
-
-export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearchDialogProps) {
+export function AudioSearchDialog({ jobId, open, onClose, onSelect, searchTitle }: AudioSearchDialogProps) {
   const [results, setResults] = useState<ExtendedAudioSearchResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSelecting, setIsSelecting] = useState<number | null>(null)
   const [error, setError] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const [showGuidance, setShowGuidance] = useState(false)
 
   // Debug: Log component version on mount
   useEffect(() => {
@@ -137,6 +46,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
       console.log(`[AudioSearchDialog v${APP_VERSION}] Dialog opened for job: ${jobId}`)
       loadResults()
       setExpandedCategories(new Set()) // Reset expanded state
+      setShowGuidance(false)
     }
   }, [open, jobId])
 
@@ -158,31 +68,7 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
   }
 
   // Group results by category
-  const groupedResults = useMemo(() => {
-    const groups: Record<string, ExtendedAudioSearchResult[]> = {}
-
-    for (const result of results) {
-      const category = categorizeResult(result)
-      if (!groups[category]) {
-        groups[category] = []
-      }
-      groups[category].push(result)
-    }
-
-    // Sort by category order
-    const sortedGroups: Array<{ category: string; results: ExtendedAudioSearchResult[]; config: CategoryConfig }> = []
-    for (const cat of CATEGORY_ORDER) {
-      if (groups[cat] && groups[cat].length > 0) {
-        sortedGroups.push({
-          category: cat,
-          results: groups[cat],
-          config: CATEGORY_CONFIG[cat]
-        })
-      }
-    }
-
-    return sortedGroups
-  }, [results])
+  const groupedResults = useMemo(() => groupResults(results), [results])
 
   // Count total categories
   const totalCategories = groupedResults.length
@@ -214,51 +100,6 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
     })
   }
 
-  // Get display name - use channel for YouTube, artist for others
-  function getDisplayName(result: ExtendedAudioSearchResult): string {
-    if (result.provider === "YouTube" && result.channel) {
-      return result.channel
-    }
-    return result.artist || ""
-  }
-
-  // Format views/seeders compactly
-  function formatCount(count?: number): string {
-    if (!count && count !== 0) return "-"
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`
-    return count.toString()
-  }
-
-  // Format release metadata line
-  function formatMetadata(result: ExtendedAudioSearchResult): string {
-    const parts: string[] = []
-
-    if (result.release_type) parts.push(result.release_type)
-    if (result.year) parts.push(result.year.toString())
-    if (result.label) parts.push(result.label)
-    if (result.edition_info) parts.push(result.edition_info)
-    if (result.quality_data?.media) parts.push(result.quality_data.media)
-
-    return parts.length > 0 ? `[${parts.join(' / ')}]` : ''
-  }
-
-  // Get quality display string
-  function formatQuality(result: ExtendedAudioSearchResult): string {
-    if (result.quality) return result.quality
-
-    const qd = result.quality_data
-    if (!qd) return '-'
-
-    const parts: string[] = []
-    if (qd.format) parts.push(qd.format)
-    if (qd.bit_depth) parts.push(`${qd.bit_depth}bit`)
-    if (qd.bitrate) parts.push(`${qd.bitrate}kbps`)
-    if (qd.media) parts.push(qd.media)
-
-    return parts.join(' ') || '-'
-  }
-
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-7xl w-[95vw] max-h-[90vh] flex flex-col bg-card border-border !p-0 gap-0 overflow-hidden">
@@ -271,6 +112,29 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
             </span>
           </DialogTitle>
         </div>
+
+        {/* Guidance header (collapsed by default) */}
+        {!isLoading && results.length > 0 && (
+          <div className="px-4 py-1.5 border-b border-border bg-secondary/30">
+            <button
+              onClick={() => setShowGuidance(!showGuidance)}
+              className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Lightbulb className="w-3 h-3" />
+              Tips for choosing
+              {showGuidance ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            {showGuidance && (
+              <ul className="text-[10px] text-muted-foreground mt-1.5 ml-5 space-y-0.5 pb-1">
+                <li>Check the filename matches your song title</li>
+                <li>Green availability badge = more reliable download</li>
+                <li>Studio album versions produce the best karaoke results</li>
+                <li>Avoid vinyl rips (surface noise affects separation)</li>
+                <li>YouTube is a last resort — lossless sources sound better</li>
+              </ul>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="px-4 py-2 text-xs text-red-400 bg-red-500/10 border-b border-border">
@@ -322,89 +186,112 @@ export function AudioSearchDialog({ jobId, open, onClose, onSelect }: AudioSearc
 
                     {/* Results in category */}
                     <div className="divide-y divide-slate-700/50">
-                      {displayResults.map((result) => (
-                        <div
-                          key={result.index}
-                          className="px-3 py-1.5 hover:bg-secondary/50 flex items-center gap-2 text-xs"
-                        >
-                          {/* Index */}
-                          <span className="w-5 text-muted-foreground font-mono shrink-0 text-[10px]">
-                            {result.index + 1}.
-                          </span>
+                      {displayResults.map((result) => {
+                        const mismatch = searchTitle ? checkFilenameMismatch(searchTitle, result) : null
+                        const hasMismatch = mismatch?.isMismatch ?? false
 
-                          {/* Main content - 2 lines */}
-                          <div className="flex-1 min-w-0">
-                            {/* Line 1: badges + artist + title + quality + size + availability */}
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {result.is_lossless && (
-                                <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
-                                  LOSSLESS
+                        return (
+                          <div
+                            key={result.index}
+                            className={`px-3 py-1.5 hover:bg-secondary/50 flex items-center gap-2 text-xs ${
+                              hasMismatch ? 'opacity-60' : ''
+                            }`}
+                          >
+                            {/* Index */}
+                            <span className="w-5 text-muted-foreground font-mono shrink-0 text-[10px]">
+                              {result.index + 1}.
+                            </span>
+
+                            {/* Main content - 2 lines */}
+                            <div className="flex-1 min-w-0">
+                              {/* Line 1: badges + artist + title + quality + size + availability */}
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {result.is_lossless && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
+                                    LOSSLESS
+                                  </span>
+                                )}
+                                {result.quality_data?.media?.toLowerCase() === 'vinyl' && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded bg-red-600/20 text-red-400 font-medium">
+                                    VINYL
+                                  </span>
+                                )}
+                                {result.provider === "YouTube" && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded font-medium bg-red-600/20 text-red-400">
+                                    YouTube
+                                  </span>
+                                )}
+                                {hasMismatch && (
+                                  <span
+                                    title={`Expected "${searchTitle}" but filename is "${mismatch!.filename}"${mismatch!.suggestedTrack ? ` (looks like "${mismatch!.suggestedTrack}")` : ''}`}
+                                    className="text-[8px] px-1 py-0.5 rounded font-medium bg-yellow-600/20 text-yellow-400 cursor-help"
+                                  >
+                                    Wrong track?
+                                  </span>
+                                )}
+                                <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
+                                <span className="text-muted-foreground">-</span>
+                                <span className="text-foreground">{result.title}</span>
+                                <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-muted-foreground"}`}>
+                                  ({formatQuality(result)})
                                 </span>
+                                <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
+                                {result.seeders !== undefined && result.seeders !== null ? (
+                                  (() => {
+                                    const { text, tooltip } = getAvailabilityLabel(result.seeders)
+                                    return (
+                                      <span
+                                        title={tooltip}
+                                        className={`text-[8px] px-1 py-0.5 rounded font-medium cursor-help ${
+                                          result.seeders >= 50 ? 'bg-green-600/20 text-green-400' :
+                                          result.seeders >= 10 ? 'bg-yellow-600/20 text-yellow-400' :
+                                          'bg-red-600/20 text-red-400'
+                                        }`}
+                                      >
+                                        {text} availability
+                                      </span>
+                                    )
+                                  })()
+                                ) : result.view_count !== undefined ? (
+                                  <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
+                                    result.view_count >= 1000000 ? 'bg-green-600/20 text-green-400' :
+                                    result.view_count >= 10000 ? 'bg-yellow-600/20 text-yellow-400' :
+                                    'bg-muted text-muted-foreground'
+                                  }`}>
+                                    {formatCount(result.view_count)} views
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Line 2: metadata + filename */}
+                              {(formatMetadata(result) || result.target_file) && (
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                  {formatMetadata(result) && (
+                                    <span className="truncate">{formatMetadata(result)}</span>
+                                  )}
+                                  {result.target_file && (
+                                    <span className="font-mono truncate">&quot;{result.target_file}&quot;</span>
+                                  )}
+                                </div>
                               )}
-                              {result.quality_data?.media?.toLowerCase() === 'vinyl' && (
-                                <span className="text-[8px] px-1 py-0.5 rounded bg-red-600/20 text-red-400 font-medium">
-                                  VINYL
-                                </span>
-                              )}
-                              {result.provider === "YouTube" && (
-                                <span className="text-[8px] px-1 py-0.5 rounded font-medium bg-red-600/20 text-red-400">
-                                  YouTube
-                                </span>
-                              )}
-                              <span className="text-green-400 font-medium">{getDisplayName(result)}</span>
-                              <span className="text-muted-foreground">-</span>
-                              <span className="text-foreground">{result.title}</span>
-                              <span className={`text-[10px] ${result.is_lossless ? "text-green-400" : "text-muted-foreground"}`}>
-                                ({formatQuality(result)})
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">{result.formatted_size || '-'}</span>
-                              {result.seeders !== undefined && result.seeders !== null ? (
-                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
-                                  result.seeders >= 50 ? 'bg-green-600/20 text-green-400' :
-                                  result.seeders >= 10 ? 'bg-yellow-600/20 text-yellow-400' :
-                                  'bg-red-600/20 text-red-400'
-                                }`}>
-                                  {result.seeders >= 50 ? 'High' : result.seeders >= 10 ? 'Medium' : 'Low'} availability
-                                </span>
-                              ) : result.view_count !== undefined ? (
-                                <span className={`text-[8px] px-1 py-0.5 rounded font-medium ${
-                                  result.view_count >= 1000000 ? 'bg-green-600/20 text-green-400' :
-                                  result.view_count >= 10000 ? 'bg-yellow-600/20 text-yellow-400' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                  {formatCount(result.view_count)} views
-                                </span>
-                              ) : null}
                             </div>
 
-                            {/* Line 2: metadata + filename */}
-                            {(formatMetadata(result) || result.target_file) && (
-                              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                {formatMetadata(result) && (
-                                  <span className="truncate">{formatMetadata(result)}</span>
-                                )}
-                                {result.target_file && (
-                                  <span className="font-mono truncate">&quot;{result.target_file}&quot;</span>
-                                )}
-                              </div>
-                            )}
+                            {/* Select button */}
+                            <Button
+                              size="sm"
+                              onClick={() => handleSelect(result.index)}
+                              disabled={isSelecting !== null}
+                              className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-foreground px-2 shrink-0"
+                            >
+                              {isSelecting === result.index ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                "Select"
+                              )}
+                            </Button>
                           </div>
-
-                          {/* Select button */}
-                          <Button
-                            size="sm"
-                            onClick={() => handleSelect(result.index)}
-                            disabled={isSelecting !== null}
-                            className="w-14 h-6 text-[9px] bg-amber-600 hover:bg-amber-500 text-foreground px-2 shrink-0"
-                          >
-                            {isSelecting === result.index ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              "Select"
-                            )}
-                          </Button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )

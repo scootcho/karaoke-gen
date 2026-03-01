@@ -25,6 +25,7 @@ interface CorrectedWordWithActionsProps {
   backgroundColor?: string
   shouldFlash?: boolean
   showActions?: boolean
+  id?: string
 }
 
 export default function CorrectedWordWithActions({
@@ -37,6 +38,7 @@ export default function CorrectedWordWithActions({
   backgroundColor,
   shouldFlash,
   showActions = true,
+  id,
 }: CorrectedWordWithActionsProps) {
   const handleAction = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation()
@@ -45,6 +47,7 @@ export default function CorrectedWordWithActions({
 
   return (
     <span
+      id={id}
       className={cn(
         'inline-flex items-center gap-0.5 px-[3px] py-[1px] rounded-sm cursor-pointer relative',
         'hover:bg-green-500/35',

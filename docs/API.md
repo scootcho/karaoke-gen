@@ -225,6 +225,51 @@ Error (duration mismatch):
 }
 ```
 
+#### Submit Edit Log
+
+```http
+POST /api/jobs/{job_id}/edit-log
+Content-Type: application/json
+
+{
+  "session_id": "abc123",
+  "job_id": "test-job",
+  "audio_hash": "hash",
+  "started_at": "2026-03-01T00:00:00.000Z",
+  "entries": [
+    {
+      "id": "entry-1",
+      "timestamp": "2026-03-01T00:01:00.000Z",
+      "operation": "word_change",
+      "segment_id": "seg-0",
+      "segment_index": 0,
+      "word_ids_before": ["w1"],
+      "word_ids_after": ["w1"],
+      "text_before": "helo",
+      "text_after": "hello",
+      "feedback": { "reason": "misheard_word", "timestamp": "..." }
+    }
+  ]
+}
+```
+
+Stores a session edit log to GCS at `jobs/{job_id}/lyrics/edit_log_{session_id}.json`. Tracks all user edits and optional feedback reasons for transcription improvement. Called automatically on review submission.
+
+#### Submit Annotations
+
+```http
+POST /api/review/{job_id}/v1/annotations
+Content-Type: application/json
+
+{
+  "annotations": [
+    { "annotation_type": "SOUND_ALIKE", "original_text": "helo" }
+  ]
+}
+```
+
+Stores annotations to `jobs/{job_id}/lyrics/annotations.json`. Merges with existing annotations if present.
+
 ### Instrumental Selection (Finalise-Only Jobs)
 
 For finalise-only jobs (where audio prep was done externally), instrumental selection is handled separately:

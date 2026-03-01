@@ -732,17 +732,41 @@ async def get_preview_video(
 @router.post("/{job_id}/v1/annotations")
 async def submit_annotation(
     job_id: str,
-    annotation: Dict[str, Any],
+    payload: Dict[str, Any],
     auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """
-    Submit a correction annotation for ML training data.
-    
-    For now, just log and acknowledge - full annotation support
-    would require a database.
+    Submit correction annotations for ML training data.
+
+    Accepts either a single annotation dict or {"annotations": [...]} batch.
+    Stores to GCS at jobs/{job_id}/lyrics/annotations.json.
     """
-    logger.info(f"Job {job_id}: Annotation submitted (logged but not stored)")
-    return {"status": "success", "annotation_id": "stub"}
+    annotations = payload.get("annotations", [payload]) if isinstance(payload, dict) else [payload]
+
+    try:
+        storage = StorageService()
+        gcs_path = f"jobs/{job_id}/lyrics/annotations.json"
+
+        # Merge with any existing annotations
+        existing: list = []
+        try:
+            existing_data = storage.download_json(gcs_path)
+            if isinstance(existing_data, list):
+                existing = existing_data
+            elif isinstance(existing_data, dict) and "annotations" in existing_data:
+                existing = existing_data["annotations"]
+        except Exception:
+            pass  # No existing file, start fresh
+
+        merged = existing + annotations
+        storage.upload_json(gcs_path, {"annotations": merged})
+
+        logger.info(f"Job {job_id}: {len(annotations)} annotation(s) saved ({len(merged)} total)")
+        return {"status": "success", "saved_count": len(annotations), "total_count": len(merged)}
+
+    except Exception as e:
+        logger.error(f"Job {job_id}: Error saving annotations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{job_id}/v1/annotations/stats")
@@ -751,11 +775,18 @@ async def get_annotation_stats(
     auth_info: Tuple[str, str] = Depends(require_review_auth)
 ):
     """Get annotation statistics."""
-    return {
-        "total_annotations": 0,
-        "by_type": {},
-        "message": "Annotation stats not yet implemented"
-    }
+    try:
+        storage = StorageService()
+        gcs_path = f"jobs/{job_id}/lyrics/annotations.json"
+        data = storage.download_json(gcs_path)
+        annotations = data.get("annotations", []) if isinstance(data, dict) else data
+        by_type: Dict[str, int] = {}
+        for a in annotations:
+            atype = a.get("annotation_type", "unknown")
+            by_type[atype] = by_type.get(atype, 0) + 1
+        return {"total_annotations": len(annotations), "by_type": by_type}
+    except Exception:
+        return {"total_annotations": 0, "by_type": {}}
 
 
 @router.get("/{job_id}/instrumental-analysis")

@@ -17,6 +17,8 @@ type KeyboardState = {
     isOpen: boolean
     onSpacebar?: (e: KeyboardEvent) => void
   }
+  onNextGap?: () => void
+  onPrevGap?: () => void
 }
 
 // Update the modal handler state
@@ -81,6 +83,14 @@ export const setupKeyboardHandlers = (state: KeyboardState) => {
       document.body.style.userSelect = 'none'
     } else if (e.key === 'Control' || e.key === 'Ctrl' || e.key === 'Meta') {
       state.setIsCtrlPressed?.(true)
+    } else if ((e.key === 'n' || e.key === 'N') && !isModalOpen) {
+      e.preventDefault()
+      state.onNextGap?.()
+      return
+    } else if ((e.key === 'p' || e.key === 'P') && !isModalOpen) {
+      e.preventDefault()
+      state.onPrevGap?.()
+      return
     } else if (e.key === ' ' || e.code === 'Space') {
       if (debugLog) {
         console.log('Keyboard handler - Spacebar pressed down', {

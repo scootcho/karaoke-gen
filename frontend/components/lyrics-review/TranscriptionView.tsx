@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Badge } from '@/components/ui/badge'
 import { Play, Trash2, Type, Clock } from 'lucide-react'
 import { HighlightedText } from './shared/HighlightedText'
 import { TranscriptionViewProps, TranscriptionWordPosition } from '@/lib/lyrics-review/types'
@@ -28,6 +29,9 @@ export default function TranscriptionView({
   onEditCorrection,
   onAcceptCorrection,
   onShowCorrectionDetail,
+  activeGapWordIds,
+  advancedMode = false,
+  onAdvancedModeToggle,
 }: TranscriptionViewProps) {
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<'text' | 'duration'>('text')
@@ -43,7 +47,16 @@ export default function TranscriptionView({
     <Card className="p-2">
       <CardContent className="p-0">
         <div className="flex justify-between items-center mb-1">
-          <h3 className="text-sm font-semibold">Corrected Transcription</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">Synced Lyrics</h3>
+            <Badge
+              variant={advancedMode ? 'default' : 'outline'}
+              className="cursor-pointer hover:opacity-80 transition-opacity text-[0.65rem] h-5 px-1.5"
+              onClick={() => onAdvancedModeToggle?.(!advancedMode)}
+            >
+              {advancedMode ? 'Advanced' : 'Simple'}
+            </Badge>
+          </div>
           <ToggleGroup
             type="single"
             value={viewMode}
@@ -132,22 +145,26 @@ export default function TranscriptionView({
                   className="flex items-start w-full hover:bg-muted/50 transition-colors"
                 >
                   {/* Segment controls */}
-                  <div className="flex items-center gap-0.5 min-w-[2.5em] pr-1">
-                    <span
-                      className="text-muted-foreground w-[1.8em] text-right mr-1 select-none font-mono text-[0.8rem] leading-tight cursor-pointer hover:underline"
-                      onClick={() => setSelectedSegmentIndex(segmentIndex)}
-                    >
-                      {segmentIndex}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-[18px] w-[18px] min-h-0 min-w-0 p-[1px] text-destructive hover:text-destructive"
-                      onClick={() => handleDeleteSegment(segmentIndex)}
-                      title="Delete segment"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="flex items-center gap-0.5 pr-1" style={{ minWidth: advancedMode ? '2.5em' : undefined }}>
+                    {advancedMode && (
+                      <span
+                        className="text-muted-foreground w-[1.8em] text-right mr-1 select-none font-mono text-[0.8rem] leading-tight cursor-pointer hover:underline"
+                        onClick={() => setSelectedSegmentIndex(segmentIndex)}
+                      >
+                        {segmentIndex}
+                      </span>
+                    )}
+                    {advancedMode && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-[18px] w-[18px] min-h-0 min-w-0 p-[1px] text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteSegment(segmentIndex)}
+                        title="Delete segment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     {segment.start_time !== null && (
                       <Button
                         variant="ghost"
@@ -176,6 +193,7 @@ export default function TranscriptionView({
                       currentTime={currentTime}
                       gaps={data.gap_sequences}
                       corrections={data.corrections}
+                      activeGapWordIds={activeGapWordIds}
                       reviewMode={reviewMode}
                       onRevertCorrection={onRevertCorrection}
                       onEditCorrection={onEditCorrection}

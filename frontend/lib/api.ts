@@ -4,7 +4,7 @@
 
 import type { VideoThemeSummary, VideoThemeDetail, ThemesListResponse, ThemeDetailResponse, ColorOverrides } from './video-themes';
 import type { MagicLinkResponse, VerifyMagicLinkResponse, UserProfileResponse } from './types';
-import type { CorrectionData, CorrectionAnnotation } from './lyrics-review/types';
+import type { CorrectionData, CorrectionAnnotation, EditLog } from './lyrics-review/types';
 
 // In development, use relative URLs to go through Next.js proxy (avoids CORS)
 // In production (static export), use the full backend URL
@@ -1813,6 +1813,7 @@ export interface OverrideAudioSourceResponse {
 export interface LyricsReviewApiClient {
   submitCorrections: (data: CorrectionData) => Promise<void>
   submitAnnotations: (annotations: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]) => Promise<void>
+  submitEditLog: (editLog: EditLog) => Promise<void>
   updateHandlers: (handlers: string[]) => Promise<CorrectionData>
   addLyrics: (source: string, lyrics: string) => Promise<CorrectionData>
   getAudioUrl: (hash: string) => string
@@ -1862,13 +1863,25 @@ export function createLyricsReviewApiClient(jobId: string): LyricsReviewApiClien
      * Submit human annotations/feedback on corrections
      */
     async submitAnnotations(annotations: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]): Promise<void> {
-      const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/annotations`, {
+      const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/v1/annotations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
         body: JSON.stringify({ annotations }),
+      })
+      await handleResponse<{ status: string }>(response)
+    },
+
+    async submitEditLog(editLog: EditLog): Promise<void> {
+      const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/edit-log`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(editLog),
       })
       await handleResponse<{ status: string }>(response)
     },

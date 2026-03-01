@@ -4,3 +4,11 @@ playwright-report-prod/
 # Use this pattern for ad-hoc testing: test-*.local.{js,cjs,mjs,ts}
 test-*.local.*
 debug-*.local.*
+
+# Search result fixtures (large raw data, regenerate with fetch-search-fixtures.mjs)
+# The index.json is tracked for reference; individual result files are gitignored
+e2e/fixtures/data/search-results/*.json
+!e2e/fixtures/data/search-results/index.json
+
+# Chrome profile for interactive fixture review (auto-created by playwright.review.config.ts)
+.review-profile/

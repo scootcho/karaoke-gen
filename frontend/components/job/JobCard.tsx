@@ -200,6 +200,7 @@ export function JobCard({ job, onRefresh }: JobCardProps) {
         open={showAudioSearch}
         onClose={() => setShowAudioSearch(false)}
         onSelect={onRefresh}
+        searchTitle={job.title}
       />
     </div>
   )

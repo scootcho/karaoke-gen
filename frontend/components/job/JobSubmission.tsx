@@ -63,10 +63,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
   const [displayTitle, setDisplayTitle] = useState("")
   const [showDisplayAs, setShowDisplayAs] = useState(false)
 
-  // Non-interactive mode (shared across all tabs)
-  const [nonInteractive, setNonInteractive] = useState(false)
-
-  // Private (non-published) mode - Dropbox only, no YouTube/GDrive
+  // Private (no YouTube upload) mode - Dropbox only, no YouTube/GDrive
   const [isPrivate, setIsPrivate] = useState(false)
 
   // Credit enforcement
@@ -89,7 +86,6 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
     setIsSubmitting(true)
     try {
       await api.uploadJob(uploadFile, uploadArtist.trim(), uploadTitle.trim(), {
-        non_interactive: nonInteractive,
         is_private: isPrivate,
       })
       setUploadFile(null)
@@ -131,7 +127,6 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
         youtubeArtist.trim(),
         youtubeTitle.trim(),
         {
-          non_interactive: nonInteractive,
           is_private: isPrivate,
         }
       )
@@ -166,7 +161,6 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
     setIsSubmitting(true)
     try {
       await api.searchAudio(searchArtist.trim(), searchTitle.trim(), false, {
-        non_interactive: nonInteractive,
         is_private: isPrivate,
         // Display overrides (empty string means use search values)
         display_artist: displayArtist.trim() || undefined,
@@ -322,32 +316,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
           </p>
 
-          {/* Non-interactive mode (admin only) */}
-          {isAdmin && (
-            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="non-interactive-upload"
-                  checked={nonInteractive}
-                  onChange={(e) => setNonInteractive(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
-                />
-                <div>
-                  <Label htmlFor="non-interactive-upload" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                    Skip lyrics review (non-interactive)
-                  </Label>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                    Skipping review will likely result in incorrect words in your karaoke video.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Private (non-published) mode */}
+          {/* Private (no YouTube upload) mode */}
           <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <div className="flex items-start gap-3">
               <input
@@ -360,7 +329,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
               <div>
                 <Label htmlFor="private-upload" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Private (non-published)
+                  Private (no YouTube upload)
                 </Label>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                   Files delivered via Dropbox only. No YouTube or Google Drive upload.
@@ -444,32 +413,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             <span className="text-amber-500 font-medium">Note:</span> Format these exactly as you want them on the title card and video filename.
           </p>
 
-          {/* Non-interactive mode (admin only) */}
-          {isAdmin && (
-            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="non-interactive-url"
-                  checked={nonInteractive}
-                  onChange={(e) => setNonInteractive(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
-                />
-                <div>
-                  <Label htmlFor="non-interactive-url" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                    Skip lyrics review (non-interactive)
-                  </Label>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                    Skipping review will likely result in incorrect words in your karaoke video.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Private (non-published) mode */}
+          {/* Private (no YouTube upload) mode */}
           <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <div className="flex items-start gap-3">
               <input
@@ -482,7 +426,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
               <div>
                 <Label htmlFor="private-url" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Private (non-published)
+                  Private (no YouTube upload)
                 </Label>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                   Files delivered via Dropbox only. No YouTube or Google Drive upload.
@@ -604,32 +548,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
             )}
           </div>
 
-          {/* Non-interactive mode (admin only) */}
-          {isAdmin && (
-            <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="non-interactive-search"
-                  checked={nonInteractive}
-                  onChange={(e) => setNonInteractive(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="mt-1 w-4 h-4 rounded border-border bg-secondary accent-[var(--brand-pink)] focus:ring-[var(--brand-pink)] focus:ring-offset-background"
-                />
-                <div>
-                  <Label htmlFor="non-interactive-search" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                    Skip lyrics review (non-interactive)
-                  </Label>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    <span className="text-amber-500 font-medium">Warning:</span> auto lyrics correction isn&apos;t perfect.
-                    Skipping review will likely result in incorrect words in your karaoke video.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Private (non-published) mode */}
+          {/* Private (no YouTube upload) mode */}
           <div className="space-y-2 pt-4 border-t" style={{ borderColor: 'var(--card-border)' }}>
             <div className="flex items-start gap-3">
               <input
@@ -642,7 +561,7 @@ export function JobSubmission({ onJobCreated }: JobSubmissionProps) {
               />
               <div>
                 <Label htmlFor="private-search" className="cursor-pointer" style={{ color: 'var(--text)' }}>
-                  Private (non-published)
+                  Private (no YouTube upload)
                 </Label>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                   Files delivered via Dropbox only. No YouTube or Google Drive upload.

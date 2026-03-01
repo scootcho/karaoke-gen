@@ -1,11 +1,20 @@
 import type React from "react"
 import type { Metadata } from "next"
+import localFont from "next/font/local"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TenantProvider } from "@/components/tenant-provider"
 import { ImpersonationBannerWrapper } from "@/components/impersonation-banner-wrapper"
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration"
 import { GoogleAnalytics } from "@/components/google-analytics"
 import "./globals.css"
+
+// AvenirNext Bold - matches the font used in actual Nomad theme title card generation
+// (karaoke_gen/resources/AvenirNext-Bold.ttf)
+const titleCardFont = localFont({
+  src: "../public/fonts/AvenirNext-Bold.ttf",
+  display: "swap",
+  variable: "--font-title-card",
+})
 
 export const metadata: Metadata = {
   title: "Nomad Karaoke: Generator",
@@ -28,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="font-sans antialiased" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+      <body className={`font-sans antialiased ${titleCardFont.variable}`} style={{ background: 'var(--bg)', color: 'var(--text)' }}>
         <GoogleAnalytics />
         <ServiceWorkerRegistration />
         <ThemeProvider

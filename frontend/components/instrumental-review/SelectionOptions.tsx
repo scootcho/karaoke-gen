@@ -110,6 +110,13 @@ export function SelectionOptions({
               <div className="text-xs text-muted-foreground truncate">
                 {option.description}
               </div>
+              {backingVocalAnalysis?.recommended_selection === option.value && (
+                <div className="text-[10px] text-green-500/80 mt-0.5">
+                  {option.value === "clean"
+                    ? `Very few backing vocals detected (${backingVocalAnalysis.audible_percentage.toFixed(0)}%)`
+                    : `Significant backing vocals (${backingVocalAnalysis.audible_percentage.toFixed(0)}%) — may enhance the karaoke experience`}
+                </div>
+              )}
             </div>
           </button>
         ))}
