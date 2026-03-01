@@ -36,8 +36,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
                 Edit
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>Default mode; click words to edit that lyrics segment</p>
+            <TooltipContent className="max-w-xs">
+              <p>Click any word to edit that lyrics line. Default mode for correcting misheard words.</p>
             </TooltipContent>
           </Tooltip>
 
@@ -51,8 +51,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
                 Highlight
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>Hold SHIFT and click words to highlight the matching anchor sequence</p>
+            <TooltipContent className="max-w-xs">
+              <p>Click any word to see where it matches in the reference lyrics. Shortcut: hold SHIFT.</p>
             </TooltipContent>
           </Tooltip>
 
@@ -66,8 +66,8 @@ export default function ModeSelector({ effectiveMode, onChange }: ModeSelectorPr
                 Delete
               </ToggleGroupItem>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>Hold CTRL and click words to delete them</p>
+            <TooltipContent className="max-w-xs">
+              <p>Click any word to instantly delete it. Great for removing phantom words like &quot;And&quot; during instrumental sections. Shortcut: hold CTRL.</p>
             </TooltipContent>
           </Tooltip>
         </ToggleGroup>

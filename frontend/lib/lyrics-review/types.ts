@@ -293,8 +293,10 @@ export interface WordProps {
   isCorrectedGap?: boolean
   isUncorrectedGap?: boolean
   isCurrentlyPlaying?: boolean
+  isActiveGap?: boolean
   padding?: string
   onClick?: () => void
+  id?: string
   correction?: {
     originalWord: string
     handler: string
@@ -326,12 +328,16 @@ export interface TranscriptionViewProps {
   anchors?: AnchorSequence[]
   flashingHandler?: string | null
   onDataChange?: (updatedData: CorrectionData) => void
+  // Gap navigation
+  activeGapWordIds?: Set<string>
   // Review mode props for agentic corrections
   reviewMode?: boolean
   onRevertCorrection?: (wordId: string) => void
   onEditCorrection?: (wordId: string) => void
   onAcceptCorrection?: (wordId: string) => void
   onShowCorrectionDetail?: (wordId: string) => void
+  advancedMode?: boolean
+  onAdvancedModeToggle?: (enabled: boolean) => void
 }
 
 export interface ReferenceViewProps extends BaseViewProps {

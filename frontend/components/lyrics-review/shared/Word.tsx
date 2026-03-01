@@ -13,8 +13,10 @@ export const WordComponent = React.memo(function Word({
   isCorrectedGap,
   isUncorrectedGap,
   isCurrentlyPlaying,
+  isActiveGap,
   padding = 'px-[3px] py-[1px]',
   onClick,
+  id,
   correction,
 }: WordProps) {
   if (/^\s+$/.test(word)) {
@@ -34,11 +36,13 @@ export const WordComponent = React.memo(function Word({
 
   const wordElement = (
     <span
+      id={id}
       className={cn(
         'inline-block mr-[0.25em] transition-colors duration-200 cursor-pointer rounded-sm text-[0.85rem] leading-[1.2]',
         padding,
         bgColorClass,
         shouldFlash && 'animate-lyrics-flash',
+        isActiveGap && 'ring-1 ring-yellow-400 dark:ring-yellow-300',
         correction && 'underline decoration-dotted underline-offset-2 decoration-muted-foreground',
         'hover:bg-foreground/[0.08]'
       )}

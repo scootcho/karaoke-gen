@@ -41,6 +41,8 @@ export interface HighlightedTextProps {
   gaps?: GapSequence[]
   flashingHandler?: string | null
   corrections?: WordCorrection[]
+  // Gap navigation
+  activeGapWordIds?: Set<string>
   // Review mode props for agentic corrections
   reviewMode?: boolean
   onRevertCorrection?: (wordId: string) => void
@@ -68,6 +70,7 @@ export function HighlightedText({
   gaps = [],
   flashingHandler,
   corrections = [],
+  activeGapWordIds,
   reviewMode = false,
   onRevertCorrection,
   onEditCorrection,
@@ -116,7 +119,14 @@ export function HighlightedText({
       return Boolean(
         (flashingType === 'anchor' && wordPos.type === 'anchor') ||
           (flashingType === 'corrected' && isCorrected) ||
-          (flashingType === 'uncorrected' && wordPos.type === 'gap' && !isCorrected) ||
+          (flashingType === 'uncorrected' &&
+            wordPos.type === 'gap' &&
+            !isCorrected &&
+            // If highlightInfo specifies a gap, only flash that gap's words
+            (!highlightInfo?.sequence ||
+              (highlightInfo.sequence as GapSequence).transcribed_word_ids?.includes(
+                wordPos.word.id
+              ))) ||
           (flashingType === 'word' &&
             ((highlightInfo?.type === 'anchor' &&
               wordPos.type === 'anchor' &&
@@ -202,6 +212,7 @@ export function HighlightedText({
                 onRevert={() => onRevertCorrection?.(wordPos.word.id)}
                 onEdit={() => onEditCorrection?.(wordPos.word.id)}
                 onAccept={() => onAcceptCorrection?.(wordPos.word.id)}
+                id={`word-${wordPos.word.id}`}
                 onClick={() => {
                   if (isMobile) {
                     onShowCorrectionDetail?.(wordPos.word.id)
@@ -230,6 +241,8 @@ export function HighlightedText({
               isCorrectedGap={wordPos.isCorrected}
               isUncorrectedGap={wordPos.type === 'gap' && !wordPos.isCorrected}
               isCurrentlyPlaying={shouldHighlightWord(wordPos)}
+              isActiveGap={activeGapWordIds?.has(wordPos.word.id)}
+              id={`word-${wordPos.word.id}`}
               onClick={() =>
                 handleWordClick(
                   wordPos.word.text,
@@ -299,6 +312,7 @@ export function HighlightedText({
                       onRevert={() => onRevertCorrection?.(word.id)}
                       onEdit={() => onEditCorrection?.(word.id)}
                       onAccept={() => onAcceptCorrection?.(word.id)}
+                      id={`word-${word.id}`}
                       onClick={() => {
                         if (isMobile) {
                           onShowCorrectionDetail?.(word.id)
@@ -333,6 +347,8 @@ export function HighlightedText({
                     isCurrentlyPlaying={shouldHighlightWord(
                       wordPos || { word: word.text, id: word.id }
                     )}
+                    isActiveGap={activeGapWordIds?.has(word.id)}
+                    id={`word-${word.id}`}
                     onClick={() => handleWordClick(word.text, word.id, anchor, sequence)}
                     correction={correctionInfo}
                   />

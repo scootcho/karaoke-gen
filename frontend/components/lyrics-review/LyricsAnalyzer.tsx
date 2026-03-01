@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Video, Check } from 'lucide-react'
+import { Video, Check, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AnchorSequence,
@@ -16,6 +16,7 @@ import {
   WordCorrection,
   CorrectionAnnotation,
   FlashType,
+  Word,
   WordClickInfo,
   ModalContent,
 } from '@/lib/lyrics-review/types'
@@ -46,6 +47,7 @@ import {
   getModalState,
 } from '@/lib/lyrics-review/utils/keyboardHandlers'
 import Header from './Header'
+import GapNavigator from './GapNavigator'
 import { getWordsFromIds } from '@/lib/lyrics-review/utils/wordUtils'
 import { applyOffsetToCorrectionData, applyOffsetToSegment } from '@/lib/lyrics-review/utils/timingUtils'
 
@@ -150,6 +152,18 @@ export default function LyricsAnalyzer({
     return saved !== null ? saved === 'true' : true
   })
 
+  // Stats panel visibility
+  const [statsVisible, setStatsVisible] = useState(false)
+
+  // Advanced mode for transcription view (Simple/Advanced toggle)
+  const [advancedMode, setAdvancedMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('lyricsReviewAdvancedMode') === 'true'
+  })
+
+  // Gap navigation state
+  const [currentGapIndex, setCurrentGapIndex] = useState<number | null>(null)
+
   // Correction detail card state
   const [correctionDetailOpen, setCorrectionDetailOpen] = useState(false)
   const [selectedCorrection, setSelectedCorrection] = useState<{
@@ -204,11 +218,97 @@ export default function LyricsAnalyzer({
     }
   }, [data, isReadOnly, initialData])
 
+  // Flash handler (defined early so gap navigation can use it)
+  const handleFlash = useCallback((type: FlashType, info?: HighlightInfo) => {
+    setFlashingType(null)
+    setHighlightInfo(null)
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setFlashingType(type)
+        if (info) {
+          setHighlightInfo(info)
+        }
+        setTimeout(() => {
+          setFlashingType(null)
+          setHighlightInfo(null)
+        }, 1200)
+      })
+    })
+  }, [])
+
+  // Compute uncorrected gaps for navigation
+  const uncorrectedGaps = useMemo(() => {
+    const gapCorrections = data.corrections.reduce(
+      (map: Record<string, boolean>, correction) => {
+        const gap = data.gap_sequences.find((g) =>
+          g.transcribed_word_ids.includes(correction.word_id)
+        )
+        if (gap) map[gap.id] = true
+        return map
+      },
+      {} as Record<string, boolean>
+    )
+    return data.gap_sequences.filter(
+      (gap) => !gapCorrections[gap.id] && gap.transcribed_word_ids.length > 0
+    )
+  }, [data.gap_sequences, data.corrections])
+
+  // Navigate to a specific gap
+  const navigateToGap = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= uncorrectedGaps.length) return
+      setCurrentGapIndex(index)
+      const gap = uncorrectedGaps[index]
+      const firstWordId = gap.transcribed_word_ids[0]
+      if (firstWordId) {
+        const el = document.getElementById(`word-${firstWordId}`)
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }
+      // Flash only the specific gap's words (not all uncorrected gaps)
+      const gapWords = gap.transcribed_word_ids
+        .map((id) => {
+          for (const seg of data.corrected_segments) {
+            const w = seg.words.find((w) => w.id === id)
+            if (w) return w
+          }
+          return null
+        })
+        .filter((w): w is Word => w !== null)
+      handleFlash('uncorrected', {
+        type: 'gap',
+        sequence: gap,
+        transcribed_words: gapWords,
+      })
+    },
+    [uncorrectedGaps, handleFlash, data.corrected_segments]
+  )
+
+  const handlePrevGap = useCallback(() => {
+    const newIndex = currentGapIndex !== null ? currentGapIndex - 1 : 0
+    navigateToGap(Math.max(0, newIndex))
+  }, [currentGapIndex, navigateToGap])
+
+  const handleNextGap = useCallback(() => {
+    const newIndex = currentGapIndex !== null ? currentGapIndex + 1 : 0
+    navigateToGap(Math.min(uncorrectedGaps.length - 1, newIndex))
+  }, [currentGapIndex, uncorrectedGaps.length, navigateToGap])
+
+  // Word IDs for the currently active gap (persistent ring indicator)
+  const activeGapWordIds = useMemo(() => {
+    if (currentGapIndex === null || currentGapIndex >= uncorrectedGaps.length) return undefined
+    return new Set(uncorrectedGaps[currentGapIndex].transcribed_word_ids)
+  }, [currentGapIndex, uncorrectedGaps])
+
   // Keyboard handlers
   useEffect(() => {
     const { handleKeyDown, handleKeyUp, cleanup } = setupKeyboardHandlers({
       setIsShiftPressed,
       setIsCtrlPressed,
+      onNextGap: handleNextGap,
+      onPrevGap: handlePrevGap,
     })
 
     window.addEventListener('keydown', handleKeyDown)
@@ -225,7 +325,7 @@ export default function LyricsAnalyzer({
       document.body.style.userSelect = ''
       cleanup()
     }
-  }, [isAnyModalOpen])
+  }, [isAnyModalOpen, handleNextGap, handlePrevGap])
 
   // Update modal state tracking
   useEffect(() => {
@@ -284,25 +384,6 @@ export default function LyricsAnalyzer({
   // Calculate effective mode based on modifier key states
   const effectiveMode = isCtrlPressed ? 'delete_word' : isShiftPressed ? 'highlight' : interactionMode
 
-  // Flash handler
-  const handleFlash = useCallback((type: FlashType, info?: HighlightInfo) => {
-    setFlashingType(null)
-    setHighlightInfo(null)
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setFlashingType(type)
-        if (info) {
-          setHighlightInfo(info)
-        }
-        setTimeout(() => {
-          setFlashingType(null)
-          setHighlightInfo(null)
-        }, 1200)
-      })
-    })
-  }, [])
-
   // Annotation handlers
   const handleSaveAnnotation = useCallback(
     (annotation: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>) => {
@@ -319,6 +400,13 @@ export default function LyricsAnalyzer({
     setAnnotationsEnabled(enabled)
     if (typeof window !== 'undefined') {
       localStorage.setItem('annotationsEnabled', String(enabled))
+    }
+  }, [])
+
+  const handleAdvancedModeToggle = useCallback((enabled: boolean) => {
+    setAdvancedMode(enabled)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lyricsReviewAdvancedMode', String(enabled))
     }
   }, [])
 
@@ -925,10 +1013,9 @@ export default function LyricsAnalyzer({
         onRedo={handleRedo}
         canUndo={canUndo}
         canRedo={canRedo}
-        onUnCorrectAll={handleUnCorrectAll}
         onResetCorrections={handleResetCorrections}
-        annotationsEnabled={annotationsEnabled}
-        onAnnotationsToggle={handleAnnotationsToggle}
+        statsVisible={statsVisible}
+        onStatsToggle={() => setStatsVisible((v) => !v)}
         reviewMode={reviewMode}
         onReviewModeToggle={setReviewMode}
         onAcceptAllCorrections={handleAcceptAllCorrections}
@@ -956,6 +1043,9 @@ export default function LyricsAnalyzer({
           onEditCorrection={handleEditCorrection}
           onAcceptCorrection={handleAcceptCorrection}
           onShowCorrectionDetail={handleShowCorrectionDetail}
+          activeGapWordIds={activeGapWordIds}
+          advancedMode={advancedMode}
+          onAdvancedModeToggle={handleAdvancedModeToggle}
         />
         <ReferenceView
           referenceSources={data.reference_lyrics}
@@ -979,7 +1069,35 @@ export default function LyricsAnalyzer({
 
       {/* Sticky footer bar */}
       {!isReadOnly && apiClient && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg py-3 px-4 z-50 flex justify-center items-center gap-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg py-3 px-4 z-50 flex justify-center items-center gap-4 flex-wrap">
+          <GapNavigator
+            currentGapIndex={currentGapIndex}
+            totalGaps={uncorrectedGaps.length}
+            onPrevGap={handlePrevGap}
+            onNextGap={handleNextGap}
+          />
+          {data.gap_sequences.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{
+                    width: `${data.gap_sequences.length > 0 ? ((data.gap_sequences.length - uncorrectedGaps.length) / data.gap_sequences.length) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              {uncorrectedGaps.length === 0 ? (
+                <span className="text-xs text-green-500 flex items-center gap-0.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  All gaps reviewed
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {data.gap_sequences.length - uncorrectedGaps.length}/{data.gap_sequences.length} gaps reviewed
+                </span>
+              )}
+            </div>
+          )}
           <span className="text-sm text-muted-foreground">Lyrics look good?</span>
           <Button onClick={handleFinishReview} disabled={isReviewComplete}>
             {isReviewComplete ? 'Review Complete' : 'Preview Video'}
