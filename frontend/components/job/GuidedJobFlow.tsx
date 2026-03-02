@@ -69,7 +69,12 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
     setSubmitError("")
     try {
       // NOW we trigger the actual audio selection + processing
-      await api.selectAudioResult(jobId, selectedResultIndex)
+      // Pass overrides from Step 3 (Customize) — these weren't available at job creation
+      await api.selectAudioResult(jobId, selectedResultIndex, {
+        is_private: isPrivate || undefined,
+        display_artist: displayArtist.trim() || undefined,
+        display_title: displayTitle.trim() || undefined,
+      })
       onJobCreated()
       setShowSuccess(true)
     } catch (err) {

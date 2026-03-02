@@ -428,6 +428,39 @@ async def check_idle_reminder(
         return {"status": "error", "job_id": job_id, "message": str(e)}
 
 
+@router.post("/trigger-gdrive-validation")
+async def trigger_gdrive_validation_endpoint(
+    http_request: Request,
+    auth_data: Tuple[str, UserType, int] = Depends(require_admin)
+):
+    """
+    Trigger GDrive validation via the Cloud Function.
+
+    Called by a Cloud Tasks delayed task after a job completes and uploads
+    to the public GDrive share. The 5-minute delay ensures E2E test cleanup
+    finishes before the validator checks for sequence gaps.
+    """
+    from backend.services.gdrive_validator_client import trigger_gdrive_validation
+
+    trace_context = extract_trace_context(dict(http_request.headers))
+
+    logger.info("GDRIVE_VALIDATION_TRIGGER starting (delayed post-job)")
+    add_span_attribute("operation", "gdrive_validation_trigger")
+
+    try:
+        result = trigger_gdrive_validation()
+        if result is None:
+            return {"status": "skipped", "message": "GDRIVE_VALIDATOR_URL not configured"}
+
+        status = result.get("status", "unknown")
+        add_span_event("validation_complete", {"result_status": status})
+        return {"status": status, "message": "GDrive validation completed", "result": result}
+    except Exception as e:
+        logger.exception(f"GDrive validation trigger failed: {e}")
+        add_span_event("error", {"error": str(e)})
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/health")
 async def internal_health(
     auth_data: Tuple[str, UserType, int] = Depends(require_admin)

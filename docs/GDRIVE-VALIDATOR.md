@@ -48,7 +48,7 @@ The validator checks:
 | Trigger | When | How |
 |---------|------|-----|
 | **Daily schedule** | 9:00 PM ET every day | Cloud Scheduler → HTTP POST with OIDC token |
-| **Post-job** | After each job uploads to public share | Backend orchestrator → HTTP POST with OIDC token |
+| **Post-job** | 5 minutes after each job uploads to public share | Backend orchestrator → Cloud Tasks (5 min delay) → internal endpoint → Cloud Function |
 | **Manual** | On demand | `python scripts/check_public_share.py` via gcloud CLI |
 
 ### Notifications
@@ -73,7 +73,11 @@ Notifications are sent when:
 | `infrastructure/__main__.py` | Pulumi config (env vars, secrets, IAM) |
 | `infrastructure/modules/iam/worker_sas.py` | Service account definition |
 | `backend/services/gdrive_validator_client.py` | Backend HTTP client (OIDC auth) |
+| `backend/services/worker_service.py` | Cloud Tasks scheduling (5 min delay) |
+| `backend/api/routes/internal.py` | `/internal/trigger-gdrive-validation` endpoint |
 | `backend/workers/video_worker_orchestrator.py` | Post-job trigger integration |
+| `infrastructure/modules/cloud_tasks.py` | Pulumi config for `gdrive-validation-queue` |
+| `infrastructure/functions/gdrive_validator/test_main.py` | Unit tests for Cloud Function |
 | `scripts/check_public_share.py` | Local CLI for manual checks |
 
 ## Configuration
@@ -167,16 +171,23 @@ Note: `deploy.sh` deploys the source code. Pulumi manages the infrastructure (en
 
 ### Post-Job Trigger Not Firing
 
+The post-job trigger uses a 5-minute Cloud Tasks delay (via `gdrive-validation-queue`) to allow E2E test cleanup to finish before validation runs.
+
 1. Check that `GDRIVE_VALIDATOR_URL` secret is set:
    ```bash
    gcloud secrets versions access latest --secret=gdrive-validator-url --project=nomadkaraoke
    ```
-2. Check backend logs for the job — look for "Triggering post-job GDrive validation" or "GDrive validation trigger failed"
-3. Verify the backend SA has invoker permissions:
+2. Check backend logs for "Scheduled delayed GDrive validation" or "GDrive validation trigger failed"
+3. Check Cloud Tasks queue for pending tasks:
+   ```bash
+   gcloud tasks list --queue=gdrive-validation-queue --location=us-central1 --project=nomadkaraoke
+   ```
+4. Verify the backend SA has invoker permissions:
    ```bash
    gcloud functions get-iam-policy gdrive-validator --region=us-central1 --project=nomadkaraoke
    ```
-4. The trigger only fires for non-private jobs (jobs with `gdrive_folder_id` set)
+5. The trigger only fires for non-private jobs (jobs with `gdrive_folder_id` set)
+6. If Cloud Tasks scheduling fails, the orchestrator falls back to immediate validation
 
 ### False Positive Gaps
 
@@ -210,3 +221,4 @@ The cloud function does metadata-only checks via the GDrive API (fast, cheap, ca
 
 - **2025-12-24**: Initial cloud function deployed with Pushbullet notifications and daily Cloud Scheduler trigger
 - **2026-02-28**: Added SendGrid email (primary), kept Pushbullet (fallback). Added post-job trigger from backend. Added `scripts/check_public_share.py` for manual invocation. Motivated by NOMAD-1271 duplicate brand code incident where daily-only checks left a duplicate undetected for ~24 hours.
+- **2026-03-02**: NOMAD-1276 incident fix. Post-job trigger now uses 5-minute Cloud Tasks delay instead of immediate invocation, preventing false "all clear" when E2E test files are still in GDrive during cleanup. Also fixed cross-folder gap detection (uses global max across all folders) and added 28 unit tests for the Cloud Function.

@@ -709,11 +709,23 @@ class VideoWorkerOrchestrator:
             # Don't fail the pipeline - notifications are optional
 
     async def _trigger_gdrive_validation(self):
-        """Trigger GDrive validation after uploading to the public share."""
+        """Schedule delayed GDrive validation after uploading to the public share.
+
+        Uses Cloud Tasks to delay the validation by 5 minutes, giving E2E tests
+        time to verify output and clean up (delete test files) before the validator
+        checks for sequence gaps. Falls back to immediate trigger if scheduling fails.
+        """
         try:
-            from backend.services.gdrive_validator_client import trigger_gdrive_validation
-            self.job_log.info("Triggering post-job GDrive validation")
-            trigger_gdrive_validation()
+            from backend.services.worker_service import get_worker_service
+            worker_service = get_worker_service()
+            success = await worker_service.schedule_gdrive_validation()
+            if success:
+                self.job_log.info("Scheduled delayed GDrive validation (5 min)")
+            else:
+                # Fallback: trigger immediately if scheduling failed
+                self.job_log.warning("Cloud Tasks scheduling failed, triggering validation immediately")
+                from backend.services.gdrive_validator_client import trigger_gdrive_validation
+                trigger_gdrive_validation()
         except Exception as e:
             self.job_log.warning(f"GDrive validation trigger failed (non-fatal): {e}")
             # Never fail the pipeline for validation

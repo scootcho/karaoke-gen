@@ -38,6 +38,7 @@ WORKER_QUEUES = {
     "render-video": "render-worker-queue",
     "video": "video-worker-queue",
     "idle-reminder": "idle-reminder-queue",  # For delayed idle reminder checks
+    "gdrive-validation": "gdrive-validation-queue",  # For delayed post-job validation
 }
 
 # Dispatch deadlines for each worker type (in seconds)
@@ -51,10 +52,15 @@ WORKER_DISPATCH_DEADLINES = {
     "render-video": 1800,  # 30 min - Video encoding can be slow
     "video": 1800,       # 30 min - Video encoding can be slow
     "idle-reminder": 60, # 1 min - Quick check and potential email send
+    "gdrive-validation": 120, # 2 min - Calls Cloud Function which validates GDrive
 }
 
 # Default delay for idle reminders (seconds)
 IDLE_REMINDER_DELAY_SECONDS = 2 * 60  # 2 minutes
+
+# Default delay for post-job GDrive validation (seconds)
+# Gives E2E tests time to verify output and clean up before validator runs
+GDRIVE_VALIDATION_DELAY_SECONDS = 5 * 60  # 5 minutes
 
 
 class WorkerService:
@@ -578,6 +584,93 @@ class WorkerService:
         except Exception as e:
             logger.error(
                 f"[job:{job_id}] Failed to schedule idle reminder: {e}",
+                exc_info=True
+            )
+            return False
+
+    async def schedule_gdrive_validation(
+        self,
+        delay_seconds: int = GDRIVE_VALIDATION_DELAY_SECONDS
+    ) -> bool:
+        """
+        Schedule a delayed GDrive validation check.
+
+        Fires after the specified delay so that E2E test cleanup completes
+        before the validator runs, avoiding false "all clear" reports.
+
+        Args:
+            delay_seconds: Delay before executing the validation (default: 5 minutes)
+
+        Returns:
+            True if task was scheduled successfully, False otherwise
+        """
+        if not self._use_cloud_tasks:
+            logger.info(
+                f"GDrive validation not scheduled (Cloud Tasks disabled). "
+                f"Would have fired in {delay_seconds}s."
+            )
+            return True
+
+        try:
+            from google.cloud import tasks_v2
+            from google.protobuf import timestamp_pb2
+            import time
+
+            queue_name = WORKER_QUEUES.get("gdrive-validation")
+            if not queue_name:
+                logger.error("GDrive validation queue not configured")
+                return False
+
+            project = self.settings.google_cloud_project
+            if not project:
+                logger.error("GOOGLE_CLOUD_PROJECT not set")
+                return False
+
+            location = self.settings.gcp_region
+
+            # Build queue path
+            parent = self.tasks_client.queue_path(project, location, queue_name)
+
+            # Build headers
+            headers = {
+                "Content-Type": "application/json",
+            }
+
+            if self._admin_token:
+                headers["X-Admin-Token"] = self._admin_token
+
+            headers = inject_trace_context(headers)
+
+            # Calculate schedule time
+            schedule_time = timestamp_pb2.Timestamp()
+            schedule_time.FromSeconds(int(time.time()) + delay_seconds)
+
+            dispatch_deadline_seconds = WORKER_DISPATCH_DEADLINES.get("gdrive-validation", 120)
+
+            # Build task payload
+            task = {
+                "http_request": {
+                    "http_method": tasks_v2.HttpMethod.POST,
+                    "url": f"{self._base_url}/api/internal/trigger-gdrive-validation",
+                    "headers": headers,
+                    "body": b"{}",
+                    "oidc_token": {
+                        "service_account_email": f"karaoke-backend@{project}.iam.gserviceaccount.com",
+                    },
+                },
+                "schedule_time": schedule_time,
+                "dispatch_deadline": duration_pb2.Duration(seconds=dispatch_deadline_seconds),
+            }
+
+            response = self.tasks_client.create_task(parent=parent, task=task)
+            logger.info(
+                f"Scheduled GDrive validation in {delay_seconds}s: {response.name}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Failed to schedule GDrive validation: {e}",
                 exc_info=True
             )
             return False
