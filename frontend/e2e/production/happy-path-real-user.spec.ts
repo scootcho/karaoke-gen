@@ -11,8 +11,8 @@ import { createEmailHelper, isEmailTestingAvailable } from '../helpers/email-tes
  *
  * Test Flow:
  * 1. Landing Page - Navigate and verify
- * 2. New User Signup - Create testmail.app inbox, submit beta form, verify email
- * 3. Magic Link Auth - Click magic link to authenticate
+ * 2. New User Signup - Create testmail.app inbox, request magic link via AuthDialog
+ * 3. Magic Link Auth - Receive email, extract link, navigate to verify
  * 4. Create Job - Guided flow Step 1 (Song Info) + Step 2 (Choose Audio)
  * 5. Audio Selection & Create - Guided flow Step 3 (Customize & Create) → "Job Created"
  * 6. Wait for Processing - Monitor via UI status updates
@@ -218,7 +218,7 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
       console.log('STEP 1 COMPLETE: Landing page loads correctly');
 
       // =========================================================================
-      // STEP 2 & 3: Authentication (either via pre-configured token or beta signup)
+      // STEP 2 & 3: Authentication (either via pre-configured token or magic link signup)
       // =========================================================================
 
       if (usePreConfiguredToken) {
@@ -241,7 +241,7 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         await page.waitForLoadState('networkidle');
 
         await page.screenshot({ path: 'test-results/02-token-injected.png' });
-        console.log('STEP 2 COMPLETE: Token injected, skipping beta enrollment');
+        console.log('STEP 2 COMPLETE: Token injected, skipping signup');
 
         console.log('\n========================================');
         console.log('STEP 3: Verify Authentication');
@@ -258,9 +258,9 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         console.log('STEP 3 COMPLETE: User authenticated with pre-configured token');
 
       } else {
-        // ----- FULL PATH: Beta signup with testmail.app -----
+        // ----- FULL PATH: Magic link signup with testmail.app -----
         console.log('\n========================================');
-        console.log('STEP 2: New User Beta Enrollment');
+        console.log('STEP 2: New User Signup via Magic Link');
         console.log('========================================');
 
         // Create test inbox
@@ -268,117 +268,83 @@ test.describe('E2E Happy Path - Real User with Full UI Interactions', () => {
         inboxId = inbox.id!;
         console.log(`  Test email: ${inbox.emailAddress}`);
 
-        // Scroll to beta section first to ensure it's in view
-        const betaSection = page.locator('text=Beta Tester Program').first();
-        await betaSection.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(500);
+        // Click "Sign Up Free" button to open the AuthDialog
+        const signUpButton = page.getByRole('button', { name: /sign up free/i });
+        await expect(signUpButton).toBeVisible({ timeout: TIMEOUTS.action });
+        await page.screenshot({ path: 'test-results/02-before-signup-click.png' });
+        console.log('  Clicking Sign Up Free button...');
+        await signUpButton.click();
 
-        // Open beta form - click the Join Beta Program button
-        const betaButton = page.getByRole('button', { name: /join beta program/i });
-        await expect(betaButton).toBeVisible({ timeout: TIMEOUTS.action });
+        // Wait for the AuthDialog to appear with email input
+        const authEmailInput = page.getByPlaceholder('you@example.com');
+        await expect(authEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
+        console.log('  Auth dialog visible');
 
-        // Take screenshot before clicking
-        await page.screenshot({ path: 'test-results/02-before-beta-click.png' });
-        console.log('  Clicking Join Beta Program button...');
+        // Fill email in the AuthDialog
+        await authEmailInput.fill(inbox.emailAddress!);
+        await page.screenshot({ path: 'test-results/02a-auth-dialog-filled.png' });
+        console.log('  Email entered in auth dialog');
 
-        // Click and wait for the form to appear
-        await betaButton.click();
+        // Click "Send Sign-In Link" button
+        const sendLinkButton = page.getByRole('button', { name: /send sign-in link/i });
+        await expect(sendLinkButton).toBeEnabled({ timeout: TIMEOUTS.action });
+        await sendLinkButton.click();
+        console.log('  Clicked Send Sign-In Link');
 
-        // Wait for beta form to appear - the button should be replaced by the form
-        const betaEmailInput = page.locator('#beta-email');
-
-        // Poll for form visibility with retries
-        let formVisible = false;
-        for (let attempt = 0; attempt < 5; attempt++) {
-          await page.waitForTimeout(1000);
-          formVisible = await betaEmailInput.isVisible().catch(() => false);
-          if (formVisible) break;
-          console.log(`  Form not visible yet, attempt ${attempt + 1}/5`);
-          // Try clicking again if form didn't appear
-          const buttonStillVisible = await betaButton.isVisible().catch(() => false);
-          if (buttonStillVisible) {
-            console.log('  Button still visible, clicking again...');
-            await betaButton.click();
-          }
-        }
-
-        await page.screenshot({ path: 'test-results/02-after-beta-click.png' });
-
-        if (!formVisible) {
-          // Debug: log the page state
-          const pageContent = await page.content();
-          console.log('  Page HTML length:', pageContent.length);
-          console.log('  Looking for beta-email in HTML:', pageContent.includes('beta-email'));
-          throw new Error('Beta form did not appear after clicking Join Beta Program button');
-        }
-
-        await expect(betaEmailInput).toBeVisible({ timeout: TIMEOUTS.action });
-        console.log('  Beta form visible');
-
-        // Fill beta form
-        await betaEmailInput.fill(inbox.emailAddress!);
-
-        // Fill the promise/reason field
-        const promiseField = page.locator('#beta-promise, textarea');
-        await promiseField.first().fill('piri - dog (E2E test: testing complete karaoke generation flow)');
-
-        // Check the acceptance checkbox
-        const acceptCheckbox = page.locator('#beta-accept, input[type="checkbox"]');
-        await acceptCheckbox.first().check();
-
-        await page.screenshot({ path: 'test-results/02a-beta-form-filled.png' });
-        console.log('  Beta form filled');
-
-        // Intercept the beta enrollment request to add E2E bypass header
-        // This bypasses the IP-based rate limit that blocks repeated enrollments from the same IP
-        const bypassKey = process.env.E2E_BYPASS_KEY;
-        if (bypassKey) {
-          console.log('  Adding E2E bypass header to enrollment request');
-          await page.route('**/api/users/beta/enroll', async (route) => {
-            const request = route.request();
-            const headers = {
-              ...request.headers(),
-              'X-E2E-Bypass-Key': bypassKey,
-            };
-            await route.continue({ headers });
-          });
-        }
-
-        // Submit form - look for the submit button
-        const submitButton = page.getByRole('button', { name: /get.*free.*credit|submit|enroll/i });
-        await expect(submitButton).toBeEnabled({ timeout: TIMEOUTS.action });
-        await submitButton.click();
-
-        // Wait for success and redirect
+        // Wait for confirmation ("Check Your Email" text)
         await expect(
-          page.getByText(/welcome to the beta|redirecting to the app/i)
+          page.getByText(/check your email/i)
         ).toBeVisible({ timeout: 15000 });
+        await page.screenshot({ path: 'test-results/02b-magic-link-sent.png' });
+        console.log('  Magic link email sent confirmation visible');
 
-        await page.waitForURL(/\/app/, { timeout: 10000 });
+        // =========================================================================
+        // STEP 3: Magic Link Authentication
+        // =========================================================================
+        console.log('\n========================================');
+        console.log('STEP 3: Magic Link Authentication');
+        console.log('========================================');
+
+        // Wait for the magic link email to arrive via testmail.app
+        console.log('  Waiting for magic link email...');
+        const magicLinkEmail = await emailHelper!.waitForEmail(inbox.id!, 60000);
+        console.log(`  Received email: ${magicLinkEmail.subject}`);
+
+        // Extract the magic link URL from the email
+        const magicLinkUrl = emailHelper!.extractMagicLink(magicLinkEmail);
+        if (!magicLinkUrl) {
+          console.log('  Email body preview:', (magicLinkEmail.body || '').substring(0, 500));
+          throw new Error('Could not extract magic link from email');
+        }
+        console.log(`  Magic link extracted: ${magicLinkUrl.substring(0, 80)}...`);
+
+        // Navigate to the magic link URL to verify and authenticate
+        await page.goto(magicLinkUrl);
+        console.log('  Navigated to magic link verification page');
+
+        // Wait for successful verification
+        await expect(
+          page.getByText(/successfully signed in/i)
+        ).toBeVisible({ timeout: 15000 });
+        console.log('  Successfully signed in via magic link');
+
+        // Wait for redirect to /app
+        await page.waitForURL(/\/app/, { timeout: 15000 });
         console.log('  Redirected to /app');
 
         // Get the token from localStorage
         accessToken = await getAuthToken(page);
         if (!accessToken) {
-          throw new Error('No access token received after beta enrollment');
+          throw new Error('No access token received after magic link auth');
         }
         console.log('  Session token received');
 
-        await page.screenshot({ path: 'test-results/02b-app-after-enrollment.png' });
-        console.log('STEP 2 COMPLETE: Beta enrollment successful');
+        await page.screenshot({ path: 'test-results/02c-app-after-signup.png' });
+        console.log('STEP 2-3 COMPLETE: Magic link signup and auth successful');
 
-        // =========================================================================
-        // STEP 3: Verify Credits (via UI)
-        // =========================================================================
-        console.log('\n========================================');
-        console.log('STEP 3: Verify Credits');
-        console.log('========================================');
-
-        // Look for credit indicator in the UI
+        // Verify credits are visible
         const creditText = await page.getByText(/credit/i).first().textContent();
         console.log(`  Credits visible: ${creditText}`);
-
-        console.log('STEP 3 COMPLETE: User authenticated with credits');
       }
 
       // =========================================================================
