@@ -54,7 +54,7 @@ WORKER_DISPATCH_DEADLINES = {
 }
 
 # Default delay for idle reminders (seconds)
-IDLE_REMINDER_DELAY_SECONDS = 5 * 60  # 5 minutes
+IDLE_REMINDER_DELAY_SECONDS = 2 * 60  # 2 minutes
 
 
 class WorkerService:
