@@ -592,6 +592,101 @@ class FirestoreService:
             logger.error(f"Error listing tokens: {e}")
             return []
 
+    # ============================================
+    # Search Session Methods
+    # ============================================
+
+    def create_search_session(self, session_data: dict) -> str:
+        """Store a search session for the guided job creation flow.
+
+        Sessions are short-lived (TTL enforced via Firestore TTL policy) and
+        represent a completed audio search that hasn't yet been converted into
+        a job.  The document is consumed (deleted) when create-from-search runs.
+
+        Args:
+            session_data: Dict with session_id, user_email, tenant_id, artist,
+                          title, results, remote_search_id, ttl_expiry.
+
+        Returns:
+            session_id from session_data.
+        """
+        try:
+            session_id = session_data['session_id']
+            doc_ref = self.db.collection('search_sessions').document(session_id)
+            doc_ref.set(session_data)
+            logger.info(f"Created search session {session_id}")
+            return session_id
+        except Exception as e:
+            logger.error(f"Error creating search session: {e}")
+            raise
+
+    def get_search_session(self, session_id: str) -> Optional[dict]:
+        """Retrieve a search session by ID.
+
+        Returns None only if the document does not exist.
+        Raises on Firestore errors so callers can distinguish a missing session
+        from a transient datastore failure.
+
+        TTL-expired documents may still appear briefly; callers should check
+        ttl_expiry and treat expired sessions as missing.
+
+        Args:
+            session_id: UUID string identifying the session.
+
+        Returns:
+            Session dict or None.
+        """
+        doc_ref = self.db.collection('search_sessions').document(session_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            return None
+        return doc.to_dict()
+
+    def consume_search_session(self, session_id: str) -> Optional[dict]:
+        """Atomically read and delete a search session.
+
+        Uses a Firestore transaction to prevent two concurrent job-creation
+        requests from both reading the same session and creating duplicate jobs.
+
+        Returns the session dict if it existed, None if it did not exist.
+        Raises on Firestore errors.
+
+        Args:
+            session_id: UUID string identifying the session.
+
+        Returns:
+            Session dict or None.
+        """
+        doc_ref = self.db.collection('search_sessions').document(session_id)
+
+        @firestore.transactional
+        def _read_and_delete(transaction, ref):
+            doc = ref.get(transaction=transaction)
+            if not doc.exists:
+                return None
+            session_data = doc.to_dict()
+            transaction.delete(ref)
+            return session_data
+
+        transaction = self.db.transaction()
+        return _read_and_delete(transaction, doc_ref)
+
+    def delete_search_session(self, session_id: str) -> None:
+        """Delete a search session after it has been consumed by job creation.
+
+        Errors are logged but not re-raised — a missing or already-deleted
+        session is a no-op.
+
+        Args:
+            session_id: UUID string identifying the session.
+        """
+        try:
+            doc_ref = self.db.collection('search_sessions').document(session_id)
+            doc_ref.delete()
+            logger.debug(f"Deleted search session {session_id}")
+        except Exception as e:
+            logger.error(f"Error deleting search session {session_id}: {e}")
+
 
 # Singleton client instance
 _firestore_client: Optional[firestore.Client] = None
