@@ -80,7 +80,46 @@ title: "Song Title"
 is_private: false  # Optional. If true, Dropbox uses Tracks-NonPublished/NOMADNP, no YouTube/GDrive
 ```
 
-Returns job ID. Triggers async processing.
+Returns job ID. Triggers async processing. Max request body ~32MB (Cloud Run limit). For larger files, use the signed URL upload flow below.
+
+#### Create Job with Signed URL Upload (large files)
+
+Three-step flow that bypasses Cloud Run's 32MB body limit. Used automatically by the frontend for files ≥25MB.
+
+**Step 1: Create job and get signed URLs**
+```http
+POST /api/jobs/create-with-upload-urls
+Content-Type: application/json
+
+{
+  "artist": "Artist Name",
+  "title": "Song Title",
+  "files": [{"filename": "song.wav", "content_type": "audio/wav", "file_type": "audio"}],
+  "is_private": false
+}
+```
+
+Returns `job_id` and `upload_urls` list. Each entry has `file_type`, `upload_url` (signed GCS URL), and `content_type`.
+
+**Step 2: Upload file directly to GCS**
+```http
+PUT <upload_url>
+Content-Type: audio/wav
+
+<file bytes>
+```
+
+Direct PUT to GCS signed URL — does not go through the backend.
+
+**Step 3: Notify backend**
+```http
+POST /api/jobs/{job_id}/uploads-complete
+Content-Type: application/json
+
+{"uploaded_files": ["audio"]}
+```
+
+Triggers async processing.
 
 #### Get Job Status
 

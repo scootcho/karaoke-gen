@@ -217,6 +217,28 @@ export interface FlacfetchHealth {
   error?: string;
 }
 
+// Signed URL upload types
+export interface SignedUploadUrl {
+  file_type: string;
+  gcs_path: string;
+  upload_url: string;
+  content_type: string;
+}
+
+export interface CreateJobWithUploadUrlsResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  upload_urls: SignedUploadUrl[];
+  server_version: string;
+}
+
+export interface UploadProgress {
+  phase: 'creating' | 'uploading' | 'finalizing';
+  loaded: number;
+  total: number;
+}
+
 class ApiError extends Error {
   status: number;
   data?: any;
@@ -357,7 +379,145 @@ export const api = {
 
     return handleResponse<UploadJobResponse>(response);
   },
-  
+
+  /**
+   * Create a job and get signed URLs for direct GCS upload.
+   * Used for large files that exceed Cloud Run's 32MB body limit.
+   */
+  async createJobWithUploadUrls(
+    artist: string,
+    title: string,
+    files: Array<{ filename: string; content_type: string; file_type: string }>,
+    options?: {
+      is_private?: boolean;
+    }
+  ): Promise<CreateJobWithUploadUrlsResponse> {
+    const body: Record<string, any> = { artist, title, files };
+    if (options?.is_private !== undefined) body.is_private = options.is_private;
+
+    const response = await fetch(`${API_BASE_URL}/api/jobs/create-with-upload-urls`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    return handleResponse<CreateJobWithUploadUrlsResponse>(response);
+  },
+
+  /**
+   * Upload a file directly to a GCS signed URL.
+   * Uses XMLHttpRequest for progress tracking.
+   */
+  uploadToSignedUrl(
+    signedUrl: string,
+    file: File,
+    contentType: string,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', signedUrl, true);
+      xhr.setRequestHeader('Content-Type', contentType);
+
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress(e.loaded, e.total);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new ApiError(`Upload failed: ${xhr.statusText}`, xhr.status));
+        }
+      };
+
+      xhr.onerror = () => reject(new ApiError('Upload failed: network error', 0));
+      xhr.send(file);
+    });
+  },
+
+  /**
+   * Mark uploads as complete so the backend starts processing.
+   */
+  async completeJobUpload(
+    jobId: string,
+    uploadedFileTypes: string[],
+  ): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/uploads-complete`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ uploaded_files: uploadedFileTypes }),
+    });
+
+    return handleResponse<{ status: string; message: string }>(response);
+  },
+
+  /**
+   * Smart upload: uses direct upload for small files (<25MB),
+   * signed URL flow for large files (>=25MB).
+   */
+  async uploadJobSmart(
+    file: File,
+    artist: string,
+    title: string,
+    options?: { is_private?: boolean },
+    onProgress?: (progress: UploadProgress) => void,
+  ): Promise<UploadJobResponse> {
+    const SIGNED_URL_THRESHOLD = 25 * 1024 * 1024; // 25MB
+
+    if (file.size < SIGNED_URL_THRESHOLD) {
+      // Small file: use existing direct upload
+      return this.uploadJob(file, artist, title, options);
+    }
+
+    // Large file: use signed URL flow
+    // Step 1: Create job and get signed URL
+    onProgress?.({ phase: 'creating', loaded: 0, total: file.size });
+
+    const contentType = file.type || 'application/octet-stream';
+    const createResponse = await this.createJobWithUploadUrls(
+      artist, title,
+      [{ filename: file.name, content_type: contentType, file_type: 'audio' }],
+      options,
+    );
+
+    const audioUrl = createResponse.upload_urls.find(u => u.file_type === 'audio');
+    if (!audioUrl) {
+      throw new ApiError('No upload URL returned for audio file', 500);
+    }
+
+    // Step 2: Upload file directly to GCS
+    onProgress?.({ phase: 'uploading', loaded: 0, total: file.size });
+
+    await this.uploadToSignedUrl(
+      audioUrl.upload_url,
+      file,
+      audioUrl.content_type,
+      (loaded, total) => onProgress?.({ phase: 'uploading', loaded, total }),
+    );
+
+    // Step 3: Notify backend that upload is complete
+    onProgress?.({ phase: 'finalizing', loaded: file.size, total: file.size });
+
+    await this.completeJobUpload(createResponse.job_id, ['audio']);
+
+    return {
+      status: 'success',
+      job_id: createResponse.job_id,
+      message: 'Job created via signed URL upload',
+    };
+  },
+
   /**
    * Create a job from a URL (YouTube, etc.)
    */

@@ -24,6 +24,14 @@ def create_bucket() -> storage.Bucket:
         location="US-CENTRAL1",
         force_destroy=False,  # Prevent accidental deletion
         uniform_bucket_level_access=True,
+        cors=[
+            storage.BucketCorArgs(
+                origins=["https://gen.nomadkaraoke.com", "http://localhost:3000"],
+                methods=["PUT"],
+                response_headers=["Content-Type"],
+                max_age_seconds=3600,
+            ),
+        ],
         lifecycle_rules=[
             storage.BucketLifecycleRuleArgs(
                 action=storage.BucketLifecycleRuleActionArgs(type="Delete"),

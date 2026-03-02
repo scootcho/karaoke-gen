@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, type UploadProgress } from "@/lib/api"
 import {
   ExtendedAudioSearchResult,
   groupResults,
@@ -16,7 +16,7 @@ import {
 } from "@/lib/audio-search-utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, Music2, ChevronDown, ChevronUp, Upload, Youtube, ArrowLeft, Check, AlertTriangle, CheckCircle2, Lightbulb } from "lucide-react"
+import { Loader2, Music2, ChevronDown, ChevronUp, Upload, Youtube, ArrowLeft, Check, AlertTriangle, CheckCircle2, Lightbulb, Info } from "lucide-react"
 import Link from "next/link"
 
 interface AudioSourceStepProps {
@@ -106,6 +106,7 @@ export function AudioSourceStep({
   const [jobId, setJobId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [isCreditError, setIsCreditError] = useState(false)
+  const [isTimeoutError, setIsTimeoutError] = useState(false)
   const [showOtherOptions, setShowOtherOptions] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const searchTriggered = useRef(false)
@@ -115,6 +116,7 @@ export function AudioSourceStep({
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [isSubmittingFallback, setIsSubmittingFallback] = useState(false)
   const [fallbackMode, setFallbackMode] = useState<"upload" | "url" | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
 
   // Auto-trigger search on mount
   const triggerSearch = useCallback(async () => {
@@ -177,6 +179,7 @@ export function AudioSourceStep({
       await new Promise(resolve => setTimeout(resolve, interval))
     }
     // Timeout
+    setIsTimeoutError(true)
     setError("Search is taking longer than expected. You can try the fallback options below.")
     setIsSearching(false)
   }
@@ -214,10 +217,14 @@ export function AudioSourceStep({
     setIsSubmittingFallback(true)
     setError("")
     setIsCreditError(false)
+    setIsTimeoutError(false)
+    setUploadProgress(null)
     try {
-      const response = await api.uploadJob(uploadFile, artist.trim(), title.trim(), {
-        is_private: isPrivate,
-      })
+      const response = await api.uploadJobSmart(
+        uploadFile, artist.trim(), title.trim(),
+        { is_private: isPrivate },
+        (progress) => setUploadProgress(progress),
+      )
       onJobCreated(response.job_id, "upload")
       onFallbackComplete()
     } catch (err) {
@@ -231,6 +238,7 @@ export function AudioSourceStep({
       }
     } finally {
       setIsSubmittingFallback(false)
+      setUploadProgress(null)
     }
   }
 
@@ -285,7 +293,11 @@ export function AudioSourceStep({
 
       {/* Error display */}
       {error && (
-        <div className="text-sm text-red-400 bg-red-500/10 rounded p-3">
+        <div className={`text-sm rounded p-3 ${
+          isTimeoutError
+            ? 'text-amber-400 bg-amber-500/10'
+            : 'text-red-400 bg-red-500/10'
+        }`}>
           <p>{error}</p>
           {isCreditError && (
             <Link href="/#pricing" className="inline-block mt-1 font-medium underline" style={{ color: 'var(--brand-pink)' }}>Buy Credits</Link>
@@ -345,6 +357,7 @@ export function AudioSourceStep({
             noCredits={noCredits}
             onUrlSubmit={handleUrlSubmit}
             onUploadSubmit={handleUploadSubmit}
+            uploadProgress={uploadProgress}
           />
         </>
       )}
@@ -367,11 +380,7 @@ export function AudioSourceStep({
 
       {/* No results */}
       {!isSearching && results.length === 0 && !error && (
-        <div className="flex flex-col items-center justify-center py-8" style={{ color: 'var(--text-muted)' }}>
-          <Music2 className="w-8 h-8 mb-2 opacity-50" />
-          <p className="text-sm">No audio sources found for this song.</p>
-          <p className="text-xs mt-1">Try the options below instead.</p>
-        </div>
+        <NoResultsSection />
       )}
 
       {/* Fallback section for Tier 1/2 and no-results — at the bottom */}
@@ -389,6 +398,7 @@ export function AudioSourceStep({
           noCredits={noCredits}
           onUrlSubmit={handleUrlSubmit}
           onUploadSubmit={handleUploadSubmit}
+          uploadProgress={uploadProgress}
         />
       )}
     </div>
@@ -851,6 +861,29 @@ function ResultRow({
   )
 }
 
+/** Contextual guidance when search returns no results */
+function NoResultsSection() {
+  return (
+    <div
+      className="border rounded-lg p-4 space-y-3 border-[var(--card-border)] bg-[var(--secondary)]/30"
+      data-testid="no-results-section"
+    >
+      <div className="flex items-center gap-2">
+        <Info className="w-4 h-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
+        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+          No audio sources found
+        </span>
+      </div>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        This is common for unreleased tracks, independent music, remixes/covers, or songs with unusual characters in the title.
+      </p>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        Try simplifying your search — remove special characters, or search by just part of the title. Otherwise, you can upload your own audio file or paste a YouTube URL below.
+      </p>
+    </div>
+  )
+}
+
 /** Fallback section — upload or YouTube URL */
 function FallbackSection({
   tier,
@@ -865,6 +898,7 @@ function FallbackSection({
   noCredits,
   onUrlSubmit,
   onUploadSubmit,
+  uploadProgress,
 }: {
   tier: number
   hasResults: boolean
@@ -878,14 +912,20 @@ function FallbackSection({
   noCredits: boolean
   onUrlSubmit: (e: React.FormEvent) => void
   onUploadSubmit: (e: React.FormEvent) => void
+  uploadProgress: UploadProgress | null
 }) {
   const isTier3WithResults = tier === 3 && hasResults
+  const largeButtons = !hasResults
+  const buttonHeight = largeButtons ? 'h-12' : 'h-9'
+  const iconSize = largeButtons ? 'w-4 h-4' : 'w-3.5 h-3.5'
   return (
     <div className={`${isTier3WithResults ? '' : 'border-t pt-4 '}space-y-3`} style={{ borderColor: 'var(--card-border)' }}>
       <p className={isTier3WithResults ? 'text-xs font-medium' : 'text-xs'} style={{ color: 'var(--text-muted)' }}>
         {isTier3WithResults
           ? "Have your own audio? Upload it or paste a YouTube URL:"
-          : 'Not finding what you need? Try simplifying your search, or provide your own audio:'
+          : hasResults
+            ? 'Not finding what you need? Try simplifying your search, or provide your own audio:'
+            : 'Provide your own audio:'
         }
       </p>
 
@@ -895,20 +935,20 @@ function FallbackSection({
           variant="outline"
           size="sm"
           onClick={() => { setFallbackMode(fallbackMode === "url" ? null : "url"); }}
-          className={`h-9 text-xs ${fallbackMode === "url" ? 'border-[var(--brand-pink)] bg-[var(--brand-pink)]/10' : ''}`}
+          className={`${buttonHeight} text-xs ${fallbackMode === "url" ? 'border-[var(--brand-pink)] bg-[var(--brand-pink)]/10' : ''}`}
           style={{ borderColor: fallbackMode === "url" ? 'var(--brand-pink)' : 'var(--card-border)', color: 'var(--text)' }}
         >
-          <Youtube className="w-3.5 h-3.5 mr-1.5" />
+          <Youtube className={`${iconSize} mr-1.5`} />
           YouTube URL
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => { setFallbackMode(fallbackMode === "upload" ? null : "upload"); }}
-          className={`h-9 text-xs ${fallbackMode === "upload" ? 'border-[var(--brand-pink)] bg-[var(--brand-pink)]/10' : ''}`}
+          className={`${buttonHeight} text-xs ${fallbackMode === "upload" ? 'border-[var(--brand-pink)] bg-[var(--brand-pink)]/10' : ''}`}
           style={{ borderColor: fallbackMode === "upload" ? 'var(--brand-pink)' : 'var(--card-border)', color: 'var(--text)' }}
         >
-          <Upload className="w-3.5 h-3.5 mr-1.5" />
+          <Upload className={`${iconSize} mr-1.5`} />
           Upload file
         </Button>
       </div>
@@ -947,21 +987,21 @@ function FallbackSection({
       {/* Upload form */}
       {fallbackMode === "upload" && (
         <form onSubmit={onUploadSubmit} className="space-y-3 p-3 rounded-lg" style={{ backgroundColor: 'var(--secondary)' }}>
-          <div
-            className="relative border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer"
+          <label
+            className="block border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer"
             style={{
               borderColor: uploadFile ? 'rgba(255, 122, 204, 0.5)' : 'var(--card-border)',
               backgroundColor: uploadFile ? 'rgba(255, 122, 204, 0.05)' : 'transparent',
             }}
           >
-            <Input
+            <input
               type="file"
               accept=".mp3,.wav,.flac,.m4a,.ogg,audio/*"
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (file) setUploadFile(file)
               }}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              className="sr-only"
               disabled={isSubmittingFallback}
             />
             {uploadFile ? (
@@ -972,10 +1012,48 @@ function FallbackSection({
             ) : (
               <div>
                 <Upload className="w-6 h-6 mx-auto mb-1" style={{ color: 'var(--text-muted)' }} />
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>MP3, WAV, FLAC, M4A, or OGG</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Click to browse or drag a file</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>MP3, WAV, FLAC, M4A, or OGG</p>
               </div>
             )}
-          </div>
+          </label>
+
+          {/* Large file warning */}
+          {uploadFile && uploadFile.size > 100 * 1024 * 1024 && !isSubmittingFallback && (
+            <div className="flex items-start gap-2 rounded p-2 text-[10px] text-amber-400 bg-amber-500/10">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Large file ({(uploadFile.size / 1024 / 1024).toFixed(0)} MB) — upload may take a while depending on your connection.</span>
+            </div>
+          )}
+
+          {/* Upload progress bar */}
+          {uploadProgress && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                <span>
+                  {uploadProgress.phase === 'creating' && 'Preparing upload...'}
+                  {uploadProgress.phase === 'uploading' && `Uploading... ${(uploadProgress.loaded / 1024 / 1024).toFixed(1)} / ${(uploadProgress.total / 1024 / 1024).toFixed(1)} MB`}
+                  {uploadProgress.phase === 'finalizing' && 'Finalizing...'}
+                </span>
+                {uploadProgress.phase === 'uploading' && uploadProgress.total > 0 && (
+                  <span>{Math.round((uploadProgress.loaded / uploadProgress.total) * 100)}%</span>
+                )}
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--card-border)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    backgroundColor: 'var(--brand-pink)',
+                    width: uploadProgress.phase === 'creating' ? '5%'
+                      : uploadProgress.phase === 'finalizing' ? '95%'
+                      : uploadProgress.total > 0 ? `${Math.round((uploadProgress.loaded / uploadProgress.total) * 90) + 5}%`
+                      : '5%',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           <Button
             type="submit"
             size="sm"
