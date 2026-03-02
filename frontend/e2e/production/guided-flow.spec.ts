@@ -259,11 +259,7 @@ test.describe('Guided Job Creation Flow', () => {
     expect(selectCalled).toBe(true);
     console.log('  Verified selectAudioResult was called');
 
-    // Assert: backend state — verify the job exists and has correct base fields
-    // Note: is_private and display overrides are sent during the initial search request,
-    // before the user reaches Step 3. The current flow sends is_private from the parent
-    // state at search time (defaulting to false). Display overrides follow the same pattern.
-    // A future improvement should update these fields when the user confirms on Step 3.
+    // Assert: backend state — verify the job exists and overrides were applied
     expect(searchJobId).toBeTruthy();
     const token = getAdminToken()!;
     const jobResponse = await request.get(`${API_URL}/api/jobs/${searchJobId}`, {
@@ -275,7 +271,11 @@ test.describe('Guided Job Creation Flow', () => {
     // Verify core fields
     expect(job.artist.toLowerCase()).toBe(TEST_SONG.artist.toLowerCase());
     expect(job.title.toLowerCase()).toBe(TEST_SONG.title.toLowerCase());
-    console.log(`  Verified backend job: ${job.artist} - ${job.title} (is_private=${job.is_private})`);
+    // Verify overrides from Step 3 were applied to the backend job
+    expect(job.is_private).toBe(true);
+    expect(job.display_artist).toBe('PIRI (Display)');
+    expect(job.display_title).toBe('DOG (Display)');
+    console.log(`  Verified backend job: ${job.artist} - ${job.title} (is_private=${job.is_private}, display_artist=${job.display_artist})`);
   });
 
   // ---------------------------------------------------------------------------

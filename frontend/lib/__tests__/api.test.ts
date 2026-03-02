@@ -299,6 +299,50 @@ describe("API Client", () => {
         })
       )
     })
+
+    it("should send overrides in request body when provided", async () => {
+      const mockResponse = { status: "success", message: "Audio selected" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await api.selectAudioResult("456", 2, {
+        is_private: true,
+        display_artist: "Custom Artist",
+        display_title: "Custom Title",
+      })
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body).toEqual({
+        selection_index: 2,
+        is_private: true,
+        display_artist: "Custom Artist",
+        display_title: "Custom Title",
+      })
+    })
+
+    it("should not include undefined overrides in request body", async () => {
+      const mockResponse = { status: "success", message: "Audio selected" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      await api.selectAudioResult("789", 0, {
+        is_private: true,
+      })
+
+      const fetchCall = (global.fetch as jest.Mock).mock.calls[0]
+      const body = JSON.parse(fetchCall[1].body)
+      expect(body.selection_index).toBe(0)
+      expect(body.is_private).toBe(true)
+      expect(body.display_artist).toBeUndefined()
+      expect(body.display_title).toBeUndefined()
+    })
   })
 })
 
