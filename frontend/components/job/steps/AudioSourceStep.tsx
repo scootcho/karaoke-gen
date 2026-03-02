@@ -138,15 +138,25 @@ export function AudioSourceStep({
       // Now poll for results
       await pollForResults(response.job_id)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 402) {
+      if (err instanceof ApiError && err.status === 404 && err.data?.detail?.error === "no_results") {
+        // No results is not an error — show the NoResultsSection instead of a red error banner
+        if (err.data.detail.job_id) {
+          setJobId(err.data.detail.job_id)
+          onJobCreated(err.data.detail.job_id, "search")
+        }
+        setResults([])
+        setIsSearching(false)
+      } else if (err instanceof ApiError && err.status === 402) {
         setIsCreditError(true)
         setError("You're out of credits. Buy more to continue creating karaoke videos.")
+        setIsSearching(false)
       } else if (err instanceof ApiError) {
         setError(err.message)
+        setIsSearching(false)
       } else {
         setError("Failed to search for audio")
+        setIsSearching(false)
       }
-      setIsSearching(false)
     }
   }, [artist, title, displayArtist, displayTitle, isPrivate, onJobCreated])
 
