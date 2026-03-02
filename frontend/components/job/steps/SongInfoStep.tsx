@@ -103,6 +103,17 @@ export function SongInfoStep({
         </p>
       </div>
 
+      {/* Unreleased / own audio note */}
+      <div
+        className="flex items-start gap-2.5 rounded-lg p-3 text-xs"
+        style={{ backgroundColor: 'var(--secondary)', color: 'var(--text-muted)' }}
+      >
+        <Upload className="w-4 h-4 shrink-0 mt-0.5 text-blue-400" />
+        <p>
+          Have an unreleased song or your own audio file? Enter the artist and title here anyway — you can upload your file on step 2, and mark it private on step 3 if you&apos;re not ready to publish it.
+        </p>
+      </div>
+
       <Button
         type="submit"
         disabled={!canProceed || disabled}
