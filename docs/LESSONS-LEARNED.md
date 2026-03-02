@@ -773,3 +773,17 @@ This generalizes the preview encoding pattern (`/encode-preview` was already ide
 4. **Keep docs minimal and current** - Less documentation, always accurate
 5. **Check gitignore early for new directories** - Especially frontend `lib/` dirs
 
+---
+
+## Incident Insights
+
+### NOMAD-1276: Validator Timing Race Condition (2026-03-02)
+
+**Problem:** Post-job GDrive validator fired immediately after upload, before E2E test cleanup could delete test files. Validator saw all 1,276 files (including test files), reported "no issues," then cleanup deleted the test files, leaving NOMAD-1276 as a gap.
+
+**Key lessons:**
+1. **Fire-and-forget validation is risky** — When a validator runs alongside cleanup, the order matters. A 5-minute Cloud Tasks delay is a simple, reliable fix.
+2. **Multi-step UI state can silently lose data** — The guided flow's `is_private` checkbox was in Step 3, but the job was created in Step 2 with the default value. Always check where state is committed vs. where it's displayed.
+3. **Cloud Run service naming matters for debugging** — The service is `karaoke-backend`, not `karaoke-gen-api`. Wrong name returns empty logs, wasting investigation time.
+4. **Cross-folder gap detection needs global context** — Per-folder max misses trailing gaps when folders have different highest numbers. Use the global max across all folders as the upper bound.
+
