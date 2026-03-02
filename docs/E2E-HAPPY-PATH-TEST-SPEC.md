@@ -17,11 +17,10 @@
 ### 1. New User Registration (testmail.app)
 
 - [ ] Navigate to landing page (`gen.nomadkaraoke.com`)
-- [ ] Click "Sign In" or "Get Started" button
+- [ ] Click "Sign Up Free" button on landing page
 - [ ] Generate a unique test email address (testmail.app namespace)
-- [ ] Enter the test email in the beta enrollment form
-- [ ] Submit the form
-- [ ] Wait for welcome/magic-link email via testmail.app API
+- [ ] Enter the test email in the AuthDialog and click "Send Sign-In Link"
+- [ ] Wait for magic-link email via testmail.app API
 - [ ] Extract the magic link from the email
 - [ ] Click/navigate to the magic link to authenticate
 - [ ] Verify user is logged in and has credits
@@ -136,7 +135,7 @@ Use `piri - dog` because:
 
 Capture screenshots at each major milestone:
 1. Landing page loaded
-2. Beta form submitted
+2. Magic link sent
 3. Email received
 4. Logged in successfully
 5. Job created

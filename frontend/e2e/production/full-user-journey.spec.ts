@@ -14,7 +14,7 @@ import { createEmailHelper, isEmailTestingAvailable } from '../helpers/email-tes
  *
  * Test Flow:
  * 1. Landing Page - Verify hero, pricing, FAQ
- * 2. Beta Enrollment - Create inbox, submit form, verify email
+ * 2. Signup via Magic Link - Create inbox, request magic link, verify email
  * 3. App Authentication - Verify token and credits
  * 4. Create Karaoke Job - Search for test song
  * 5. Audio Selection - Select cached audio
@@ -135,7 +135,7 @@ async function findJobByArtistTitle(
 // =============================================================================
 
 test.describe('Production E2E - Full User Journey', () => {
-  test('Complete flow: Landing -> Beta Enrollment -> Karaoke Generation', async ({
+  test('Complete flow: Landing -> Signup -> Karaoke Generation', async ({
     page,
     request,
   }) => {
@@ -170,10 +170,10 @@ test.describe('Production E2E - Full User Journey', () => {
     console.log('STEP 1 COMPLETE: Landing page loads correctly');
 
     // =========================================================================
-    // STEP 2: Beta Enrollment (or use existing token)
+    // STEP 2: Signup via Magic Link (or use existing token)
     // =========================================================================
     console.log('\n========================================');
-    console.log('STEP 2: Beta Enrollment / Authentication');
+    console.log('STEP 2: Signup / Authentication');
     console.log('========================================');
 
     if (accessToken) {
@@ -190,7 +190,7 @@ test.describe('Production E2E - Full User Journey', () => {
       });
       console.log('  Authenticated successfully with existing token');
     } else if (isEmailTestingAvailable()) {
-      console.log('  Starting beta enrollment with testmail.app');
+      console.log('  Starting magic link signup with testmail.app');
       const emailHelper = await createEmailHelper();
 
       if (!emailHelper.isAvailable) {
@@ -202,28 +202,43 @@ test.describe('Production E2E - Full User Journey', () => {
       console.log(`  Test email: ${inbox.emailAddress}`);
 
       try {
-        // Open beta form
-        await page.getByRole('button', { name: /join beta program/i }).click();
-        await expect(page.locator('#beta-email')).toBeVisible({ timeout: TIMEOUTS.expect });
+        // Click "Sign Up Free" to open the AuthDialog
+        await page.getByRole('button', { name: /sign up free/i }).click();
 
-        // Fill beta form
-        await page.locator('#beta-email').fill(inbox.emailAddress!);
-        await page.locator('textarea').fill(
-          'I want to create karaoke for my favorite indie songs! Testing the beta program.'
-        );
-        await page.locator('input[type="checkbox"]').check();
+        // Wait for the AuthDialog email input
+        const authEmailInput = page.getByPlaceholder('you@example.com');
+        await expect(authEmailInput).toBeVisible({ timeout: TIMEOUTS.expect });
 
-        await page.screenshot({ path: 'test-results/02a-beta-form-filled.png' });
+        // Fill email and request magic link
+        await authEmailInput.fill(inbox.emailAddress!);
+        await page.screenshot({ path: 'test-results/02a-auth-dialog-filled.png' });
 
-        // Submit form
-        await page.getByRole('button', { name: /get my free credit/i }).click();
+        await page.getByRole('button', { name: /send sign-in link/i }).click();
 
-        // Wait for success and redirect
+        // Wait for confirmation
         await expect(
-          page.getByText(/welcome to the beta|redirecting to the app/i)
+          page.getByText(/check your email/i)
+        ).toBeVisible({ timeout: 15000 });
+        console.log('  Magic link email requested');
+
+        // Wait for magic link email
+        console.log('  Waiting for magic link email...');
+        const email = await emailHelper.waitForEmail(inbox.id!, 60000);
+        console.log(`  Email received: "${email.subject}"`);
+
+        // Extract and navigate to magic link
+        const magicLinkUrl = emailHelper.extractMagicLink(email);
+        if (!magicLinkUrl) {
+          throw new Error('Could not extract magic link from email');
+        }
+        await page.goto(magicLinkUrl);
+
+        // Wait for successful verification and redirect
+        await expect(
+          page.getByText(/successfully signed in/i)
         ).toBeVisible({ timeout: 15000 });
 
-        await page.waitForURL(/\/app/, { timeout: 10000 });
+        await page.waitForURL(/\/app/, { timeout: 15000 });
         console.log('  Redirected to /app');
 
         // Get the token from localStorage
@@ -232,17 +247,11 @@ test.describe('Production E2E - Full User Journey', () => {
         ) ?? undefined;
 
         if (!accessToken) {
-          throw new Error('No access token received after beta enrollment');
+          throw new Error('No access token received after magic link auth');
         }
         console.log('  Session token received');
 
-        // Verify welcome email
-        console.log('  Waiting for welcome email...');
-        const email = await emailHelper.waitForEmail(inbox.id!, 60000);
-        console.log(`  Email received: "${email.subject}"`);
-        expect(email.subject).toMatch(/welcome.*beta|beta.*tester/i);
-
-        await page.screenshot({ path: 'test-results/02b-app-after-enrollment.png' });
+        await page.screenshot({ path: 'test-results/02b-app-after-signup.png' });
       } finally {
         if (inbox.id) {
           await emailHelper.deleteInbox(inbox.id);
