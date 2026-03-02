@@ -72,20 +72,11 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
               {user.display_name || user.email}
             </span>
             <span
-              role="button"
-              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation()
                 handleBuyCredits()
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  handleBuyCredits()
-                }
-              }}
-              className="flex items-center gap-1 text-warning font-medium hover:text-warning/80 transition-colors"
+              className="flex items-center gap-1 text-warning font-medium hover:text-warning/80 transition-colors cursor-pointer"
               title="Buy more credits"
             >
               <Coins className="w-3 h-3" />
