@@ -130,7 +130,7 @@ def create_made_for_you_checkout(
                     'description': "Professional 4K karaoke video with perfectly synced lyrics",
                     'images': ['https://gen.nomadkaraoke.com/nomad-logo.png'],
                 },
-                'unit_amount': 1500,  # $15.00
+                'unit_amount': 5000,  # $50.00
             },
             'quantity': 1,
         }],

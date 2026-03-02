@@ -212,7 +212,7 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-16 px-4">
+      <section className="pt-32 pb-6 px-4">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold mb-6 leading-tight">
             Create a <span className="gradient-text">Karaoke Video</span> for Any Song
@@ -231,9 +231,9 @@ export default function LandingPage() {
               >
                 <Video className="w-5 h-5" />
                 Create It Yourself
-                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-sm">Free</span>
+                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-sm">$5</span>
               </button>
-              <span className="text-dark-400 text-sm">2 free credits included — review lyrics yourself</span>
+              <span className="text-green-400 text-sm">2 free credits included - no payment required</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <a
@@ -242,15 +242,12 @@ export default function LandingPage() {
               >
                 <Gift className="w-5 h-5" />
                 We&apos;ll Make It For You
-                <span className="ml-1 px-2 py-0.5 bg-yellow-500/20 rounded-full text-sm">$15</span>
+                <span className="ml-1 px-2 py-0.5 bg-yellow-500/20 rounded-full text-sm">$50</span>
               </a>
               <span className="text-yellow-400/70 text-sm">We handle everything, delivered in 24h</span>
             </div>
           </div>
 
-          <p className="text-green-400 text-sm font-medium mt-2">
-            Every account includes 2 free credits — no payment required
-          </p>
         </div>
       </section>
 
@@ -529,7 +526,7 @@ export default function LandingPage() {
             <h2 className="text-3xl font-bold mb-4">We&apos;ll Make It For You</h2>
             <p className="text-dark-400 max-w-2xl mx-auto mb-4">
               Don&apos;t want to use the Generator and review the lyrics yourself? No problem.
-              Tell us the song, pay $15, and we&apos;ll deliver your karaoke video within 24 hours.
+              Tell us the song, pay $50, and we&apos;ll deliver your karaoke video within 24 hours.
             </p>
             <p className="text-dark-500 text-sm max-w-xl mx-auto">
               Don&apos;t want to spend 10 minutes reviewing lyrics? For just $10 more than DIY, we handle everything.
@@ -624,7 +621,7 @@ export default function LandingPage() {
             <div className="bg-dark-800 border border-dark-700 rounded-2xl p-6 sm:p-8">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-semibold">Order a Video</h3>
-                <div className="text-2xl font-bold text-primary-400">$15</div>
+                <div className="text-2xl font-bold text-primary-400">$50</div>
               </div>
 
               <form onSubmit={handleMadeForYouSubmit} className="space-y-5">
@@ -774,7 +771,7 @@ export default function LandingPage() {
                   ) : (
                     <>
                       <CreditCard className="w-5 h-5" />
-                      Pay $15 &amp; Order
+                      Pay $50 &amp; Order
                     </>
                   )}
                 </button>
