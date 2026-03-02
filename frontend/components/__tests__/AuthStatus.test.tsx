@@ -74,8 +74,8 @@ describe('AuthStatus', () => {
     })
     render(<AuthStatus />)
 
-    // Wait for component to mount
-    const menuButton = await screen.findByRole('button')
+    // Wait for component to mount - find the dropdown trigger specifically
+    const menuButton = await screen.findByRole('button', { name: /test@example\.com|5 credits/i })
 
     // Verify the dropdown trigger has correct attributes
     expect(menuButton).toHaveAttribute('aria-haspopup', 'menu')
@@ -94,7 +94,7 @@ describe('AuthStatus', () => {
     render(<AuthStatus onAuthChange={mockOnAuthChange} />)
 
     // Wait for component to mount and verify it renders the user menu
-    const menuButton = await screen.findByRole('button')
+    const menuButton = await screen.findByRole('button', { name: /test@example\.com|5 credits/i })
     expect(menuButton).toBeInTheDocument()
   })
 })
