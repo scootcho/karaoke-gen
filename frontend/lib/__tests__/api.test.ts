@@ -151,6 +151,260 @@ describe("API Client", () => {
     })
   })
 
+  describe("createJobWithUploadUrls", () => {
+    it("should create a job and return signed upload URLs", async () => {
+      const mockResponse = {
+        status: "success",
+        job_id: "job-456",
+        message: "Job created. Upload files.",
+        upload_urls: [
+          { file_type: "audio", gcs_path: "uploads/job-456/audio.mp3", upload_url: "https://storage.googleapis.com/signed-url", content_type: "audio/mpeg" },
+        ],
+        server_version: "1.0.0",
+      }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.createJobWithUploadUrls(
+        "Artist", "Title",
+        [{ filename: "test.mp3", content_type: "audio/mpeg", file_type: "audio" }],
+        { is_private: true },
+      )
+
+      expect(result).toEqual(mockResponse)
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/create-with-upload-urls"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        })
+      )
+
+      // Verify request body
+      const call = (global.fetch as jest.Mock).mock.calls[0]
+      const body = JSON.parse(call[1].body)
+      expect(body.artist).toBe("Artist")
+      expect(body.title).toBe("Title")
+      expect(body.files).toHaveLength(1)
+      expect(body.is_private).toBe(true)
+    })
+  })
+
+  describe("uploadToSignedUrl", () => {
+    let mockXhr: {
+      open: jest.Mock
+      setRequestHeader: jest.Mock
+      send: jest.Mock
+      upload: { onprogress: ((e: any) => void) | null }
+      onload: (() => void) | null
+      onerror: (() => void) | null
+      status: number
+      statusText: string
+    }
+
+    beforeEach(() => {
+      mockXhr = {
+        open: jest.fn(),
+        setRequestHeader: jest.fn(),
+        send: jest.fn(),
+        upload: { onprogress: null },
+        onload: null,
+        onerror: null,
+        status: 200,
+        statusText: "OK",
+      }
+      global.XMLHttpRequest = jest.fn(() => mockXhr) as any
+    })
+
+    it("should PUT file to signed URL", async () => {
+      const file = new File(["test"], "test.mp3", { type: "audio/mpeg" })
+      mockXhr.send.mockImplementation(() => {
+        mockXhr.onload?.()
+      })
+
+      await api.uploadToSignedUrl("https://storage.googleapis.com/signed", file, "audio/mpeg")
+
+      expect(mockXhr.open).toHaveBeenCalledWith("PUT", "https://storage.googleapis.com/signed", true)
+      expect(mockXhr.setRequestHeader).toHaveBeenCalledWith("Content-Type", "audio/mpeg")
+      expect(mockXhr.send).toHaveBeenCalledWith(file)
+    })
+
+    it("should report progress via callback", async () => {
+      const file = new File(["test"], "test.mp3", { type: "audio/mpeg" })
+      const onProgress = jest.fn()
+
+      mockXhr.send.mockImplementation(() => {
+        // Simulate progress event
+        mockXhr.upload.onprogress?.({ lengthComputable: true, loaded: 500, total: 1000 })
+        mockXhr.onload?.()
+      })
+
+      await api.uploadToSignedUrl("https://storage.googleapis.com/signed", file, "audio/mpeg", onProgress)
+
+      expect(onProgress).toHaveBeenCalledWith(500, 1000)
+    })
+
+    it("should reject on non-2xx status", async () => {
+      const file = new File(["test"], "test.mp3", { type: "audio/mpeg" })
+      mockXhr.status = 403
+      mockXhr.statusText = "Forbidden"
+      mockXhr.send.mockImplementation(() => {
+        mockXhr.onload?.()
+      })
+
+      await expect(
+        api.uploadToSignedUrl("https://storage.googleapis.com/signed", file, "audio/mpeg")
+      ).rejects.toThrow("Upload failed: Forbidden")
+    })
+
+    it("should reject on network error", async () => {
+      const file = new File(["test"], "test.mp3", { type: "audio/mpeg" })
+      mockXhr.send.mockImplementation(() => {
+        mockXhr.onerror?.()
+      })
+
+      await expect(
+        api.uploadToSignedUrl("https://storage.googleapis.com/signed", file, "audio/mpeg")
+      ).rejects.toThrow("network error")
+    })
+  })
+
+  describe("completeJobUpload", () => {
+    it("should POST uploaded file types", async () => {
+      const mockResponse = { status: "success", message: "Processing started" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.completeJobUpload("job-789", ["audio"])
+
+      expect(result).toEqual(mockResponse)
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/job-789/uploads-complete"),
+        expect.objectContaining({ method: "POST" })
+      )
+
+      const call = (global.fetch as jest.Mock).mock.calls[0]
+      const body = JSON.parse(call[1].body)
+      expect(body.uploaded_files).toEqual(["audio"])
+    })
+  })
+
+  describe("uploadJobSmart", () => {
+    it("should use direct upload for small files (<25MB)", async () => {
+      const smallFile = new File(["x".repeat(100)], "small.mp3", { type: "audio/mpeg" })
+      const mockResponse = { status: "success", job_id: "direct-123", message: "Done" }
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      })
+
+      const result = await api.uploadJobSmart(smallFile, "Artist", "Title")
+
+      expect(result).toEqual(mockResponse)
+      // Should call the direct upload endpoint
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/upload"),
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    it("should use signed URL flow for large files (>=25MB)", async () => {
+      // Create a file that reports as >= 25MB
+      const bigContent = new ArrayBuffer(26 * 1024 * 1024)
+      const bigFile = new File([bigContent], "large.wav", { type: "audio/wav" })
+
+      // Mock XHR for the signed URL upload step
+      const mockXhr: any = {
+        open: jest.fn(),
+        setRequestHeader: jest.fn(),
+        send: jest.fn().mockImplementation(function(this: any) { this.onload?.() }),
+        upload: { onprogress: null },
+        onload: null,
+        onerror: null,
+        status: 200,
+        statusText: "OK",
+      }
+      global.XMLHttpRequest = jest.fn(() => mockXhr) as any
+
+      // Step 1: createJobWithUploadUrls
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "success",
+          job_id: "signed-456",
+          message: "Job created",
+          upload_urls: [
+            { file_type: "audio", gcs_path: "uploads/signed-456/audio.wav", upload_url: "https://storage.googleapis.com/signed", content_type: "audio/wav" },
+          ],
+          server_version: "1.0.0",
+        }),
+      })
+
+      // Step 3: completeJobUpload
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: "success", message: "Processing started" }),
+      })
+
+      const progressCallback = jest.fn()
+      const result = await api.uploadJobSmart(bigFile, "Artist", "Title", { is_private: true }, progressCallback)
+
+      expect(result.job_id).toBe("signed-456")
+
+      // Verify the 3-step flow
+      // Step 1: POST to create-with-upload-urls
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/create-with-upload-urls"),
+        expect.any(Object),
+      )
+      // Step 2: XHR PUT to signed URL
+      expect(mockXhr.open).toHaveBeenCalledWith("PUT", "https://storage.googleapis.com/signed", true)
+      // Step 3: POST to uploads-complete
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/jobs/signed-456/uploads-complete"),
+        expect.any(Object),
+      )
+
+      // Verify progress callbacks were called for each phase
+      expect(progressCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: "creating" })
+      )
+      expect(progressCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: "uploading" })
+      )
+      expect(progressCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: "finalizing" })
+      )
+    })
+
+    it("should throw if no audio URL in signed URL response", async () => {
+      const bigContent = new ArrayBuffer(26 * 1024 * 1024)
+      const bigFile = new File([bigContent], "large.wav", { type: "audio/wav" })
+
+      ;(global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "success",
+          job_id: "bad-789",
+          message: "Job created",
+          upload_urls: [], // No audio URL!
+          server_version: "1.0.0",
+        }),
+      })
+
+      await expect(
+        api.uploadJobSmart(bigFile, "Artist", "Title")
+      ).rejects.toThrow("No upload URL returned for audio file")
+    })
+  })
+
   describe("searchAudio", () => {
     it("should search for audio", async () => {
       const mockResponse = {
