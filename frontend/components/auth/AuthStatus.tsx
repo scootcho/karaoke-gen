@@ -17,6 +17,7 @@ import { useAuth } from "@/lib/auth"
 import { useAdminSettings } from "@/lib/admin-settings"
 import { AuthDialog } from "./AuthDialog"
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
+import { BuyCreditsDialog } from "@/components/credits/BuyCreditsDialog"
 
 interface AuthStatusProps {
   onAuthChange?: () => void
@@ -27,6 +28,7 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
   const { showTestData, setShowTestData } = useAdminSettings()
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [showFeedbackDialog, setShowFeedbackDialog] = useState(false)
+  const [showBuyCreditsDialog, setShowBuyCreditsDialog] = useState(false)
   const [mounted, setMounted] = useState(false)
 
   // Avoid hydration mismatch
@@ -47,12 +49,7 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
   }
 
   const handleBuyCredits = () => {
-    // Navigate to landing page pricing section with email prefilled if available
-    const buyUrl = new URL('/#pricing', window.location.origin)
-    if (user?.email) {
-      buyUrl.searchParams.set("email", user.email)
-    }
-    window.location.href = buyUrl.toString()
+    setShowBuyCreditsDialog(true)
   }
 
   // Don't render until mounted (avoids hydration issues)
@@ -74,7 +71,23 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
             <span className="hidden sm:inline max-w-[150px] truncate">
               {user.display_name || user.email}
             </span>
-            <span className="flex items-center gap-1 text-warning font-medium">
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleBuyCredits()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleBuyCredits()
+                }
+              }}
+              className="flex items-center gap-1 text-warning font-medium hover:text-warning/80 transition-colors"
+              title="Buy more credits"
+            >
               <Coins className="w-3 h-3" />
               {user.credits} {user.credits === 1 ? 'credit' : 'credits'}
             </span>
@@ -149,6 +162,10 @@ export function AuthStatus({ onAuthChange }: AuthStatusProps) {
       <FeedbackDialog
         open={showFeedbackDialog}
         onClose={() => setShowFeedbackDialog(false)}
+      />
+      <BuyCreditsDialog
+        open={showBuyCreditsDialog}
+        onClose={() => setShowBuyCreditsDialog(false)}
       />
     </>
     )
