@@ -245,12 +245,23 @@ jobs:
         working-directory: frontend
         run: mkdir -p test-results
 
+      - name: Refresh E2E session token
+        id: refresh_token
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "https://api.nomadkaraoke.com/api/admin/users/e2e-test-runner@nomadkaraoke.com/impersonate" \
+            -H "X-Admin-Token: ${{ secrets.E2E_ADMIN_TOKEN }}" \
+            -H "Content-Type: application/json")
+          TOKEN=$(echo "$RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["session_token"])')
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
       - name: Run Happy Path Production Test
         working-directory: frontend
         env:
           TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
           TESTMAIL_NAMESPACE: ${{ secrets.TESTMAIL_NAMESPACE }}
-          E2E_TEST_TOKEN: ${{ secrets.E2E_TEST_TOKEN }}
+          E2E_TEST_TOKEN: ${{ steps.refresh_token.outputs.token }}
           E2E_ADMIN_TOKEN: ${{ secrets.E2E_ADMIN_TOKEN }}
           E2E_BYPASS_KEY: ${{ secrets.E2E_BYPASS_KEY }}
         run: |
