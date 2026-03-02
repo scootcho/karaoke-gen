@@ -109,14 +109,14 @@ test.describe('Landing Page', () => {
     await expect(page.getByText('Questions?')).toBeVisible();
   });
 
-  test('displays beta tester program section', async ({ page }) => {
+  test('displays free credits callout in pricing section', async ({ page }) => {
     await setupApiFixtures(page, { mocks: [] });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Beta Tester Program')).toBeVisible();
-    await expect(page.getByRole('button', { name: /join beta program/i })).toBeVisible();
+    await expect(page.getByText('2 Free Credits', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /sign up free/i })).toBeVisible();
   });
 
   test('sign in button opens auth dialog', async ({ page }) => {

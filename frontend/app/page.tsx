@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
@@ -8,10 +8,8 @@ import {
   Sparkles,
   Video,
   Youtube,
-  ChevronDown,
   Check,
   Gift,
-  MessageSquare,
   Mail,
   Loader2,
   Search,
@@ -21,7 +19,7 @@ import {
   FileVideo,
   CreditCard,
 } from 'lucide-react';
-import { api, setAccessToken, getAccessToken, CreditPackage, BetaEnrollResponse } from '@/lib/api';
+import { api, setAccessToken, getAccessToken, CreditPackage } from '@/lib/api';
 import { AuthDialog } from '@/components/auth/AuthDialog';
 import { WarmingUpLoader } from '@/components/WarmingUpLoader';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -66,16 +64,6 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Beta form state
-  const [showBetaForm, setShowBetaForm] = useState(false);
-  const [betaEmail, setBetaEmail] = useState('');
-  const [betaPromise, setBetaPromise] = useState('');
-  const [betaAccept, setBetaAccept] = useState(false);
-  const [betaLoading, setBetaLoading] = useState(false);
-  const [betaError, setBetaError] = useState<string | null>(null);
-  const [betaSuccess, setBetaSuccess] = useState(false);
-  const [betaWillRedirect, setBetaWillRedirect] = useState(false);
-
   // Made For You form state
   const [mfyArtist, setMfyArtist] = useState('');
   const [mfyTitle, setMfyTitle] = useState('');
@@ -88,18 +76,6 @@ export default function LandingPage() {
 
   // Auth dialog state
   const [showAuthDialog, setShowAuthDialog] = useState(false);
-
-  // Ref for redirect timeout cleanup
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (redirectTimeoutRef.current) {
-        clearTimeout(redirectTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Check if already logged in and redirect to app
   useEffect(() => {
@@ -156,55 +132,6 @@ export default function LandingPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create checkout session');
       setIsLoading(false);
-    }
-  };
-
-  // Handle beta enrollment
-  const handleBetaEnroll = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBetaError(null);
-
-    // Validation
-    if (!betaEmail) {
-      setBetaError('Please enter your email address');
-      return;
-    }
-    if (!betaAccept) {
-      setBetaError('Please accept the corrections work agreement');
-      return;
-    }
-    if (!betaPromise || betaPromise.length < 10) {
-      setBetaError('Please write a sentence about a song you want to make into karaoke');
-      return;
-    }
-
-    setBetaLoading(true);
-
-    try {
-      const response: BetaEnrollResponse = await api.enrollBetaTester(
-        betaEmail,
-        betaPromise,
-        betaAccept
-      );
-
-      // If we got a session token, store it and redirect to main app
-      if (response.session_token) {
-        setAccessToken(response.session_token);
-        setBetaSuccess(true);
-        setBetaWillRedirect(true);
-        // Redirect to main app after showing success message
-        redirectTimeoutRef.current = setTimeout(() => {
-          router.push('/app');
-        }, 2000);
-      } else {
-        // No token means email verification needed
-        setBetaSuccess(true);
-        setBetaWillRedirect(false);
-      }
-    } catch (err) {
-      setBetaError(err instanceof Error ? err.message : 'Failed to enroll in beta program');
-    } finally {
-      setBetaLoading(false);
     }
   };
 
@@ -298,15 +225,15 @@ export default function LandingPage() {
           {/* Two pricing options */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-6">
             <div className="flex flex-col items-center gap-2">
-              <a
-                href="#pricing"
+              <button
+                onClick={() => setShowAuthDialog(true)}
                 className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-8 py-4 rounded-xl transition-all btn-glow"
               >
                 <Video className="w-5 h-5" />
                 Create It Yourself
-                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-sm">$5</span>
-              </a>
-              <span className="text-dark-400 text-sm">Review lyrics yourself in ~10 min</span>
+                <span className="ml-1 px-2 py-0.5 bg-white/20 rounded-full text-sm">Free</span>
+              </button>
+              <span className="text-dark-400 text-sm">2 free credits included — review lyrics yourself</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <a
@@ -321,13 +248,9 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <a
-            href="#beta"
-            className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors"
-          >
-            Or try it free as a beta tester
-            <ChevronDown className="w-4 h-4" />
-          </a>
+          <p className="text-green-400 text-sm font-medium mt-2">
+            Every account includes 2 free credits — no payment required
+          </p>
         </div>
       </section>
 
@@ -474,111 +397,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Beta Tester Program */}
-      <section id="beta" className="py-12 px-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-primary/30 rounded-2xl p-8 text-center">
-            <div className="inline-flex items-center gap-2 bg-primary-500/20 text-primary-400 px-4 py-2 rounded-full text-sm font-medium mb-4">
-              <Gift className="w-4 h-4" />
-              Beta Tester Program
-            </div>
-            <h3 className="text-2xl font-bold mb-3">Try It Free!</h3>
-            <p className="text-dark-300 mb-6">
-              Help us improve by testing the tool and sharing your feedback. Beta testers get{' '}
-              <span className="text-green-400 font-semibold">up to 5 free karaoke videos</span>{' '}
-              in exchange for providing feedback on each one.
-            </p>
-
-            {!showBetaForm && !betaSuccess && (
-              <button
-                onClick={() => setShowBetaForm(true)}
-                className="inline-flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white font-semibold px-6 py-3 rounded-xl transition-all btn-glow"
-              >
-                Join Beta Program
-                <MessageSquare className="w-5 h-5" />
-              </button>
-            )}
-
-            {showBetaForm && !betaSuccess && (
-              <form onSubmit={handleBetaEnroll} className="mt-6 text-left space-y-4">
-                <div>
-                  <label htmlFor="beta-email" className="block text-sm font-medium text-dark-300 mb-2">
-                    Email address
-                  </label>
-                  <input
-                    type="email"
-                    id="beta-email"
-                    value={betaEmail}
-                    onChange={(e) => setBetaEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="beta-promise" className="block text-sm font-medium text-dark-300 mb-2">
-                    What song do you want to make into karaoke?
-                  </label>
-                  <textarea
-                    id="beta-promise"
-                    value={betaPromise}
-                    onChange={(e) => setBetaPromise(e.target.value)}
-                    placeholder="Tell us about a song you'd love to sing..."
-                    rows={3}
-                    className="w-full px-4 py-3 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground resize-none"
-                  />
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    id="beta-accept"
-                    checked={betaAccept}
-                    onChange={(e) => setBetaAccept(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-border bg-secondary text-primary focus:ring-primary"
-                  />
-                  <label htmlFor="beta-accept" className="text-sm text-muted-foreground">
-                    I understand that I&apos;ll need to review and correct any lyrics transcription errors, and provide feedback after each video
-                  </label>
-                </div>
-
-                {betaError && (
-                  <p className="text-red-400 text-sm">{betaError}</p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={betaLoading}
-                  className="w-full bg-primary-500 hover:bg-primary-600 disabled:bg-primary-500/50 text-white font-semibold py-3 rounded-xl transition-all btn-glow flex items-center justify-center gap-2"
-                >
-                  {betaLoading ? 'Enrolling...' : 'Get My Free Credit'}
-                  {!betaLoading && <Gift className="w-5 h-5" />}
-                </button>
-              </form>
-            )}
-
-            {betaSuccess && (
-              <div className="mt-6 p-4 bg-green-500/20 border border-green-500/30 rounded-xl">
-                <p className="text-green-400 font-semibold">
-                  Welcome to the beta program!{' '}
-                  {betaWillRedirect
-                    ? 'Redirecting to the app...'
-                    : 'Check your email for a sign-in link.'}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
       {/* Pricing */}
       <section id="pricing" className="py-20 px-4">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-4">Simple Pricing</h2>
-          <p className="text-dark-400 text-center mb-12 max-w-xl mx-auto">
-            One credit = one karaoke video. Buy more to save more.
+          <p className="text-dark-400 text-center mb-4 max-w-xl mx-auto">
+            Start with 2 free credits, then buy more to save more.
           </p>
+
+          <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-6 text-center mb-10 max-w-sm mx-auto">
+            <div className="text-sm text-green-400 font-medium mb-1">Every new account includes</div>
+            <div className="text-4xl font-bold text-green-400 mb-1">2 Free Credits</div>
+            <div className="text-sm text-dark-400 mb-4">No payment required</div>
+            <button
+              onClick={() => setShowAuthDialog(true)}
+              className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-xl transition-all"
+            >
+              Sign Up Free
+            </button>
+          </div>
 
           {/* Package Selection */}
           {packagesLoading && (

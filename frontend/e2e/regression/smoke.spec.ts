@@ -43,13 +43,13 @@ test.describe('Smoke Tests', () => {
     await expect(dialog.locator('input[type="email"]')).toBeVisible();
   });
 
-  test('beta program section is visible', async ({ page }) => {
+  test('free credits messaging is visible', async ({ page }) => {
     await setupApiFixtures(page, { mocks: [] });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Beta Tester Program')).toBeVisible();
-    await expect(page.getByRole('button', { name: /join beta program/i })).toBeVisible();
+    await expect(page.getByText('2 Free Credits', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /sign up free/i })).toBeVisible();
   });
 });

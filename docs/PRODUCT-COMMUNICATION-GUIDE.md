@@ -59,12 +59,12 @@ Guidelines for how to communicate about Nomad Karaoke to users, in marketing mat
 
 ---
 
-## Beta Tester Program
+## Free Credits
 
-- Beta testers get up to 5 free karaoke video generations
-- Mandatory feedback required after each video
-- Must acknowledge they'll review/correct lyrics transcription
-- Helps improve the system through real-world testing
+- All new accounts receive 2 free credits to try the service
+- No payment required to get started
+- Credits never expire
+- Additional credits available for purchase ($5/credit, bulk discounts available)
 
 ---
 
