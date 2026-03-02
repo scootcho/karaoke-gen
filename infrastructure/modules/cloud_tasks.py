@@ -130,4 +130,23 @@ def create_queues() -> dict[str, cloudtasks.Queue]:
         ),
     )
 
+    # GDrive validation queue - delayed tasks for post-job validation
+    # Tasks are scheduled with a 5-minute delay after job completion to allow
+    # E2E test cleanup to finish before the validator checks for sequence gaps
+    queues["gdrive-validation-queue"] = cloudtasks.Queue(
+        "gdrive-validation-queue",
+        name="gdrive-validation-queue",
+        location=REGION,
+        rate_limits=cloudtasks.QueueRateLimitsArgs(
+            max_dispatches_per_second=1,    # Low rate - validation is infrequent
+            max_concurrent_dispatches=1,     # Only one validation at a time
+        ),
+        retry_config=cloudtasks.QueueRetryConfigArgs(
+            max_attempts=2,
+            min_backoff="30s",
+            max_backoff="120s",
+            max_retry_duration="300s",       # 5 min total
+        ),
+    )
+
     return queues

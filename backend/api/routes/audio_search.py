@@ -200,6 +200,10 @@ class AudioSearchResponse(BaseModel):
 class AudioSelectRequest(BaseModel):
     """Request to select an audio source."""
     selection_index: int = Field(..., description="Index of the selected audio source from search results")
+    # Optional overrides — sent from the guided flow's Customize step (Step 3)
+    is_private: Optional[bool] = Field(None, description="Override privacy flag (guided flow Step 3)")
+    display_artist: Optional[str] = Field(None, description="Override display artist name")
+    display_title: Optional[str] = Field(None, description="Override display title")
 
 
 class AudioSelectResponse(BaseModel):
@@ -971,6 +975,20 @@ async def select_audio_source(
     # Note: With download_by_id, we no longer need to re-search to populate the cache.
     # The source_id stored in job.state_data['audio_search_results'] is sufficient.
     audio_search_service = get_audio_search_service()
+
+    # Apply optional overrides from guided flow Step 3 (Customize)
+    # These fields are set AFTER the job is created (Step 2), so they must be
+    # patched here before the pipeline starts.
+    overrides = {}
+    if body.is_private is not None:
+        overrides["is_private"] = body.is_private
+    if body.display_artist is not None:
+        overrides["display_artist"] = body.display_artist
+    if body.display_title is not None:
+        overrides["display_title"] = body.display_title
+    if overrides:
+        job_manager.update_job(job_id, overrides)
+        logger.info(f"[job:{job_id}] Applied selection overrides: {list(overrides.keys())}")
 
     # Validate search results exist in job state_data
     search_results = job.state_data.get('audio_search_results', [])

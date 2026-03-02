@@ -615,11 +615,15 @@ export const api = {
   /**
    * Select an audio search result
    */
-  async selectAudioResult(jobId: string, index: number): Promise<{ status: string; message: string }> {
+  async selectAudioResult(
+    jobId: string,
+    index: number,
+    overrides?: { is_private?: boolean; display_artist?: string; display_title?: string }
+  ): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/audio-search/${jobId}/select`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ selection_index: index }),
+      body: JSON.stringify({ selection_index: index, ...overrides }),
     });
     return handleResponse(response);
   },

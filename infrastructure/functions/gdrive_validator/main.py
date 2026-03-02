@@ -188,7 +188,7 @@ def get_sequence_number(filename: str) -> int | None:
 def validate_files(files_by_folder: dict[str, list[str]]) -> dict:
     """
     Validate all files and return a dict of issues found.
-    
+
     Returns:
         {
             'duplicates': {'MP4': {1107: ['file1.mp4', 'file2.mp4']}, ...},
@@ -203,60 +203,66 @@ def validate_files(files_by_folder: dict[str, list[str]]) -> dict:
         'gaps': defaultdict(list),
         'summary': {}
     }
-    
+
     total_files = 0
-    
+    sequence_numbers_by_folder: dict[str, set[int]] = {}
+
     for folder_name, files in files_by_folder.items():
         # Filter out ignored files for counting
         karaoke_files = [f for f in files if not should_ignore_file(f)]
         total_files += len(karaoke_files)
         issues['summary'][folder_name.lower().replace('-', '_')] = len(karaoke_files)
-        
+
         # Check for invalid filenames (skip ignored files)
         for filename in files:
             if should_ignore_file(filename):
                 continue
             if not validate_filename_format(filename):
                 issues['invalid_filenames'][folder_name].append(filename)
-        
+
         # Check for duplicate sequence numbers
         seq_to_files = defaultdict(list)
         valid_files = [f for f in files if not should_ignore_file(f) and validate_filename_format(f)]
-        
+
         for filename in valid_files:
             seq_num = get_sequence_number(filename)
             if seq_num is not None:
                 seq_to_files[seq_num].append(filename)
-        
+
         for seq_num, filenames in seq_to_files.items():
             if len(filenames) > 1:
                 issues['duplicates'][folder_name][seq_num] = filenames
-        
-        # Check for sequence gaps
-        if valid_files:
-            sequence_numbers = set()
-            for filename in valid_files:
-                seq_num = get_sequence_number(filename)
-                if seq_num is not None:
-                    sequence_numbers.add(seq_num)
-            
-            if sequence_numbers:
-                min_num = min(sequence_numbers)
-                max_num = max(sequence_numbers)
-                expected_range = set(range(min_num, max_num + 1))
-                excluded = EXCLUDED_NUMBERS.get(folder_name, set())
-                missing = sorted(expected_range - sequence_numbers - excluded)
-                
-                if missing:
-                    issues['gaps'][folder_name] = missing
-    
+
+        # Collect sequence numbers for gap checking
+        sequence_numbers = set()
+        for filename in valid_files:
+            seq_num = get_sequence_number(filename)
+            if seq_num is not None:
+                sequence_numbers.add(seq_num)
+        sequence_numbers_by_folder[folder_name] = sequence_numbers
+
     issues['summary']['total'] = total_files
-    
+
+    # Use the global max across all folders so that a folder missing the latest
+    # track(s) is caught — e.g. CDG missing NOMAD-1277 when MP4 already has it.
+    all_nums = [n for nums in sequence_numbers_by_folder.values() for n in nums]
+    global_max = max(all_nums) if all_nums else 0
+
+    for folder_name, sequence_numbers in sequence_numbers_by_folder.items():
+        if sequence_numbers and global_max:
+            min_num = min(sequence_numbers)
+            expected_range = set(range(min_num, global_max + 1))
+            excluded = EXCLUDED_NUMBERS.get(folder_name, set())
+            missing = sorted(expected_range - sequence_numbers - excluded)
+
+            if missing:
+                issues['gaps'][folder_name] = missing
+
     # Convert defaultdicts to regular dicts for cleaner output
     issues['duplicates'] = dict(issues['duplicates'])
     issues['invalid_filenames'] = dict(issues['invalid_filenames'])
     issues['gaps'] = dict(issues['gaps'])
-    
+
     return issues
 
 
