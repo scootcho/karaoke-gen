@@ -29,7 +29,7 @@
 | Rate limiting & abuse prevention | Working |
 | CI/CD self-hosted runner | Working (GCP) |
 | E2E happy path test | Working (~20-25 min full pipeline) |
-| **White-label B2B portals** | Working (Vocal Star first tenant) |
+| **White-label B2B portals** | Working (Vocal Star, Singa) |
 | **Private (non-published) tracks** | Working |
 
 ## Known Issues
@@ -41,6 +41,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **Singa Whitelabel Tenant** (2026-03-03): Added Singa (singa.com) as second B2B tenant. Green/black branding, file-upload-only mode, locked to "singa" theme, restricted to @singa.com emails. Setup script generates all branding assets (4K backgrounds, CDG backgrounds, logo) programmatically with Pillow. Also fixed critical Zustand getter bug where computed store properties (branding, features, defaults) became stale static values after any `set()` call — `Object.assign` invokes getters and copies return values, destroying the getter. Added `TenantLandingPage` component for minimal tenant portal experience (logo + sign-in). Added Cloudflare Pages `_headers` for proper cache control. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#never-use-javascript-getters-in-zustand-stores-mar-2026).
 
 - **Feedback-for-Credits** (2026-03-01): Added a feedback-for-credits mechanism available to all users (replaces the old beta-only feedback flow). Users who complete 2+ karaoke videos can submit product feedback (star ratings + text) to earn 2 free credits (total possible free credits: 4 — 2 welcome + 2 feedback). New endpoints: `GET /api/users/feedback/eligibility`, `POST /api/users/feedback`. The `/api/users/me` response includes `feedback_eligible: bool` so the frontend can show/hide prompts without an extra API call. Frontend shows a dismissible banner on the dashboard and a "Earn 2 Free Credits" menu item in the user dropdown when eligible. Feedback stored in `user_feedback` Firestore collection with duplicate prevention via `has_submitted_feedback` flag on user model. Welcome email updated with credit-focused messaging and feedback teaser. See [API.md](API.md#user-feedback-for-credits).
 

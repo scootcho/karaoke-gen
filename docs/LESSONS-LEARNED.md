@@ -54,6 +54,30 @@ When two sequential human review steps can be combined into one, do it. We origi
 
 **Pattern**: Treat resource IDs (brand codes, sequential IDs) like distributed transactions — either all distribution points are cleaned, or the ID stays reserved.
 
+### Never Use JavaScript Getters in Zustand Stores (Mar 2026)
+**What happened**: Tenant branding, features, and defaults always returned initial defaults instead of loaded tenant data. The Singa portal showed the Nomad Karaoke pink theme and default logo instead of Singa's green branding.
+
+**Root cause**: The Zustand store defined computed values as JavaScript `get` property descriptors:
+```typescript
+// BROKEN - getter destroyed by Zustand's set() internals
+const useStore = create((set, get) => ({
+  tenant: null,
+  get branding() { return get().tenant?.branding ?? DEFAULT_BRANDING },
+}))
+```
+When Zustand calls `set()`, it uses `Object.assign({}, currentState, partialUpdate)`. `Object.assign` **invokes** getters and copies their return **values** as plain properties. After the first `set({ isLoading: true })`, `branding` became a frozen static copy of `DEFAULT_BRANDING` — all subsequent state updates were invisible to it.
+
+**Fix**: Move computed values outside the store. Use standalone functions that compute from state on each access:
+```typescript
+function getBranding(state) { return state.tenant?.branding ?? DEFAULT_BRANDING }
+export function useTenant() {
+  const store = useTenantStore()
+  return { ...store, branding: getBranding(store) }
+}
+```
+
+**Pattern**: Never use `get` property descriptors in objects that will be spread or `Object.assign`'d. Zustand, Redux, and other state libraries that merge objects will silently destroy getters. Use wrapper functions or selector hooks instead.
+
 ### Fail Fast, Don't Fall Back
 Silent fallbacks hide configuration errors. When critical configuration is missing (themes, credentials, etc.), raise clear errors instead of falling back to defaults. Better to fail loudly during testing than silently produce incorrect output in production. Example: Theme validation (v0.109.0) now raises `ValueError` on incomplete themes instead of merging with defaults. This ensures all cloud jobs use complete, explicit themes with no silent degradation.
 
