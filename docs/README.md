@@ -26,7 +26,7 @@
 | Payment flow (Stripe) | Working |
 | Feedback-for-credits | Working (2+ jobs → 2 free credits) |
 | Admin dashboard | Working |
-| Rate limiting & abuse prevention | Working |
+| Rate limiting & abuse prevention | Working (quota-aware YouTube uploads) |
 | CI/CD self-hosted runner | Working (GCP) |
 | E2E happy path test | Working (~20-25 min full pipeline) |
 | **White-label B2B portals** | Working (Vocal Star, Singa) |
@@ -43,6 +43,8 @@
 (No pending work items)
 
 ## Recent Changes
+
+- **YouTube Quota-Aware Upload System** (2026-03-03): Replaced the hard-coded YouTube upload limit (10/day) with quota-unit tracking against the YouTube Data API v3's 10,000 units/day quota. **Problem**: 4 jobs on 2026-03-03 had YouTube uploads silently skipped with no user notification. The hard limit of 10 uploads/day was overly conservative (actual capacity: ~33 uploads/day at ~300 units each). **Solution**: (1) `YouTubeQuotaService` tracks quota units consumed per day in Firestore with Pacific Time midnight reset, (2) `YouTubeUploadQueueService` queues uploads when quota is low instead of silently skipping, (3) Hourly Cloud Scheduler job processes the queue when quota is available, (4) Users get a follow-up email with their YouTube link when deferred uploads complete, (5) Admin dashboard shows quota usage progress bar and queue management. New Firestore collections: `youtube_quota` (daily quota tracking), `youtube_upload_queue` (deferred uploads). New config: `YOUTUBE_QUOTA_DAILY_LIMIT`, `YOUTUBE_QUOTA_UPLOAD_COST`, `YOUTUBE_QUOTA_SAFETY_MARGIN`. See [archive/2026-03-03-youtube-quota-fix-plan.md](archive/2026-03-03-youtube-quota-fix-plan.md) and [API.md](API.md#youtube-upload-queue).
 
 - **Singa Whitelabel Tenant** (2026-03-03): Added Singa (singa.com) as second B2B tenant. Green/black branding, file-upload-only mode, locked to "singa" theme, restricted to @singa.com emails. Setup script generates all branding assets (4K backgrounds, CDG backgrounds, logo) programmatically with Pillow. Also fixed critical Zustand getter bug where computed store properties (branding, features, defaults) became stale static values after any `set()` call — `Object.assign` invokes getters and copies return values, destroying the getter. Added `TenantLandingPage` component for minimal tenant portal experience (logo + sign-in). Added Cloudflare Pages `_headers` for proper cache control. See [LESSONS-LEARNED.md](LESSONS-LEARNED.md#never-use-javascript-getters-in-zustand-stores-mar-2026).
 
