@@ -324,12 +324,12 @@ test.describe('Job Management - Actions', () => {
           method: 'GET',
           path: '/api/jobs',
           response: {
-            body: [MOCK_JOBS[2]], // Awaiting audio selection
+            body: [MOCK_JOBS[3]], // Failed job (visible in list)
           },
         },
         {
           method: 'DELETE',
-          path: '/api/jobs/job-awaiting-audio-3',
+          path: '/api/jobs/job-failed-4',
           response: {
             body: { status: 'success', message: 'Job deleted' },
           },
@@ -341,7 +341,7 @@ test.describe('Job Management - Actions', () => {
     await page.waitForLoadState('networkidle');
 
     // Expand job
-    const jobCard = page.locator('text=Third Artist').locator('..');
+    const jobCard = page.locator('text=Failed Artist').locator('..');
     await jobCard.click();
     await page.waitForTimeout(500);
 
