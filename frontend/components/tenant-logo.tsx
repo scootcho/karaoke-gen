@@ -20,7 +20,12 @@ export function TenantLogo({ className = "", size = "sm" }: TenantLogoProps) {
   const { tenant, branding, isDefault } = useTenant()
 
   // Determine logo URL and dimensions
-  const logoUrl = branding.logo_url || DEFAULT_LOGO_URL
+  // Convert gs:// URLs to the API asset endpoint
+  let logoUrl = branding.logo_url || DEFAULT_LOGO_URL
+  if (logoUrl.startsWith("gs://") && tenant?.id) {
+    const filename = logoUrl.split("/").pop()
+    logoUrl = `https://api.nomadkaraoke.com/api/tenant/asset/${tenant.id}/${filename}`
+  }
   const logoHeight = branding.logo_height || 40
 
   // Size classes based on size prop - use static Tailwind classes only
