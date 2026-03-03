@@ -443,14 +443,21 @@ if tenant_config and not tenant_config.features.audio_search:
     raise HTTPException(403, "Audio search not enabled for this tenant")
 ```
 
-### First Tenant: Vocal Star
+### Active Tenants
 
-- Subdomain: `vocalstar.nomadkaraoke.com`
+**Vocal Star** (`vocalstar.nomadkaraoke.com`)
 - Features: File upload only (no audio search, no YouTube URL)
 - Distribution: Download only (no YouTube/Dropbox/GDrive)
 - Theme: Locked to "vocalstar" theme (yellow/blue)
 - Auth: Restricted to `@vocal-star.com` and `@vocalstarmusic.com` emails
 - Setup: `python scripts/setup-vocalstar-tenant.py`
+
+**Singa** (`singa.nomadkaraoke.com`)
+- Features: File upload only (no audio search, no YouTube URL)
+- Distribution: Download only
+- Theme: Locked to "singa" theme (green/black)
+- Auth: Restricted to `@singa.com` emails
+- Setup: `python scripts/setup-singa-tenant.py`
 
 ## Tech Stack
 
