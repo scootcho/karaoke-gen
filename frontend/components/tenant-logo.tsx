@@ -24,7 +24,11 @@ export function TenantLogo({ className = "", size = "sm" }: TenantLogoProps) {
   let logoUrl = branding.logo_url || DEFAULT_LOGO_URL
   if (logoUrl.startsWith("gs://") && tenant?.id) {
     const filename = logoUrl.split("/").pop()
-    logoUrl = `https://api.nomadkaraoke.com/api/tenant/asset/${tenant.id}/${filename}`
+    if (filename) {
+      logoUrl = `https://api.nomadkaraoke.com/api/tenant/asset/${tenant.id}/${filename}`
+    } else {
+      logoUrl = DEFAULT_LOGO_URL
+    }
   }
   const logoHeight = branding.logo_height || 40
 

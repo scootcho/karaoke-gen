@@ -78,16 +78,15 @@ export function TenantLandingPage() {
         </button>
 
         {/* Domain hint */}
-        {tenant?.allowed_email_domains && tenant.allowed_email_domains.length > 0 && (
-          <p className="text-muted-foreground text-sm mt-4">
-            Sign in with your{' '}
-            {tenant.allowed_email_domains
-              .filter(d => d !== 'nomadkaraoke.com')
-              .map(d => `@${d}`)
-              .join(' or ')}{' '}
-            email
-          </p>
-        )}
+        {(() => {
+          const externalDomains = tenant?.allowed_email_domains?.filter(d => d !== 'nomadkaraoke.com') ?? []
+          if (externalDomains.length === 0) return null
+          return (
+            <p className="text-muted-foreground text-sm mt-4">
+              Sign in with your {externalDomains.map(d => `@${d}`).join(' or ')} email
+            </p>
+          )
+        })()}
       </main>
 
       {/* Footer */}
