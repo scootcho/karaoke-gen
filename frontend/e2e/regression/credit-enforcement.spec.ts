@@ -59,7 +59,7 @@ test.describe('Credit Enforcement', () => {
 
     // Warning banner should be visible
     await expect(page.getByText('You have no credits remaining')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Buy Credits' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Buy Credits' })).toBeVisible();
 
     // Submit button should be disabled
     const submitButton = page.getByRole('button', { name: /Create Karaoke Video|Search & Create Job/i });
@@ -106,7 +106,7 @@ test.describe('Credit Enforcement', () => {
     await expect(page.getByText(/out of credits/i)).toBeVisible();
 
     // Should show buy credits link
-    await expect(page.getByRole('link', { name: 'Buy Credits' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Buy Credits' })).toBeVisible();
   });
 
   test('user with credits can submit normally', async ({ page }) => {
