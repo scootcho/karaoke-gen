@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { BuyCreditsDialog } from "@/components/credits/BuyCreditsDialog"
 import { SongInfoStep } from "./steps/SongInfoStep"
 import { AudioSourceStep } from "./steps/AudioSourceStep"
+import { VisibilityStep } from "./steps/VisibilityStep"
 import { CustomizeStep } from "./steps/CustomizeStep"
 import type { ColorOverrides } from "./steps/CustomizeStep"
 
@@ -16,9 +17,9 @@ interface GuidedJobFlowProps {
   onJobCreated: () => void
 }
 
-type Step = 1 | 2 | 3
+type Step = 1 | 2 | 3 | 4
 
-const STEP_LABELS = ["Song Info", "Choose Audio", "Customize & Create"]
+const STEP_LABELS = ["Song Info", "Choose Audio", "Visibility", "Customize & Create"]
 
 /**
  * Upload custom style assets to an already-created job.
@@ -75,7 +76,8 @@ async function uploadStyleAssets(
 
     // Step 3: Finalize with uploaded file types + color overrides
     const uploadedFileTypes = filesToUpload.map((f) => f.file_type)
-    const hasColorOverrides = colorOverrides.artist_color || colorOverrides.title_color
+    const hasColorOverrides = colorOverrides.artist_color || colorOverrides.title_color ||
+      colorOverrides.sung_lyrics_color || colorOverrides.unsung_lyrics_color
     await api.completeStyleUploads(
       jobId,
       uploadedFileTypes,
@@ -163,7 +165,8 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
 
       // Upload style assets in the background (non-blocking)
       const hasStyleCustomizations = karaokeBackground || introBackground ||
-        colorOverrides.artist_color || colorOverrides.title_color
+        colorOverrides.artist_color || colorOverrides.title_color ||
+        colorOverrides.sung_lyrics_color || colorOverrides.unsung_lyrics_color
       if (isPrivate && hasStyleCustomizations) {
         uploadStyleAssets(response.job_id, karaokeBackground, introBackground, colorOverrides)
       }
@@ -435,6 +438,15 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
       )}
 
       {step === 3 && (
+        <VisibilityStep
+          isPrivate={isPrivate}
+          onPrivateChange={setIsPrivate}
+          onNext={() => setStep(4)}
+          onBack={() => setStep(2)}
+        />
+      )}
+
+      {step === 4 && (
         <CustomizeStep
           artist={artist}
           title={title}
@@ -443,7 +455,6 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
           onDisplayArtistChange={setDisplayArtist}
           onDisplayTitleChange={setDisplayTitle}
           isPrivate={isPrivate}
-          onPrivateChange={setIsPrivate}
           karaokeBackground={karaokeBackground}
           onKaraokeBackgroundChange={setKaraokeBackground}
           introBackground={introBackground}
@@ -451,7 +462,7 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
           colorOverrides={colorOverrides}
           onColorOverridesChange={setColorOverrides}
           onConfirm={handleConfirm}
-          onBack={() => setStep(2)}
+          onBack={() => setStep(3)}
           isSubmitting={isSubmitting}
         />
       )}

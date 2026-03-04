@@ -6,6 +6,7 @@ interface TitleCardPreviewProps {
   artist: string
   title: string
   customBackgroundUrl?: string  // Object URL from File for custom background
+  backgroundColor?: string     // Solid color hex (used when no customBackgroundUrl)
   titleColor?: string           // Hex color override (default #ffffff)
   artistColor?: string          // Hex color override (default #ffdf6b)
 }
@@ -121,7 +122,7 @@ function drawTextBlock(
   }
 }
 
-export function TitleCardPreview({ artist, title, customBackgroundUrl, titleColor, artistColor }: TitleCardPreviewProps) {
+export function TitleCardPreview({ artist, title, customBackgroundUrl, backgroundColor, titleColor, artistColor }: TitleCardPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const effectiveTitleColor = titleColor || TITLE_COLOR
@@ -133,7 +134,7 @@ export function TitleCardPreview({ artist, title, customBackgroundUrl, titleColo
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Draw background image (custom or default)
+    // Draw background: custom image > solid color > default image
     try {
       if (customBackgroundUrl) {
         const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -143,12 +144,15 @@ export function TitleCardPreview({ artist, title, customBackgroundUrl, titleColo
           el.src = customBackgroundUrl
         })
         ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H)
+      } else if (backgroundColor) {
+        ctx.fillStyle = backgroundColor
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
       } else {
         const bgImg = await loadBgImage()
         ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H)
       }
     } catch {
-      ctx.fillStyle = "#000000"
+      ctx.fillStyle = backgroundColor || "#000000"
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
     }
 
@@ -188,7 +192,7 @@ export function TitleCardPreview({ artist, title, customBackgroundUrl, titleColo
       artist ? effectiveArtistColor : "rgba(255,223,107,0.25)",
       fontFamily,
     )
-  }, [artist, title, customBackgroundUrl, effectiveTitleColor, effectiveArtistColor])
+  }, [artist, title, customBackgroundUrl, backgroundColor, effectiveTitleColor, effectiveArtistColor])
 
   useEffect(() => {
     draw()

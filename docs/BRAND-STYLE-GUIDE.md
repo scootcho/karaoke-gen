@@ -664,6 +664,21 @@ export function PrimaryButton({ children, ...props }) {
 
 ---
 
+## Public Video Style Consistency Rule
+
+**All videos published to Nomad Karaoke distribution channels (YouTube, Google Drive, venue libraries) MUST use the standard Nomad Karaoke visual style.** No customization of colors, backgrounds, fonts, or other visual elements is permitted for public videos.
+
+This ensures:
+- Consistent brand identity across the entire Nomad Karaoke catalog
+- Professional, recognizable appearance at venues worldwide
+- Uniform experience for audiences browsing the YouTube channel or venue libraries
+
+Only the **display artist name** and **display title** text can be overridden for public videos (e.g. to format a soundtrack or cover correctly).
+
+Custom video styling (backgrounds, colors, fonts) is available exclusively for **private** deliveries where the user takes full responsibility for distribution.
+
+---
+
 ## Checklist for Brand Compliance
 
 ### Landing Pages
