@@ -74,16 +74,18 @@ describe("CustomizeStep", () => {
   })
 
   describe("public mode (isPrivate=false)", () => {
-    it("shows only display artist/title fields, no previews or style options", () => {
+    it("shows title card preview and display fields, but no style options", () => {
       render(<CustomizeStep {...defaultProps} isPrivate={false} />)
 
       // Display override fields are shown
       expect(screen.getByLabelText(/Title Card Artist/)).toBeInTheDocument()
       expect(screen.getByLabelText(/Title Card Title/)).toBeInTheDocument()
 
-      // No style customization
+      // Title card preview is shown
+      expect(screen.getByTestId("title-card-preview")).toBeInTheDocument()
+
+      // No style customization or karaoke preview
       expect(screen.queryByText("Custom Video Style")).not.toBeInTheDocument()
-      expect(screen.queryByTestId("title-card-preview")).not.toBeInTheDocument()
       expect(screen.queryByTestId("karaoke-bg-preview")).not.toBeInTheDocument()
     })
 

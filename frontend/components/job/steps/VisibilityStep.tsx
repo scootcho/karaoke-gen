@@ -80,7 +80,7 @@ export function VisibilityStep({
             </div>
 
             <div className="space-y-2 text-sm" style={{ color: 'var(--text-muted)' }}>
-              <p>Your karaoke video will be shared with the world:</p>
+              <p>Your karaoke video will be <span className="font-semibold" style={{ color: '#f59e0b' }}>shared with the world</span>:</p>
 
               <ul className="space-y-2 ml-1">
                 <li className="flex items-start gap-2">

@@ -41,14 +41,15 @@ export function KaraokeBackgroundPreview({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Draw background
-    if (backgroundUrl) {
+    // Draw background: custom image > solid color > default Nomad theme image
+    const bgSrc = backgroundUrl || (backgroundColor ? null : "/karaoke-bg.png")
+    if (bgSrc) {
       try {
         const img = await new Promise<HTMLImageElement>((resolve, reject) => {
           const el = new Image()
           el.onload = () => resolve(el)
           el.onerror = reject
-          el.src = backgroundUrl
+          el.src = bgSrc
         })
         ctx.drawImage(img, 0, 0, CANVAS_W, CANVAS_H)
       } catch {

@@ -311,6 +311,14 @@ export function CustomizeStep({
           </Button>
         </div>
 
+        {/* Title card preview */}
+        <div className="mx-auto w-full sm:w-2/3">
+          <TitleCardPreview
+            artist={previewArtist}
+            title={previewTitle}
+          />
+        </div>
+
         {/* Display override fields */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
