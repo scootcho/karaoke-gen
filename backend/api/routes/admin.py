@@ -2977,7 +2977,7 @@ async def refund_payment(
         except Exception as e:
             logger.error(f"Failed to deduct credits for refund {session_id}: {e}")
 
-    admin_email = auth_data[0]
+    admin_email = getattr(auth_data, "user_email", None) or "unknown"
     logger.info(f"Admin {admin_email} issued refund for {session_id}: {message}")
 
     return RefundResponse(success=True, message=message, session_id=session_id)
