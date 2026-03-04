@@ -10,6 +10,7 @@ interface ImageUploadFieldProps {
   file: File | null
   onChange: (file: File | null) => void
   disabled?: boolean
+  hidePreview?: boolean  // Hide the image thumbnail (when a canvas preview is shown instead)
 }
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
@@ -21,7 +22,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function ImageUploadField({ label, description, file, onChange, disabled }: ImageUploadFieldProps) {
+export function ImageUploadField({ label, description, file, onChange, disabled, hidePreview }: ImageUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,8 +75,8 @@ export function ImageUploadField({ label, description, file, onChange, disabled 
 
       {file ? (
         <div className="relative rounded-lg overflow-hidden border" style={{ borderColor: 'var(--card-border)' }}>
-          {/* 16:9 preview thumbnail */}
-          {previewUrl && (
+          {/* 16:9 preview thumbnail (hidden when canvas preview is used instead) */}
+          {!hidePreview && previewUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewUrl}
