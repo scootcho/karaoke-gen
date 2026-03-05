@@ -432,10 +432,12 @@ export const api = {
     files: Array<{ filename: string; content_type: string; file_type: string }>,
     options?: {
       is_private?: boolean;
+      existing_instrumental?: boolean;
     }
   ): Promise<CreateJobWithUploadUrlsResponse> {
     const body: Record<string, any> = { artist, title, files };
     if (options?.is_private !== undefined) body.is_private = options.is_private;
+    if (options?.existing_instrumental !== undefined) body.existing_instrumental = options.existing_instrumental;
 
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-with-upload-urls`, {
       method: 'POST',

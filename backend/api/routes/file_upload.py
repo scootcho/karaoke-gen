@@ -56,6 +56,52 @@ def _is_youtube_url(url: str) -> bool:
 router = APIRouter(tags=["jobs"])
 
 
+def _apply_tenant_overrides(
+    dist: EffectiveDistributionSettings,
+    tenant_config,
+    effective_theme_id: str | None,
+    is_private: bool,
+    enable_youtube_upload: bool,
+) -> tuple:
+    """
+    Apply tenant-specific overrides to distribution settings and job options.
+
+    For tenant jobs:
+    - Overlays brand_prefix, dropbox_path, gdrive_folder_id from tenant defaults
+      (only when not already set in the request body / dist)
+    - Forces is_private = True
+    - Applies locked_theme as effective theme
+    - Disables YouTube upload
+
+    Returns:
+        Tuple of (dist, effective_theme_id, is_private, enable_youtube_upload)
+    """
+    if not tenant_config:
+        return dist, effective_theme_id, is_private, enable_youtube_upload
+
+    defaults = tenant_config.defaults
+
+    # Overlay tenant distribution defaults (request-level values take precedence)
+    if defaults.brand_prefix and not dist.brand_prefix:
+        dist.brand_prefix = defaults.brand_prefix
+    if defaults.dropbox_path and not dist.dropbox_path:
+        dist.dropbox_path = defaults.dropbox_path
+    if defaults.gdrive_folder_id and not dist.gdrive_folder_id:
+        dist.gdrive_folder_id = defaults.gdrive_folder_id
+
+    # Force private for all tenant jobs
+    is_private = True
+
+    # Apply locked_theme (overrides any user selection)
+    if defaults.locked_theme:
+        effective_theme_id = defaults.locked_theme
+
+    # Disable YouTube upload for tenants
+    enable_youtube_upload = False
+
+    return dist, effective_theme_id, is_private, enable_youtube_upload
+
+
 # ============================================================================
 # Pydantic models for signed URL upload flow
 # ============================================================================
@@ -510,7 +556,7 @@ async def upload_and_create_job(
                     "auth_url": "/api/auth/status"
                 }
             )
-        
+
         # Extract request metadata for tracking and filtering
         request_metadata = extract_request_metadata(request, created_from="upload")
 
@@ -533,6 +579,14 @@ async def upload_and_create_job(
             effective_theme_id = theme_service.get_default_theme_id()
             if effective_theme_id:
                 logger.info(f"Applying default theme: {effective_theme_id}")
+
+        # Apply tenant-specific overrides (brand, paths, privacy, theme)
+        dist, effective_theme_id, is_private, effective_enable_youtube_upload = _apply_tenant_overrides(
+            dist, tenant_config, effective_theme_id, is_private, effective_enable_youtube_upload,
+        )
+        if tenant_config:
+            logger.info(f"Applied tenant overrides for '{tenant_config.id}': "
+                        f"brand={dist.brand_prefix}, private={is_private}, theme={effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
@@ -1077,12 +1131,29 @@ async def create_job_with_upload_urls(
         settings = get_settings()
         effective_enable_youtube_upload = body.enable_youtube_upload if body.enable_youtube_upload is not None else settings.default_enable_youtube_upload
 
+        # Apply default theme if none specified
+        effective_theme_id = body.theme_id
+        if effective_theme_id is None:
+            theme_service = get_theme_service()
+            effective_theme_id = theme_service.get_default_theme_id()
+            if effective_theme_id:
+                logger.info(f"Applying default theme: {effective_theme_id}")
+
+        # Apply tenant-specific overrides (brand, paths, privacy, theme)
+        effective_is_private = body.is_private
+        dist, effective_theme_id, effective_is_private, effective_enable_youtube_upload = _apply_tenant_overrides(
+            dist, tenant_config, effective_theme_id, effective_is_private, effective_enable_youtube_upload,
+        )
+        if tenant_config:
+            logger.info(f"Applied tenant overrides for '{tenant_config.id}': "
+                        f"brand={dist.brand_prefix}, private={effective_is_private}, theme={effective_theme_id}")
+
         # Validate credentials for requested distribution services
         # Skip YouTube/GDrive checks for private jobs (they won't use those services)
         invalid_services = []
         credential_manager = get_credential_manager()
 
-        if effective_enable_youtube_upload and not body.is_private:
+        if effective_enable_youtube_upload and not effective_is_private:
             result = credential_manager.check_youtube_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"youtube ({result.message})")
@@ -1092,7 +1163,7 @@ async def create_job_with_upload_urls(
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"dropbox ({result.message})")
 
-        if dist.gdrive_folder_id and not body.is_private:
+        if dist.gdrive_folder_id and not effective_is_private:
             result = credential_manager.check_gdrive_credentials()
             if result.status != CredentialStatus.VALID:
                 invalid_services.append(f"gdrive ({result.message})")
@@ -1113,15 +1184,6 @@ async def create_job_with_upload_urls(
 
         # Get original audio filename
         audio_file = audio_files[0]
-
-        # Apply default theme if none specified
-        # This ensures all karaoke videos use the Nomad theme by default
-        effective_theme_id = body.theme_id
-        if effective_theme_id is None:
-            theme_service = get_theme_service()
-            effective_theme_id = theme_service.get_default_theme_id()
-            if effective_theme_id:
-                logger.info(f"Applying default theme: {effective_theme_id}")
 
         # Resolve CDG/TXT defaults based on theme
         resolved_cdg, resolved_txt = resolve_cdg_txt_defaults(
@@ -1161,7 +1223,7 @@ async def create_job_with_upload_urls(
             other_stems_models=body.other_stems_models,
             request_metadata=request_metadata,
             non_interactive=body.non_interactive,
-            is_private=body.is_private,
+            is_private=effective_is_private,
             # Tenant scoping
             tenant_id=tenant_config.id if tenant_config else None,
         )
