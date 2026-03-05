@@ -20,12 +20,15 @@ import { sortJobsByDate, getDisplayJobs } from "@/lib/job-status"
 import { WarmingUpLoader } from "@/components/WarmingUpLoader"
 import { JobCard } from "@/components/job"
 import { GuidedJobFlow } from "@/components/job/GuidedJobFlow"
+import { TenantJobFlow } from "@/components/job/TenantJobFlow"
+import { TenantLogo } from "@/components/tenant-logo"
 import { AuthStatus } from "@/components/auth"
 import { AutoProcessor } from "@/components/AutoProcessor"
 import { VersionFooter } from "@/components/version-footer"
 import { PushNotificationPrompt } from "@/components/push-notification-prompt"
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
 import { useTheme } from "@/lib/theme"
+import { useTenant } from "@/lib/tenant"
 import {
   Tooltip,
   TooltipContent,
@@ -52,6 +55,7 @@ function AppPageContent() {
   const adminTokenHandled = useRef(false) // Track if admin_token was already processed
   const { isDarkMode, toggleTheme, mounted } = useTheme()
   const { user, fetchUser, verifyMagicLink } = useAuth()
+  const { isDefault: isDefaultTenant, branding } = useTenant()
   const { showTestData } = useAdminSettings()
   const [jobLimit, setJobLimit] = useState<number>(() => {
     if (typeof window === "undefined") return 10
@@ -201,9 +205,15 @@ function AppPageContent() {
       <header className="fixed top-0 left-0 right-0 z-50 bg-dark-900/80 backdrop-blur-md border-b border-dark-700">
         <div className="px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8 sm:h-10 shrink-0" />
+            {isDefaultTenant ? (
+              <img src="/nomad-karaoke-logo.svg" alt="Nomad Karaoke" className="h-8 sm:h-10 shrink-0" />
+            ) : (
+              <TenantLogo size="sm" />
+            )}
             <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-bold truncate" style={{ color: 'var(--text)' }}>Karaoke Generator</h1>
+              <h1 className="text-base sm:text-xl font-bold truncate" style={{ color: 'var(--text)' }}>
+                {isDefaultTenant ? "Karaoke Generator" : branding.site_title}
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -311,8 +321,8 @@ function AppPageContent() {
         {/* Push notification prompt - shows once when appropriate */}
         <PushNotificationPrompt />
 
-        {/* Feedback-for-credits banner */}
-        {user?.feedback_eligible && !feedbackBannerDismissed && (
+        {/* Feedback-for-credits banner (consumer portal only) */}
+        {isDefaultTenant && user?.feedback_eligible && !feedbackBannerDismissed && (
           <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
             style={{
               borderColor: 'var(--accent)',
@@ -352,13 +362,21 @@ function AppPageContent() {
           {/* Submit Job Card */}
           <Card className="backdrop-blur min-w-0" style={{ borderColor: 'var(--card-border)', backgroundColor: 'var(--card)' }}>
             <CardHeader>
-              <CardTitle style={{ color: 'var(--text)' }}>Create Karaoke Video</CardTitle>
+              <CardTitle style={{ color: 'var(--text)' }}>
+                {isDefaultTenant ? "Create Karaoke Video" : "Submit Track"}
+              </CardTitle>
               <CardDescription style={{ color: 'var(--text-muted)' }}>
-                Turn any song into a karaoke video with synced lyrics
+                {isDefaultTenant
+                  ? "Turn any song into a karaoke video with synced lyrics"
+                  : "Upload your mixed audio and instrumental"}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <GuidedJobFlow onJobCreated={loadJobs} />
+              {isDefaultTenant ? (
+                <GuidedJobFlow onJobCreated={loadJobs} />
+              ) : (
+                <TenantJobFlow onJobCreated={loadJobs} />
+              )}
             </CardContent>
           </Card>
 

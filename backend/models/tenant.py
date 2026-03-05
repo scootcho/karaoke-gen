@@ -95,6 +95,12 @@ class TenantDefaults(BaseModel):
     brand_prefix: Optional[str] = Field(
         None, description="Prefix for output filenames (e.g., 'VSTAR')"
     )
+    dropbox_path: Optional[str] = Field(
+        None, description="Tenant-specific Dropbox folder path (e.g., '/Karaoke/Vocal-Star')"
+    )
+    gdrive_folder_id: Optional[str] = Field(
+        None, description="Tenant-specific Google Drive folder ID for output uploads"
+    )
     youtube_description_template: Optional[str] = Field(
         None, description="Default YouTube description template"
     )

@@ -80,6 +80,17 @@ def get_effective_distribution_for_job(job) -> EffectiveDistributionSettings:
         EffectiveDistributionSettings with private overrides applied if needed
     """
     if getattr(job, 'is_private', False):
+        # Tenant jobs: use the job's own distribution fields (set at creation from tenant config)
+        # Non-tenant private jobs: override to NonPublished paths
+        if getattr(job, 'tenant_id', None):
+            return EffectiveDistributionSettings(
+                dropbox_path=getattr(job, 'dropbox_path', None),
+                brand_prefix=getattr(job, 'brand_prefix', None),
+                enable_youtube_upload=False,
+                gdrive_folder_id=getattr(job, 'gdrive_folder_id', None),
+                discord_webhook_url=getattr(job, 'discord_webhook_url', None),
+                youtube_description=None,
+            )
         settings = get_settings()
         return EffectiveDistributionSettings(
             dropbox_path=settings.default_private_dropbox_path,

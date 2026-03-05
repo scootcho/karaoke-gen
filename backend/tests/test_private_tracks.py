@@ -406,6 +406,7 @@ class TestOrchestratorConfigPrivate:
         job.gdrive_folder_id = "folder-123"
         job.keep_brand_code = None
         job.existing_instrumental_gcs_path = None
+        job.tenant_id = None  # Non-tenant job
 
         config = create_orchestrator_config_from_job(
             job=job,

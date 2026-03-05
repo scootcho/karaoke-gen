@@ -453,10 +453,11 @@ if tenant_config and not tenant_config.features.audio_search:
 ### Active Tenants
 
 **Vocal Star** (`vocalstar.nomadkaraoke.com`)
-- Features: File upload only (no audio search, no YouTube URL)
-- Distribution: Download only (no YouTube/Dropbox/GDrive)
+- Features: File upload only (no audio search, no YouTube URL), streamlined 4-field form (Artist, Title, Mixed Audio, Instrumental Audio)
+- Distribution: Cloud only (Dropbox + Google Drive to tenant-specific folders, no YouTube)
 - Theme: Locked to "vocalstar" theme (yellow/blue)
 - Auth: Restricted to `@vocal-star.com` and `@vocalstarmusic.com` emails
+- All jobs automatically private with VSTAR brand prefix
 - Setup: `python scripts/setup-vocalstar-tenant.py`
 
 **Singa** (`singa.nomadkaraoke.com`)
