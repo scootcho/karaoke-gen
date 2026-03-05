@@ -833,13 +833,12 @@ async def search_audio(
                 selection_index=best_index,
             )
 
-            # For auto_download, run download in background so this endpoint returns quickly
-            background_tasks.add_task(
-                _download_audio_and_trigger_workers,
-                job_id,
-                best_index,
-                audio_search_service,
-            )
+            # Trigger audio download as a Cloud Run Job (survives instance shutdown)
+            worker_service = get_worker_service()
+            triggered = await worker_service.trigger_audio_download_worker(job_id)
+            if not triggered:
+                job_manager.fail_job(job_id, "Failed to trigger audio download worker")
+                raise HTTPException(status_code=500, detail="Failed to trigger audio download worker")
 
             return AudioSearchResponse(
                 status="success",
@@ -1156,13 +1155,12 @@ async def select_audio_source(
         selection_index=body.selection_index,
     )
 
-    # Schedule the actual download as a background task
-    background_tasks.add_task(
-        _download_audio_and_trigger_workers,
-        job_id,
-        body.selection_index,
-        audio_search_service,
-    )
+    # Trigger audio download as a Cloud Run Job (survives instance shutdown)
+    worker_service = get_worker_service()
+    triggered = await worker_service.trigger_audio_download_worker(job_id)
+    if not triggered:
+        job_manager.fail_job(job_id, "Failed to trigger audio download worker")
+        raise HTTPException(status_code=500, detail="Failed to trigger audio download worker")
 
     return AudioSelectResponse(
         status="success",
