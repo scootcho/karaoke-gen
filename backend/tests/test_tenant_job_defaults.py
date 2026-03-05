@@ -162,6 +162,42 @@ class TestApplyTenantOverrides:
         assert is_private is False
         assert yt_upload is True
 
+    def test_partial_tenant_defaults_only_overrides_set_fields(self):
+        """When tenant config has only some defaults, only those are applied."""
+        apply_fn = self._get_apply_fn()
+        # Only brand_prefix set, no dropbox_path or gdrive_folder_id
+        tenant_config = TenantConfig(
+            id="partial",
+            name="Partial Tenant",
+            subdomain="partial.nomadkaraoke.com",
+            defaults=TenantDefaults(
+                brand_prefix="PART",
+                dropbox_path=None,
+                gdrive_folder_id=None,
+                locked_theme=None,
+            ),
+        )
+
+        dist = EffectiveDistributionSettings(
+            dropbox_path=None, gdrive_folder_id=None, discord_webhook_url=None,
+            brand_prefix=None, enable_youtube_upload=True, youtube_description=None,
+        )
+
+        new_dist, theme, is_private, yt_upload = apply_fn(
+            dist, tenant_config, "user-theme", False, True
+        )
+
+        # brand_prefix applied
+        assert new_dist.brand_prefix == "PART"
+        # dropbox/gdrive remain None since tenant has None
+        assert new_dist.dropbox_path is None
+        assert new_dist.gdrive_folder_id is None
+        # No locked_theme, so user theme preserved
+        assert theme == "user-theme"
+        # Still forced private and no YT
+        assert is_private is True
+        assert yt_upload is False
+
 
 class TestTenantJobDistribution:
     """Tests for get_effective_distribution_for_job() with tenant jobs."""

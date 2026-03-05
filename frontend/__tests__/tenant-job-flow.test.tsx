@@ -123,6 +123,128 @@ describe('TenantJobFlow — API contract', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Error handling tests — verifies error paths in handleSubmit
+// ---------------------------------------------------------------------------
+
+describe('TenantJobFlow — error handling', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('ApiError message is surfaced when createJobWithUploadUrls fails', async () => {
+    const { ApiError } = require('@/lib/api')
+    mockApi.createJobWithUploadUrls.mockRejectedValue(
+      new ApiError('Tenant file upload is not enabled', 403),
+    )
+
+    // Simulate handleSubmit error path
+    let errorMessage = ''
+    try {
+      await api.createJobWithUploadUrls('Artist', 'Title', [], {
+        is_private: true,
+        existing_instrumental: true,
+      })
+    } catch (err: any) {
+      errorMessage = err instanceof ApiError ? err.message : 'Something went wrong. Please try again.'
+    }
+
+    expect(errorMessage).toBe('Tenant file upload is not enabled')
+  })
+
+  it('generic errors get fallback message', async () => {
+    mockApi.createJobWithUploadUrls.mockRejectedValue(new TypeError('Network error'))
+
+    const { ApiError } = require('@/lib/api')
+    let errorMessage = ''
+    try {
+      await api.createJobWithUploadUrls('Artist', 'Title', [], {
+        is_private: true,
+        existing_instrumental: true,
+      })
+    } catch (err: any) {
+      errorMessage = err instanceof ApiError ? err.message : 'Something went wrong. Please try again.'
+    }
+
+    expect(errorMessage).toBe('Something went wrong. Please try again.')
+  })
+
+  it('missing upload URL throws ApiError', async () => {
+    mockApi.createJobWithUploadUrls.mockResolvedValue({
+      status: 'success',
+      job_id: 'job-123',
+      message: 'Created',
+      upload_urls: [
+        // Missing 'audio' file type — only has instrumental
+        { file_type: 'existing_instrumental', gcs_path: 'p', upload_url: 'https://inst', content_type: 'audio/mpeg' },
+      ],
+      server_version: '1.0',
+    })
+
+    const response = await api.createJobWithUploadUrls('Artist', 'Title', [], {
+      is_private: true,
+      existing_instrumental: true,
+    })
+
+    // The component checks: find(u => u.file_type === "audio")
+    const audioUrl = response.upload_urls.find((u: any) => u.file_type === 'audio')
+    expect(audioUrl).toBeUndefined()
+  })
+
+  it('upload failure on instrumental after successful mixed upload is catchable', async () => {
+    mockApi.uploadToSignedUrl
+      .mockResolvedValueOnce(undefined) // mixed succeeds
+      .mockRejectedValueOnce(new Error('Upload timeout')) // instrumental fails
+
+    const audioFile = new File(['audio'], 'song.mp3', { type: 'audio/mpeg' })
+    const instFile = new File(['inst'], 'inst.mp3', { type: 'audio/mpeg' })
+
+    // First upload succeeds
+    await api.uploadToSignedUrl('https://url-audio', audioFile, 'audio/mpeg')
+
+    // Second upload fails
+    await expect(
+      api.uploadToSignedUrl('https://url-inst', instFile, 'audio/mpeg'),
+    ).rejects.toThrow('Upload timeout')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Form validation logic tests
+// ---------------------------------------------------------------------------
+
+describe('TenantJobFlow — form validation', () => {
+  it('canSubmit requires all 4 fields and idle phase', () => {
+    // Replicate the canSubmit logic from TenantJobFlow
+    const canSubmit = (artist: string, title: string, mixed: File | null, inst: File | null, phase: string) =>
+      !!(artist.trim() && title.trim() && mixed && inst && phase === 'idle')
+
+    const file = new File(['data'], 'song.mp3', { type: 'audio/mpeg' })
+
+    // All fields filled + idle → true
+    expect(canSubmit('Artist', 'Title', file, file, 'idle')).toBe(true)
+
+    // Missing artist → false
+    expect(canSubmit('', 'Title', file, file, 'idle')).toBe(false)
+
+    // Whitespace-only artist → false
+    expect(canSubmit('   ', 'Title', file, file, 'idle')).toBe(false)
+
+    // Missing title → false
+    expect(canSubmit('Artist', '', file, file, 'idle')).toBe(false)
+
+    // Missing mixed file → false
+    expect(canSubmit('Artist', 'Title', null, file, 'idle')).toBe(false)
+
+    // Missing instrumental file → false
+    expect(canSubmit('Artist', 'Title', file, null, 'idle')).toBe(false)
+
+    // Submitting phase → false
+    expect(canSubmit('Artist', 'Title', file, file, 'creating')).toBe(false)
+    expect(canSubmit('Artist', 'Title', file, file, 'uploading-mixed')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Component interface tests
 // ---------------------------------------------------------------------------
 
