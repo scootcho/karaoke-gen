@@ -98,18 +98,16 @@ async function getJobDetails(token: string, jobId: string): Promise<any> {
 test.describe("Tenant Portal Job Submission", () => {
   test.describe.configure({ retries: 0 });
 
-  let adminToken: string;
+  let adminToken: string = "";
   let testAudioPath: string;
   let testInstrumentalPath: string;
   let createdJobId: string | null = null;
 
   test.beforeAll(async () => {
     const token = getAdminToken();
-    if (!token) {
-      test.skip(true as any, "KARAOKE_ADMIN_TOKEN not set");
-      return;
+    if (token) {
+      adminToken = token;
     }
-    adminToken = token;
 
     // Create test audio files
     testAudioPath = createTestAudioFile("test-mixed-audio.wav");
@@ -139,15 +137,14 @@ test.describe("Tenant Portal Job Submission", () => {
   });
 
   test("Tenant portal shows simplified form, not consumer wizard", async ({ page }) => {
+    test.skip(!adminToken, "KARAOKE_ADMIN_TOKEN not set");
     test.setTimeout(TIMEOUTS.expect);
 
     await authenticatePage(page, adminToken);
     await page.goto(`${TENANT_PORTAL_URL}/app`, { waitUntil: "networkidle", timeout: TIMEOUTS.action });
 
     // Should NOT show the consumer wizard step indicators
-    await expect(page.getByText("Choose Audio")).not.toBeVisible({ timeout: 5_000 }).catch(() => {
-      // This is expected — the text shouldn't exist
-    });
+    await expect(page.getByText("Choose Audio")).not.toBeVisible({ timeout: 5_000 });
 
     // Should show tenant-specific card title
     await expect(page.getByText("Submit Track")).toBeVisible({ timeout: TIMEOUTS.expect });
@@ -161,6 +158,7 @@ test.describe("Tenant Portal Job Submission", () => {
   });
 
   test("Submit track through tenant portal", async ({ page }) => {
+    test.skip(!adminToken, "KARAOKE_ADMIN_TOKEN not set");
     test.setTimeout(TIMEOUTS.fullTest);
 
     await authenticatePage(page, adminToken);
@@ -189,6 +187,7 @@ test.describe("Tenant Portal Job Submission", () => {
     const jobIdText = await jobIdElement.textContent();
     const shortId = jobIdText?.replace("ID: ", "").trim();
     expect(shortId).toBeTruthy();
+    if (shortId) createdJobId = shortId;
     console.log(`Created tenant job with short ID: ${shortId}`);
 
     // Verify success timeline shows tenant-specific steps (no "Audio processing" step)
@@ -203,6 +202,7 @@ test.describe("Tenant Portal Job Submission", () => {
   });
 
   test("Consumer portal still works normally", async ({ page }) => {
+    test.skip(!adminToken, "KARAOKE_ADMIN_TOKEN not set");
     test.setTimeout(TIMEOUTS.expect);
 
     await authenticatePage(page, adminToken);
