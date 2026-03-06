@@ -426,7 +426,35 @@ class VideoWorkerOrchestrator:
         # For GCE encoding, download the encoded files from GCS to local directory
         # This is required for YouTube upload and other local file operations
         if encoding_backend.name == "gce" and self.storage:
-            await self._download_gce_encoded_files(output)
+            try:
+                await self._download_gce_encoded_files(output)
+            except RuntimeError as e:
+                if "stale" in str(e).lower():
+                    # GCE worker returned cached result but files were deleted from GCS.
+                    # Re-encode with a suffixed job ID so GCE treats it as a new job.
+                    import uuid
+                    retry_suffix = uuid.uuid4().hex[:8]
+                    retry_job_id = f"{self.config.job_id}_retry_{retry_suffix}"
+                    self.job_log.warning(
+                        f"Stale GCE cache detected, re-encoding as {retry_job_id}: {e}"
+                    )
+
+                    # Update the encoding input with the retry job ID
+                    encoding_input.options["job_id"] = retry_job_id
+
+                    output = await encoding_backend.encode(encoding_input)
+                    if not output.success:
+                        raise Exception(f"Encoding failed on retry: {output.error_message}")
+
+                    self.result.final_video = output.lossless_4k_mp4_path
+                    self.result.final_video_mkv = output.lossless_mkv_path
+                    self.result.final_video_lossy = output.lossy_4k_mp4_path
+                    self.result.final_video_720p = output.lossy_720p_mp4_path
+                    self.result.encoding_time_seconds = output.encoding_time_seconds
+
+                    await self._download_gce_encoded_files(output)
+                else:
+                    raise
 
         self.job_log.info(f"Encoding complete ({encoding_backend.name}) in {output.encoding_time_seconds:.1f}s")
 
@@ -479,6 +507,15 @@ class VideoWorkerOrchestrator:
                 # Don't fail - some formats might not be generated
 
         self.job_log.info(f"Downloaded {downloaded_count} encoded files from GCS")
+
+        # If zero files were downloaded, the GCE cache was stale (files deleted from GCS
+        # but GCE worker still reports job as "complete"). This happens when admin deletes
+        # outputs then re-runs the video worker. Raise to trigger re-encoding.
+        if downloaded_count == 0:
+            raise RuntimeError(
+                "GCE encoding returned cached result but all output files are missing from GCS. "
+                "The GCE worker's job cache is stale — clearing it and retrying."
+            )
 
     async def _run_organization(self):
         """Run the organization stage (brand code generation)."""
@@ -573,7 +610,9 @@ class VideoWorkerOrchestrator:
             video_to_upload = self.result.final_video_lossy
 
         if not video_to_upload:
-            self.job_log.warning("No video file available for YouTube upload")
+            warning = "YouTube upload skipped: no video file available on disk"
+            self.job_log.warning(warning)
+            self.result.distribution_warnings.append(warning)
             return
 
         try:
