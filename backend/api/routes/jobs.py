@@ -2013,6 +2013,8 @@ async def change_visibility(
     """
     job_manager = JobManager()
     job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
     user_email = auth_result.user_email or "unknown"
     is_admin = auth_result.is_admin
@@ -2020,10 +2022,11 @@ async def change_visibility(
     from backend.services.visibility_change_service import VisibilityChangeService
     service = VisibilityChangeService(job_manager)
 
-    # Validate
+    # Validate (skip job-exists check since we already handled it)
     error = service.validate_change(job, user_email, is_admin, request.target_visibility)
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        status_code = 403 if "your own jobs" in error else 400
+        raise HTTPException(status_code=status_code, detail=error)
 
     current_is_private = getattr(job, 'is_private', False)
     previous_visibility = "private" if current_is_private else "public"

@@ -240,7 +240,10 @@ class VisibilityChangeService:
                 from backend.services.dropbox_service import get_dropbox_service
                 dropbox = get_dropbox_service()
                 if dropbox.is_configured:
-                    folder_name = f"{brand_code} - {job.artist} - {job.title}"
+                    from karaoke_gen.utils import sanitize_filename
+                    safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+                    safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+                    folder_name = f"{brand_code} - {safe_artist} - {safe_title}"
                     full_path = f"{dropbox_path}/{folder_name}"
                     dropbox.delete_folder(full_path)
                     logger.info(f"[job:{job_id}] Deleted Dropbox folder {full_path}")
