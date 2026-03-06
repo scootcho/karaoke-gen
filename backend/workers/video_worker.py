@@ -349,6 +349,8 @@ async def generate_video_orchestrated(job_id: str) -> bool:
             }
             if result.distribution_warnings:
                 state_update['distribution_warnings'] = result.distribution_warnings
+            # Clear visibility change guard flag if set (from visibility change flow)
+            state_update.pop('visibility_change_in_progress', None)
             job_manager.update_job(job_id, {'state_data': state_update})
 
             # Send Pushbullet alert if any distribution uploads failed
@@ -408,6 +410,158 @@ async def generate_video_orchestrated(job_id: str) -> bool:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             logger.debug(f"Cleaned up temp directory: {temp_dir}")
+
+
+async def redistribute_video(job_id: str) -> bool:
+    """
+    Redistribute existing finals for a completed job (no re-encoding).
+
+    Used by visibility change (public -> private) to redistribute existing
+    encoded files to a different destination without re-rendering or re-encoding.
+
+    Downloads finals from GCS, runs only organization + distribution stages.
+    """
+    from backend.workers.video_worker_orchestrator import (
+        VideoWorkerOrchestrator,
+        OrchestratorConfig,
+    )
+    from backend.services.job_defaults_service import get_effective_distribution_for_job
+
+    job_manager = JobManager()
+    storage = StorageService()
+    job_log = create_job_logger(job_id, "video-redistribute")
+
+    logger.info(f"[job:{job_id}] WORKER_START worker=video-redistribute")
+
+    job = job_manager.get_job(job_id)
+    if not job:
+        logger.error(f"[job:{job_id}] Job not found for redistribution")
+        return False
+
+    temp_dir = tempfile.mkdtemp(prefix=f"karaoke_redist_{job_id}_")
+
+    try:
+        # Download existing finals from GCS by listing the finals folder
+        safe_artist = sanitize_filename(job.artist) if job.artist else "Unknown"
+        safe_title = sanitize_filename(job.title) if job.title else "Unknown"
+
+        downloaded_files = {}
+        blobs = storage.list_files(f"jobs/{job_id}/finals/")
+        for blob_name in blobs:
+            filename = os.path.basename(blob_name)
+            if not filename:
+                continue
+            local_path = os.path.join(temp_dir, filename)
+            try:
+                storage.download_file(blob_name, local_path)
+                downloaded_files[filename] = local_path
+                job_log.info(f"Downloaded {filename} from GCS")
+            except Exception as e:
+                job_log.warning(f"Could not download {filename}: {e}")
+
+        # Also download CDG/TXT packages if they exist
+        package_blobs = storage.list_files(f"jobs/{job_id}/packages/")
+        for blob_name in package_blobs:
+            filename = os.path.basename(blob_name)
+            if not filename:
+                continue
+            local_path = os.path.join(temp_dir, filename)
+            try:
+                storage.download_file(blob_name, local_path)
+                downloaded_files[filename] = local_path
+                job_log.info(f"Downloaded package {filename} from GCS")
+            except Exception as e:
+                job_log.warning(f"Could not download package {filename}: {e}")
+
+        if not downloaded_files:
+            raise RuntimeError("No finals files found in GCS for redistribution")
+
+        # Get effective distribution settings for the (now-updated) job
+        # Re-read job since is_private was just toggled
+        job = job_manager.get_job(job_id)
+        dist = get_effective_distribution_for_job(job)
+
+        # Load YouTube credentials if needed
+        youtube_credentials = None
+        if dist.enable_youtube_upload:
+            youtube_service = get_youtube_service()
+            if youtube_service.is_configured:
+                youtube_credentials = youtube_service.get_credentials_dict()
+
+        # Create a minimal orchestrator config for distribution only
+        config = OrchestratorConfig(
+            job_id=job_id,
+            artist=job.artist,
+            title=job.title,
+            # Input files - not needed for distribution, but required by dataclass
+            title_video_path="",
+            karaoke_video_path="",
+            instrumental_audio_path="",
+            output_dir=temp_dir,
+            # Distribution settings
+            enable_youtube_upload=dist.enable_youtube_upload,
+            brand_prefix=dist.brand_prefix,
+            discord_webhook_url=dist.discord_webhook_url,
+            youtube_credentials=youtube_credentials,
+            youtube_description_template=dist.youtube_description,
+            dropbox_path=dist.dropbox_path,
+            gdrive_folder_id=dist.gdrive_folder_id,
+            enable_cdg=getattr(job, 'enable_cdg', False),
+            enable_txt=getattr(job, 'enable_txt', False),
+        )
+
+        orchestrator = VideoWorkerOrchestrator(
+            config=config,
+            job_manager=job_manager,
+            storage=storage,
+            job_logger=job_log,
+        )
+
+        # Map downloaded files to orchestrator result attributes by filename patterns
+        for filename, path in downloaded_files.items():
+            lower = filename.lower()
+            if 'lossless' in lower and '4k' in lower and lower.endswith('.mp4'):
+                orchestrator.result.final_video = path
+            elif 'lossless' in lower and lower.endswith('.mkv'):
+                orchestrator.result.final_video_mkv = path
+            elif 'lossy' in lower and '4k' in lower:
+                orchestrator.result.final_video_lossy = path
+            elif '720p' in lower:
+                orchestrator.result.final_video_720p = path
+            elif 'cdg' in lower and lower.endswith('.zip'):
+                orchestrator.result.final_karaoke_cdg_zip = path
+            elif 'txt' in lower and lower.endswith('.zip'):
+                orchestrator.result.final_karaoke_txt_zip = path
+
+        # Run only organization + distribution + notifications
+        await orchestrator._run_organization()
+        await orchestrator._run_distribution()
+        await orchestrator._run_notifications()
+
+        # Update job state_data with new distribution results
+        state_update = dict(job.state_data or {})
+        state_update['brand_code'] = orchestrator.result.brand_code
+        state_update['youtube_url'] = orchestrator.result.youtube_url
+        state_update['dropbox_link'] = orchestrator.result.dropbox_link
+        state_update['gdrive_files'] = orchestrator.result.gdrive_files
+        state_update.pop('visibility_change_in_progress', None)
+
+        job_manager.update_job(job_id, {
+            'state_data': state_update,
+            'outputs_deleted_at': None,
+            'outputs_deleted_by': None,
+        })
+
+        logger.info(f"[job:{job_id}] WORKER_END worker=video-redistribute status=success")
+        return True
+
+    except Exception as e:
+        logger.error(f"[job:{job_id}] WORKER_END worker=video-redistribute status=error error={e}")
+        return False
+
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 
 async def generate_video(job_id: str) -> bool:

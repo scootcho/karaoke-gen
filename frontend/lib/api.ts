@@ -1252,6 +1252,18 @@ export const api = {
     });
     return handleResponse(response);
   },
+
+  async changeVisibility(jobId: string, targetVisibility: 'public' | 'private'): Promise<ChangeVisibilityResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/change-visibility`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ target_visibility: targetVisibility }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // Types for credits/payment
@@ -2678,6 +2690,15 @@ export interface RefundResponse {
   success: boolean;
   message: string;
   session_id: string;
+}
+
+export interface ChangeVisibilityResponse {
+  status: string;
+  job_id: string;
+  message: string;
+  previous_visibility: string;
+  new_visibility: string;
+  reprocessing_required: boolean;
 }
 
 export { ApiError };

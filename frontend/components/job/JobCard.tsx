@@ -187,7 +187,7 @@ export function JobCard({ job, onRefresh, showAdminControls }: JobCardProps) {
       {/* Output links for completed jobs, or admin link for admins on any job */}
       {(isComplete || isAdmin) && (
         <div className="mt-2">
-          <OutputLinks job={job} />
+          <OutputLinks job={job} onJobUpdated={onRefresh} />
         </div>
       )}
 
