@@ -98,6 +98,23 @@ gcloud compute ssh encoding-worker --zone=us-central1-c --project=nomadkaraoke \
 
 ---
 
+## GDrive validator reports sequence gap
+
+**Symptoms:** Email from "Nomad Karaoke GDrive Validator" reporting `SEQUENCE GAPS: MP4: missing XXXX`.
+
+**Key principle: Never add to `KNOWN_GAPS`.** All known gaps are historical (pre-generator, 2024). Every new gap is a real bug.
+
+**Full investigation and fix procedure:** See [docs/GDRIVE-VALIDATOR.md § Sequence Gap Detected](GDRIVE-VALIDATOR.md#sequence-gap-detected).
+
+**Quick reference:**
+1. Query Firestore for the missing brand code (`state_data.brand_code == 'NOMAD-XXXX'`)
+2. If no job found, check Cloud Run logs for `"Allocated brand code: NOMAD-XXXX"` to find when/how it was consumed
+3. Determine root cause from logs (job re-trigger, failed distribution, etc.)
+4. Recycle the brand code number into `brand_code_counters/NOMAD.recycled` — the next public job will fill the gap
+5. Report any orphan GDrive files to the user for manual cleanup
+
+---
+
 ## Google Drive uploads missing (gdrive_files empty)
 
 **Symptoms:** Jobs complete successfully but `state_data.gdrive_files` is empty `{}`. Cloud Run logs show `BrokenPipeError` or `SSL: UNEXPECTED_EOF_WHILE_READING`.

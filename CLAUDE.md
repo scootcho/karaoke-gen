@@ -20,6 +20,7 @@
 | API reference | `docs/API.md` |
 | Past learnings | `docs/LESSONS-LEARNED.md` |
 | **Operational runbooks** | `docs/TROUBLESHOOTING.md` |
+| GDrive validator & gaps | `docs/GDRIVE-VALIDATOR.md` |
 | **Product communication** | `docs/PRODUCT-COMMUNICATION-GUIDE.md` |
 | Brand style guide | `docs/BRAND-STYLE-GUIDE.md` |
 

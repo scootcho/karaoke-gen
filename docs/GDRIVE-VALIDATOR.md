@@ -113,13 +113,13 @@ Notifications are sent when:
 | `karaoke-backend@` SA | `roles/cloudfunctions.invoker` | gdrive-validator function | Post-job trigger |
 | `karaoke-backend@` SA | `roles/run.invoker` | gdrive-validator Cloud Run service | Gen2 function HTTP access |
 
-### Known Gaps
+### Known Gaps (Historical Only)
 
-The validator knows about expected sequence gaps (historical missing numbers). These are configured identically in both:
+The validator knows about expected sequence gaps from the pre-generator era (before Dec 2024). These are configured identically in both:
 - `infrastructure/functions/gdrive_validator/main.py` (Cloud Function)
 - `scripts/validate_and_sync.py` (local script)
 
-When a new gap is discovered intentionally (e.g., a track was removed), update the `KNOWN_GAPS` dict in **both** files.
+**Do NOT add new entries to `KNOWN_GAPS`.** All new gaps are bugs — see [Sequence Gap Detected](#sequence-gap-detected) for the investigation and fix procedure.
 
 ## Usage
 
@@ -189,11 +189,62 @@ The post-job trigger uses a 5-minute Cloud Tasks delay (via `gdrive-validation-q
 5. The trigger only fires for non-private jobs (jobs with `gdrive_folder_id` set)
 6. If Cloud Tasks scheduling fails, the orchestrator falls back to immediate validation
 
-### False Positive Gaps
+### Sequence Gap Detected
 
-If the validator reports gaps that are intentional:
-1. Add the gap number(s) to `KNOWN_GAPS` in both `main.py` and `scripts/validate_and_sync.py`
-2. Redeploy the cloud function with `./deploy.sh`
+**IMPORTANT: Never add new entries to `KNOWN_GAPS`.** The existing known gaps are historical (pre-generator era, over a year old). Every new gap is a real bug that must be investigated and fixed.
+
+**Investigation steps:**
+
+1. **Identify the missing brand code(s)** from the alert (e.g., "MP4: missing 1295")
+
+2. **Check if a job exists** with that brand code:
+   ```python
+   # Query Firestore for the brand code
+   db.collection('jobs').where(
+       filter=FieldFilter('state_data.brand_code', '==', 'NOMAD-XXXX')
+   ).get()
+   ```
+
+3. **If no job found**, the brand code was allocated but the job was deleted, failed, or re-triggered with a new brand code. Check Cloud Run logs for the allocation:
+   ```bash
+   gcloud logging read \
+     'resource.type="cloud_run_revision" AND resource.labels.service_name="karaoke-backend" AND "Allocated brand code: NOMAD-XXXX"' \
+     --project=nomadkaraoke --limit=10 --format="table(timestamp,jsonPayload.message)" --freshness=7d
+   ```
+
+4. **Find the job that consumed it** by checking logs around the allocation timestamp:
+   ```bash
+   # Search for the brand code in all log messages
+   gcloud logging read \
+     'resource.type="cloud_run_revision" AND resource.labels.service_name="karaoke-backend" AND "NOMAD-XXXX"' \
+     --project=nomadkaraoke --limit=50 --format="table(timestamp,jsonPayload.message)" --freshness=7d
+   ```
+
+5. **Determine root cause** — common scenarios:
+   - **Job re-triggered** (admin reset): First run allocates brand code N, second run allocates N+M. Brand code N is orphaned.
+   - **E2E test cleanup missed recycling**: Test job consumed a number but cleanup didn't return it.
+   - **Job failed mid-distribution**: Brand code allocated but GDrive upload never happened.
+
+6. **Fix — recycle the brand code** so the next public job fills the gap:
+   ```python
+   import os
+   os.environ['GOOGLE_CLOUD_PROJECT'] = 'nomadkaraoke'
+   from google.cloud import firestore
+   db = firestore.Client(project='nomadkaraoke')
+
+   doc_ref = db.collection('brand_code_counters').document('NOMAD')
+   doc = doc_ref.get()
+   data = doc.to_dict()
+   recycled = data.get('recycled', [])
+   recycled.append(XXXX)  # The missing number
+   recycled.sort()
+   doc_ref.update({'recycled': recycled, 'last_updated': firestore.SERVER_TIMESTAMP})
+   ```
+   The `BrandCodeService` always allocates the smallest recycled number first, so the next public job will fill the gap.
+
+7. **Check for orphan files** in GDrive that need manual cleanup (e.g., a CDG zip from a partial first run). Local `gcloud` auth typically lacks GDrive write scopes, so report orphan files to the user for manual deletion.
+
+8. **Add the incident to History** (below) so future agents can see patterns.
 
 ### Duplicate Brand Code Detected
 
@@ -222,3 +273,4 @@ The cloud function does metadata-only checks via the GDrive API (fast, cheap, ca
 - **2025-12-24**: Initial cloud function deployed with Pushbullet notifications and daily Cloud Scheduler trigger
 - **2026-02-28**: Added SendGrid email (primary), kept Pushbullet (fallback). Added post-job trigger from backend. Added `scripts/check_public_share.py` for manual invocation. Motivated by NOMAD-1271 duplicate brand code incident where daily-only checks left a duplicate undetected for ~24 hours.
 - **2026-03-02**: NOMAD-1276 incident fix. Post-job trigger now uses 5-minute Cloud Tasks delay instead of immediate invocation, preventing false "all clear" when E2E test files are still in GDrive during cleanup. Also fixed cross-folder gap detection (uses global max across all folders) and added 28 unit tests for the Cloud Function.
+- **2026-03-06**: NOMAD-1295 gap. Stale GCE encoding cache (#499) caused job `f4a552bf` to produce bad output on first run (allocated NOMAD-1295, only CDG uploaded). Admin re-triggered the job, which allocated a new brand code (NOMAD-1297) without recycling 1295. Fix: recycled 1295 back to the pool. Updated docs to clarify that new gaps must always be investigated and fixed, never added to KNOWN_GAPS.

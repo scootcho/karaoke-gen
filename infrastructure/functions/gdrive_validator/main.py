@@ -39,6 +39,8 @@ EMAIL_FROM = os.environ.get("EMAIL_FROM", "gen@nomadkaraoke.com")
 NOTIFY_ON_SUCCESS = os.environ.get("NOTIFY_ON_SUCCESS", "true").lower() == "true"
 
 # Known gaps configuration - matches the local validate_and_sync.py script
+# These are HISTORICAL ONLY (pre-generator era, before Dec 2024). Do NOT add new entries.
+# New gaps are bugs — see docs/GDRIVE-VALIDATOR.md § "Sequence Gap Detected" for fix procedure.
 # Format: Directory name -> List of ranges (inclusive) or individual numbers to exclude
 KNOWN_GAPS = {
     "MP4": [
