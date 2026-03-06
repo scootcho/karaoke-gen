@@ -242,6 +242,119 @@ class TestChangeToPublic:
             assert payload["is_private"] is True
 
 
+class TestChangeToPrivateErrors:
+    """Test error handling in public -> private flow."""
+
+    @pytest.mark.asyncio
+    async def test_rollback_on_redistribute_failure(self):
+        mock_job_manager = MagicMock()
+        mock_job_ref = MagicMock()
+        mock_job_manager.firestore.db.collection.return_value.document.return_value = mock_job_ref
+
+        service = VisibilityChangeService(job_manager=mock_job_manager)
+        job = _make_job(is_private=False, state_data={})
+
+        with patch("backend.services.visibility_change_service.VisibilityChangeService._delete_distributed_outputs", new_callable=AsyncMock), \
+             patch("backend.workers.video_worker.redistribute_video", new_callable=AsyncMock, return_value=False):
+
+            with pytest.raises(RuntimeError, match="Redistribution failed"):
+                await service.change_to_private("test-123", job, "user@example.com")
+
+            # Guard flag should be cleared on failure
+            last_update = mock_job_ref.update.call_args_list[-1]
+            from google.cloud.firestore_v1 import DELETE_FIELD
+            assert last_update.args[0].get("state_data.visibility_change_in_progress") == DELETE_FIELD
+
+
+class TestDeleteDistributedOutputs:
+    """Test cleanup of distributed outputs."""
+
+    @pytest.mark.asyncio
+    async def test_recycles_brand_code(self):
+        mock_job_manager = MagicMock()
+        mock_job_ref = MagicMock()
+        mock_job_manager.firestore.db.collection.return_value.document.return_value = mock_job_ref
+
+        service = VisibilityChangeService(job_manager=mock_job_manager)
+        job = _make_job(state_data={"brand_code": "NOMAD-0042"})
+
+        with patch("backend.services.brand_code_service.get_brand_code_service") as mock_bcs, \
+             patch("backend.services.brand_code_service.BrandCodeService.parse_brand_code", return_value=("NOMAD", 42)):
+            mock_brand_svc = MagicMock()
+            mock_bcs.return_value = mock_brand_svc
+
+            await service._delete_distributed_outputs("test-123", job, keep_gcs_finals=True)
+
+            mock_brand_svc.recycle_brand_code.assert_called_once_with("NOMAD", 42)
+
+    @pytest.mark.asyncio
+    async def test_clears_distribution_state_keys(self):
+        mock_job_manager = MagicMock()
+        mock_job_ref = MagicMock()
+        mock_job_manager.firestore.db.collection.return_value.document.return_value = mock_job_ref
+
+        service = VisibilityChangeService(job_manager=mock_job_manager)
+        job = _make_job(state_data={
+            "youtube_url": "https://youtube.com/watch?v=abc",
+            "brand_code": "NOMAD-0001",
+            "dropbox_link": "https://dropbox.com/test",
+        })
+
+        with patch("backend.services.brand_code_service.get_brand_code_service") as mock_bcs, \
+             patch("backend.services.brand_code_service.BrandCodeService.parse_brand_code", return_value=("NOMAD", 1)):
+            mock_bcs.return_value = MagicMock()
+
+            # Patch YouTube deletion to avoid real service calls
+            with patch("backend.services.youtube_service.get_youtube_service") as mock_yt, \
+                 patch("backend.services.dropbox_service.get_dropbox_service") as mock_dbx:
+                mock_yt.return_value = MagicMock(is_configured=False)
+                mock_dbx.return_value = MagicMock(is_configured=False)
+
+                await service._delete_distributed_outputs("test-123", job, keep_gcs_finals=True)
+
+                from google.cloud.firestore_v1 import DELETE_FIELD
+                update_call = mock_job_ref.update.call_args
+                payload = update_call.args[0]
+                assert payload["state_data.youtube_url"] == DELETE_FIELD
+                assert payload["state_data.brand_code"] == DELETE_FIELD
+                assert payload["state_data.dropbox_link"] == DELETE_FIELD
+
+    @pytest.mark.asyncio
+    async def test_deletes_gcs_finals_when_not_kept(self):
+        mock_job_manager = MagicMock()
+        mock_job_ref = MagicMock()
+        mock_job_manager.firestore.db.collection.return_value.document.return_value = mock_job_ref
+
+        service = VisibilityChangeService(job_manager=mock_job_manager)
+        job = _make_job(state_data={})
+
+        with patch("backend.services.visibility_change_service.StorageService") as mock_storage_cls:
+            mock_storage = MagicMock()
+            mock_storage.delete_folder.return_value = 3
+            mock_storage_cls.return_value = mock_storage
+
+            await service._delete_distributed_outputs("test-123", job, keep_gcs_finals=False)
+
+            mock_storage.delete_folder.assert_called_once_with("jobs/test-123/finals/")
+
+    @pytest.mark.asyncio
+    async def test_skips_gcs_finals_deletion_when_kept(self):
+        mock_job_manager = MagicMock()
+        mock_job_ref = MagicMock()
+        mock_job_manager.firestore.db.collection.return_value.document.return_value = mock_job_ref
+
+        service = VisibilityChangeService(job_manager=mock_job_manager)
+        job = _make_job(state_data={})
+
+        with patch("backend.services.visibility_change_service.StorageService") as mock_storage_cls:
+            mock_storage = MagicMock()
+            mock_storage_cls.return_value = mock_storage
+
+            await service._delete_distributed_outputs("test-123", job, keep_gcs_finals=True)
+
+            mock_storage.delete_folder.assert_not_called()
+
+
 class TestStateTransitions:
     """Test that the COMPLETE -> LYRICS_COMPLETE state transition is valid."""
 
