@@ -809,6 +809,119 @@ class TestVideoWorkerOrchestratorEncoding:
                 mock_storage.download_file.assert_not_called()
 
 
+    @pytest.mark.asyncio
+    async def test_run_encoding_gce_stale_cache_retries(self):
+        """Test that stale GCE cache (files deleted from GCS) triggers retry with new job ID.
+
+        When admin deletes outputs and re-runs, the GCE worker may return a cached
+        'complete' result but the actual files no longer exist in GCS. The orchestrator
+        should detect this (0 files downloaded) and retry with a suffixed job ID.
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = OrchestratorConfig(
+                job_id="test-job",
+                artist="Test Artist",
+                title="Test Title",
+                title_video_path=os.path.join(temp_dir, "title.mov"),
+                karaoke_video_path=os.path.join(temp_dir, "karaoke.mov"),
+                instrumental_audio_path=os.path.join(temp_dir, "audio.flac"),
+                output_dir=temp_dir,
+            )
+
+            mock_storage = MagicMock()
+            # First call: all downloads fail (404 - stale cache)
+            # Second call: downloads succeed
+            call_count = [0]
+            def download_side_effect(gcs_path, local_path):
+                call_count[0] += 1
+                if call_count[0] <= 4:
+                    # First 4 calls fail (stale cache)
+                    raise Exception(f"404 No such object: {gcs_path}")
+                else:
+                    # Subsequent calls succeed (retry)
+                    with open(local_path, 'w') as f:
+                        f.write("fake video")
+
+            mock_storage.download_file = MagicMock(side_effect=download_side_effect)
+
+            orchestrator = VideoWorkerOrchestrator(
+                config,
+                storage=mock_storage,
+            )
+
+            with patch.object(orchestrator, "_get_encoding_backend") as mock_get:
+                from backend.services.encoding_interface import EncodingOutput
+
+                gce_output = EncodingOutput(
+                    success=True,
+                    lossless_4k_mp4_path="jobs/test-job/finals/output_4k_lossless.mp4",
+                    lossy_4k_mp4_path="jobs/test-job/finals/output_4k_lossy.mp4",
+                    lossy_720p_mp4_path="jobs/test-job/finals/output_720p.mp4",
+                    lossless_mkv_path="jobs/test-job/finals/output_4k.mkv",
+                    encoding_time_seconds=0.0,  # Instant = cached
+                    encoding_backend="gce",
+                )
+
+                mock_backend = MagicMock()
+                mock_backend.name = "gce"
+                # First encode returns stale cache, second returns fresh results
+                mock_backend.encode = AsyncMock(return_value=gce_output)
+                mock_backend._get_service = MagicMock(return_value=MagicMock())
+                mock_get.return_value = mock_backend
+
+                await orchestrator._run_encoding()
+
+                # encode should be called twice: once for stale cache, once for retry
+                assert mock_backend.encode.call_count == 2
+
+                # The retry call should use a different job_id
+                retry_call_args = mock_backend.encode.call_args_list[1]
+                retry_input = retry_call_args[0][0]
+                assert retry_input.options["job_id"].startswith("test-job_retry_")
+
+                # Result should have local paths from the successful retry
+                assert orchestrator.result.final_video is not None
+                assert orchestrator.result.final_video.startswith(temp_dir)
+
+    @pytest.mark.asyncio
+    async def test_download_gce_encoded_files_zero_downloads_raises(self):
+        """Test that _download_gce_encoded_files raises when zero files download."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = OrchestratorConfig(
+                job_id="test-job",
+                artist="Test Artist",
+                title="Test Title",
+                title_video_path=os.path.join(temp_dir, "title.mov"),
+                karaoke_video_path=os.path.join(temp_dir, "karaoke.mov"),
+                instrumental_audio_path=os.path.join(temp_dir, "audio.flac"),
+                output_dir=temp_dir,
+            )
+
+            mock_storage = MagicMock()
+            mock_storage.download_file = MagicMock(
+                side_effect=Exception("404 Not Found")
+            )
+
+            orchestrator = VideoWorkerOrchestrator(
+                config,
+                storage=mock_storage,
+            )
+
+            from backend.services.encoding_interface import EncodingOutput
+            output = EncodingOutput(
+                success=True,
+                lossless_4k_mp4_path="jobs/test-job/finals/out.mp4",
+                lossless_mkv_path="jobs/test-job/finals/out.mkv",
+                lossy_4k_mp4_path="jobs/test-job/finals/out_lossy.mp4",
+                lossy_720p_mp4_path="jobs/test-job/finals/out_720p.mp4",
+                encoding_time_seconds=0.0,
+                encoding_backend="gce",
+            )
+
+            with pytest.raises(RuntimeError, match="stale"):
+                await orchestrator._download_gce_encoded_files(output)
+
+
 class TestVideoWorkerOrchestratorOrganization:
     """Test organization stage."""
 
@@ -921,6 +1034,29 @@ class TestVideoWorkerOrchestratorDistribution:
 
                 mock_dropbox.upload_folder.assert_called_once()
                 assert orchestrator.result.dropbox_link == "https://dropbox.com/link"
+
+
+    @pytest.mark.asyncio
+    async def test_upload_to_youtube_no_video_file_adds_warning(self):
+        """Test that YouTube upload adds distribution warning when no video file exists."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_youtube_upload=True,
+            youtube_credentials={"token": "test"},
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+        # No video files set on result — all are None
+
+        await orchestrator._upload_to_youtube()
+
+        assert len(orchestrator.result.distribution_warnings) == 1
+        assert "no video file available" in orchestrator.result.distribution_warnings[0].lower()
+        assert orchestrator.result.youtube_url is None
 
 
 class TestVideoWorkerOrchestratorNotifications:
