@@ -195,14 +195,22 @@ async def generate_screens(job_id: str) -> bool:
                 regen_restore_status = state_data.get('regen_restore_status')
 
                 if regen_restore_status:
-                    # Admin-triggered regen: restore original status instead of going to review
-                    logger.info(f"[job:{job_id}] Admin screen regen complete, restoring status to {regen_restore_status}")
+                    # Admin/visibility-change regen: restore target status instead of going to review
+                    logger.info(f"[job:{job_id}] Screen regen complete, restoring status to {regen_restore_status}")
                     from google.cloud.firestore_v1 import DELETE_FIELD as _DEL
                     db = job_manager.firestore.db
                     db.collection("jobs").document(job_id).update({
                         "status": regen_restore_status,
                         "state_data.regen_restore_status": _DEL,
                     })
+
+                    # If restoring to review_complete, trigger render worker to continue pipeline
+                    # (used by visibility change: private -> public)
+                    if regen_restore_status == JobStatus.REVIEW_COMPLETE.value:
+                        logger.info(f"[job:{job_id}] Triggering render worker for visibility change pipeline")
+                        from backend.services.worker_service import get_worker_service
+                        worker_service = get_worker_service()
+                        await worker_service.trigger_render_video_worker(job_id)
                 else:
                     # Normal flow: transition to combined review
                     logger.info(f"[job:{job_id}] Screens generated, awaiting combined review")

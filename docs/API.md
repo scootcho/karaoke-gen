@@ -156,6 +156,37 @@ Query parameters:
 DELETE /api/jobs/{job_id}
 ```
 
+#### Change Visibility
+
+Toggle a completed job between public and private. Only the job owner or admin can use this.
+
+```http
+POST /api/jobs/{job_id}/change-visibility
+Content-Type: application/json
+
+{
+  "target_visibility": "private"  // or "public"
+}
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "job_id": "abc123",
+  "message": "Job changed to private. Outputs redistributed to private destination.",
+  "previous_visibility": "public",
+  "new_visibility": "private",
+  "reprocessing_required": false
+}
+```
+
+**Two flows depending on direction:**
+- **Public → Private**: Fast (~1-2 min). Deletes distributed outputs (YouTube/Dropbox/GDrive), keeps GCS finals, redistributes to private destination.
+- **Private → Public**: Slow (~15-30 min). Clears custom styles, resets to Nomad theme, regenerates screens, re-renders and re-encodes video.
+
+**Validation:** Job must be `complete`, not a tenant job, not already at target visibility, and no concurrent visibility change in progress.
+
 ### Review
 
 The combined review flow allows users to review lyrics AND select instrumental track in a single session.

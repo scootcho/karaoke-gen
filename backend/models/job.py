@@ -142,10 +142,10 @@ STATE_TRANSITIONS = {
     JobStatus.UPLOADING: [JobStatus.NOTIFYING, JobStatus.COMPLETE, JobStatus.FAILED],
     JobStatus.NOTIFYING: [JobStatus.COMPLETE, JobStatus.FAILED],
 
-    # Terminal states - COMPLETE, PREP_COMPLETE have no transitions
+    # Terminal states - COMPLETE allows visibility change re-processing
     # FAILED and CANCELLED allow retry transitions to resume from checkpoints
     # PREP_COMPLETE allows continuation from combined review
-    JobStatus.COMPLETE: [],
+    JobStatus.COMPLETE: [JobStatus.LYRICS_COMPLETE],  # Visibility change: private->public re-processing
     JobStatus.PREP_COMPLETE: [JobStatus.AWAITING_REVIEW, JobStatus.FAILED],  # Continue from combined review
     JobStatus.FAILED: [
         JobStatus.DOWNLOADING,            # Retry from beginning (if input audio exists)

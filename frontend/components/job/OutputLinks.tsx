@@ -4,7 +4,7 @@ import { useRef, useCallback, useEffect, useState } from "react"
 import { api, adminApi, Job } from "@/lib/api"
 import { useTenant } from "@/lib/tenant"
 import { Button } from "@/components/ui/button"
-import { Download, Loader2, ExternalLink, FolderOpen, Copy, Mail, Settings } from "lucide-react"
+import { Download, Loader2, ExternalLink, FolderOpen, Copy, Mail, Settings, Lock, Globe } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import {
   Dialog,
@@ -14,14 +14,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 interface OutputLinksProps {
   job: Job
+  onJobUpdated?: () => void
 }
 
-export function OutputLinks({ job }: OutputLinksProps) {
+export function OutputLinks({ job, onJobUpdated }: OutputLinksProps) {
   // Use file_urls from job directly - no API call needed
   const downloadUrls = job.file_urls || null
   // Use state_data from job directly - no API call needed
@@ -35,6 +46,8 @@ export function OutputLinks({ job }: OutputLinksProps) {
   const [emailInput, setEmailInput] = useState("")
   const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
+  const [showVisibilityDialog, setShowVisibilityDialog] = useState(false)
+  const [isChangingVisibility, setIsChangingVisibility] = useState(false)
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const emailTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -49,7 +62,7 @@ export function OutputLinks({ job }: OutputLinksProps) {
   }, [])
 
   const { user } = useAuth()
-  const { features } = useTenant()
+  const { features, tenantId } = useTenant()
   const isAdmin = user?.role === 'admin'
 
   // Check if outputs have been deleted by admin
@@ -58,6 +71,11 @@ export function OutputLinks({ job }: OutputLinksProps) {
   // Filter external links based on tenant features (and outputs not deleted)
   const showYoutubeLink = features.youtube_upload && youtubeUrl && !outputsDeleted
   const showDropboxLink = features.dropbox_upload && dropboxUrl && !outputsDeleted
+
+  // Visibility change: available for completed consumer jobs (not tenant)
+  const isPrivate = !!job.is_private
+  const visibilityChangeInProgress = !!job.state_data?.visibility_change_in_progress
+  const canChangeVisibility = job.status === "complete" && !tenantId && !visibilityChangeInProgress
 
   const copyToClipboard = useCallback(async (url: string) => {
     // Check if clipboard API is available
@@ -138,6 +156,22 @@ export function OutputLinks({ job }: OutputLinksProps) {
     }
   }, [job.job_id, emailInput])
 
+  const handleChangeVisibility = useCallback(async () => {
+    const targetVisibility = isPrivate ? 'public' : 'private'
+    setIsChangingVisibility(true)
+    setShowVisibilityDialog(false)
+
+    try {
+      await api.changeVisibility(job.job_id, targetVisibility)
+      onJobUpdated?.()
+    } catch (err) {
+      console.error("Failed to change visibility:", err)
+      alert(`Failed to change visibility. ${err instanceof Error ? err.message : 'Please try again.'}`)
+    } finally {
+      setIsChangingVisibility(false)
+    }
+  }, [job.job_id, isPrivate, onJobUpdated])
+
   const hasOutputs = showYoutubeLink || showDropboxLink || (downloadUrls && Object.keys(downloadUrls).length > 0)
 
   // Check if we have any downloads (and outputs haven't been deleted)
@@ -155,7 +189,7 @@ export function OutputLinks({ job }: OutputLinksProps) {
   return (
     <div className="space-y-2">
       {/* Links, Downloads, and Admin Tools - all in one row */}
-      {(hasDownloads || hasExternalLinks || isAdmin) && (
+      {(hasDownloads || hasExternalLinks || isAdmin || canChangeVisibility) && (
         <div className="flex flex-wrap gap-1.5">
           {/* Links first */}
           {hasExternalLinks && (
@@ -265,6 +299,29 @@ export function OutputLinks({ job }: OutputLinksProps) {
             </>
           )}
 
+          {/* Change Visibility Button */}
+          {canChangeVisibility && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowVisibilityDialog(true) }}
+              disabled={isChangingVisibility}
+              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors disabled:opacity-50"
+              title={isPrivate ? "Make this track public" : "Make this track private"}
+            >
+              {isChangingVisibility ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : isPrivate ? (
+                <Globe className="w-3 h-3" />
+              ) : (
+                <Lock className="w-3 h-3" />
+              )}
+              {isChangingVisibility
+                ? (isPrivate ? "Making Public..." : "Making Private...")
+                : (isPrivate ? "Make Public" : "Make Private")
+              }
+            </button>
+          )}
+
           {/* Admin Email Tools (only when job has outputs) */}
           {isAdmin && hasOutputs && (
                 <div className="flex">
@@ -310,7 +367,7 @@ export function OutputLinks({ job }: OutputLinksProps) {
         </div>
       )}
 
-      {!hasOutputs && !isAdmin && (
+      {!hasOutputs && !isAdmin && !canChangeVisibility && (
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No outputs available yet</p>
       )}
 
@@ -371,6 +428,56 @@ export function OutputLinks({ job }: OutputLinksProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Change Visibility Confirmation Dialog */}
+      <AlertDialog open={showVisibilityDialog} onOpenChange={setShowVisibilityDialog}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isPrivate ? "Make This Track Public?" : "Make This Track Private?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {isPrivate ? (
+                  <>
+                    <p>This will:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Remove any custom styling (backgrounds, colors) and reset to the standard Nomad Karaoke theme</li>
+                      <li>Regenerate title and end screens</li>
+                      <li>Re-render the karaoke video with default branding</li>
+                      <li>Publish to YouTube, Google Drive, and Dropbox</li>
+                    </ul>
+                    <p>This process takes approximately 15-30 minutes. You&apos;ll receive an email when it&apos;s complete.</p>
+                    <p className="font-medium" style={{ color: 'var(--text)' }}>
+                      Any custom styling you applied will be permanently removed.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>This will:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Remove the video from YouTube</li>
+                      <li>Remove files from Google Drive</li>
+                      <li>Move Dropbox files from the public folder to the private folder</li>
+                      <li>Assign a new private brand code</li>
+                    </ul>
+                    <p>The video content won&apos;t change. This usually takes about 1-2 minutes.</p>
+                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                      You can change it back to public later, but that will require re-rendering the video (~15-30 minutes).
+                    </p>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleChangeVisibility}>
+              {isPrivate ? "Make Public" : "Make Private"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

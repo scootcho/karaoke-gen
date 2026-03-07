@@ -40,6 +40,7 @@ from backend.middleware.tenant import get_tenant_from_request
 from backend.utils.test_data import is_test_email
 from backend.exceptions import InsufficientCreditsError
 from backend.services.firestore_service import FirestoreService
+from backend.models.requests import ChangeVisibilityRequest, ChangeVisibilityResponse
 from pydantic import BaseModel, Field, validator
 
 
@@ -1987,3 +1988,64 @@ async def create_job_from_search(
         logger.error(f"Error creating job from search: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# =============================================================================
+# Change Visibility Endpoint
+# =============================================================================
+
+@router.post("/{job_id}/change-visibility", response_model=ChangeVisibilityResponse)
+async def change_visibility(
+    job_id: str,
+    request: ChangeVisibilityRequest,
+    auth_result: AuthResult = Depends(require_auth),
+):
+    """
+    Change job visibility between public and private.
+
+    Public -> Private (fast, ~1-2 min):
+    - Removes YouTube/GDrive/Dropbox outputs
+    - Redistributes existing files to private destination
+
+    Private -> Public (slow, ~15-30 min):
+    - Resets custom styling to default Nomad theme
+    - Regenerates screens, re-renders video, publishes publicly
+    """
+    job_manager = JobManager()
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    user_email = auth_result.user_email or "unknown"
+    is_admin = auth_result.is_admin
+
+    from backend.services.visibility_change_service import VisibilityChangeService
+    service = VisibilityChangeService(job_manager)
+
+    # Validate (skip job-exists check since we already handled it)
+    error = service.validate_change(job, user_email, is_admin, request.target_visibility)
+    if error:
+        status_code = 403 if "your own jobs" in error else 400
+        raise HTTPException(status_code=status_code, detail=error)
+
+    current_is_private = getattr(job, 'is_private', False)
+    previous_visibility = "private" if current_is_private else "public"
+
+    try:
+        if request.target_visibility == "private":
+            result = await service.change_to_private(job_id, job, user_email)
+        else:
+            result = await service.change_to_public(job_id, job, user_email)
+
+        return ChangeVisibilityResponse(
+            status=result["status"],
+            job_id=job_id,
+            message=result["message"],
+            previous_visibility=previous_visibility,
+            new_visibility=request.target_visibility,
+            reprocessing_required=result["reprocessing_required"],
+        )
+
+    except Exception as e:
+        logger.error(f"Error changing visibility for job {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to change visibility: {str(e)}")

@@ -142,3 +142,24 @@ class RetryJobRequest(BaseModel):
     """Request to retry a failed job."""
     from_stage: Optional[str] = None  # Optional: restart from specific stage
 
+
+class ChangeVisibilityRequest(BaseModel):
+    """Request to change job visibility (public/private)."""
+    target_visibility: str  # "public" or "private"
+
+    @validator('target_visibility')
+    def validate_target(cls, v):
+        if v not in ('public', 'private'):
+            raise ValueError("target_visibility must be 'public' or 'private'")
+        return v
+
+
+class ChangeVisibilityResponse(BaseModel):
+    """Response from change visibility endpoint."""
+    status: str  # "success", "processing", "error"
+    job_id: str
+    message: str
+    previous_visibility: str  # "public" or "private"
+    new_visibility: str  # "public" or "private"
+    reprocessing_required: bool
+

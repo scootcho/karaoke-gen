@@ -142,13 +142,14 @@ describe('OutputLinks', () => {
 
       const emptyJob: Job = {
         ...baseJob,
+        status: 'generating_video',
         file_urls: undefined,
         state_data: undefined,
       }
 
       render(<OutputLinks job={emptyJob} />)
 
-      // Should show "No outputs available yet" for non-admin
+      // Should show "No outputs available yet" for non-admin, non-complete job
       expect(screen.getByText('No outputs available yet')).toBeInTheDocument()
     })
 
