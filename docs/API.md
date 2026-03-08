@@ -661,7 +661,7 @@ Content-Type: application/json
 }
 ```
 
-Searches for audio **without creating a job**. Returns a short-lived search session (30-min TTL).
+Searches for audio **without creating a job**. Returns a search session (7-day TTL).
 Credits are checked here but **not deducted** — deduction happens at job creation.
 
 **Response:**

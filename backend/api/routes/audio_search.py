@@ -1035,7 +1035,9 @@ async def search_audio_standalone(
             )
             results_dicts.append(r.to_dict())
 
-        # Store session in Firestore (TTL: 30 minutes)
+        # Store session in Firestore (TTL: 7 days)
+        # Long TTL so users who leave a tab open mid-flow don't hit "Search expired".
+        # Sessions are tiny docs (~2 KB) and cleaned up by Firestore TTL policy.
         session_id = str(uuid.uuid4())
         now = datetime.utcnow()
         session_data = {
@@ -1047,7 +1049,7 @@ async def search_audio_standalone(
             'results': results_dicts,
             'remote_search_id': audio_search_service.last_remote_search_id,
             'created_at': now.isoformat(),
-            'ttl_expiry': now + timedelta(minutes=30),
+            'ttl_expiry': now + timedelta(days=7),
         }
         firestore_service = FirestoreService()
         firestore_service.create_search_session(session_data)

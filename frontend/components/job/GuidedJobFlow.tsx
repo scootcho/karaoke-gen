@@ -200,7 +200,15 @@ export function GuidedJobFlow({ onJobCreated }: GuidedJobFlowProps) {
       }
     } catch (err) {
       if (err instanceof ApiError) {
-        setSubmitError(err.message)
+        if (err.message.includes("Search expired") || (err.status === 404 && audioSource === "search")) {
+          // Search session expired — clear it and send user back to re-search
+          setSearchSessionId(null)
+          setSelectedResultIndex(null)
+          setStep(2)
+          setSubmitError("Your search results expired. Please search again — your song info is still saved.")
+        } else {
+          setSubmitError(err.message)
+        }
       } else {
         setSubmitError("Failed to start processing. Please try again.")
       }

@@ -45,7 +45,7 @@ def _make_mock_job_manager(job=None):
 
 def _make_search_session(user_email="test@example.com", expired=False, tenant_id=None):
     now = datetime.utcnow()
-    ttl = now - timedelta(hours=1) if expired else now + timedelta(minutes=30)
+    ttl = now - timedelta(hours=1) if expired else now + timedelta(days=7)
     return {
         "session_id": "sess-abc-123",
         "user_email": user_email,
