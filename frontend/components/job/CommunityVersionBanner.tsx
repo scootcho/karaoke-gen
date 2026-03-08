@@ -1,6 +1,6 @@
 "use client"
 
-import { X, ExternalLink } from "lucide-react"
+import { X, ExternalLink, Youtube, AlertTriangle } from "lucide-react"
 import type { CommunityCheckResponse } from "@/lib/api"
 
 interface CommunityVersionBannerProps {
@@ -40,7 +40,8 @@ export function CommunityVersionBanner({ data, onDismiss }: CommunityVersionBann
       </button>
 
       <div className="pr-6">
-        <p className="text-sm font-medium" style={{ color: "rgb(34, 197, 94)" }}>
+        <p className="text-sm font-medium flex items-center gap-1.5" style={{ color: "rgb(34, 197, 94)" }}>
+          <AlertTriangle className="w-4 h-4 shrink-0" />
           A karaoke version of this song already exists!
         </p>
         <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
@@ -72,7 +73,8 @@ export function CommunityVersionBanner({ data, onDismiss }: CommunityVersionBann
                   </span>
                 )}
               </span>
-              <span className="ml-auto shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
+              <span className="ml-auto shrink-0 text-[10px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                <Youtube className="w-3 h-3 text-red-500" />
                 Watch on YouTube
               </span>
             </a>

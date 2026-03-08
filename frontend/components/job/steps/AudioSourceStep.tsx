@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import { api, ApiError } from "@/lib/api"
+import { api, ApiError, CatalogTrackResult, CommunityCheckResponse } from "@/lib/api"
+import { CommunityVersionBanner } from "@/components/job/CommunityVersionBanner"
 import {
   ExtendedAudioSearchResult,
   groupResults,
@@ -16,7 +17,7 @@ import {
 } from "@/lib/audio-search-utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, ChevronDown, ChevronUp, Upload, Youtube, ArrowLeft, Check, AlertTriangle, CheckCircle2, Lightbulb, Info } from "lucide-react"
+import { Loader2, ChevronDown, ChevronUp, Upload, Youtube, ArrowLeft, Check, AlertTriangle, CheckCircle2, Lightbulb, Info, Search, X } from "lucide-react"
 import { BuyCreditsDialog } from "@/components/credits/BuyCreditsDialog"
 
 interface AudioSourceStepProps {
@@ -24,6 +25,7 @@ interface AudioSourceStepProps {
   title: string
   onSearchCompleted: (searchSessionId: string) => void
   onSearchResultChosen: (resultIndex: number) => void
+  onArtistTitleCorrection: (artist: string, title: string) => void
   onUrlReady: (url: string) => void
   onFileReady: (file: File) => void
   onBack: () => void
@@ -92,6 +94,7 @@ export function AudioSourceStep({
   title,
   onSearchCompleted,
   onSearchResultChosen,
+  onArtistTitleCorrection,
   onUrlReady,
   onFileReady,
   onBack,
@@ -104,6 +107,20 @@ export function AudioSourceStep({
   const [showOtherOptions, setShowOtherOptions] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const searchTriggered = useRef(false)
+
+  // Catalog song suggestions (parallel to audio search)
+  const [catalogResults, setCatalogResults] = useState<CatalogTrackResult[]>([])
+  const [catalogDismissed, setCatalogDismissed] = useState(false)
+
+  // Community version check (parallel to audio search)
+  const [communityData, setCommunityData] = useState<CommunityCheckResponse | null>(null)
+  const [communityDismissed, setCommunityDismissed] = useState(false)
+
+  // Fuzzy "Did you mean?" state
+  const [fuzzySuggestion, setFuzzySuggestion] = useState<CatalogTrackResult | null>(null)
+  const [fuzzyAlternatives, setFuzzyAlternatives] = useState<CatalogTrackResult[]>([])
+  const [fuzzyDismissed, setFuzzyDismissed] = useState(false)
+  const fuzzyTriggered = useRef(false)
 
   const [showBuyCreditsDialog, setShowBuyCreditsDialog] = useState(false)
 
@@ -139,16 +156,107 @@ export function AudioSourceStep({
     }
   }, [artist, title, onSearchCompleted])
 
-  // Auto-trigger search on mount
+  // Auto-trigger audio search + catalog search in parallel on mount
   useEffect(() => {
     if (searchTriggered.current) return
     searchTriggered.current = true
     doSearch()
-  }, [doSearch])
+    // Fire catalog search in parallel (non-blocking)
+    api.searchCatalogTracks(title, artist, 5)
+      .then((tracks) => setCatalogResults(tracks))
+      .catch(() => {
+        // Silently fail — catalog search is a nice-to-have
+      })
+    // Fire community version check in parallel (non-blocking)
+    api.checkCommunityVersions(artist, title)
+      .then((data) => setCommunityData(data))
+      .catch(() => {
+        // Silently fail — community check is a nice-to-have
+      })
+  }, [doSearch, artist, title])
 
   const confidence = useMemo(() => getSearchConfidence(results, title), [results, title])
   const groupedResults = useMemo(() => groupResults(results), [results])
   const otherResultsCount = results.length > 0 && confidence.bestResult ? results.length - 1 : 0
+
+  // Fuzzy "Did you mean?" — triggers when audio search is poor AND catalog didn't find a close title match
+  const catalogHasExactTitleMatch = useMemo(() =>
+    catalogResults.some((t) => t.track_name.toLowerCase() === title.toLowerCase()),
+    [catalogResults, title]
+  )
+  useEffect(() => {
+    if (fuzzyTriggered.current) return
+    if (isSearching) return // Wait for audio search to complete
+    if (catalogHasExactTitleMatch) return // Catalog found the exact song — no typo
+    if (confidence.tier <= 2) return // Audio search found good results — no typo likely
+
+    fuzzyTriggered.current = true
+    // Try artist name as query first, fall back to title if that returns nothing
+    api.searchCatalogTracks(artist, undefined, 20)
+      .then((tracks) => {
+        const matches = findFuzzyMatches(title, tracks)
+        if (matches.length > 0) {
+          setFuzzySuggestion(matches[0])
+          setFuzzyAlternatives(matches.slice(1))
+          return
+        }
+        // Fallback: search by title (handles case where artist field has garbage like "fox stevenson bruises")
+        return api.searchCatalogTracks(title, undefined, 20).then((titleTracks) => {
+          const titleMatches = findFuzzyMatches(title, titleTracks, 0.6, true, artist)
+          if (titleMatches.length > 0) {
+            setFuzzySuggestion(titleMatches[0])
+            setFuzzyAlternatives(titleMatches.slice(1))
+          }
+        })
+      })
+      .catch(() => {
+        // Silently fail
+      })
+  }, [isSearching, catalogResults, confidence.tier, artist, title])
+
+  function handleFuzzyAccept(track?: CatalogTrackResult) {
+    const chosen = track || fuzzySuggestion
+    if (!chosen) return
+    // Update parent's artist/title
+    onArtistTitleCorrection(chosen.artist_name, chosen.track_name)
+    // Reset and restart search with corrected name
+    setFuzzySuggestion(null)
+    setFuzzyAlternatives([])
+    setFuzzyDismissed(true)
+    setResults([])
+    setIsSearching(true)
+    setError("")
+    setCatalogResults([])
+    setCatalogDismissed(false)
+    setCommunityData(null)
+    setCommunityDismissed(false)
+    setShowOtherOptions(false)
+    searchTriggered.current = false
+    fuzzyTriggered.current = false
+    // doSearch will re-fire via the useEffect since searchTriggered is reset
+    // But artist/title are props — they update on next render, so we need to
+    // let the parent re-render us with new props first. Use a microtask.
+    Promise.resolve().then(() => {
+      searchTriggered.current = true
+      api.searchStandalone(chosen.artist_name, chosen.track_name)
+        .then((response) => {
+          onSearchCompleted(response.search_session_id)
+          setResults(response.results as ExtendedAudioSearchResult[])
+        })
+        .catch((err) => {
+          if (err instanceof ApiError) setError(err.message)
+          else setError("Search failed. Please try again.")
+        })
+        .finally(() => setIsSearching(false))
+      // Also re-run catalog + community check with corrected name
+      api.searchCatalogTracks(chosen.track_name, chosen.artist_name, 5)
+        .then((tracks) => setCatalogResults(tracks))
+        .catch(() => {})
+      api.checkCommunityVersions(chosen.artist_name, chosen.track_name)
+        .then((data) => setCommunityData(data))
+        .catch(() => {})
+    })
+  }
 
   function handleSelect(index: number) {
     // Don't call the API here — defer selectAudioResult to the Customize & Create step
@@ -205,6 +313,38 @@ export function AudioSourceStep({
           Back
         </Button>
       </div>
+
+      {/* Song name suggestions from catalog */}
+      {catalogResults.length > 0 && !catalogDismissed && (
+        <SongSuggestionPanel
+          results={catalogResults}
+          artist={artist}
+          title={title}
+          onSelect={(track) => {
+            onArtistTitleCorrection(track.artist_name, track.track_name)
+            setCatalogDismissed(true)
+          }}
+          onDismiss={() => setCatalogDismissed(true)}
+        />
+      )}
+
+      {/* Community version banner */}
+      {communityData?.has_community && !communityDismissed && (
+        <CommunityVersionBanner
+          data={communityData}
+          onDismiss={() => setCommunityDismissed(true)}
+        />
+      )}
+
+      {/* "Did you mean?" fuzzy correction banner */}
+      {fuzzySuggestion && !fuzzyDismissed && (
+        <DidYouMeanBanner
+          suggestion={fuzzySuggestion}
+          alternatives={fuzzyAlternatives}
+          onAccept={handleFuzzyAccept}
+          onDismiss={() => setFuzzyDismissed(true)}
+        />
+      )}
 
       {/* Error display */}
       {error && (
@@ -357,7 +497,7 @@ function PickCard({
           <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
         ) : null}
         <span className={`text-xs font-semibold ${isPerfect ? 'text-green-400' : 'text-amber-400'}`}>
-          {isPerfect ? 'Perfect match found' : 'Recommended'}
+          {isPerfect ? 'Perfect match found' : 'Recommended Audio'}
         </span>
         {bestResult.is_lossless && (
           <span className="text-[8px] px-1 py-0.5 rounded bg-green-600/20 text-green-400 font-medium">
@@ -378,20 +518,20 @@ function PickCard({
 
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-1.5">
+            {bestResult.target_file && (
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>Filename:</span>
+                <span className="font-medium text-sm font-mono break-all" style={{ color: 'var(--text)' }}>
+                  {bestResult.target_file}
+                </span>
+              </div>
+            )}
+            <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>Release:</span>
               <span className="font-medium text-sm" style={{ color: 'var(--text)' }}>
                 {getDisplayName(bestResult)} - {bestResult.title}
               </span>
             </div>
-            {bestResult.target_file && (
-              <div className="flex items-baseline gap-1.5 mt-0.5">
-                <span className="text-[10px] shrink-0" style={{ color: 'var(--text-muted)' }}>Filename:</span>
-                <span className="font-medium text-xs font-mono break-all" style={{ color: 'var(--text)' }}>
-                  {bestResult.target_file}
-                </span>
-              </div>
-            )}
             <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
               <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                 {formatQuality(bestResult)}
@@ -774,6 +914,307 @@ function ResultRow({
         <Check className="w-3 h-3 mr-1" />
         Select
       </Button>
+    </div>
+  )
+}
+
+/** Song name suggestion panel — two modes: exact match confirmation vs correction suggestions */
+function SongSuggestionPanel({
+  results,
+  artist,
+  title,
+  onSelect,
+  onDismiss,
+}: {
+  results: CatalogTrackResult[]
+  artist: string
+  title: string
+  onSelect: (track: CatalogTrackResult) => void
+  onDismiss: () => void
+}) {
+  const [showOthers, setShowOthers] = useState(false)
+
+  // Check if any result is a case-insensitive match for the user's input
+  const hasExactMatch = results.some(
+    (t) => t.artist_name.toLowerCase() === artist.toLowerCase() && t.track_name.toLowerCase() === title.toLowerCase()
+  )
+  // Results that differ from what the user typed (potential corrections)
+  const corrections = results.filter(
+    (t) => !(t.artist_name === artist && t.track_name === title)
+  )
+  // If the user already typed exactly right (case-sensitive), nothing to show
+  const hasExactCaseSensitiveMatch = results.some(
+    (t) => t.artist_name === artist && t.track_name === title
+  )
+
+  if (hasExactCaseSensitiveMatch && corrections.length === 0) {
+    // Perfect match, no alternatives — don't show the panel at all
+    return null
+  }
+
+  // Mode 1: User's input matches a song (case-insensitive) — show confirmation with optional alternatives
+  if (hasExactMatch) {
+    return (
+      <div
+        className="border rounded-lg overflow-hidden border-green-500/30 bg-green-500/5"
+        data-testid="song-suggestion-panel"
+      >
+        <div className="px-3 py-2 flex items-center justify-between bg-green-500/10">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+            <span className="text-xs font-semibold text-green-400">
+              Song found in our database
+            </span>
+          </div>
+          <button
+            onClick={onDismiss}
+            className="text-[10px] flex items-center gap-1 hover:opacity-80"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <X className="w-3 h-3" />
+            Dismiss
+          </button>
+        </div>
+        <div className="px-3 py-2">
+          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            Your artist and title matched a song in our database — looking good!
+          </p>
+          {corrections.length > 0 && (
+            <div className="mt-2">
+              <button
+                onClick={() => setShowOthers(!showOthers)}
+                className="flex items-center gap-1 text-[10px] hover:opacity-80"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {showOthers ? (
+                  <><ChevronUp className="w-3 h-3" /> Hide other matches</>
+                ) : (
+                  <><ChevronDown className="w-3 h-3" /> Show {corrections.length} other match{corrections.length !== 1 ? 'es' : ''}</>
+                )}
+              </button>
+              {showOthers && (
+                <div className="mt-1.5 space-y-1">
+                  <CatalogTrackList tracks={corrections} onSelect={onSelect} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Mode 2: No exact match — show corrections prominently
+  return (
+    <div
+      className="border rounded-lg overflow-hidden border-blue-500/30 bg-blue-500/5"
+      data-testid="song-suggestion-panel"
+    >
+      <div className="px-3 py-2 flex items-center justify-between bg-blue-500/10">
+        <div className="flex items-center gap-2">
+          <Search className="w-3.5 h-3.5 text-blue-400" />
+          <span className="text-xs font-semibold text-blue-400">
+            Use official artist/title formatting?
+          </span>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="text-[10px] flex items-center gap-1 hover:opacity-80"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <X className="w-3 h-3" />
+          Dismiss
+        </button>
+      </div>
+      <div className="px-3 py-2">
+        <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+          We found these in our song database. Click one to use the official artist/title formatting:
+        </p>
+        <CatalogTrackList tracks={corrections.length > 0 ? corrections : results} onSelect={onSelect} />
+      </div>
+    </div>
+  )
+}
+
+/** Reusable list of clickable catalog track rows */
+function CatalogTrackList({
+  tracks,
+  onSelect,
+}: {
+  tracks: CatalogTrackResult[]
+  onSelect: (track: CatalogTrackResult) => void
+}) {
+  return (
+    <div className="space-y-1">
+      {tracks.map((track, i) => {
+        const duration = track.duration_ms
+          ? `${Math.floor(track.duration_ms / 60000)}:${Math.floor((track.duration_ms % 60000) / 1000).toString().padStart(2, "0")}`
+          : null
+        return (
+          <button
+            key={track.track_id || `${track.artist_name}-${track.track_name}-${i}`}
+            onClick={() => onSelect(track)}
+            className="w-full text-left px-2.5 py-2 rounded-md text-xs flex items-center justify-between gap-2 transition-colors hover:bg-blue-500/10"
+            style={{ color: 'var(--text)' }}
+          >
+            <span className="min-w-0">
+              <span className="font-medium">{track.artist_name}</span>
+              <span style={{ color: 'var(--text-muted)' }}> — </span>
+              <span>{track.track_name}</span>
+            </span>
+            <span className="flex items-center gap-2 shrink-0">
+              {duration && (
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{duration}</span>
+              )}
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-medium">
+                Use
+              </span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Compute similarity between two strings using longest common subsequence ratio */
+export function stringSimilarity(a: string, b: string): number {
+  const al = a.toLowerCase()
+  const bl = b.toLowerCase()
+  if (al === bl) return 1
+  // Substring match — very strong signal
+  if (al.length >= 3 && bl.includes(al)) return 0.85
+  if (bl.length >= 3 && al.includes(bl)) return 0.85
+  // LCS-based similarity
+  const m = al.length
+  const n = bl.length
+  if (m === 0 || n === 0) return 0
+  // Use two-row DP for LCS length
+  let prev = new Array(n + 1).fill(0)
+  let curr = new Array(n + 1).fill(0)
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (al[i - 1] === bl[j - 1]) {
+        curr[j] = prev[j - 1] + 1
+      } else {
+        curr[j] = Math.max(prev[j], curr[j - 1])
+      }
+    }
+    ;[prev, curr] = [curr, prev]
+    curr.fill(0)
+  }
+  const lcsLen = prev[n]
+  return (2 * lcsLen) / (m + n)
+}
+
+/** Find fuzzy matches for a title among catalog tracks, sorted by relevance.
+ *  When userArtist is provided, uses artist similarity as a tiebreaker
+ *  (e.g. user typed "fox stevenson bruises" as artist — prefer Fox Stevenson over Lewis Capaldi). */
+export function findFuzzyMatches(
+  userTitle: string,
+  tracks: CatalogTrackResult[],
+  threshold = 0.6,
+  allowExactTitle = false,
+  userArtist?: string,
+): CatalogTrackResult[] {
+  const scored = tracks.map((track) => {
+    const titleScore = stringSimilarity(userTitle, track.track_name)
+    const artistBonus = userArtist ? stringSimilarity(userArtist, track.artist_name) * 0.2 : 0
+    return { track, titleScore, totalScore: titleScore + artistBonus }
+  })
+  return scored
+    .filter((s) => s.titleScore >= threshold)
+    .filter((s) => allowExactTitle || s.track.track_name.toLowerCase() !== userTitle.toLowerCase())
+    .sort((a, b) => b.totalScore - a.totalScore)
+    .map((s) => s.track)
+    // Deduplicate by artist+track name
+    .filter((t, i, arr) => arr.findIndex((x) => x.artist_name === t.artist_name && x.track_name === t.track_name) === i)
+}
+
+/** "Did you mean?" banner for typo correction */
+function DidYouMeanBanner({
+  suggestion,
+  alternatives,
+  onAccept,
+  onDismiss,
+}: {
+  suggestion: CatalogTrackResult
+  alternatives: CatalogTrackResult[]
+  onAccept: (track?: CatalogTrackResult) => void
+  onDismiss: () => void
+}) {
+  const [showAlternatives, setShowAlternatives] = useState(false)
+  return (
+    <div
+      className="border rounded-lg overflow-hidden border-amber-500/40 bg-amber-500/5"
+      data-testid="did-you-mean-banner"
+    >
+      <div className="px-3 py-2 flex items-center justify-between bg-amber-500/10">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-xs font-semibold text-amber-400">
+            Did you mean?
+          </span>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="text-[10px] flex items-center gap-1 hover:opacity-80"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <X className="w-3 h-3" />
+          No thanks
+        </button>
+      </div>
+      <div className="px-3 py-3">
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          We couldn&apos;t find great audio sources. Did you mean:
+        </p>
+        <button
+          onClick={() => onAccept()}
+          className="mt-2 w-full text-left px-3 py-2.5 rounded-md flex items-center justify-between gap-2 transition-colors border border-amber-500/30 hover:bg-amber-500/10"
+        >
+          <span className="text-sm" style={{ color: 'var(--text)' }}>
+            <span className="font-semibold">{suggestion.artist_name}</span>
+            <span style={{ color: 'var(--text-muted)' }}> — </span>
+            <span className="font-semibold">{suggestion.track_name}</span>
+          </span>
+          <span className="text-xs px-2 py-1 rounded bg-amber-500/15 text-amber-400 font-medium shrink-0">
+            Yes, search again
+          </span>
+        </button>
+        {alternatives.length > 0 && (
+          <div className="mt-2">
+            <button
+              onClick={() => setShowAlternatives(!showAlternatives)}
+              className="text-[11px] flex items-center gap-1 hover:opacity-80"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <ChevronDown className={`w-3 h-3 transition-transform ${showAlternatives ? 'rotate-180' : ''}`} />
+              {showAlternatives ? 'Hide' : 'Show'} {alternatives.length} other match{alternatives.length > 1 ? 'es' : ''}
+            </button>
+            {showAlternatives && (
+              <div className="mt-1.5 space-y-1">
+                {alternatives.slice(0, 5).map((alt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onAccept(alt)}
+                    className="w-full text-left px-3 py-2 rounded-md flex items-center justify-between gap-2 transition-colors border border-[var(--card-border)] hover:bg-amber-500/10 hover:border-amber-500/30"
+                  >
+                    <span className="text-xs" style={{ color: 'var(--text)' }}>
+                      <span className="font-medium">{alt.artist_name}</span>
+                      <span style={{ color: 'var(--text-muted)' }}> — </span>
+                      <span className="font-medium">{alt.track_name}</span>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 shrink-0">
+                      Search
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
