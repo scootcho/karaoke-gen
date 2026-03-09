@@ -166,6 +166,68 @@ export interface WaveformData {
   sample_rate?: number;
 }
 
+export interface AudioEditEntry {
+  edit_id: string;
+  operation: string;
+  params: Record<string, unknown>;
+  duration_before: number;
+  duration_after: number;
+  timestamp: string;
+}
+
+export interface AudioEditInfo {
+  job_id: string;
+  artist?: string;
+  title?: string;
+  original_duration_seconds: number;
+  current_duration_seconds: number;
+  original_audio_url: string;
+  current_audio_url: string;
+  waveform_data: { amplitudes: number[] };
+  original_waveform_data: { amplitudes: number[] };
+  edit_stack: AudioEditEntry[];
+  can_undo: boolean;
+  can_redo: boolean;
+}
+
+export interface AudioEditSessionSummary {
+  total_operations: number;
+  operations_breakdown: Record<string, number>;
+  duration_change_seconds: number;
+  net_duration_seconds: number;
+}
+
+export interface AudioEditSessionMeta {
+  session_id: string;
+  job_id: string;
+  user_email?: string;
+  edit_count: number;
+  trigger: string;
+  summary?: AudioEditSessionSummary;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AudioEditSessionWithData extends AudioEditSessionMeta {
+  edit_data?: {
+    entries: AudioEditEntry[];
+    [key: string]: unknown;
+  };
+}
+
+export interface AudioEditResponse {
+  status: string;
+  edit_id?: string;
+  operation?: string;
+  duration_before: number;
+  duration_after: number;
+  current_audio_url: string;
+  waveform_data: { amplitudes: number[] };
+  edit_stack: AudioEditEntry[];
+  can_undo: boolean;
+  can_redo: boolean;
+}
+
 export type InstrumentalSelectionType = 'clean' | 'with_backing' | 'custom' | 'uploaded' | 'original';
 
 export interface DownloadUrlsResponse {
@@ -393,6 +455,7 @@ export const api = {
       color_overrides?: ColorOverrides;
       non_interactive?: boolean;
       is_private?: boolean;
+      requires_audio_edit?: boolean;
     }
   ): Promise<UploadJobResponse> {
     const formData = new FormData();
@@ -424,6 +487,9 @@ export const api = {
     if (options?.is_private !== undefined) {
       formData.append('is_private', String(options.is_private));
     }
+    if (options?.requires_audio_edit) {
+      formData.append('requires_audio_edit', String(options.requires_audio_edit));
+    }
 
     const response = await fetch(`${API_BASE_URL}/api/jobs/upload`, {
       method: 'POST',
@@ -445,11 +511,13 @@ export const api = {
     options?: {
       is_private?: boolean;
       existing_instrumental?: boolean;
+      requires_audio_edit?: boolean;
     }
   ): Promise<CreateJobWithUploadUrlsResponse> {
     const body: Record<string, any> = { artist, title, files };
     if (options?.is_private !== undefined) body.is_private = options.is_private;
     if (options?.existing_instrumental !== undefined) body.existing_instrumental = options.existing_instrumental;
+    if (options?.requires_audio_edit) body.requires_audio_edit = options.requires_audio_edit;
 
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-with-upload-urls`, {
       method: 'POST',
@@ -526,7 +594,7 @@ export const api = {
     file: File,
     artist: string,
     title: string,
-    options?: { is_private?: boolean },
+    options?: { is_private?: boolean; requires_audio_edit?: boolean },
     onProgress?: (progress: UploadProgress) => void,
   ): Promise<UploadJobResponse> {
     const SIGNED_URL_THRESHOLD = 25 * 1024 * 1024; // 25MB
@@ -590,6 +658,7 @@ export const api = {
       color_overrides?: ColorOverrides;
       non_interactive?: boolean;
       is_private?: boolean;
+      requires_audio_edit?: boolean;
     }
   ): Promise<{ status: string; job_id: string; message: string }> {
     const body: Record<string, any> = { url };
@@ -603,6 +672,7 @@ export const api = {
     if (options?.color_overrides) body.color_overrides = options.color_overrides;
     if (options?.non_interactive !== undefined) body.non_interactive = options.non_interactive;
     if (options?.is_private !== undefined) body.is_private = options.is_private;
+    if (options?.requires_audio_edit) body.requires_audio_edit = options.requires_audio_edit;
 
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-from-url`, {
       method: 'POST',
@@ -666,6 +736,123 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ selection }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Submit audio edit (finalize and continue processing).
+   * For auto-processor: submits with no edits to skip the audio edit phase.
+   */
+  /**
+   * Get input audio info for the audio editor.
+   */
+  async getInputAudioInfo(jobId: string): Promise<AudioEditInfo> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/input-audio-info`, {
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Apply an audio edit operation (trim, cut, mute, join).
+   */
+  async applyAudioEdit(jobId: string, operation: string, params: Record<string, unknown>): Promise<AudioEditResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ operation, params }),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Undo the last audio edit operation.
+   */
+  async undoAudioEdit(jobId: string): Promise<AudioEditResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit/undo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Redo a previously undone audio edit.
+   */
+  async redoAudioEdit(jobId: string): Promise<AudioEditResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit/redo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Upload an audio file for join operations.
+   */
+  async uploadAudioForJoin(jobId: string, file: File): Promise<{ upload_id: string; duration_seconds: number; filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit/upload`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  async submitAudioEdit(jobId: string, editLog?: unknown): Promise<{ status: string; message: string; job_id: string }> {
+    const body = editLog ? { edit_log: editLog } : {};
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(body),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Save an audio edit session snapshot.
+   */
+  async saveAudioEditSession(
+    jobId: string,
+    data: {
+      edit_data: unknown;
+      edit_count: number;
+      trigger: string;
+      summary?: AudioEditSessionSummary;
+    }
+  ): Promise<{ status: string; session_id?: string; reason?: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit-sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * List audio edit sessions for a job.
+   */
+  async listAudioEditSessions(
+    jobId: string
+  ): Promise<{ sessions: AudioEditSessionMeta[] }> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit-sessions`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  /**
+   * Get a single audio edit session with full edit_data.
+   */
+  async getAudioEditSession(
+    jobId: string,
+    sessionId: string
+  ): Promise<AudioEditSessionWithData> {
+    const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/audio-edit-sessions/${sessionId}`, {
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -854,6 +1041,7 @@ export const api = {
     display_artist?: string;
     display_title?: string;
     is_private?: boolean;
+    requires_audio_edit?: boolean;
   }): Promise<{ status: string; job_id: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/api/jobs/create-from-search`, {
       method: 'POST',
