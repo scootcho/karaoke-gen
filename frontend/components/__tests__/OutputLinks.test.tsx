@@ -248,6 +248,59 @@ describe('OutputLinks', () => {
     })
   })
 
+  describe('With Vocals MP4 preference', () => {
+    it('prefers finals.with_vocals_mp4 over videos.with_vocals when both exist', () => {
+      const jobWithBoth: Job = {
+        ...baseJob,
+        file_urls: {
+          finals: {
+            lossy_4k_mp4: 'gs://bucket/finals/4k.mp4',
+            with_vocals_mp4: 'gs://bucket/finals/with_vocals.mp4',
+          },
+          videos: {
+            with_vocals: 'gs://bucket/videos/with_vocals.mkv',
+          },
+        },
+      }
+
+      render(<OutputLinks job={jobWithBoth} />)
+
+      const vocalsLink = screen.getByText('With Vocals').closest('a')
+      expect(vocalsLink).toHaveAttribute('href',
+        expect.stringContaining('/finals/with_vocals_mp4')
+      )
+    })
+
+    it('falls back to videos.with_vocals when finals.with_vocals_mp4 is missing', () => {
+      render(<OutputLinks job={baseJob} />)
+
+      const vocalsLink = screen.getByText('With Vocals').closest('a')
+      expect(vocalsLink).toHaveAttribute('href',
+        expect.stringContaining('/videos/with_vocals')
+      )
+    })
+
+    it('shows With Vocals when only finals.with_vocals_mp4 exists (no legacy MKV)', () => {
+      const mp4OnlyJob: Job = {
+        ...baseJob,
+        file_urls: {
+          finals: {
+            lossy_4k_mp4: 'gs://bucket/finals/4k.mp4',
+            with_vocals_mp4: 'gs://bucket/finals/with_vocals.mp4',
+          },
+        },
+      }
+
+      render(<OutputLinks job={mp4OnlyJob} />)
+
+      expect(screen.getByText('With Vocals')).toBeInTheDocument()
+      const vocalsLink = screen.getByText('With Vocals').closest('a')
+      expect(vocalsLink).toHaveAttribute('href',
+        expect.stringContaining('/finals/with_vocals_mp4')
+      )
+    })
+  })
+
   describe('edge cases', () => {
     it('handles partial file_urls gracefully', () => {
       // Reset to non-admin user

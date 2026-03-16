@@ -126,8 +126,9 @@ jobs/{job_id}/
 │   ├── title.mov
 │   └── end.mov
 ├── videos/
-│   └── with_vocals.mkv            # Karaoke video
+│   └── with_vocals.mkv            # Raw karaoke video (FLAC audio, large)
 └── finals/
+    ├── with_vocals_mp4.mp4        # Encoded with-vocals (H264/AAC, ~3x smaller)
     ├── lossless_4k.mp4
     ├── lossless_4k.mkv
     ├── lossy_4k.mp4

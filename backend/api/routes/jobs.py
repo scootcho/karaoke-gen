@@ -1434,7 +1434,8 @@ DOWNLOAD_FILENAME_SUFFIXES = {
     "lossy_720p_mp4": " (Final Karaoke Lossy 720p).mp4",
     "cdg_zip": " (Final Karaoke CDG).zip",
     "txt_zip": " (Final Karaoke TXT).zip",
-    "with_vocals": " (With Vocals).mkv",
+    "with_vocals_mp4": " (With Vocals).mp4",
+    "with_vocals": " (With Vocals).mkv",  # legacy: raw MKV from render step
 }
 
 
