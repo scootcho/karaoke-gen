@@ -340,6 +340,7 @@ async def generate_video_orchestrated(job_id: str) -> bool:
                     'final_video_mkv': result.final_video_mkv,
                     'final_video_lossy': result.final_video_lossy,
                     'final_video_720p': result.final_video_720p,
+                    'final_with_vocals_mp4': result.final_with_vocals_mp4,
                     'final_karaoke_cdg_zip': result.final_karaoke_cdg_zip,
                     'final_karaoke_txt_zip': result.final_karaoke_txt_zip,
                 })
@@ -1302,7 +1303,9 @@ async def _setup_working_directory(
     # Download lyrics video (with vocals) - this is the largest file, ~1-2GB
     log_progress("Downloading karaoke video (largest file, may take 1-2 minutes)...")
     lyrics_video_url = job.file_urls['videos']['with_vocals']
-    lyrics_video_path = os.path.join(temp_dir, f"{base_name} (With Vocals).mov")
+    # Use actual extension from GCS path (typically .mkv) instead of hardcoding .mov
+    lyrics_video_ext = os.path.splitext(lyrics_video_url)[1] or '.mkv'
+    lyrics_video_path = os.path.join(temp_dir, f"{base_name} (With Vocals){lyrics_video_ext}")
     storage.download_file(lyrics_video_url, lyrics_video_path)
     log_progress("Downloaded karaoke video")
     
@@ -1537,6 +1540,7 @@ async def _upload_results(
         ('final_video_mkv', 'finals', 'lossless_4k_mkv'),
         ('final_video_lossy', 'finals', 'lossy_4k_mp4'),
         ('final_video_720p', 'finals', 'lossy_720p_mp4'),
+        ('final_with_vocals_mp4', 'finals', 'with_vocals_mp4'),
         ('final_karaoke_cdg_zip', 'packages', 'cdg_zip'),
         ('final_karaoke_txt_zip', 'packages', 'txt_zip'),
     ]

@@ -180,6 +180,7 @@ export function OutputLinks({ job, onJobUpdated }: OutputLinksProps) {
   const hasDownloads = !outputsDeleted && downloadUrls && (
     downloadUrls?.finals?.lossy_720p_mp4 ||
     downloadUrls?.finals?.lossy_4k_mp4 ||
+    downloadUrls?.finals?.with_vocals_mp4 ||
     downloadUrls?.videos?.with_vocals ||
     downloadUrls?.packages?.cdg_zip ||
     downloadUrls?.packages?.txt_zip
@@ -268,9 +269,12 @@ export function OutputLinks({ job, onJobUpdated }: OutputLinksProps) {
                     720p Video
                   </a>
                 )}
-                {downloadUrls?.videos?.with_vocals && (
+                {(downloadUrls?.finals?.with_vocals_mp4 || downloadUrls?.videos?.with_vocals) && (
                   <a
-                    href={api.getDownloadUrl(job.job_id, "videos", "with_vocals")}
+                    href={api.getDownloadUrl(job.job_id,
+                      downloadUrls?.finals?.with_vocals_mp4 ? "finals" : "videos",
+                      downloadUrls?.finals?.with_vocals_mp4 ? "with_vocals_mp4" : "with_vocals"
+                    )}
                     className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded bg-[#252525] hover:bg-[#333333] text-[var(--text)] border border-[var(--card-border)] transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >

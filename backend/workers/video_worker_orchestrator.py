@@ -98,6 +98,7 @@ class OrchestratorResult:
     final_video_mkv: Optional[str] = None  # Lossless 4K MKV
     final_video_lossy: Optional[str] = None  # Lossy 4K MP4
     final_video_720p: Optional[str] = None  # Lossy 720p MP4
+    final_with_vocals_mp4: Optional[str] = None  # With Vocals MP4 (encoded from raw MKV)
     final_karaoke_cdg_zip: Optional[str] = None
     final_karaoke_txt_zip: Optional[str] = None
 
@@ -423,6 +424,7 @@ class VideoWorkerOrchestrator:
         self.result.final_video_mkv = output.lossless_mkv_path
         self.result.final_video_lossy = output.lossy_4k_mp4_path
         self.result.final_video_720p = output.lossy_720p_mp4_path
+        self.result.final_with_vocals_mp4 = output.with_vocals_mp4_path
         self.result.encoding_time_seconds = output.encoding_time_seconds
 
         # For GCE encoding, download the encoded files from GCS to local directory
@@ -863,7 +865,8 @@ def create_orchestrator_config_from_job(
 
         # Input files
         title_video_path=os.path.join(temp_dir, f"{base_name} (Title).mov"),
-        karaoke_video_path=os.path.join(temp_dir, f"{base_name} (With Vocals).mov"),
+        # Use actual extension from GCS path (typically .mkv) instead of hardcoding .mov
+        karaoke_video_path=os.path.join(temp_dir, f"{base_name} (With Vocals){os.path.splitext(job.file_urls.get('videos', {}).get('with_vocals', '.mkv'))[1] or '.mkv'}"),
         instrumental_audio_path=instrumental_path,
         end_video_path=os.path.join(temp_dir, f"{base_name} (End).mov"),
         lrc_file_path=os.path.join(temp_dir, f"{base_name} (Karaoke).lrc"),
