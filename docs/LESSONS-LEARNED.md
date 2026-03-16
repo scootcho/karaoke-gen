@@ -801,6 +801,9 @@ When adding alternative implementations (GCE vs local encoding), audit ALL side 
 ### External Response Validation
 Add defensive type checking for all external service responses. Lists vs dicts, missing fields cause cryptic failures.
 
+### Thread All Encoding Outputs Through OrchestratorResult (Mar 2026)
+The encoding pipeline (`LocalEncodingService`) created a `(With Vocals).mp4` file (3.4x smaller than the raw MKV), but `OrchestratorResult` had no field for it so it was silently dropped. Users got the 134MB raw MKV instead of the 39MB encoded MP4. **Pattern**: When adding output files to encoding, verify the full chain: `EncodingOutput` → `OrchestratorResult` → `_upload_results()` file_mappings → Firestore `file_urls`. Also beware of hardcoded file extensions — the temp directory saved `.mkv` files as `.mov`, causing Dropbox to receive mislabeled files.
+
 ### Brand Code Allocation Must Be Atomic (Feb 2026)
 Two concurrent jobs both got brand code `NOMADNP-0012` because `get_next_brand_code()` scanned Dropbox folders to find the next number — a classic TOCTOU race condition. Jobs processed 0.86s apart both saw the same state. **Fix**: `brand_code_service.py` uses Firestore transactions to atomically allocate codes. Counter doc per prefix (`NOMAD`, `NOMADNP`) with `next_number` and `recycled` pool. E2E cleanup recycles numbers via `recycle_brand_code()`.
 
