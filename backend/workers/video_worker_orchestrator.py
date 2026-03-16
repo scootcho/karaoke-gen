@@ -454,6 +454,7 @@ class VideoWorkerOrchestrator:
                     self.result.final_video_mkv = output.lossless_mkv_path
                     self.result.final_video_lossy = output.lossy_4k_mp4_path
                     self.result.final_video_720p = output.lossy_720p_mp4_path
+                    self.result.final_with_vocals_mp4 = output.with_vocals_mp4_path
                     self.result.encoding_time_seconds = output.encoding_time_seconds
 
                     await self._download_gce_encoded_files(output)
@@ -483,6 +484,7 @@ class VideoWorkerOrchestrator:
             ('lossless_mkv_path', 'final_video_mkv'),
             ('lossy_4k_mp4_path', 'final_video_lossy'),
             ('lossy_720p_mp4_path', 'final_video_720p'),
+            ('with_vocals_mp4_path', 'final_with_vocals_mp4'),
         ]
 
         downloaded_count = 0

@@ -173,6 +173,8 @@ async def _encode_via_gce(
                 local_files["final_video_lossy"] = local_path
             elif "720p" in filename_lower:
                 local_files["final_video_720p"] = local_path
+            elif "with vocals" in filename_lower and filename.endswith(".mp4"):
+                local_files["final_with_vocals_mp4"] = local_path
 
         job_log.info(f"Downloaded {len(local_files)} encoded files")
 
@@ -1493,14 +1495,16 @@ async def _prepare_distribution_directory(
             except Exception as e:
                 log_progress(f"Could not download {lyrics_key}: {e}")
 
-    # --- Download (With Vocals).mkv to lyrics/ subfolder ---
+    # --- Download (With Vocals) to lyrics/ subfolder ---
     # Local CLI places the karaoke video with vocals in the lyrics folder
     videos = job.file_urls.get('videos', {})
     if videos.get('with_vocals'):
-        with_vocals_dest = os.path.join(lyrics_dir, f"{base_name} (With Vocals).mkv")
+        with_vocals_url = videos['with_vocals']
+        with_vocals_ext = os.path.splitext(with_vocals_url)[1] or '.mkv'
+        with_vocals_dest = os.path.join(lyrics_dir, f"{base_name} (With Vocals){with_vocals_ext}")
         try:
-            storage.download_file(videos['with_vocals'], with_vocals_dest)
-            log_progress(f"Downloaded with_vocals to lyrics/{base_name} (With Vocals).mkv")
+            storage.download_file(with_vocals_url, with_vocals_dest)
+            log_progress(f"Downloaded with_vocals to lyrics/{base_name} (With Vocals){with_vocals_ext}")
         except Exception as e:
             log_progress(f"Could not download with_vocals to lyrics/: {e}")
 
