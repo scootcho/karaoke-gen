@@ -34,166 +34,12 @@ def _mask_email(email: str) -> str:
 BLOCKLISTS_COLLECTION = "blocklists"
 BLOCKLIST_CONFIG_DOC = "config"
 
-# Default disposable email domains (can be extended via admin UI)
-DEFAULT_DISPOSABLE_DOMAINS = {
-    # Popular temporary email services
-    "10minutemail.com",
-    "10minutemail.net",
-    "guerrillamail.com",
-    "guerrillamail.org",
-    "guerrillamail.net",
-    "guerrillamail.biz",
-    "guerrillamailblock.com",
-    "tempmail.com",
-    "tempmail.net",
-    "temp-mail.org",
-    "temp-mail.io",
-    "throwawaymail.com",
-    "mailinator.com",
-    "mailinator.net",
-    "mailinator.org",
-    "mailinator.info",
-    "maildrop.cc",
-    "yopmail.com",
-    "yopmail.fr",
-    "yopmail.net",
-    "fakeinbox.com",
-    "fakemailgenerator.com",
-    "dispostable.com",
-    "getairmail.com",
-    "getnada.com",
-    "mohmal.com",
-    "trashmail.com",
-    "trashmail.net",
-    "trashmail.org",
-    "sharklasers.com",
-    "grr.la",
-    "guerrillamail.de",
-    "pokemail.net",
-    "spam4.me",
-    "spamgourmet.com",
-    "mytrashmail.com",
-    "mailnesia.com",
-    "mailcatch.com",
-    "mintemail.com",
-    "tempr.email",
-    "tempail.com",
-    "emailondeck.com",
-    "incognitomail.com",
-    "inboxalias.com",
-    "33mail.com",
-    "spamex.com",
-    "spamfree24.org",
-    "spamspot.com",
-    "mailnull.com",
-    "mailsac.com",
-    "emailfake.com",
-    "fakemail.fr",
-    "tempinbox.com",
-    "throwaway.email",
-    "burnermail.io",
-    "anonbox.net",
-    "anonymbox.com",
-    "discard.email",
-    "discardmail.com",
-    "discardmail.de",
-    "mailexpire.com",
-    "mailforspam.com",
-    "meltmail.com",
-    "mt2009.com",
-    "mt2014.com",
-    "nospam.ze.tc",
-    "nospamfor.us",
-    "nowmymail.com",
-    "receiveee.com",
-    "safe-mail.net",
-    "spamavert.com",
-    "spambob.com",
-    "spambog.com",
-    "spambox.us",
-    "spamcannon.com",
-    "spamcannon.net",
-    "spamcon.org",
-    "spamcorptastic.com",
-    "spamday.com",
-    "spamfree.eu",
-    "spamherelots.com",
-    "spamhereplease.com",
-    "spamhole.com",
-    "spamify.com",
-    "spaminator.de",
-    "spamkill.info",
-    "spaml.com",
-    "spaml.de",
-    "spamoff.de",
-    "spamobox.com",
-    "spamslicer.com",
-    "spamstack.net",
-    "spamthis.co.uk",
-    "spamthisplease.com",
-    "supergreatmail.com",
-    "suremail.info",
-    "teleworm.us",
-    "tempemail.co.za",
-    "tempemail.net",
-    "tempmailaddress.com",
-    "tempmailo.com",
-    "thankyou2010.com",
-    "thisisnotmyrealemail.com",
-    "tm.slsrs.ru",
-    "tmpeml.info",
-    "trash-mail.at",
-    "trash-mail.de",
-    "trash2009.com",
-    "trashemail.de",
-    "trashmail.at",
-    "trashmailer.com",
-    "wegwerfmail.de",
-    "wegwerfmail.net",
-    "wegwerfmail.org",
-    "wh4f.org",
-    "willhackforfood.biz",
-    "willselfdestruct.com",
-    "xmaily.com",
-    "xyzfree.net",
-    "yep.it",
-    "yogamaven.com",
-    "yuurok.com",
-    "zehnminutenmail.de",
-    "zippymail.info",
-    # Newer disposable services
-    "emailhook.site",
-    # Additional common ones
-    "mailnator.com",
-    "bugmenot.com",
-    "dodgeit.com",
-    "dodgit.com",
-    "e4ward.com",
-    "emailsensei.com",
-    "hushmail.com",
-    "jetable.org",
-    "kasmail.com",
-    "mailblock.net",
-    "mailcatch.com",
-    "mymailoasis.com",
-    "nervmich.net",
-    "nervtmansen.de",
-    "oneoffemail.com",
-    "pookmail.com",
-    "shortmail.net",
-    "sneakemail.com",
-    "sogetthis.com",
-    "tempemailaddress.com",
-    "tempomail.fr",
-    "temporaryemail.net",
-    "temporaryforwarding.com",
-    "temporaryinbox.com",
-    "thankyou2010.com",
-    "tyldd.com",
-    "uggsrock.com",
-    "veryrealemail.com",
-    "yourewronghereswhy.com",
-}
+# Legacy default set — kept as empty set for import compatibility.
+# The external sync (disposable_domain_sync_service) replaces this with ~4,800
+# domains from the community-curated disposable-email-domains repo.
+# The migration path in sync_disposable_domains() references this set to ensure
+# no domains are lost during the transition.
+DEFAULT_DISPOSABLE_DOMAINS: Set[str] = set()
 
 # Gmail-like domains that support alias normalization
 GMAIL_LIKE_DOMAINS = {
@@ -295,13 +141,21 @@ class EmailValidationService:
 
         if doc.exists:
             data = doc.to_dict()
+            if "external_domains" in data:
+                # New data model: effective = (external + manual) - allowlisted
+                external = set(data.get("external_domains", []))
+                manual = set(data.get("manual_domains", []))
+                allowlisted = set(data.get("allowlisted_domains", []))
+                effective_domains = (external | manual) - allowlisted
+            else:
+                # Old data model (pre-migration): use disposable_domains + defaults
+                effective_domains = set(data.get("disposable_domains", [])) | DEFAULT_DISPOSABLE_DOMAINS
             config = {
-                "disposable_domains": set(data.get("disposable_domains", [])) | DEFAULT_DISPOSABLE_DOMAINS,
+                "disposable_domains": effective_domains,
                 "blocked_emails": set(data.get("blocked_emails", [])),
                 "blocked_ips": set(data.get("blocked_ips", [])),
             }
         else:
-            # Use defaults if no config exists
             config = {
                 "disposable_domains": DEFAULT_DISPOSABLE_DOMAINS.copy(),
                 "blocked_emails": set(),
@@ -400,13 +254,13 @@ class EmailValidationService:
             doc = doc_ref.get(transaction=transaction)
             if doc.exists:
                 data = doc.to_dict()
-                domains = set(data.get("disposable_domains", []))
+                domains = set(data.get("manual_domains", []))
             else:
                 data = {}
                 domains = set()
 
             domains.add(domain)
-            data["disposable_domains"] = list(domains)
+            data["manual_domains"] = list(domains)
             data["updated_at"] = datetime.now(timezone.utc)
             data["updated_by"] = admin_email
             transaction.set(doc_ref, data, merge=True)
@@ -434,14 +288,22 @@ class EmailValidationService:
                 return
 
             data = doc.to_dict()
-            domains = set(data.get("disposable_domains", []))
 
-            if domain not in domains:
+            manual = set(data.get("manual_domains", []))
+            external = set(data.get("external_domains", []))
+
+            if domain in manual:
+                result["found"] = True
+                manual.discard(domain)
+                data["manual_domains"] = list(manual)
+            elif domain in external:
+                result["found"] = True
+                allowlisted = set(data.get("allowlisted_domains", []))
+                allowlisted.add(domain)
+                data["allowlisted_domains"] = list(allowlisted)
+            else:
                 return
 
-            result["found"] = True
-            domains.discard(domain)
-            data["disposable_domains"] = list(domains)
             data["updated_at"] = datetime.now(timezone.utc)
             data["updated_by"] = admin_email
             transaction.set(doc_ref, data, merge=True)
@@ -600,14 +462,126 @@ class EmailValidationService:
         logger.info(f"Removed blocked IP: {ip_address} by {admin_email}")
         return True
 
+    def add_allowlisted_domain(self, domain: str, admin_email: str) -> bool:
+        """Add a domain to the allowlisted domains list."""
+        domain = domain.lower().strip()
+        if not domain:
+            return False
+
+        doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
+
+        @firestore.transactional
+        def update_in_transaction(transaction, doc_ref):
+            doc = doc_ref.get(transaction=transaction)
+            if doc.exists:
+                data = doc.to_dict()
+                domains = set(data.get("allowlisted_domains", []))
+            else:
+                data = {}
+                domains = set()
+
+            domains.add(domain)
+            data["allowlisted_domains"] = list(domains)
+            data["updated_at"] = datetime.now(timezone.utc)
+            data["updated_by"] = admin_email
+            transaction.set(doc_ref, data, merge=True)
+
+        transaction = self.db.transaction()
+        update_in_transaction(transaction, doc_ref)
+
+        # Invalidate cache
+        EmailValidationService._blocklist_cache = None
+
+        logger.info(f"Added allowlisted domain: {domain} by {admin_email}")
+        return True
+
+    def remove_allowlisted_domain(self, domain: str, admin_email: str) -> bool:
+        """Remove a domain from the allowlisted domains list."""
+        domain = domain.lower().strip()
+
+        doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
+        result = {"found": False}
+
+        @firestore.transactional
+        def remove_in_transaction(transaction, doc_ref):
+            doc = doc_ref.get(transaction=transaction)
+            if not doc.exists:
+                return
+
+            data = doc.to_dict()
+            domains = set(data.get("allowlisted_domains", []))
+
+            if domain not in domains:
+                return
+
+            result["found"] = True
+            domains.discard(domain)
+            data["allowlisted_domains"] = list(domains)
+            data["updated_at"] = datetime.now(timezone.utc)
+            data["updated_by"] = admin_email
+            transaction.set(doc_ref, data, merge=True)
+
+        transaction = self.db.transaction()
+        remove_in_transaction(transaction, doc_ref)
+
+        if not result["found"]:
+            return False
+
+        # Invalidate cache
+        EmailValidationService._blocklist_cache = None
+
+        logger.info(f"Removed allowlisted domain: {domain} by {admin_email}")
+        return True
+
+    def get_blocklist_raw_data(self) -> dict:
+        """Get raw blocklist data for admin display (not the effective set)."""
+        doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
+        doc = doc_ref.get()
+        if not doc.exists:
+            return {
+                "external_domains": [], "manual_domains": [], "allowlisted_domains": [],
+                "blocked_emails": [], "blocked_ips": [],
+                "last_sync_at": None, "last_sync_count": None,
+                "updated_at": None, "updated_by": None,
+            }
+        data = doc.to_dict()
+        return {
+            "external_domains": sorted(data.get("external_domains", [])),
+            "manual_domains": sorted(data.get("manual_domains", [])),
+            "allowlisted_domains": sorted(data.get("allowlisted_domains", [])),
+            "blocked_emails": sorted(data.get("blocked_emails", [])),
+            "blocked_ips": sorted(data.get("blocked_ips", [])),
+            "last_sync_at": data.get("last_sync_at"),
+            "last_sync_count": data.get("last_sync_count"),
+            "updated_at": data.get("updated_at"),
+            "updated_by": data.get("updated_by"),
+        }
+
     def get_blocklist_stats(self) -> dict:
         """Get statistics about current blocklists."""
         config = self.get_blocklist_config(force_refresh=True)
+
+        # Also get raw data for detailed counts
+        doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(BLOCKLIST_CONFIG_DOC)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            external_count = len(data.get("external_domains", []))
+            manual_count = len(data.get("manual_domains", []))
+            allowlisted_count = len(data.get("allowlisted_domains", []))
+        else:
+            external_count = 0
+            manual_count = 0
+            allowlisted_count = 0
+
         return {
             "disposable_domains_count": len(config["disposable_domains"]),
             "blocked_emails_count": len(config["blocked_emails"]),
             "blocked_ips_count": len(config["blocked_ips"]),
             "default_disposable_domains_count": len(DEFAULT_DISPOSABLE_DOMAINS),
+            "external_domains_count": external_count,
+            "manual_domains_count": manual_count,
+            "allowlisted_domains_count": allowlisted_count,
         }
 
 
