@@ -545,7 +545,10 @@ class LocalEncodingService:
                         )
                     output_files["with_vocals_mp4"] = config.output_with_vocals_mp4
                 else:
-                    self.logger.info("[Step 2/6] Skipped - video already MP4")
+                    self.logger.info("[Step 2/6] Skipped - video already MP4, copying as-is")
+                    import shutil
+                    shutil.copy2(config.karaoke_video, config.output_with_vocals_mp4)
+                    output_files["with_vocals_mp4"] = config.output_with_vocals_mp4
 
             # Step 3: Encode lossless 4K MP4
             if config.output_lossless_4k_mp4:
