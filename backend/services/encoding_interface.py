@@ -383,6 +383,8 @@ class GCEEncodingBackend(EncodingBackend):
                         output_files["mp4_4k_lossy"] = path
                     elif "720p" in filename_lower:
                         output_files["mp4_720p"] = path
+                    elif "with vocals" in filename_lower and filename.endswith(".mp4"):
+                        output_files["with_vocals_mp4"] = path
                 self.logger.info(f"Converted output_files list to dict: {output_files}")
             else:
                 output_files = raw_output_files if isinstance(raw_output_files, dict) else {}
@@ -393,6 +395,7 @@ class GCEEncodingBackend(EncodingBackend):
                 lossy_4k_mp4_path=output_files.get("mp4_4k_lossy"),
                 lossless_mkv_path=output_files.get("mkv_4k"),
                 lossy_720p_mp4_path=output_files.get("mp4_720p"),
+                with_vocals_mp4_path=output_files.get("with_vocals_mp4"),
                 output_files=output_files,
                 encoding_time_seconds=encoding_time,
                 encoding_backend=self.name
