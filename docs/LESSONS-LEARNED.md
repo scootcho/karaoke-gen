@@ -953,3 +953,11 @@ For this bug, the missing test was: "does `transcribe_lyrics()` return `lyrics_d
 
 **Broader principle:** Non-fatal code paths (try/except that swallows errors) are especially dangerous. The metadata storage was designed to never fail jobs, which is correct — but it also meant the bug was completely silent. When testing non-fatal paths, assert on the *positive outcome* (metadata was stored), not just the absence of exceptions. A test that only checks "didn't crash" provides false confidence when the code is designed to never crash.
 
+### Static Disposable Email Lists Are Insufficient (Mar 2026)
+
+**Problem:** A community-curated blocklist of ~5,339 disposable domains (synced from GitHub) missed 40% of disposable signups in a 4-day period. Domains like `lxbeta.com`, `nghienplus.store`, and custom `.io.vn` vanity domains slipped through because they're too niche or new to be in any static list.
+
+**Solution:** Tiered external API checking as a fallback after the static list: DeBounce (free, catches most) → verifymail.io ($25/mo, catches niche domains the free service misses). Auto-learn persists flagged domains to `manual_domains` so each domain only requires one API call ever. Clean domains are cached for 7 days.
+
+**Key insight:** For abuse prevention, static lists give you a floor but not a ceiling. Real-time API verification services maintain much larger and more current databases. The tiered approach (free service first, paid service only for edge cases) keeps costs minimal while dramatically improving detection. In our test of 60 recent signups, the free DeBounce API caught 6 disposable accounts and verifymail.io caught 4 more that DeBounce missed.
+

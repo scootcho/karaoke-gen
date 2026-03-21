@@ -241,7 +241,7 @@ The Video Worker uses an orchestrator pattern to ensure all features work regard
 | `job_notification_service.py` | Email orchestration (completion, reminders) |
 | `audio_transcoding_service.py` | Transcode FLAC → OGG Opus for review UI playback |
 | `youtube_quota_service.py` | Track YouTube API quota (GCP Cloud Monitoring + Firestore pending buffer) |
-| `email_validation_service.py` | Email validation, disposable domain detection, blocklist management |
+| `email_validation_service.py` | Email validation, tiered disposable domain detection (static list + DeBounce + verifymail.io APIs), blocklist management |
 | `youtube_upload_queue_service.py` | Deferred YouTube upload queue management |
 | `catalog_proxy_service.py` | Proxy to karaoke-decide catalog API (artist/track search) |
 | `karaokenerds_service.py` | Scrape karaokenerds.com for community karaoke versions |
