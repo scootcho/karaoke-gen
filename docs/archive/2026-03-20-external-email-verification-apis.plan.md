@@ -123,7 +123,7 @@ Two layers of caching to minimize API calls:
 ### Step 1: Create the verifymail.io secret in GCP Secret Manager
 
 ```bash
-echo -n "ed49bcbb51f3447ab9c349404b7884fc" | \
+echo -n "YOUR_VERIFYMAIL_API_KEY" | \
   gcloud secrets create verifymail-api-key \
     --project=nomadkaraoke \
     --data-file=-
