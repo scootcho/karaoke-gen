@@ -3,19 +3,41 @@ Email Validation Service.
 
 Provides email validation, normalization, and blocklist checking
 to prevent abuse during enrollment and other flows.
+
+Uses a tiered disposable domain detection strategy:
+  1. Static blocklist (instant, from Firestore)
+  2. Verified-clean domain cache (skip API calls for 7 days)
+  3. DeBounce API (free, <50ms)
+  4. verifymail.io API (paid, only if DeBounce says clean)
+
+Auto-learns: flagged domains are persisted to manual_domains,
+clean domains are cached for 7 days in verified_clean_domains.
 """
 
 import hashlib
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Set
 
+import httpx
 from google.cloud import firestore
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Module-level HTTP client for connection pooling (external API checks)
+_http_client: Optional[httpx.Client] = None
+_HTTP_TIMEOUT = 2.0  # seconds per external API call
+
+
+def _get_http_client() -> httpx.Client:
+    """Get or create the module-level HTTP client."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.Client(timeout=_HTTP_TIMEOUT)
+    return _http_client
 
 
 def _mask_email(email: str) -> str:
@@ -46,6 +68,47 @@ GMAIL_LIKE_DOMAINS = {
     "gmail.com",
     "googlemail.com",
 }
+
+# Well-known email providers that are never disposable.
+# These skip all external API checks for zero-latency validation.
+WELL_KNOWN_PROVIDERS = {
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "yahoo.co.uk",
+    "yahoo.co.jp",
+    "yahoo.fr",
+    "hotmail.com",
+    "hotmail.co.uk",
+    "outlook.com",
+    "outlook.fr",
+    "live.com",
+    "live.co.uk",
+    "msn.com",
+    "icloud.com",
+    "me.com",
+    "mac.com",
+    "aol.com",
+    "protonmail.com",
+    "proton.me",
+    "zoho.com",
+    "yandex.com",
+    "yandex.ru",
+    "mail.com",
+    "gmx.com",
+    "gmx.de",
+    "fastmail.com",
+    "hey.com",
+    "tutanota.com",
+    "tuta.io",
+}
+
+# How long a verified-clean domain result is trusted before re-checking
+VERIFIED_CLEAN_TTL = timedelta(days=7)
+
+# External API URLs
+DEBOUNCE_API_URL = "https://disposable.debounce.io/"
+VERIFYMAIL_API_URL = "https://verifymail.io/api"
 
 
 class EmailValidationService:
@@ -154,12 +217,14 @@ class EmailValidationService:
                 "disposable_domains": effective_domains,
                 "blocked_emails": set(data.get("blocked_emails", [])),
                 "blocked_ips": set(data.get("blocked_ips", [])),
+                "verified_clean_domains": data.get("verified_clean_domains", {}),
             }
         else:
             config = {
                 "disposable_domains": DEFAULT_DISPOSABLE_DOMAINS.copy(),
                 "blocked_emails": set(),
                 "blocked_ips": set(),
+                "verified_clean_domains": {},
             }
 
         # Update cache
@@ -172,6 +237,16 @@ class EmailValidationService:
         """
         Check if an email uses a disposable domain.
 
+        Uses a tiered checking strategy:
+          0. Well-known providers (gmail, yahoo, etc.) → instant False
+          1. Static blocklist from Firestore → instant
+          2. Verified-clean cache (7-day TTL) → skip API calls
+          3. DeBounce API (free) → fast external check
+          4. verifymail.io API (paid) → only if DeBounce says clean
+
+        Flagged domains are auto-learned to manual_domains.
+        Clean domains are cached for 7 days.
+
         Args:
             email: Email address to check
 
@@ -182,8 +257,188 @@ class EmailValidationService:
             return False
 
         domain = email.lower().split("@")[-1]
+
+        # Tier 0: Well-known providers — skip everything
+        if domain in WELL_KNOWN_PROVIDERS:
+            return False
+
+        # Tier 1: Static blocklist (instant, always available)
         config = self.get_blocklist_config()
-        return domain in config["disposable_domains"]
+        if domain in config["disposable_domains"]:
+            return True
+
+        # Tier 2: Recently verified clean? Skip API calls
+        if self._is_domain_verified_clean(domain, config):
+            return False
+
+        # Tier 3: DeBounce API (free, fast)
+        debounce_result = self._check_debounce(email)
+        if debounce_result is True:
+            self._auto_learn_domain(domain)
+            return True
+
+        # Tier 4: verifymail.io (paid, only if DeBounce gave definitive clean)
+        if debounce_result is False:
+            verifymail_result = self._check_verifymail(email)
+            if verifymail_result is True:
+                self._auto_learn_domain(domain)
+                return True
+
+        # Both APIs say clean (or errored) — cache clean result
+        if debounce_result is False:
+            self._mark_domain_clean(domain)
+
+        return False
+
+    def _check_debounce(self, email: str) -> Optional[bool]:
+        """
+        Check email against DeBounce disposable email API.
+
+        Returns:
+            True if disposable, False if clean, None if error/timeout.
+        """
+        try:
+            client = _get_http_client()
+            response = client.get(DEBOUNCE_API_URL, params={"email": email})
+            response.raise_for_status()
+            data = response.json()
+            result = str(data.get("disposable", "")).lower() == "true"
+            logger.info(
+                f"DeBounce check for {_mask_email(email)}: "
+                f"disposable={result}"
+            )
+            return result
+        except httpx.TimeoutException:
+            logger.warning(f"DeBounce API timeout for {_mask_email(email)}")
+            return None
+        except Exception as e:
+            logger.warning(f"DeBounce API error for {_mask_email(email)}: {e}")
+            return None
+
+    def _check_verifymail(self, email: str) -> Optional[bool]:
+        """
+        Check email against verifymail.io API.
+
+        Only called when DeBounce says clean (to minimize paid API usage).
+
+        Returns:
+            True if disposable/blocked, False if clean, None if error/timeout
+            or API key not configured.
+        """
+        api_key = settings.get_secret("verifymail-api-key")
+        if not api_key:
+            logger.debug("verifymail.io API key not configured, skipping")
+            return None
+
+        try:
+            client = _get_http_client()
+            response = client.get(
+                f"{VERIFYMAIL_API_URL}/{email}",
+                params={"key": api_key},
+            )
+            response.raise_for_status()
+            data = response.json()
+            # verifymail.io returns both "disposable" and "block" flags
+            is_disposable = data.get("disposable") is True
+            is_blocked = data.get("block") is True
+            result = is_disposable or is_blocked
+            logger.info(
+                f"verifymail.io check for {_mask_email(email)}: "
+                f"disposable={is_disposable}, block={is_blocked}"
+            )
+            return result
+        except httpx.TimeoutException:
+            logger.warning(f"verifymail.io API timeout for {_mask_email(email)}")
+            return None
+        except Exception as e:
+            logger.warning(f"verifymail.io API error for {_mask_email(email)}: {e}")
+            return None
+
+    def _is_domain_verified_clean(self, domain: str, config: dict) -> bool:
+        """Check if a domain was verified clean within the TTL period."""
+        verified = config.get("verified_clean_domains", {})
+        entry = verified.get(domain)
+        if not entry:
+            return False
+
+        checked_at = entry.get("checked_at")
+        if not checked_at:
+            return False
+
+        # Handle both datetime objects and ISO strings
+        if isinstance(checked_at, str):
+            try:
+                checked_at = datetime.fromisoformat(checked_at)
+            except (ValueError, TypeError):
+                return False
+
+        # Make timezone-aware if naive
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+
+        return (datetime.now(timezone.utc) - checked_at) < VERIFIED_CLEAN_TTL
+
+    def _auto_learn_domain(self, domain: str) -> None:
+        """
+        Add a domain flagged by external API to manual_domains in Firestore.
+
+        This persists the result so future checks don't need the API call.
+        Fire-and-forget: errors are logged but don't affect the caller.
+        """
+        try:
+            doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(
+                BLOCKLIST_CONFIG_DOC
+            )
+            doc = doc_ref.get()
+            if doc.exists:
+                data = doc.to_dict()
+                manual = set(data.get("manual_domains", []))
+            else:
+                manual = set()
+
+            if domain not in manual:
+                manual.add(domain)
+                doc_ref.set(
+                    {
+                        "manual_domains": list(manual),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_by": "auto-learn",
+                    },
+                    merge=True,
+                )
+                logger.info(f"Auto-learned disposable domain: {domain}")
+
+                # Invalidate cache so the domain is blocked immediately
+                EmailValidationService._blocklist_cache = None
+        except Exception as e:
+            logger.error(f"Failed to auto-learn domain {domain}: {e}")
+
+    def _mark_domain_clean(self, domain: str) -> None:
+        """
+        Record that a domain was verified clean by external APIs.
+
+        Stored in verified_clean_domains dict keyed by domain.
+        Future checks within VERIFIED_CLEAN_TTL will skip API calls.
+
+        Note: Uses read-modify-write instead of dot notation because
+        domain names contain dots which Firestore interprets as nested paths.
+        """
+        try:
+            doc_ref = self.db.collection(BLOCKLISTS_COLLECTION).document(
+                BLOCKLIST_CONFIG_DOC
+            )
+            doc = doc_ref.get()
+            verified = doc.to_dict().get("verified_clean_domains", {}) if doc.exists else {}
+            verified[domain] = {
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+            }
+            doc_ref.set({"verified_clean_domains": verified}, merge=True)
+            logger.debug(f"Marked domain as verified clean: {domain}")
+
+            # Invalidate cache so new data is picked up
+            EmailValidationService._blocklist_cache = None
+        except Exception as e:
+            logger.error(f"Failed to mark domain clean {domain}: {e}")
 
     def is_email_blocked(self, email: str) -> bool:
         """
