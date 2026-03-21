@@ -46,14 +46,32 @@ def _json_response(data: dict, status: int = 200):
 
 
 def _search_divebar(query: str, limit: int = 50) -> list[dict]:
-    """Search the Divebar catalog in BigQuery by artist/title."""
+    """Search the Divebar catalog in BigQuery by artist/title.
+
+    Splits the query into words and requires ALL words to appear
+    somewhere in the combined artist+title string (in any order).
+    E.g. "offspring relax" matches "The Offspring - Time to Relax".
+    """
     client = bigquery.Client(project=GCP_PROJECT_ID)
 
-    # Normalize query for matching
-    normalized = query.lower().strip()
+    # Split query into individual words for AND matching
+    words = query.lower().strip().split()
+    if not words:
+        return []
 
-    # Use LIKE for simple substring matching (BigQuery doesn't have FTS5)
-    # For better search, consider using CONTAINS or SEARCH functions
+    # Build WHERE clause: each word must appear in the combined text
+    like_conditions = []
+    params = []
+    for i, word in enumerate(words):
+        param_name = f"word_{i}"
+        like_conditions.append(
+            f"LOWER(CONCAT(COALESCE(artist, ''), ' ', COALESCE(title, ''))) LIKE @{param_name}"
+        )
+        params.append(bigquery.ScalarQueryParameter(param_name, "STRING", f"%{word}%"))
+
+    where_clause = " AND ".join(like_conditions)
+    params.append(bigquery.ScalarQueryParameter("limit", "INT64", limit))
+
     sql = f"""
         SELECT
             file_id,
@@ -64,11 +82,11 @@ def _search_divebar(query: str, limit: int = 50) -> list[dict]:
             filename,
             format,
             file_size,
-            drive_path
+            drive_path,
+            subfolder,
+            gcs_path
         FROM `{GCP_PROJECT_ID}.{DATASET}.divebar_catalog`
-        WHERE
-            LOWER(CONCAT(COALESCE(artist, ''), ' ', COALESCE(title, '')))
-            LIKE @query_pattern
+        WHERE {where_clause}
         ORDER BY
             CASE WHEN artist IS NOT NULL AND title IS NOT NULL THEN 0 ELSE 1 END,
             brand,
@@ -76,15 +94,13 @@ def _search_divebar(query: str, limit: int = 50) -> list[dict]:
         LIMIT @limit
     """
 
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[
-            bigquery.ScalarQueryParameter("query_pattern", "STRING", f"%{normalized}%"),
-            bigquery.ScalarQueryParameter("limit", "INT64", limit),
-        ]
-    )
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
 
     results = []
     for row in client.query(sql, job_config=job_config).result():
+        # Derive a quality label from the subfolder (e.g. "MP4-720p" → "720p")
+        subfolder = row.subfolder or ""
+        quality = subfolder.replace("MP4-", "").replace("MP4", "HD") if subfolder else ""
         results.append({
             "file_id": row.file_id,
             "brand": row.brand,
@@ -95,6 +111,9 @@ def _search_divebar(query: str, limit: int = 50) -> list[dict]:
             "format": row.format,
             "file_size": row.file_size,
             "drive_path": row.drive_path,
+            "subfolder": subfolder,
+            "quality": quality,
+            "in_gcs": row.gcs_path is not None,
         })
 
     return results
@@ -239,10 +258,50 @@ def _rebuild_xref() -> dict:
     return result
 
 
-def _get_download_url(file_id: str) -> str:
-    """Generate a direct Google Drive download URL for a file."""
-    # For publicly shared files, this direct download URL works without auth
-    return f"https://drive.google.com/uc?export=download&id={file_id}"
+GCS_BUCKET = os.environ.get("GCS_BUCKET", "nomadkaraoke-divebar-files")
+_SIGNED_URL_EXPIRY_MINUTES = 60
+
+
+def _get_download_url(file_id: str) -> dict:
+    """Get a download URL for a Divebar file.
+
+    Prefers a signed GCS URL (fast, reliable) if the file has been synced.
+    Falls back to a direct Google Drive URL for files not yet in GCS.
+
+    Returns dict with 'url' and 'source' ('gcs' or 'drive').
+    """
+    # Check if file has been synced to GCS
+    client = bigquery.Client(project=GCP_PROJECT_ID)
+    query = f"""
+        SELECT gcs_path
+        FROM `{GCP_PROJECT_ID}.{DATASET}.divebar_catalog`
+        WHERE file_id = @file_id
+        LIMIT 1
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("file_id", "STRING", file_id),
+        ]
+    )
+    rows = list(client.query(query, job_config=job_config).result())
+
+    if rows and rows[0].gcs_path:
+        # File is in GCS — return public GCS URL
+        # The bucket has public read access (allUsers objectViewer)
+        # since these are community karaoke files from a public Google Drive
+        gcs_path = rows[0].gcs_path
+        path = gcs_path.replace(f"gs://{GCS_BUCKET}/", "")
+        # URL-encode the path for GCS public URL
+        from urllib.parse import quote
+        encoded_path = quote(path, safe="/")
+        public_url = f"https://storage.googleapis.com/{GCS_BUCKET}/{encoded_path}"
+        return {"url": public_url, "source": "gcs"}
+
+    # Fallback: direct Google Drive download URL
+    return {
+        "url": f"https://drive.google.com/uc?export=download&id={file_id}",
+        "source": "drive",
+    }
 
 
 @functions_framework.http
@@ -289,8 +348,12 @@ def divebar_lookup(request):
             file_id = body.get("file_id", "").strip()
             if not file_id:
                 return _json_response({"status": "error", "message": "file_id required"}, 400)
-            url = _get_download_url(file_id)
-            return _json_response({"status": "ok", "download_url": url})
+            result = _get_download_url(file_id)
+            return _json_response({
+                "status": "ok",
+                "download_url": result["url"],
+                "source": result["source"],
+            })
 
         else:
             return _json_response({"status": "error", "message": f"Unknown action: {action}"}, 400)
