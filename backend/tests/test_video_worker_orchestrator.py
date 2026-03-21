@@ -399,8 +399,8 @@ class TestPackagingValidation:
     """
 
     @pytest.mark.asyncio
-    async def test_cdg_validation_fails_when_enabled_but_not_produced(self):
-        """Test that orchestrator raises when CDG enabled but not produced."""
+    async def test_cdg_validation_fails_when_enabled_but_not_produced_and_lrc_has_content(self):
+        """Test that orchestrator raises when CDG enabled but not produced and LRC has lyrics."""
         config = OrchestratorConfig(
             job_id="test-job",
             artist="Test Artist",
@@ -417,6 +417,7 @@ class TestPackagingValidation:
             pass  # CDG generation "failed" silently
 
         with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_lrc_has_lyrics_content", return_value=True), \
              patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
 
             result = await orchestrator.run()
@@ -426,8 +427,37 @@ class TestPackagingValidation:
             mock_encoding.assert_not_called()  # Should not reach encoding
 
     @pytest.mark.asyncio
-    async def test_txt_validation_fails_when_enabled_but_not_produced(self):
-        """Test that orchestrator raises when TXT enabled but not produced."""
+    async def test_cdg_skipped_gracefully_when_lrc_has_no_content(self):
+        """Test that CDG failure is a warning (not error) when LRC has no lyrics content."""
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            enable_cdg=True,
+        )
+        orchestrator = VideoWorkerOrchestrator(config)
+
+        async def mock_packaging():
+            pass  # CDG generation "failed" silently
+
+        with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_lrc_has_lyrics_content", return_value=False), \
+             patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding, \
+             patch.object(orchestrator, "_run_organization", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_distribution", new_callable=AsyncMock), \
+             patch.object(orchestrator, "_run_notifications", new_callable=AsyncMock):
+
+            result = await orchestrator.run()
+
+            assert result.success is True  # Pipeline continues
+            mock_encoding.assert_called_once()  # Encoding still runs
+
+    @pytest.mark.asyncio
+    async def test_txt_validation_fails_when_enabled_but_not_produced_and_lrc_has_content(self):
+        """Test that orchestrator raises when TXT enabled but not produced and LRC has lyrics."""
         config = OrchestratorConfig(
             job_id="test-job",
             artist="Test Artist",
@@ -443,6 +473,7 @@ class TestPackagingValidation:
             pass  # TXT generation "failed" silently
 
         with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_lrc_has_lyrics_content", return_value=True), \
              patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
 
             result = await orchestrator.run()
@@ -506,7 +537,7 @@ class TestPackagingValidation:
 
     @pytest.mark.asyncio
     async def test_both_cdg_and_txt_validation_fail_together(self):
-        """Test that orchestrator catches CDG failure when both CDG and TXT enabled."""
+        """Test that orchestrator catches CDG failure when both CDG and TXT enabled and LRC has content."""
         config = OrchestratorConfig(
             job_id="test-job",
             artist="Test Artist",
@@ -523,6 +554,7 @@ class TestPackagingValidation:
             pass  # Both CDG and TXT "failed" silently
 
         with patch.object(orchestrator, "_run_packaging", side_effect=mock_packaging), \
+             patch.object(orchestrator, "_lrc_has_lyrics_content", return_value=True), \
              patch.object(orchestrator, "_run_encoding", new_callable=AsyncMock) as mock_encoding:
 
             result = await orchestrator.run()
@@ -1709,3 +1741,57 @@ class TestDistributionWarnings:
 
         assert len(orchestrator.result.distribution_warnings) == 1
         assert "Dropbox upload failed" in orchestrator.result.distribution_warnings[0]
+
+
+class TestLrcHasLyricsContent:
+    """Tests for _lrc_has_lyrics_content helper."""
+
+    def _make_orchestrator(self, lrc_file_path=None):
+        config = OrchestratorConfig(
+            job_id="test-job",
+            artist="Test Artist",
+            title="Test Title",
+            title_video_path="/path/title.mov",
+            karaoke_video_path="/path/karaoke.mov",
+            instrumental_audio_path="/path/audio.flac",
+            lrc_file_path=lrc_file_path,
+        )
+        return VideoWorkerOrchestrator(config)
+
+    def test_returns_false_when_no_lrc_path(self):
+        orchestrator = self._make_orchestrator(lrc_file_path=None)
+        assert orchestrator._lrc_has_lyrics_content() is False
+
+    def test_returns_false_when_lrc_file_missing(self):
+        orchestrator = self._make_orchestrator(lrc_file_path="/nonexistent/path.lrc")
+        assert orchestrator._lrc_has_lyrics_content() is False
+
+    def test_returns_false_for_empty_lrc(self, tmp_path):
+        lrc_file = tmp_path / "empty.lrc"
+        lrc_file.write_text("[re:MidiCo]\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is False
+
+    def test_returns_true_for_lrc_with_lyrics(self, tmp_path):
+        lrc_file = tmp_path / "valid.lrc"
+        lrc_file.write_text("[re:MidiCo]\n[00:12.345]Hello world\n[00:15.678]Second line\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is True
+
+    def test_returns_true_for_centisecond_timestamps(self, tmp_path):
+        lrc_file = tmp_path / "centisecond.lrc"
+        lrc_file.write_text("[01:02.34]Lyric line\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is True
+
+    def test_returns_true_for_no_decimal_timestamps(self, tmp_path):
+        lrc_file = tmp_path / "nodecimal.lrc"
+        lrc_file.write_text("[01:30]Lyric line\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is True
+
+    def test_returns_false_for_metadata_only_lrc(self, tmp_path):
+        lrc_file = tmp_path / "meta.lrc"
+        lrc_file.write_text("[ti:Song Title]\n[ar:Artist Name]\n[re:MidiCo]\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is False

@@ -439,7 +439,7 @@ async def process_audio_separation(job_id: str) -> bool:
         
     except Exception as e:
         duration = time.time() - start_time
-        logger.error(f"[job:{job_id}] WORKER_END worker=audio status=error duration={duration:.1f}s error={e}")
+        logger.error(f"[job:{job_id}] WORKER_END worker=audio status=error duration={duration:.1f}s error={e}", exc_info=True)
         job_manager.mark_job_failed(
             job_id=job_id,
             error_message=f"Audio separation failed: {str(e)}",

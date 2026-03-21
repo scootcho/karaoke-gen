@@ -136,3 +136,33 @@ python scripts/backfill_gdrive_uploads.py --all-missing
 # Specific jobs
 python scripts/backfill_gdrive_uploads.py --job-ids JOB1,JOB2
 ```
+
+---
+
+## Job failed: "CDG generation was enabled but failed"
+
+**Cause:** The LRC file has no lyrics content (just metadata like `[re:MidiCo]`). This happens when AudioShake returns 0 segments — typically because the input audio has no vocals (e.g. user uploaded a karaoke track).
+
+**Fix (v0.135+):** The video orchestrator now skips CDG/TXT gracefully when the LRC has no content. The `complete_review` endpoint also blocks 0-segment submissions with a user-friendly error, and the frontend shows a warning with guidance.
+
+**For older jobs:** Retry won't help unless the user provides different audio or pastes lyrics manually via "Replace All".
+
+---
+
+## Job failed: "Audio separation failed: expected str, bytes or os.PathLike object, not NoneType"
+
+**Cause:** Modal API intermittently returned fewer stems than expected from stage 2 (backing vocals) separation. Missing stems caused NoneType crashes in downstream processing.
+
+**Fix (v0.135+):** Stage 2 now validates that all expected stems are present (matching existing stage 1 validation). Defensive null checks prevent confusing TypeError messages. Full tracebacks are logged with `exc_info=True`.
+
+**Recovery:** Retry the job — the failure is transient (Modal API intermittent). Long-term fix: migrate audio separation from Modal to GCP (see `docs/archive/2026-03-21-modal-to-gcp-migration-plan.md`).
+
+---
+
+## Job failed: "Lyrics transcription failed: 502 Server Error: Bad Gateway for url: https://api.audioshake.ai/tasks"
+
+**Cause:** AudioShake API returned a transient 5xx error.
+
+**Fix (v0.135+):** AudioShake API calls now retry up to 5 times with exponential backoff (60s base, 3x multiplier, ~40 minutes total spread). Retries on 5xx, 429, connection errors, and timeouts.
+
+**For older jobs:** Simply retry the job via admin dashboard.

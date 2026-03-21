@@ -1,10 +1,19 @@
 from dataclasses import dataclass
+import logging
 import requests
 import time
 import os
 import tempfile
 from typing import Dict, Optional, Any, Union, Tuple
 from pathlib import Path
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception,
+    before_sleep_log,
+)
 from pydub import AudioSegment
 from karaoke_gen.lyrics_transcriber.types import TranscriptionData, LyricsSegment, Word
 from karaoke_gen.lyrics_transcriber.transcribers.base_transcriber import BaseTranscriber, TranscriptionError
@@ -107,6 +116,30 @@ class AudioShakeConfig:
     timeout_minutes: int = 20  # Added timeout configuration
 
 
+def _is_retryable_error(exception: BaseException) -> bool:
+    """Check if an exception is retryable (server errors, rate limits, network issues)."""
+    if isinstance(exception, requests.exceptions.ConnectionError):
+        return True
+    if isinstance(exception, requests.exceptions.Timeout):
+        return True
+    if isinstance(exception, requests.exceptions.HTTPError):
+        status = exception.response.status_code
+        return status >= 500 or status == 429
+    return False
+
+
+# Retry decorator for AudioShake API calls.
+# 5 attempts with exponential backoff: ~60s, ~180s, ~540s, ~1620s (capped at 1800s)
+# Total spread: ~40 minutes
+_audioshake_retry = retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=60, max=1800),
+    retry=retry_if_exception(_is_retryable_error),
+    before_sleep=before_sleep_log(logging.getLogger(__name__), logging.WARNING),
+    reraise=True,
+)
+
+
 class AudioShakeAPI:
     """Handles direct API interactions with AudioShake."""
 
@@ -124,18 +157,31 @@ class AudioShakeAPI:
         self._validate_config()  # Validate before making any API calls
         return {"x-api-key": self.config.api_token, "Content-Type": "application/json"}
 
+    @_audioshake_retry
+    def _request_with_retry(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Make an HTTP request with retry on transient failures."""
+        response = requests.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response
+
+    @_audioshake_retry
+    def _upload_file_with_retry(self, url: str, filepath: str) -> requests.Response:
+        """Upload a file with retry, re-opening the file on each attempt to avoid stale handles."""
+        with open(filepath, "rb") as file:
+            files = {"file": (os.path.basename(filepath), file)}
+            response = requests.post(url, headers={"x-api-key": self.config.api_token}, files=files)
+        response.raise_for_status()
+        return response
+
     def upload_file(self, filepath: str) -> str:
         """Upload audio file via Assets API and return asset ID."""
         self.logger.info(f"Uploading {filepath} to AudioShake")
         self._validate_config()  # Validate before making API call
 
         url = f"{self.config.base_url}/assets"
-        with open(filepath, "rb") as file:
-            files = {"file": (os.path.basename(filepath), file)}
-            response = requests.post(url, headers={"x-api-key": self.config.api_token}, files=files)
+        response = self._upload_file_with_retry(url, filepath)
 
         self.logger.debug(f"Upload response: {response.status_code} - {response.text}")
-        response.raise_for_status()
         return response.json()["id"]
 
     def create_task(self, asset_id: str) -> str:
@@ -153,8 +199,7 @@ class AudioShakeAPI:
                 }
             ],
         }
-        response = requests.post(url, headers=self._get_headers(), json=data)
-        response.raise_for_status()
+        response = self._request_with_retry("POST", url, headers=self._get_headers(), json=data)
         return response.json()["id"]
 
     def wait_for_task_result(self, task_id: str) -> Dict[str, Any]:
@@ -186,17 +231,16 @@ class AudioShakeAPI:
                 last_status_log = current_time
 
             try:
-                response = requests.get(url, headers=self._get_headers())
-                response.raise_for_status()
+                response = self._request_with_retry("GET", url, headers=self._get_headers())
                 tasks_list = response.json()
-                
+
                 # Find our specific task in the list
                 task_data = None
                 for task in tasks_list:
                     if task.get("id") == task_id:
                         task_data = task
                         break
-                
+
                 if not task_data:
                     # Task not found in list yet
                     if initial_retry_count < max_initial_retries:
@@ -206,7 +250,7 @@ class AudioShakeAPI:
                         continue
                     else:
                         raise TranscriptionError(f"Task {task_id} not found in task list after {max_initial_retries} retries")
-                
+
                 # Log the full response for debugging
                 self.logger.debug(f"Task status response: {task_data}")
 
@@ -214,29 +258,29 @@ class AudioShakeAPI:
                 targets = task_data.get("targets", [])
                 if not targets:
                     raise TranscriptionError("No targets found in task response")
-                
+
                 # Check if all targets are completed or if any failed
                 all_completed = True
                 for target in targets:
                     target_status = target.get("status")
                     target_model = target.get("model")
                     self.logger.debug(f"Target {target_model} status: {target_status}")
-                    
+
                     if target_status == "failed":
                         error_msg = target.get("error", "Unknown error")
                         raise TranscriptionError(f"Target {target_model} failed: {error_msg}")
                     elif target_status != "completed":
                         all_completed = False
-                
+
                 if all_completed:
                     self.logger.info("All targets completed successfully")
                     return task_data
 
                 # Reset retry count on successful response
                 initial_retry_count = 0
-                
-            except requests.exceptions.HTTPError as e:
-                raise
+
+            except (TranscriptionError, requests.exceptions.HTTPError):
+                raise  # Non-retryable or already exhausted retries — propagate
 
             time.sleep(30)  # Wait before next poll
 
@@ -332,8 +376,7 @@ class AudioShakeTranscriber(BaseTranscriber):
             raise TranscriptionError("Output link not found in alignment target")
 
         # Fetch transcription data
-        response = requests.get(output_url)
-        response.raise_for_status()
+        response = self.api._request_with_retry("GET", output_url)
 
         # Return combined raw data
         raw_data = {"task_data": task_data, "transcription": response.json()}

@@ -1284,6 +1284,26 @@ async def complete_review(
             detail=f"Job not in review state (current status: {job.status})"
         )
 
+    # Check for 0-segment lyrics — fail early with user-friendly message
+    # Only check when lyrics pipeline has run (lyrics_metadata exists in state_data)
+    state_data = job.state_data or {}
+    lyrics_metadata = state_data.get('lyrics_metadata')
+    if lyrics_metadata is not None:
+        segment_count = lyrics_metadata.get('segment_count', 0)
+        corrected_lyrics = state_data.get('corrected_lyrics', {})
+        corrected_segments = corrected_lyrics.get('corrected_segments', [])
+
+        if segment_count == 0 and len(corrected_segments) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot complete review: no lyrics were detected in the audio. "
+                    "This can happen when the input audio has no vocals (e.g. a karaoke track or instrumental). "
+                    "You can go back and paste lyrics manually using 'Replace All', "
+                    "or cancel this job and try again with an audio file that contains vocals."
+                )
+            )
+
     try:
         # Store instrumental selection if provided (combined review flow)
         instrumental_selection = body.instrumental_selection if body else None

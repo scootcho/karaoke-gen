@@ -6,6 +6,8 @@ Tests that require full backend imports are in the emulator integration tests.
 """
 import pytest
 import json
+from datetime import datetime, UTC
+from unittest.mock import MagicMock, AsyncMock, patch
 
 
 class TestJobStatusTransitionsForReview:
@@ -275,6 +277,93 @@ class TestReviewResubmissionClearsWorkerProgress:
         jm = JobManager.__new__(JobManager)  # Create without __init__
         assert hasattr(jm, 'delete_state_data_keys')
         assert callable(getattr(jm, 'delete_state_data_keys'))
+
+
+class TestCompleteReviewZeroSegmentValidation:
+    """Tests for the 0-segment lyrics guard in complete_review endpoint.
+
+    These test the actual HTTP endpoint, not just the validation logic.
+    """
+
+    @pytest.fixture
+    def _patched_client(self):
+        """Create TestClient with mocked services for complete_review."""
+        from backend.models.job import Job, JobStatus
+
+        mock_job_manager = MagicMock()
+        mock_job_manager.transition_to_state.return_value = True
+        mock_worker_service = MagicMock()
+        mock_creds = MagicMock()
+        mock_creds.universe_domain = "googleapis.com"
+
+        with patch("backend.api.routes.jobs.job_manager", mock_job_manager), \
+             patch("backend.api.routes.jobs.worker_service", mock_worker_service), \
+             patch("backend.services.firestore_service.firestore"), \
+             patch("backend.services.storage_service.storage"), \
+             patch("google.auth.default", return_value=(mock_creds, "test-project")):
+            from backend.main import app
+            from fastapi.testclient import TestClient
+            yield TestClient(app), mock_job_manager
+
+    def _make_job(self, state_data=None):
+        from backend.models.job import Job, JobStatus
+        return Job(
+            job_id="job-zero-seg",
+            status=JobStatus.AWAITING_REVIEW,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            artist="Test Artist",
+            title="Test Song",
+            state_data=state_data,
+        )
+
+    def test_endpoint_rejects_zero_segment_lyrics(self, _patched_client):
+        """POST complete-review returns 400 when lyrics pipeline produced 0 segments."""
+        client, mock_jm = _patched_client
+        job = self._make_job(state_data={
+            'lyrics_metadata': {'segment_count': 0, 'ready_for_review': True},
+            'corrected_lyrics': {'corrected_segments': [], 'original_segments': []},
+        })
+        mock_jm.get_job.return_value = job
+
+        response = client.post(
+            "/api/jobs/job-zero-seg/complete-review",
+            headers={"Authorization": "Bearer test-admin-token"},
+        )
+
+        assert response.status_code == 400
+        assert "no lyrics were detected" in response.json()["detail"]
+        mock_jm.transition_to_state.assert_not_called()
+
+    def test_endpoint_allows_nonzero_segment_lyrics(self, _patched_client):
+        """POST complete-review succeeds when lyrics have segments."""
+        client, mock_jm = _patched_client
+        job = self._make_job(state_data={
+            'lyrics_metadata': {'segment_count': 42},
+            'corrected_lyrics': {'corrected_segments': [{'text': 'hello'}] * 42},
+        })
+        mock_jm.get_job.return_value = job
+
+        response = client.post(
+            "/api/jobs/job-zero-seg/complete-review",
+            headers={"Authorization": "Bearer test-admin-token"},
+        )
+
+        assert response.status_code == 200
+        mock_jm.transition_to_state.assert_called_once()
+
+    def test_endpoint_allows_job_without_lyrics_metadata(self, _patched_client):
+        """POST complete-review succeeds for jobs without lyrics_metadata (e.g. finalise-only)."""
+        client, mock_jm = _patched_client
+        job = self._make_job(state_data={})  # No lyrics pipeline ran
+        mock_jm.get_job.return_value = job
+
+        response = client.post(
+            "/api/jobs/job-zero-seg/complete-review",
+            headers={"Authorization": "Bearer test-admin-token"},
+        )
+
+        assert response.status_code == 200
 
 
 class TestPreviewStyleLoading:
