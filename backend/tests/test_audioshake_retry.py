@@ -23,11 +23,14 @@ from karaoke_gen.lyrics_transcriber.transcribers.audioshake import (
 @pytest.fixture(autouse=True)
 def _no_retry_wait():
     """Disable retry wait times in all tests to avoid sleeping."""
-    # Temporarily replace the wait strategy with no-wait
-    original_wait = AudioShakeAPI._request_with_retry.retry.wait
-    AudioShakeAPI._request_with_retry.retry.wait = wait_none()
+    # Temporarily replace the wait strategy with no-wait for both retry-decorated methods
+    methods = [AudioShakeAPI._request_with_retry, AudioShakeAPI._upload_file_with_retry]
+    original_waits = [m.retry.wait for m in methods]
+    for m in methods:
+        m.retry.wait = wait_none()
     yield
-    AudioShakeAPI._request_with_retry.retry.wait = original_wait
+    for m, w in zip(methods, original_waits):
+        m.retry.wait = w
 
 
 class TestIsRetryableError:
@@ -154,15 +157,15 @@ class TestAudioShakeAPIRetry:
 class TestAudioShakeUploadRetry:
     """Tests for upload_file using retry."""
 
-    @patch("karaoke_gen.lyrics_transcriber.transcribers.audioshake.requests.request")
-    def test_upload_file_retries_on_502(self, mock_request, tmp_path):
+    @patch("karaoke_gen.lyrics_transcriber.transcribers.audioshake.requests.post")
+    def test_upload_file_retries_on_502(self, mock_post, tmp_path):
         config = AudioShakeConfig(api_token="test-token")
         logger = MagicMock()
         api = AudioShakeAPI(config, logger)
 
-        # Create a test file
+        # Create a test file with known content
         test_file = tmp_path / "test.flac"
-        test_file.write_bytes(b"fake audio")
+        test_file.write_bytes(b"fake audio data")
 
         # First call: 502
         bad_response = MagicMock()
@@ -176,9 +179,14 @@ class TestAudioShakeUploadRetry:
         good_response.status_code = 200
         good_response.text = '{"id": "asset-123"}'
 
-        mock_request.side_effect = [bad_response, good_response]
+        mock_post.side_effect = [bad_response, good_response]
 
         asset_id = api.upload_file(str(test_file))
 
         assert asset_id == "asset-123"
-        assert mock_request.call_count == 2
+        assert mock_post.call_count == 2
+
+        # Verify file was re-opened on each attempt (both calls got file data)
+        for call_args in mock_post.call_args_list:
+            files_arg = call_args[1].get("files") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("files")
+            assert files_arg is not None, "Each retry should pass files"

@@ -164,17 +164,22 @@ class AudioShakeAPI:
         response.raise_for_status()
         return response
 
+    @_audioshake_retry
+    def _upload_file_with_retry(self, url: str, filepath: str) -> requests.Response:
+        """Upload a file with retry, re-opening the file on each attempt to avoid stale handles."""
+        with open(filepath, "rb") as file:
+            files = {"file": (os.path.basename(filepath), file)}
+            response = requests.post(url, headers={"x-api-key": self.config.api_token}, files=files)
+        response.raise_for_status()
+        return response
+
     def upload_file(self, filepath: str) -> str:
         """Upload audio file via Assets API and return asset ID."""
         self.logger.info(f"Uploading {filepath} to AudioShake")
         self._validate_config()  # Validate before making API call
 
         url = f"{self.config.base_url}/assets"
-        with open(filepath, "rb") as file:
-            files = {"file": (os.path.basename(filepath), file)}
-            response = self._request_with_retry(
-                "POST", url, headers={"x-api-key": self.config.api_token}, files=files
-            )
+        response = self._upload_file_with_retry(url, filepath)
 
         self.logger.debug(f"Upload response: {response.status_code} - {response.text}")
         return response.json()["id"]

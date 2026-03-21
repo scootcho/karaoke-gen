@@ -52,8 +52,10 @@ class TestNormalizeAudioFilesNullSafety:
         audio_file.write_bytes(b"fake audio data")
 
         separation_result = {
-            "clean_instrumental": {"instrumental": str(audio_file)},
+            "clean_instrumental": {"instrumental": str(audio_file), "vocals": str(tmp_path / "vocals.flac")},
             "combined_instrumentals": {},
+            "other_stems": {},
+            "backing_vocals": {},
         }
         # Mock _normalize_audio to avoid actually running ffmpeg
         with patch.object(processor, "_normalize_audio"):
@@ -61,6 +63,26 @@ class TestNormalizeAudioFilesNullSafety:
 
         # Should have logged success (no exception)
         assert processor.logger.info.called
+
+    def test_normalizes_combined_instrumentals(self, tmp_path):
+        processor = _make_processor()
+        instrumental = tmp_path / "instrumental.flac"
+        instrumental.write_bytes(b"fake instrumental")
+        combined = tmp_path / "combined.flac"
+        combined.write_bytes(b"fake combined")
+
+        separation_result = {
+            "clean_instrumental": {"instrumental": str(instrumental), "vocals": str(tmp_path / "v.flac")},
+            "combined_instrumentals": {"mel_band_roformer_karaoke": str(combined)},
+        }
+        with patch.object(processor, "_normalize_audio") as mock_normalize:
+            processor._normalize_audio_files(separation_result, "Artist - Title", str(tmp_path))
+
+        # Both clean instrumental and combined instrumental should be normalized
+        assert mock_normalize.call_count == 2
+        normalized_paths = [call.args[0] for call in mock_normalize.call_args_list]
+        assert str(instrumental) in normalized_paths
+        assert str(combined) in normalized_paths
 
 
 class TestGenerateCombinedInstrumentalsNullSafety:
