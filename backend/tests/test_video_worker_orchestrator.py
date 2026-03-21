@@ -1778,6 +1778,18 @@ class TestLrcHasLyricsContent:
         orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
         assert orchestrator._lrc_has_lyrics_content() is True
 
+    def test_returns_true_for_centisecond_timestamps(self, tmp_path):
+        lrc_file = tmp_path / "centisecond.lrc"
+        lrc_file.write_text("[01:02.34]Lyric line\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is True
+
+    def test_returns_true_for_no_decimal_timestamps(self, tmp_path):
+        lrc_file = tmp_path / "nodecimal.lrc"
+        lrc_file.write_text("[01:30]Lyric line\n")
+        orchestrator = self._make_orchestrator(lrc_file_path=str(lrc_file))
+        assert orchestrator._lrc_has_lyrics_content() is True
+
     def test_returns_false_for_metadata_only_lrc(self, tmp_path):
         lrc_file = tmp_path / "meta.lrc"
         lrc_file.write_text("[ti:Song Title]\n[ar:Artist Name]\n[re:MidiCo]\n")

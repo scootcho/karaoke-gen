@@ -299,8 +299,8 @@ class VideoWorkerOrchestrator:
         try:
             with open(self.config.lrc_file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            # Same pattern used by CDG _parse_lrc: [MM:SS.mmm] lyrics
-            return bool(re.search(r"\[\d{2}:\d{2}\.\d{3}\]", content))
+            # Match LRC timestamp lines: [MM:SS.xx] or [MM:SS.xxx] or [M:SS.xx]
+            return bool(re.search(r"\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]", content))
         except Exception:
             return False
 
