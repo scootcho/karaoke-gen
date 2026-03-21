@@ -20,6 +20,12 @@ Autocomplete on the artist/title input fields confused users — it wasn't clear
 ### Fuzzy Search: Artist Tiebreaker for Title-Based Fallback (Mar 2026)
 When fuzzy-matching by title returns multiple artists with the same song name (e.g. "Bruises" by Lewis Capaldi vs Fox Stevenson), use the user's garbled artist input as a tiebreaker — `stringSimilarity(userInput, track.artist_name) * 0.2` as a bonus score. Also: Spotify's `q` parameter searches track names, not artist names, so `searchCatalogTracks(artist, artist, 20)` (artist as both query and filter) returns nothing. Use `searchCatalogTracks(artist, undefined, 20)` to get the artist's tracks via general search.
 
+### Validate Pipeline Stage Outputs Before Proceeding (Mar 2026)
+When a multi-stage pipeline (audio separation, lyrics → review → video) has validation at one stage but not another, failures cascade with confusing error messages far from the root cause. Three patterns from a single production investigation:
+1. **Validate each stage's outputs independently** — stage 1 of audio separation had validation for expected stems, stage 2 didn't. The missing validation let a transient API failure propagate through 3 more functions before crashing.
+2. **Block impossible downstream work early** — AudioShake returning 0 lyrics segments was treated as "success", letting the user submit an empty review that only failed at CDG generation. Validate at the boundary: if transcription returns 0 segments, fail the job at the lyrics worker, not 4 steps later.
+3. **File handles in retry loops** — when wrapping HTTP calls with retry (e.g. tenacity), ensure file handles are re-opened on each attempt. A `with open()` wrapping a retried `requests.post(files=...)` exhausts the file handle on the first attempt; subsequent retries send empty data.
+
 ---
 
 ## Infrastructure
