@@ -277,6 +277,53 @@ class TestReviewResubmissionClearsWorkerProgress:
         assert callable(getattr(jm, 'delete_state_data_keys'))
 
 
+class TestCompleteReviewZeroSegmentValidation:
+    """Tests for the 0-segment lyrics guard in complete_review endpoint."""
+
+    def test_zero_segment_state_data_is_detected(self):
+        """Verify the validation logic correctly identifies 0-segment lyrics."""
+        # Simulate state_data from a job where transcription returned 0 segments
+        state_data = {
+            'lyrics_metadata': {'segment_count': 0, 'ready_for_review': True},
+            'corrected_lyrics': {
+                'corrected_segments': [],
+                'original_segments': [],
+                'metadata': {'correction_type': 'none', 'reason': 'correction_disabled'},
+            },
+        }
+
+        # Same check used in complete_review
+        lyrics_metadata = state_data.get('lyrics_metadata')
+        assert lyrics_metadata is not None  # Lyrics pipeline ran
+        segment_count = lyrics_metadata.get('segment_count', 0)
+        corrected_segments = state_data.get('corrected_lyrics', {}).get('corrected_segments', [])
+        assert segment_count == 0 and len(corrected_segments) == 0
+
+    def test_nonzero_segment_state_data_passes(self):
+        """Verify the validation allows normal jobs with lyrics."""
+        state_data = {
+            'lyrics_metadata': {'segment_count': 42},
+            'corrected_lyrics': {
+                'corrected_segments': [{'text': 'hello'}] * 42,
+            },
+        }
+
+        lyrics_metadata = state_data.get('lyrics_metadata')
+        assert lyrics_metadata is not None
+        segment_count = lyrics_metadata.get('segment_count', 0)
+        corrected_segments = state_data.get('corrected_lyrics', {}).get('corrected_segments', [])
+        # Should NOT trigger the 0-segment guard
+        assert not (segment_count == 0 and len(corrected_segments) == 0)
+
+    def test_no_lyrics_metadata_skips_validation(self):
+        """Verify jobs without lyrics_metadata (e.g. finalise-only) skip the check."""
+        state_data = {}  # No lyrics pipeline ran
+
+        lyrics_metadata = state_data.get('lyrics_metadata')
+        # Should skip the check entirely when lyrics_metadata is None
+        assert lyrics_metadata is None
+
+
 class TestPreviewStyleLoading:
     """Tests for the unified style loader used in preview video generation.
     

@@ -18,6 +18,7 @@ Pipeline stages:
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
@@ -234,16 +235,31 @@ class VideoWorkerOrchestrator:
                     await self._run_packaging()
 
                 # Validate required packaging outputs before expensive encoding
+                # If LRC has no lyrics content (e.g. input audio had no vocals),
+                # skip CDG/TXT gracefully instead of failing the entire job
+                lrc_has_content = self._lrc_has_lyrics_content()
                 if self.config.enable_cdg and not self.result.final_karaoke_cdg_zip:
-                    raise RuntimeError(
-                        "CDG generation was enabled but failed. "
-                        "Check worker logs for CDG-related errors."
-                    )
+                    if lrc_has_content:
+                        raise RuntimeError(
+                            "CDG generation was enabled but failed. "
+                            "Check worker logs for CDG-related errors."
+                        )
+                    else:
+                        self.job_log.warning(
+                            "CDG generation skipped: LRC file has no lyrics content. "
+                            "Video will be generated without CDG package."
+                        )
                 if self.config.enable_txt and not self.result.final_karaoke_txt_zip:
-                    raise RuntimeError(
-                        "TXT generation was enabled but failed. "
-                        "Check worker logs for TXT-related errors."
-                    )
+                    if lrc_has_content:
+                        raise RuntimeError(
+                            "TXT generation was enabled but failed. "
+                            "Check worker logs for TXT-related errors."
+                        )
+                    else:
+                        self.job_log.warning(
+                            "TXT generation skipped: LRC file has no lyrics content. "
+                            "Video will be generated without TXT package."
+                        )
 
                 # Stage 2: Encoding
                 await self._run_encoding()
@@ -275,6 +291,18 @@ class VideoWorkerOrchestrator:
             logger.error(f"[job:{self.config.job_id}] Orchestration failed: {e}")
 
         return self.result
+
+    def _lrc_has_lyrics_content(self) -> bool:
+        """Check if the LRC file has actual lyrics content (timestamp lines), not just metadata."""
+        if not self.config.lrc_file_path or not os.path.isfile(self.config.lrc_file_path):
+            return False
+        try:
+            with open(self.config.lrc_file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            # Same pattern used by CDG _parse_lrc: [MM:SS.mmm] lyrics
+            return bool(re.search(r"\[\d{2}:\d{2}\.\d{3}\]", content))
+        except Exception:
+            return False
 
     async def _run_packaging(self):
         """Run the packaging stage (CDG/TXT generation)."""

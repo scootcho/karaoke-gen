@@ -395,6 +395,23 @@ class AudioProcessor:
                     backing_vocals_result = self._organize_stage2_remote_results(
                         stage2_result["downloaded_files"], artist_title, stems_dir
                     )
+
+                    # Validate stage 2 outputs — each model should produce both lead_vocals and backing_vocals
+                    for bv_model, paths in backing_vocals_result.items():
+                        missing = []
+                        if not paths.get("lead_vocals"):
+                            missing.append("lead_vocals")
+                        if not paths.get("backing_vocals"):
+                            missing.append("backing_vocals")
+                        if missing:
+                            error_msg = (
+                                f"Stage 2 completed but model {bv_model} is missing: {', '.join(missing)}. "
+                                f"Got keys: {list(paths.keys())}. Downloaded {len(stage2_result['downloaded_files'])} files. "
+                                "This may indicate an intermittent issue with the remote separation API."
+                            )
+                            self.logger.error(error_msg)
+                            raise Exception(error_msg)
+
                     result["backing_vocals"] = backing_vocals_result
                 else:
                     error_msg = f"Stage 2 backing vocals separation failed: {stage2_result.get('error', 'Unknown error')}"
@@ -418,7 +435,7 @@ class AudioProcessor:
             return result
             
         except Exception as e:
-            self.logger.error(f"Error during remote audio separation: {str(e)}")
+            self.logger.error(f"Error during remote audio separation: {str(e)}", exc_info=True)
             raise e
 
     def _organize_stage1_remote_results(self, downloaded_files, artist_title, track_output_dir, stems_dir):
@@ -644,7 +661,10 @@ class AudioProcessor:
         self.logger.info("Generating combined instrumental tracks with backing vocals")
         result = {}
         for model, paths in backing_vocals_result.items():
-            backing_vocals_path = paths["backing_vocals"]
+            backing_vocals_path = paths.get("backing_vocals")
+            if not backing_vocals_path:
+                self.logger.error(f"Skipping combined instrumental for model {model}: backing_vocals path is missing")
+                continue
             combined_path = os.path.join(track_output_dir, f"{artist_title} (Instrumental +BV {model}).{self.lossless_output_format}")
 
             if not self._file_exists(combined_path):
@@ -663,9 +683,16 @@ class AudioProcessor:
     def _normalize_audio_files(self, separation_result, artist_title, track_output_dir):
         self.logger.info("Normalizing clean instrumental and combined instrumentals")
 
+        clean_instrumental_path = separation_result.get("clean_instrumental", {}).get("instrumental")
+        if not clean_instrumental_path:
+            raise ValueError(
+                "Cannot normalize audio: clean instrumental path is missing. "
+                "This indicates the audio separation did not produce the expected instrumental stem."
+            )
+
         files_to_normalize = [
-            ("clean_instrumental", separation_result["clean_instrumental"]["instrumental"]),
-        ] + [("combined_instrumentals", path) for path in separation_result["combined_instrumentals"].values()]
+            ("clean_instrumental", clean_instrumental_path),
+        ] + [("combined_instrumentals", path) for path in separation_result.get("combined_instrumentals", {}).values()]
 
         for key, file_path in files_to_normalize:
             if self._file_exists(file_path):
