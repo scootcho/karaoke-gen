@@ -53,7 +53,10 @@ export const useAuth = create<AuthStore>()(
       sendMagicLink: async (email: string) => {
         set({ isLoading: true, error: null })
         try {
-          await api.sendMagicLink(email)
+          // Get device fingerprint for anti-abuse rate limiting
+          const { getDeviceFingerprint } = await import('./fingerprint')
+          const fingerprint = await getDeviceFingerprint()
+          await api.sendMagicLink(email, fingerprint)
           set({ isLoading: false })
           return true
         } catch (err) {
@@ -73,10 +76,11 @@ export const useAuth = create<AuthStore>()(
           // Store the session token
           setAccessToken(response.session_token)
 
-          // Store tenant_subdomain for cross-domain redirect safety
-          if (typeof window !== 'undefined' && response.tenant_subdomain) {
+          // Store verify response data for cross-domain redirect and welcome credits
+          if (typeof window !== 'undefined') {
             (window as any).__LAST_VERIFY_RESPONSE__ = {
               tenant_subdomain: response.tenant_subdomain,
+              credits_granted: response.credits_granted || 0,
             }
           }
 

@@ -176,6 +176,22 @@ async def send_magic_link(
             message="If this email is registered, you will receive a sign-in link shortly."
         )
 
+    # Per-IP and per-fingerprint signup rate limit (only for new users)
+    device_fingerprint = request.device_fingerprint
+    existing_user = user_service.get_user(email)
+    if existing_user is None:
+        if user_service.is_signup_rate_limited(
+            ip_address=ip_address, device_fingerprint=device_fingerprint
+        ):
+            logger.warning(
+                f"Signup rate limit hit: IP={ip_address} for {_mask_email(email)}"
+            )
+            # Silent reject (anti-enumeration)
+            return SendMagicLinkResponse(
+                status="success",
+                message="If this email is registered, you will receive a sign-in link shortly."
+            )
+
     # Check if email service is configured
     if not email_service.is_configured():
         logger.error("Email service not configured - cannot send magic links")
@@ -201,12 +217,13 @@ async def send_magic_link(
     # Get client info for security logging (ip_address already extracted above for blocklist check)
     user_agent = http_request.headers.get("user-agent")
 
-    # Create magic link token with tenant context
+    # Create magic link token with tenant context and fingerprint
     magic_link = user_service.create_magic_link(
         email,
         ip_address=ip_address,
         user_agent=user_agent,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        device_fingerprint=device_fingerprint,
     )
 
     # Get tenant-specific email configuration
@@ -279,6 +296,14 @@ async def verify_magic_link(
     if not success or not user:
         raise HTTPException(status_code=401, detail=message)
 
+    # Grant welcome credits on first verification (not at account creation)
+    credits_granted = 0
+    if user_service.grant_welcome_credits_if_eligible(user.email):
+        credits_granted = user_service.NEW_USER_FREE_CREDITS
+        logger.info(f"Granted {credits_granted} welcome credits to {_mask_email(user.email)}")
+        # Refresh user to get updated credit balance
+        user = user_service.get_user(user.email)
+
     # Create session with tenant context from the magic link
     session = user_service.create_session(
         user.email,
@@ -317,6 +342,7 @@ async def verify_magic_link(
         user=user_public,
         message="Successfully signed in",
         tenant_subdomain=tenant_subdomain,
+        credits_granted=credits_granted,
     )
 
 

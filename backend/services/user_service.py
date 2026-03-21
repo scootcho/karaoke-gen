@@ -107,15 +107,23 @@ class UserService:
             logger.exception(f"Error getting user {email}")
             return None
 
-    def get_or_create_user(self, email: str, tenant_id: Optional[str] = None) -> User:
+    def get_or_create_user(
+        self,
+        email: str,
+        tenant_id: Optional[str] = None,
+        signup_ip: Optional[str] = None,
+        device_fingerprint: Optional[str] = None,
+    ) -> User:
         """
         Get existing user or create a new one.
 
-        New users receive a welcome credit to try the service.
+        Welcome credits are granted on first magic link verification, not here.
 
         Args:
             email: User's email address
             tenant_id: Tenant ID for white-label portals (None = default Nomad Karaoke)
+            signup_ip: Client IP address at signup (for rate limiting)
+            device_fingerprint: Browser fingerprint at signup (for rate limiting)
 
         Note: If user exists but has a different tenant_id, the existing user is returned.
         Users are uniquely identified by email, not email+tenant.
@@ -129,22 +137,17 @@ class UserService:
             # (though features may be restricted per-tenant)
             return user
 
-        # Create new user with welcome credit
-        welcome_credit = self.NEW_USER_FREE_CREDITS
-        welcome_transaction = CreditTransaction(
-            id=str(uuid.uuid4()),
-            amount=welcome_credit,
-            reason="welcome_credit",
-        )
-
+        # Create new user with zero credits (welcome credits granted on first verification)
         user = User(
             email=email,
-            credits=welcome_credit,
-            credit_transactions=[welcome_transaction],
+            credits=0,
+            credit_transactions=[],
             tenant_id=tenant_id,  # Associate with tenant on creation
+            signup_ip=signup_ip,
+            device_fingerprint=device_fingerprint,
         )
         self._save_user(user)
-        logger.info(f"Created new user: {email} with {welcome_credit} welcome credit(s) (tenant: {tenant_id or 'default'})")
+        logger.info(f"Created new user: {email} (tenant: {tenant_id or 'default'}) — credits pending verification")
         return user
 
     def _save_user(self, user: User) -> None:
@@ -213,7 +216,8 @@ class UserService:
         email: str,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
-        tenant_id: Optional[str] = None
+        tenant_id: Optional[str] = None,
+        device_fingerprint: Optional[str] = None,
     ) -> MagicLinkToken:
         """
         Create a magic link token for email authentication.
@@ -226,11 +230,17 @@ class UserService:
             ip_address: Client IP for auditing
             user_agent: Client user agent for auditing
             tenant_id: Tenant ID for white-label portals (None = default Nomad Karaoke)
+            device_fingerprint: Browser fingerprint for anti-abuse
         """
         email = email.lower()
 
-        # Ensure user exists (with tenant association)
-        self.get_or_create_user(email, tenant_id=tenant_id)
+        # Ensure user exists (with tenant association, signup IP, and fingerprint)
+        self.get_or_create_user(
+            email,
+            tenant_id=tenant_id,
+            signup_ip=ip_address,
+            device_fingerprint=device_fingerprint,
+        )
 
         # Generate secure token
         token = secrets.token_urlsafe(32)
@@ -242,6 +252,7 @@ class UserService:
             ip_address=ip_address,
             user_agent=user_agent,
             tenant_id=tenant_id,
+            device_fingerprint=device_fingerprint,
         )
 
         # Save to Firestore
@@ -358,6 +369,152 @@ class UserService:
         except Exception:
             logger.exception("Error verifying magic link")
             return False, None, "An error occurred during verification"
+
+    def grant_welcome_credits_if_eligible(self, email: str) -> bool:
+        """
+        Grant welcome credits on first magic link verification.
+
+        Uses a dedicated welcome_credits_granted flag as primary idempotency
+        check (survives credit_transactions list trimming). Falls back to
+        checking for welcome_credit transaction as secondary defense.
+
+        Returns:
+            True if credits were granted, False if already received or user not found.
+        """
+        try:
+            email = email.lower()
+            user = self.get_user(email)
+            if not user:
+                return False
+
+            # Primary check: dedicated flag (survives transaction list trimming)
+            if user.welcome_credits_granted:
+                return False
+
+            # Secondary check: look for existing welcome_credit transaction
+            for txn in user.credit_transactions:
+                if txn.reason == "welcome_credit":
+                    return False  # Already received
+
+            # Grant welcome credits
+            welcome_credit = self.NEW_USER_FREE_CREDITS
+            transaction = CreditTransaction(
+                id=str(uuid.uuid4()),
+                amount=welcome_credit,
+                reason="welcome_credit",
+            )
+
+            transactions = user.credit_transactions[-MAX_CREDIT_TRANSACTIONS + 1:]
+            transactions.append(transaction)
+
+            new_balance = user.credits + welcome_credit
+            self.update_user(
+                email,
+                credits=new_balance,
+                credit_transactions=[t.model_dump(mode='json') for t in transactions],
+                welcome_credits_granted=True,
+            )
+
+            logger.info(f"Granted {welcome_credit} welcome credits to {email}")
+            return True
+
+        except Exception:
+            logger.exception(f"Error granting welcome credits to {email}")
+            return False
+
+    # =========================================================================
+    # Anti-Abuse Rate Limiting
+    # =========================================================================
+
+    # Maximum new signups allowed per IP address in the rate limit window
+    MAX_SIGNUPS_PER_IP = 2
+    SIGNUP_RATE_LIMIT_HOURS = 24
+
+    def count_recent_signups_from_ip(self, ip_address: str, hours: int = 24) -> int:
+        """
+        Count new user accounts created from this IP in the last N hours.
+
+        Queries gen_users where signup_ip matches and created_at is recent.
+        Used to rate-limit new account creation per IP address.
+
+        Args:
+            ip_address: Client IP to check
+            hours: Lookback window in hours (default: 24)
+
+        Returns:
+            Number of recent signups from this IP
+        """
+        try:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            query = (
+                self.db.collection(USERS_COLLECTION)
+                .where(filter=FieldFilter("signup_ip", "==", ip_address))
+                .where(filter=FieldFilter("created_at", ">=", cutoff))
+            )
+
+            count = 0
+            for _ in query.stream():
+                count += 1
+            return count
+
+        except Exception:
+            logger.exception(f"Error counting signups from IP {ip_address}")
+            # On error, don't block — return 0 to allow the request
+            return 0
+
+    def count_recent_signups_from_fingerprint(
+        self, device_fingerprint: str, hours: int = 24
+    ) -> int:
+        """
+        Count new user accounts created with this device fingerprint in the last N hours.
+
+        Args:
+            device_fingerprint: Browser fingerprint to check
+            hours: Lookback window in hours (default: 24)
+
+        Returns:
+            Number of recent signups from this fingerprint
+        """
+        try:
+            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            query = (
+                self.db.collection(USERS_COLLECTION)
+                .where(filter=FieldFilter("device_fingerprint", "==", device_fingerprint))
+                .where(filter=FieldFilter("created_at", ">=", cutoff))
+            )
+
+            count = 0
+            for _ in query.stream():
+                count += 1
+            return count
+
+        except Exception:
+            logger.exception(f"Error counting signups from fingerprint")
+            return 0
+
+    def is_signup_rate_limited(
+        self, ip_address: Optional[str] = None, device_fingerprint: Optional[str] = None
+    ) -> bool:
+        """
+        Check if a signup should be rate limited based on IP and/or fingerprint.
+
+        Either signal hitting the limit triggers a block.
+        """
+        if ip_address:
+            ip_count = self.count_recent_signups_from_ip(
+                ip_address, hours=self.SIGNUP_RATE_LIMIT_HOURS
+            )
+            if ip_count >= self.MAX_SIGNUPS_PER_IP:
+                return True
+
+        if device_fingerprint:
+            fp_count = self.count_recent_signups_from_fingerprint(
+                device_fingerprint, hours=self.SIGNUP_RATE_LIMIT_HOURS
+            )
+            if fp_count >= self.MAX_SIGNUPS_PER_IP:
+                return True
+
+        return False
 
     # =========================================================================
     # Session Management
