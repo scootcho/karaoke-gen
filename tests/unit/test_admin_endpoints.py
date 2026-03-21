@@ -43,21 +43,32 @@ def mock_email_service():
 
 @pytest.fixture
 def client(admin_auth_result, mock_user_service, mock_email_service):
-    """Test client with mocked dependencies."""
-    from fastapi import FastAPI
-    from backend.api.routes.users import router
-    from backend.api.dependencies import require_admin
-    from backend.services.user_service import get_user_service
-    from backend.services.email_service import get_email_service
+    """Test client with mocked dependencies.
 
-    app = FastAPI()
-    app.include_router(router, prefix="/api")
+    GCP services (Firestore, Storage) are mocked because importing the users
+    router triggers module-level imports (file_upload.py -> JobManager -> FirestoreService)
+    that require GCP credentials not available in CI.
+    """
+    mock_creds = MagicMock()
+    mock_creds.universe_domain = "googleapis.com"
 
-    app.dependency_overrides[require_admin] = lambda: admin_auth_result
-    app.dependency_overrides[get_user_service] = lambda: mock_user_service
-    app.dependency_overrides[get_email_service] = lambda: mock_email_service
+    with patch("backend.services.firestore_service.firestore"), \
+         patch("backend.services.storage_service.storage"), \
+         patch("google.auth.default", return_value=(mock_creds, "test-project")):
+        from fastapi import FastAPI
+        from backend.api.routes.users import router
+        from backend.api.dependencies import require_admin
+        from backend.services.user_service import get_user_service
+        from backend.services.email_service import get_email_service
 
-    return TestClient(app)
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+
+        app.dependency_overrides[require_admin] = lambda: admin_auth_result
+        app.dependency_overrides[get_user_service] = lambda: mock_user_service
+        app.dependency_overrides[get_email_service] = lambda: mock_email_service
+
+        yield TestClient(app)
 
 
 class TestAddCredits:
