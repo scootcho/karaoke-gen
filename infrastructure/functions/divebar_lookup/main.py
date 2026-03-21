@@ -287,6 +287,98 @@ def _get_download_url(file_id: str) -> dict:
     }
 
 
+def _get_full_stats() -> dict:
+    """Get comprehensive Divebar mirror statistics."""
+    client = bigquery.Client(project=GCP_PROJECT_ID)
+
+    sql = f"""
+        WITH catalog_stats AS (
+            SELECT
+                COUNT(*) as total_files,
+                COUNT(DISTINCT brand) as total_brands,
+                COUNTIF(gcs_path IS NOT NULL) as gcs_synced,
+                COUNTIF(gcs_path IS NULL) as gcs_pending,
+                COUNTIF(artist IS NOT NULL AND title IS NOT NULL) as with_metadata,
+                ROUND(SUM(file_size) / 1024/1024/1024, 1) as total_gb,
+                ROUND(SUM(CASE WHEN gcs_path IS NOT NULL THEN file_size ELSE 0 END) / 1024/1024/1024, 1) as gcs_synced_gb,
+                ROUND(SUM(CASE WHEN gcs_path IS NULL THEN file_size ELSE 0 END) / 1024/1024/1024, 1) as gcs_pending_gb,
+                MAX(synced_at) as last_index_sync
+            FROM `{GCP_PROJECT_ID}.{DATASET}.divebar_catalog`
+        ),
+        format_stats AS (
+            SELECT format, COUNT(*) as count,
+                ROUND(SUM(file_size) / 1024/1024/1024, 1) as gb,
+                COUNTIF(gcs_path IS NOT NULL) as in_gcs
+            FROM `{GCP_PROJECT_ID}.{DATASET}.divebar_catalog`
+            GROUP BY format
+            ORDER BY count DESC
+        ),
+        xref_stats AS (
+            SELECT
+                COUNT(*) as total_matches,
+                COUNT(DISTINCT kn_id) as unique_kn_songs,
+                COUNT(DISTINCT divebar_file_id) as unique_divebar_files,
+                MAX(matched_at) as last_xref_rebuild
+            FROM `{GCP_PROJECT_ID}.{DATASET}.kn_divebar_xref`
+        ),
+        kn_stats AS (
+            SELECT
+                (SELECT COUNT(*) FROM `{GCP_PROJECT_ID}.{DATASET}.karaokenerds_raw`) as kn_songs,
+                (SELECT COUNT(*) FROM `{GCP_PROJECT_ID}.{DATASET}.karaokenerds_community`) as kn_community
+        )
+        SELECT
+            c.*, x.total_matches, x.unique_kn_songs, x.unique_divebar_files,
+            x.last_xref_rebuild, k.kn_songs, k.kn_community
+        FROM catalog_stats c, xref_stats x, kn_stats k
+    """
+
+    row = list(client.query(sql).result())[0]
+
+    # Get format breakdown
+    fmt_sql = f"""
+        SELECT format, COUNT(*) as count,
+            ROUND(SUM(file_size) / 1024/1024/1024, 1) as gb,
+            COUNTIF(gcs_path IS NOT NULL) as in_gcs
+        FROM `{GCP_PROJECT_ID}.{DATASET}.divebar_catalog`
+        GROUP BY format ORDER BY count DESC
+    """
+    formats = {}
+    for fmt_row in client.query(fmt_sql).result():
+        formats[fmt_row.format] = {
+            "count": fmt_row.count,
+            "gb": fmt_row.gb,
+            "in_gcs": fmt_row.in_gcs,
+        }
+
+    return {
+        "catalog": {
+            "total_files": row.total_files,
+            "total_brands": row.total_brands,
+            "with_metadata": row.with_metadata,
+            "total_gb": row.total_gb,
+            "last_index_sync": row.last_index_sync.isoformat() if row.last_index_sync else None,
+        },
+        "gcs_mirror": {
+            "synced": row.gcs_synced,
+            "pending": row.gcs_pending,
+            "synced_gb": row.gcs_synced_gb,
+            "pending_gb": row.gcs_pending_gb,
+            "percent": round(row.gcs_synced / row.total_files * 100, 1) if row.total_files else 0,
+        },
+        "formats": formats,
+        "cross_reference": {
+            "total_matches": row.total_matches,
+            "unique_kn_songs": row.unique_kn_songs,
+            "unique_divebar_files": row.unique_divebar_files,
+            "last_rebuild": row.last_xref_rebuild.isoformat() if row.last_xref_rebuild else None,
+        },
+        "karaoke_nerds": {
+            "songs": row.kn_songs,
+            "community_tracks": row.kn_community,
+        },
+    }
+
+
 @functions_framework.http
 def divebar_lookup(request):
     """HTTP Cloud Function entry point."""
@@ -337,6 +429,10 @@ def divebar_lookup(request):
                 "download_url": result["url"],
                 "source": result["source"],
             })
+
+        elif action == "stats":
+            stats = _get_full_stats()
+            return _json_response({"status": "ok", **stats})
 
         else:
             return _json_response({"status": "error", "message": f"Unknown action: {action}"}, 400)
