@@ -71,7 +71,7 @@ class CorrectionOperations:
                     words=[
                         Word(
                             id=w["id"],
-                            text=w["text"].strip(),
+                            text=w["text"],
                             start_time=w["start_time"],
                             end_time=w["end_time"],
                             confidence=w.get("confidence"),
