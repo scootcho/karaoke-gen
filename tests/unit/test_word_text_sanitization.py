@@ -65,16 +65,31 @@ class TestASSOutputSanitization:
         )
 
     def test_ass_text_no_literal_newlines(self):
-        """Even if Word.__post_init__ were bypassed, ASS output must not contain newlines."""
-        segment = self._make_segment([
-            ("the", 54.11, 54.26),
-            ("spell", 54.30, 55.14),
-            ("we're", 55.18, 55.83),
-            ("under", 55.93, 57.24),
-        ])
+        """Defensive strip in _create_ass_text catches newlines that bypass __post_init__.
+
+        Word.__post_init__ normally strips newlines, but this test verifies the
+        defensive strip at the ASS output boundary by injecting newlines directly
+        into Word.text after construction (bypassing __post_init__).
+        """
+        from datetime import timedelta
+
+        # Build words normally first (clean text)
+        words = [
+            Word(id="w0", text="the", start_time=54.11, end_time=54.26),
+            Word(id="w1", text="spell", start_time=54.30, end_time=55.14),
+            Word(id="w2", text="we're", start_time=55.18, end_time=55.83),
+            Word(id="w3", text="under", start_time=55.93, end_time=57.24),
+        ]
+        # Inject newlines directly, bypassing __post_init__
+        object.__setattr__(words[1], "text", "spell\n")
+        object.__setattr__(words[3], "text", "under\n")
+
+        segment = LyricsSegment(
+            id="seg1", text="the spell we're under",
+            words=words, start_time=54.11, end_time=57.24,
+        )
         config = ScreenConfig(line_height=50)
         line = LyricsLine(segment=segment, screen_config=config)
-        from datetime import timedelta
         ass_text = line._create_ass_text(timedelta(seconds=54.0))
         assert "\n" not in ass_text, f"ASS text contains literal newline: {repr(ass_text)}"
         assert "the" in ass_text
