@@ -16,6 +16,16 @@ class Word:
     # New: Track if this word was created during correction
     created_during_correction: bool = False
 
+    def __post_init__(self):
+        """Strip whitespace/newlines from text.
+
+        Word text from transcription pipelines may contain embedded newline
+        characters at segment boundaries (e.g., "spell\\n"). These corrupt ASS
+        subtitle output by splitting dialogue events across file lines, causing
+        words after the newline to be silently dropped by video renderers.
+        """
+        self.text = self.text.strip()
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert Word to dictionary for JSON serialization."""
         d = asdict(self)
