@@ -2,6 +2,8 @@
 
 import pytest
 from karaoke_gen.lyrics_transcriber.types import Word, LyricsSegment
+from karaoke_gen.lyrics_transcriber.output.ass.lyrics_line import LyricsLine
+from karaoke_gen.lyrics_transcriber.output.ass.config import ScreenConfig
 
 
 class TestWordTextSanitization:
@@ -45,3 +47,37 @@ class TestWordTextSanitization:
             "end_time": 2.0,
         })
         assert word.text == "broken"
+
+
+class TestASSOutputSanitization:
+    """ASS output must never contain literal newlines in dialogue text."""
+
+    def _make_segment(self, words_data):
+        """Helper to create a LyricsSegment from word tuples (text, start, end)."""
+        words = [
+            Word(id=f"w{i}", text=text, start_time=start, end_time=end)
+            for i, (text, start, end) in enumerate(words_data)
+        ]
+        text = " ".join(w.text for w in words)
+        return LyricsSegment(
+            id="seg1", text=text, words=words,
+            start_time=words[0].start_time, end_time=words[-1].end_time,
+        )
+
+    def test_ass_text_no_literal_newlines(self):
+        """Even if Word.__post_init__ were bypassed, ASS output must not contain newlines."""
+        segment = self._make_segment([
+            ("the", 54.11, 54.26),
+            ("spell", 54.30, 55.14),
+            ("we're", 55.18, 55.83),
+            ("under", 55.93, 57.24),
+        ])
+        config = ScreenConfig(line_height=50)
+        line = LyricsLine(segment=segment, screen_config=config)
+        from datetime import timedelta
+        ass_text = line._create_ass_text(timedelta(seconds=54.0))
+        assert "\n" not in ass_text, f"ASS text contains literal newline: {repr(ass_text)}"
+        assert "the" in ass_text
+        assert "spell" in ass_text
+        assert "we're" in ass_text
+        assert "under" in ass_text
