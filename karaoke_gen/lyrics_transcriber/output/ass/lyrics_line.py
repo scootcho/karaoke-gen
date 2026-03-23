@@ -254,7 +254,11 @@ class LyricsLine:
             # Add the word with its duration
             duration = int(round((word.end_time - word.start_time) * 100))
             # Apply case transformation to the word text
-            transformed_text = self._apply_case_transform(word.text)
+            # Defensive strip: Word.__post_init__ should already handle this,
+            # but embedded newlines in ASS dialogue events cause silent word
+            # loss so we guard against it at the output boundary too.
+            clean_word_text = word.text.replace("\n", "").strip()
+            transformed_text = self._apply_case_transform(clean_word_text)
             text += r"{\kf" + str(duration) + r"}" + transformed_text + " "
 
             prev_end_time = word.end_time  # Track the actual end time of the word

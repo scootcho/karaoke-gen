@@ -58,6 +58,16 @@ Audio separation and lyrics transcription run in parallel. Both can fail indepen
 ### GCE Instance Selection for FFmpeg
 AMD EPYC (C4D series) significantly outperforms Intel Xeon (C4 series) for CPU-bound FFmpeg encoding with libass. C4D-highcpu-32 is ~5x faster than C4-standard-8. C4D requires `hyperdisk-balanced` disk type.
 
+### Data Types Must Enforce Their Own Invariants (Mar 2026)
+When a data type has constraints on its fields (e.g., "word text must not contain newlines"), enforce them in the type's constructor (`__post_init__`), not in callers. This bug was caused by `Word` objects being constructed via two different code paths — one that stripped newlines (preview) and one that didn't (final render). The preview accidentally worked while final renders had corrupted subtitles with silently dropped lyrics. The fix: `Word.__post_init__` strips whitespace so ALL construction paths are safe, plus a defensive strip at the ASS output boundary.
+
+**Key principles:**
+- **Single source of truth for data invariants** — the type, not the caller, is responsible for field constraints
+- **Defensive output boundaries** — even with clean inputs, validate at system boundaries (ASS file writing) as a safety net
+- **Two code paths doing "the same thing" will diverge** — if preview and render both construct CorrectionResult, they must use the same method, not reimplementations
+
+**Detection clue:** If `corrected.txt` shows correct lyrics but the video is missing words, check for embedded newlines in Word text corrupting ASS dialogue events.
+
 ### Large Documents: GCS + Firestore Metadata (Mar 2026)
 When a document's payload can exceed Firestore's 1MB limit (e.g., CorrectionData at 100KB+ per session), store the payload in GCS and keep only metadata in Firestore. Use SHA-256 hash deduplication to avoid re-uploading identical data. For cross-document queries (e.g., searching sessions across jobs), use Firestore collection group queries on the metadata subcollection with Python-side text filtering — Firestore doesn't support LIKE/substring queries natively.
 

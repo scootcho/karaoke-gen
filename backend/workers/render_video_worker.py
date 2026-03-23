@@ -45,6 +45,7 @@ from backend.services.tracing import job_span, add_span_event, add_span_attribut
 from karaoke_gen.lyrics_transcriber.output.generator import OutputGenerator
 from karaoke_gen.lyrics_transcriber.output.countdown_processor import CountdownProcessor
 from karaoke_gen.lyrics_transcriber.types import CorrectionResult
+from karaoke_gen.lyrics_transcriber.correction.operations import CorrectionOperations
 from karaoke_gen.lyrics_transcriber.core.config import OutputConfig
 
 # Import from the unified style loader
@@ -161,30 +162,32 @@ async def process_render_video(job_id: str) -> bool:
                     with open(original_corrections_path, 'r', encoding='utf-8') as f:
                         original_data = json.load(f)
                     
-                    # 3. Check if there are updated corrections (from review UI)
-                    # The frontend sends only partial data: {corrections, corrected_segments}
+                    # 3. Load base CorrectionResult from original data
+                    base_result = CorrectionResult.from_dict(original_data)
+
+                    # 4. Apply user corrections if available (from review UI)
+                    # Uses the same method as preview generation to ensure
+                    # identical CorrectionResult construction (DRY).
                     updated_corrections_gcs = f"jobs/{job_id}/lyrics/corrections_updated.json"
-                    
+
                     if storage.file_exists(updated_corrections_gcs):
-                        job_log.info("Found updated corrections from review, merging")
-                        logger.info(f"Job {job_id}: Found updated corrections, merging")
+                        job_log.info("Found updated corrections from review, applying via shared method")
+                        logger.info(f"Job {job_id}: Found updated corrections, applying via shared method")
                         updated_path = os.path.join(temp_dir, "corrections_updated.json")
                         storage.download_file(updated_corrections_gcs, updated_path)
-                        
+
                         with open(updated_path, 'r', encoding='utf-8') as f:
                             updated_data = json.load(f)
-                        
-                        # Merge: update the original with the user's corrections
-                        if 'corrections' in updated_data:
-                            original_data['corrections'] = updated_data['corrections']
-                        if 'corrected_segments' in updated_data:
-                            original_data['corrected_segments'] = updated_data['corrected_segments']
-                        
-                        job_log.info("Merged user corrections into original data")
-                        logger.info(f"Job {job_id}: Merged user corrections into original data")
-                    
-                    # 4. Convert to CorrectionResult
-                    correction_result = CorrectionResult.from_dict(original_data)
+
+                        # Same construction path as preview — prevents divergence
+                        correction_result = CorrectionOperations.update_correction_result_with_data(
+                            base_result, updated_data
+                        )
+                        job_log.info("Applied user corrections via CorrectionOperations")
+                        logger.info(f"Job {job_id}: Applied user corrections via CorrectionOperations")
+                    else:
+                        correction_result = base_result
+
                     job_log.info(f"Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
                     logger.info(f"Job {job_id}: Loaded CorrectionResult with {len(correction_result.corrected_segments)} segments")
                     
