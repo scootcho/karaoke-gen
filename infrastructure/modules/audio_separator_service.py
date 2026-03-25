@@ -6,14 +6,13 @@ Replaces the Modal deployment for audio stem separation.
 
 Resources created:
 - Artifact Registry repository for audio-separator Docker images
-- GCS bucket for pre-downloaded separation models
 - Cloud Run GPU service (L4, scale-to-zero)
 - Service account with minimal permissions
 """
 
 import pulumi
 import pulumi_gcp as gcp
-from pulumi_gcp import artifactregistry, cloudrunv2, serviceaccount, storage
+from pulumi_gcp import artifactregistry, cloudrunv2, serviceaccount
 from pulumi_gcp.cloudrunv2 import ServiceTemplateNodeSelectorArgs, ServiceTemplateContainerPortsArgs
 
 from config import PROJECT_ID, REGION
@@ -33,17 +32,6 @@ def create_audio_separator_artifact_repo() -> artifactregistry.Repository:
         description="Docker repository for audio-separator GPU service",
     )
 
-
-def create_model_bucket() -> storage.Bucket:
-    """Create GCS bucket for audio separation model files (~1-1.5 GB total)."""
-    return storage.Bucket(
-        "audio-separator-models-bucket",
-        name=f"nomadkaraoke-audio-separator-models",
-        location=AUDIO_SEPARATOR_REGION,
-        storage_class="STANDARD",
-        uniform_bucket_level_access=True,
-        force_destroy=False,
-    )
 
 
 def create_service_account() -> serviceaccount.Account:
