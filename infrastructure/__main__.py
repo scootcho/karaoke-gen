@@ -41,7 +41,7 @@ from modules import cloud_tasks, cloud_run, monitoring, networking, runner_manag
 from modules import divebar_mirror, kn_data_sync, divebar_lookup
 from modules import audio_separator_service
 from modules.iam import backend_sa, github_actions_sa, claude_automation_sa, worker_sas
-from compute import encoding_worker_vm, github_runners
+from compute import encoding_worker_vm, github_runners, divebar_sync_vm
 
 # ==================== Core Infrastructure ====================
 
@@ -392,6 +392,46 @@ kn_data_sync_resources = kn_data_sync.create_kn_data_sync_resources(all_secrets)
 
 divebar_lookup_resources = divebar_lookup.create_divebar_lookup_resources(all_secrets)
 
+# ==================== Divebar File Sync VM ====================
+# Divebar File Sync VM (downloads karaoke files from Drive to GCS)
+divebar_sync_instance = divebar_sync_vm.create_divebar_sync_vm(
+    divebar_mirror_resources["service_account"]
+)
+
+# Cloud Scheduler to start the sync VM daily (uses compute.instances.start API)
+divebar_sync_scheduler = cloudscheduler.Job(
+    "divebar-sync-vm-scheduler",  # Must match Pulumi state
+    name="divebar-sync-vm-daily",
+    description="Start Divebar file sync VM daily to download new files from Drive to GCS",
+    region=REGION,
+    schedule="0 3 * * *",  # 3:00 AM ET (after index refresh at 2 AM)
+    time_zone="America/New_York",
+    http_target=cloudscheduler.JobHttpTargetArgs(
+        uri=divebar_sync_instance.self_link.apply(
+            lambda link: f"https://compute.googleapis.com/compute/v1/{link}/start"
+        ),
+        http_method="POST",
+        oidc_token=cloudscheduler.JobHttpTargetOidcTokenArgs(
+            service_account_email=divebar_mirror_resources["service_account"].email,
+        ),
+    ),
+    retry_config=cloudscheduler.JobRetryConfigArgs(
+        retry_count=1,
+        min_backoff_duration="60s",
+        max_backoff_duration="300s",
+    ),
+)
+
+# Grant the SA permission to start/stop its own VM
+divebar_sync_compute_admin = gcp.projects.IAMMember(
+    "divebar-mirror-compute-instance-admin",  # Must match Pulumi state
+    project=PROJECT_ID,
+    role="roles/compute.instanceAdmin.v1",
+    member=divebar_mirror_resources["service_account"].email.apply(
+        lambda email: f"serviceAccount:{email}"
+    ),
+)
+
 # ==================== Audio Separator GPU Service ====================
 # Cloud Run GPU (L4) service for audio stem separation — replaces Modal
 audio_separator_resources = audio_separator_service.create_all_resources()
@@ -552,6 +592,10 @@ pulumi.export("kn_data_bucket", kn_data_sync_resources["data_bucket"].name)
 
 # Divebar lookup API (Phase 3)
 pulumi.export("divebar_lookup_function_url", divebar_lookup_resources["function"].url)
+
+# Divebar file sync VM
+pulumi.export("divebar_sync_vm_name", divebar_sync_instance.name)
+pulumi.export("divebar_sync_scheduler_name", divebar_sync_scheduler.name)
 
 # Audio separator GPU service
 pulumi.export("audio_separator_service_url", audio_separator_resources["service"].uri)
