@@ -40,6 +40,7 @@ from modules import database, storage as storage_module, artifact_registry, secr
 from modules import cloud_tasks, cloud_run, monitoring, networking, runner_manager
 from modules import divebar_mirror, kn_data_sync, divebar_lookup
 from modules import audio_separator_service
+from modules import encoding_worker_manager
 from modules.iam import backend_sa, github_actions_sa, claude_automation_sa, worker_sas
 from compute import encoding_worker_vm, github_runners, divebar_sync_vm
 
@@ -438,12 +439,18 @@ audio_separator_resources = audio_separator_service.create_all_resources()
 
 # ==================== Compute VMs ====================
 
-# Encoding Worker VM (video encoding service)
-encoding_worker_ip = encoding_worker_vm.create_encoding_worker_ip()
-encoding_worker_instance = encoding_worker_vm.create_encoding_worker_vm(
-    encoding_worker_ip, encoding_worker_sa
+# Encoding Worker VMs (blue-green pair for zero-downtime deployments)
+encoding_worker_ips = encoding_worker_vm.create_encoding_worker_ips()
+encoding_worker_instances = encoding_worker_vm.create_encoding_worker_vms(
+    encoding_worker_ips, encoding_worker_sa
 )
 encoding_worker_firewall = encoding_worker_vm.create_encoding_worker_firewall()
+
+# Grant backend SA permission to start encoding worker VMs
+backend_compute_perms = worker_sas.grant_backend_compute_permissions(backend_service_account)
+
+# Encoding Worker Idle Shutdown (auto-stop after 15 min idle)
+encoding_worker_idle_resources = encoding_worker_manager.create_idle_shutdown_resources()
 
 # GitHub Runners (CI/CD self-hosted runners)
 # Create Cloud NAT for outbound internet access (no external IPs needed)
@@ -564,11 +571,14 @@ pulumi.export("gdrive_validator_service_account", gdrive_validator_sa.email)
 pulumi.export("vpc_connector_name", vpc_connector.name)
 pulumi.export("vpc_connector_self_link", vpc_connector.self_link)
 
-# Encoding worker
-pulumi.export("encoding_worker_external_ip", encoding_worker_ip.address)
-pulumi.export("encoding_worker_service_url", encoding_worker_ip.address.apply(lambda ip: f"http://{ip}:8080"))
+# Encoding workers (blue-green pair)
+pulumi.export("encoding_worker_a_ip", encoding_worker_ips[0].address)
+pulumi.export("encoding_worker_b_ip", encoding_worker_ips[1].address)
+pulumi.export("encoding_worker_a_url", encoding_worker_ips[0].address.apply(lambda ip: f"http://{ip}:8080"))
+pulumi.export("encoding_worker_b_url", encoding_worker_ips[1].address.apply(lambda ip: f"http://{ip}:8080"))
 pulumi.export("encoding_worker_service_account", encoding_worker_sa.email)
-pulumi.export("encoding_worker_vm_name", encoding_worker_instance.name)
+pulumi.export("encoding_worker_a_name", encoding_worker_instances[0].name)
+pulumi.export("encoding_worker_b_name", encoding_worker_instances[1].name)
 
 # GitHub runners
 pulumi.export("github_runner_vm_names", [vm.name for vm in github_runner_vms])
@@ -600,3 +610,7 @@ pulumi.export("divebar_sync_scheduler_name", divebar_sync_scheduler.name)
 # Audio separator GPU service
 pulumi.export("audio_separator_service_url", audio_separator_resources["service"].uri)
 pulumi.export("audio_separator_service_account", audio_separator_resources["service_account"].email)
+
+# Encoding worker idle shutdown
+pulumi.export("encoding_worker_idle_function_url", encoding_worker_idle_resources["function"].url)
+pulumi.export("encoding_worker_idle_scheduler", encoding_worker_idle_resources["scheduler"].name)
