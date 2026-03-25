@@ -57,6 +57,7 @@ def create_divebar_sync_vm(
         scheduling=compute.InstanceSchedulingArgs(
             automatic_restart=False,  # Don't restart after self-shutdown
         ),
-        # Start the VM in TERMINATED state — Cloud Scheduler or manual start triggers sync
-        desired_status="TERMINATED",
+        # VM is started daily by Cloud Scheduler; may be RUNNING or TERMINATED
+        # depending on sync status. Use RUNNING to avoid Pulumi trying to stop it.
+        desired_status="RUNNING",
     )

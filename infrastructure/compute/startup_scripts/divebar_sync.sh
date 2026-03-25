@@ -37,16 +37,16 @@ fi
 
 cd "$REPO_DIR"
 
-# Set up venv (idempotent)
-if [ ! -d "venv" ]; then
-    log "Creating venv..."
-    python3 -m venv venv
-fi
-
-source venv/bin/activate
-
 log "Installing Python dependencies..."
-pip install -q google-api-python-client google-cloud-storage google-cloud-bigquery google-auth
+# Pin google-auth<2.28 to avoid MTLS metadata server issue on GCE
+# See: https://github.com/googleapis/google-auth-library-python/issues/1474
+# Use --break-system-packages since Debian 12 enforces PEP 668
+pip3 install -q --break-system-packages 'google-auth<2.28' google-api-python-client google-cloud-storage google-cloud-bigquery requests
+
+# Force metadata server to use HTTP (not HTTPS) — required for GCE VMs
+# See: https://github.com/googleapis/google-auth-library-python/issues/1474
+export GCE_METADATA_HOST="169.254.169.254"
+export GOOGLE_CLOUD_PROJECT="nomadkaraoke"
 
 # Run the sync
 log "Starting file sync (workers=4)..."
