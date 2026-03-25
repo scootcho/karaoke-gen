@@ -33,7 +33,6 @@ def create_audio_separator_artifact_repo() -> artifactregistry.Repository:
     )
 
 
-
 def create_service_account() -> serviceaccount.Account:
     """Create service account for the audio separator Cloud Run service."""
     return serviceaccount.Account(
