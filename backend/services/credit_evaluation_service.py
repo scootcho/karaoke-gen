@@ -30,7 +30,7 @@ class CreditEvaluation:
 
 SYSTEM_PROMPT = """You are an anti-abuse evaluator for Nomad Karaoke, a web service that creates professional karaoke videos. Each job costs the service real money in API credits and cloud compute.
 
-New users get 2 free welcome credits to try the service. Users who complete 2 jobs and submit feedback get 2 more credits. Some users abuse this by creating multiple accounts to get unlimited free karaoke generation.
+New users get 1 free welcome credit to try the service. Users who complete 2 jobs and submit feedback get 1 more credit. Some users abuse this by creating multiple accounts to get unlimited free karaoke generation.
 
 Your job: Given the signals below, decide whether to GRANT or DENY free credits to this user.
 

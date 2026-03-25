@@ -127,7 +127,7 @@ class TestGrantWelcomeCredits:
         # Verify update was called with credits and flag
         mock_db.collection.return_value.document.return_value.update.assert_called_once()
         update_args = mock_db.collection.return_value.document.return_value.update.call_args[0][0]
-        assert update_args['credits'] == 2
+        assert update_args['credits'] == 1
         assert update_args['welcome_credits_granted'] is True
 
     @patch('backend.services.user_service.get_settings')
@@ -379,7 +379,7 @@ def mock_user_svc():
         email="test@example.com",
         expires_at=datetime.utcnow() + timedelta(minutes=15),
     )
-    svc.NEW_USER_FREE_CREDITS = 2
+    svc.NEW_USER_FREE_CREDITS = 1
     return svc
 
 
@@ -530,7 +530,7 @@ class TestVerifyGrantsCredits:
         mock_user_svc.grant_welcome_credits_if_eligible.return_value = (credits_eligible, "granted" if credits_eligible else "already_granted")
         mock_user_svc.get_user.return_value = user
         mock_user_svc.create_session.return_value = MagicMock(token="session-token")
-        mock_user_svc.NEW_USER_FREE_CREDITS = 2
+        mock_user_svc.NEW_USER_FREE_CREDITS = 1
 
         # Mock magic link doc for first-login check
         mock_ml_doc = MagicMock()
@@ -559,7 +559,7 @@ class TestVerifyGrantsCredits:
 
             assert response.status_code == 200
             data = response.json()
-            assert data["credits_granted"] == 2
+            assert data["credits_granted"] == 1
             mock_user_svc.grant_welcome_credits_if_eligible.assert_called_once()
         finally:
             from backend.main import app

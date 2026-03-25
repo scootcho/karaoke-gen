@@ -1126,7 +1126,7 @@ async def check_feedback_eligibility(
         eligible=eligible,
         has_submitted=user.has_submitted_feedback,
         jobs_completed=user.total_jobs_completed,
-        credits_reward=2,
+        credits_reward=1,
     )
 
 
@@ -1137,7 +1137,7 @@ async def submit_user_feedback(
     user_service: UserService = Depends(get_user_service),
 ):
     """
-    Submit product feedback to earn 2 free credits.
+    Submit product feedback to earn 1 free credit.
 
     Requires authentication. Users must have completed 2+ jobs and
     not have already submitted feedback. At least one text field
@@ -1266,8 +1266,8 @@ async def submit_user_feedback(
             credits_granted=0,
         )
 
-    # Grant 2 credits (passed evaluation)
-    credits_granted = 2
+    # Grant 1 credit (passed evaluation)
+    credits_granted = 1
     user_service.add_credits(
         email=user.email,
         amount=credits_granted,
