@@ -229,7 +229,7 @@ class UserFeedback(BaseModel):
     Feedback from any user (not just beta testers).
 
     Stored in Firestore 'user_feedback' collection.
-    Users earn 2 free credits for submitting detailed feedback.
+    Users earn 1 free credit for submitting detailed feedback.
     """
     id: str
     user_email: str
@@ -284,4 +284,4 @@ class FeedbackEligibilityResponse(BaseModel):
     eligible: bool
     has_submitted: bool
     jobs_completed: int
-    credits_reward: int = 2
+    credits_reward: int = 1
