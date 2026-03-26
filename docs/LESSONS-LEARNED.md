@@ -49,6 +49,14 @@ When a metadata key is missing, don't set it to "now" and skip the action — th
 ### Pending Jobs Guard Must Not Reset Idle Timestamps (Mar 2026)
 When pending CI jobs are detected, keep runners alive but don't refresh their `last-activity` timestamps. Refreshing timestamps resets the idle timer, so runners can never accumulate enough idle time to be stopped — even after all jobs complete.
 
+### Cloud Run GPU: Let the Platform Scale, Not Your Code (Mar 2026)
+
+**Don't use fire-and-forget + semaphore on Cloud Run.** We tried making the `/separate` endpoint return immediately (fire-and-forget background thread) with a `threading.Semaphore(1)` to serialize GPU work. Cloud Run couldn't see background threads as "busy", so it routed ALL requests to one instance where they queued behind the semaphore — causing 30-minute timeouts in production.
+
+**Fix: synchronous endpoint + `concurrency=1`.** Keep the HTTP request active during processing. Cloud Run sees the request as occupying the instance and scales to new GPU instances for concurrent jobs. This matches Modal's `.spawn()` pattern where each job gets its own container. The client POST timeout must match Cloud Run's request timeout (1800s).
+
+**Rule of thumb**: If you need the platform's autoscaler to work for you, the request must stay active. Background threads are invisible to the platform.
+
 ---
 
 ## Architecture Decisions
