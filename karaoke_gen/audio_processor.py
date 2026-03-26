@@ -204,6 +204,11 @@ class AudioProcessor:
             self.logger.info("AUDIO_SEPARATOR_API_URL not set, using local audio separation. "
                            "Set this environment variable to use remote GPU processing.")
         
+        if not SEPARATOR_AVAILABLE:
+            raise ImportError(
+                "audio-separator package not installed. Install with: pip install audio-separator[gpu]"
+            )
+
         self.logger.info(f"Starting local audio separation process for {artist_title}")
 
         # Define lock file path in system temp directory
@@ -300,16 +305,17 @@ class AudioProcessor:
                 self.logger.info(f"Stage 1 ensemble produced {len(output_files)} files: {output_files}")
 
                 # Find vocals and instrumental from ensemble output
+                # Check negative patterns first to avoid "no_vocals" matching "vocal"
                 for f in output_files:
                     basename = os.path.basename(f).lower()
-                    if "vocal" in basename:
-                        result["clean_instrumental"]["vocals"] = f
-                    elif "instrumental" in basename or "no_vocal" in basename:
+                    if "no_vocal" in basename or "instrumental" in basename:
                         # Move instrumental to track_output_dir per convention
                         final_path = os.path.join(track_output_dir, os.path.basename(f))
                         if f != final_path:
                             shutil.move(f, final_path)
                         result["clean_instrumental"]["instrumental"] = final_path
+                    elif "vocal" in basename:
+                        result["clean_instrumental"]["vocals"] = f
             else:
                 # Legacy mode — individual model calls (existing code)
                 separator = Separator(
@@ -345,10 +351,10 @@ class AudioProcessor:
                     result["backing_vocals"][bv_key] = {}
                     for f in bv_output_files:
                         basename = os.path.basename(f).lower()
-                        if "vocal" in basename and "backing" not in basename and "no_" not in basename:
-                            result["backing_vocals"][bv_key]["lead_vocals"] = f
-                        elif "instrumental" in basename or "backing" in basename or "no_vocal" in basename:
+                        if "instrumental" in basename or "backing" in basename or "no_vocal" in basename:
                             result["backing_vocals"][bv_key]["backing_vocals"] = f
+                        elif "vocal" in basename:
+                            result["backing_vocals"][bv_key]["lead_vocals"] = f
                 else:
                     # Legacy: individual model calls (existing code)
                     result["backing_vocals"] = self._separate_backing_vocals(

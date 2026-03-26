@@ -2,11 +2,13 @@
 Audio separation worker.
 
 Handles the audio processing track of parallel processing:
-1. Stage 1: Clean instrumental separation (Modal API, 3-5 min)
-2. Stage 2: Backing vocals separation (Modal API, 2-3 min)
+1. Stage 1: Clean instrumental separation (GPU, 3-5 min)
+2. Stage 2: Backing vocals separation (GPU, 2-3 min)
 3. Post-processing: Combine instrumentals, normalize
 
-Re-uses karaoke_gen.audio_processor.AudioProcessor for remote GPU separation.
+Supports two modes:
+- Local GPU: Runs Separator directly with L4 GPU (MODEL_DIR env var)
+- Remote API: Calls audio-separator Cloud Run Service (AUDIO_SEPARATOR_API_URL env var)
 
 Observability:
 - All operations wrapped in tracing spans for Cloud Trace visibility
@@ -275,8 +277,8 @@ async def process_audio_separation(job_id: str) -> bool:
     
     Workflow:
     1. Download audio from GCS
-    2. Stage 1: Separate with clean instrumental + other stems models (Modal API)
-    3. Stage 2: Separate vocals for backing vocals (Modal API)
+    2. Stage 1: Separate with clean instrumental + other stems models (GPU)
+    3. Stage 2: Separate vocals for backing vocals (GPU)
     4. Post-process: Combine instrumentals, normalize audio
     5. Upload all stems to GCS
     6. Mark job as AUDIO_COMPLETE
@@ -417,15 +419,15 @@ async def process_audio_separation(job_id: str) -> bool:
                 safe_title = sanitize_filename(job.title) if job.title else "Unknown"
                 artist_title = f"{safe_artist} - {safe_title}"
                 
-                # Run audio separation (calls Modal API internally)
+                # Run audio separation (local GPU or remote API)
                 # This returns a dict with paths to all separated stems
-                with job_span("modal-separation", job_id) as sep_span:
+                with job_span("audio-separation", job_id) as sep_span:
                     sep_start = time.time()
                     job_log.info("Starting audio separation (this may take 5-10 minutes)...")
                     job_log.info("  Stage 1: Clean instrumental separation (MDX models)")
                     job_log.info("  Stage 2: Backing vocals separation (Demucs model)")
                     add_span_event("separation_started")
-                    logger.info(f"[job:{job_id}] Calling Modal API for audio separation")
+                    logger.info(f"[job:{job_id}] Starting audio separation")
                     
                     # Retry with exponential backoff. The audio-separator GPU service
                     # may be busy processing other jobs for 5-10+ minutes each, so we
@@ -433,7 +435,7 @@ async def process_audio_separation(job_id: str) -> bool:
                     max_retries = 5
                     for attempt in range(1, max_retries + 1):
                         try:
-                            with metrics.time_external_api("modal", job_id):
+                            with metrics.time_external_api("audio_separation", job_id):
                                 separation_result = audio_processor.process_audio_separation(
                                     audio_file=audio_path,
                                     artist_title=artist_title,
@@ -480,7 +482,7 @@ async def process_audio_separation(job_id: str) -> bool:
                 # Store processing metadata for separation provenance
                 duration = time.time() - start_time
                 job_manager.update_processing_metadata(job_id, "separation", {
-                    "provider": "modal",
+                    "provider": "local_gpu" if model_dir else "remote_api",
                     "clean_model": effective_model_names['clean_instrumental_model'],
                     "backing_models": effective_model_names['backing_vocals_models'],
                     "other_models": effective_model_names['other_stems_models'],
@@ -821,7 +823,7 @@ def main():
     Environment Variables:
         GOOGLE_CLOUD_PROJECT: GCP project ID (required)
         GCS_BUCKET_NAME: Storage bucket name (required)
-        AUDIO_SEPARATOR_API_URL: Modal API URL (required)
+        AUDIO_SEPARATOR_API_URL: Remote API URL (or MODEL_DIR for local GPU)
     """
     import argparse
     import asyncio
