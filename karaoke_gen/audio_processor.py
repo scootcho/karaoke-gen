@@ -305,7 +305,8 @@ class AudioProcessor:
                 self.logger.info(f"Stage 1 ensemble produced {len(output_files)} files: {output_files}")
 
                 # Find vocals and instrumental from ensemble output
-                # Check negative patterns first to avoid "no_vocals" matching "vocal"
+                # Output filenames follow: {base}_(Vocals)_preset_{name}.flac
+                # Check instrumental/no_vocal first to avoid substring false match
                 for f in output_files:
                     basename = os.path.basename(f).lower()
                     if "no_vocal" in basename or "instrumental" in basename:
