@@ -40,6 +40,7 @@ from modules import database, storage as storage_module, artifact_registry, secr
 from modules import cloud_tasks, cloud_run, monitoring, networking, runner_manager
 from modules import divebar_mirror, kn_data_sync, divebar_lookup
 from modules import audio_separator_service
+from modules import gpu_artifact_registry
 from modules import encoding_worker_manager
 from modules.iam import backend_sa, github_actions_sa, claude_automation_sa, worker_sas
 from compute import encoding_worker_vm, github_runners, divebar_sync_vm
@@ -54,6 +55,9 @@ bucket = storage_module.create_bucket()
 
 # Artifact Registry for Docker images
 artifact_repo = artifact_registry.create_repository()
+
+# GPU Artifact Registry in us-east4 (for audio worker GPU images)
+gpu_artifact_repo = gpu_artifact_registry.create_gpu_artifact_repo()
 
 # Secret Manager secrets
 all_secrets = secrets.create_secrets()
@@ -81,6 +85,15 @@ artifact_registry_iam = artifactregistry.RepositoryIamBinding(
     "cloudbuild-artifact-registry-access",
     repository=artifact_repo.name,
     location=artifact_repo.location,
+    role="roles/artifactregistry.writer",
+    members=cloudbuild_service_accounts,
+)
+
+# Grant Cloud Build access to GPU Artifact Registry (us-east4)
+gpu_artifact_registry_iam = artifactregistry.RepositoryIamBinding(
+    "cloudbuild-gpu-artifact-registry-access",
+    repository=gpu_artifact_repo.name,
+    location=gpu_artifact_repo.location,
     role="roles/artifactregistry.writer",
     members=cloudbuild_service_accounts,
 )
