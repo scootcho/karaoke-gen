@@ -301,6 +301,7 @@ class AudioProcessor:
                     output_dir=stems_dir,
                     ensemble_preset=instrumental_preset,
                 )
+                separator.load_model()
                 output_files = separator.separate(audio_file)
                 self.logger.info(f"Stage 1 ensemble produced {len(output_files)} files: {output_files}")
 
@@ -345,6 +346,7 @@ class AudioProcessor:
                         output_dir=stems_dir,
                         ensemble_preset=karaoke_preset,
                     )
+                    bv_separator.load_model()
                     bv_output_files = bv_separator.separate(vocals_path)
                     self.logger.info(f"Stage 2 ensemble produced {len(bv_output_files)} files: {bv_output_files}")
 
