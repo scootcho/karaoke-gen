@@ -200,6 +200,7 @@ async def download_from_url(url: str, temp_dir: str, artist: str, title: str, jo
 
 def create_audio_processor(
     temp_dir: str,
+    model_file_dir: Optional[str] = None,
     clean_instrumental_model: Optional[str] = None,
     backing_vocals_models: Optional[list] = None,
     other_stems_models: Optional[list] = None,
@@ -207,15 +208,24 @@ def create_audio_processor(
     karaoke_preset: Optional[str] = None,
 ) -> AudioProcessor:
     """
-    Create an AudioProcessor instance configured for remote API processing.
+    Create an AudioProcessor instance configured for audio processing.
 
     Supports two modes:
+    - Local GPU mode: When model_file_dir is set, uses the local Separator class
+      with GPU models loaded from that directory. No remote API calls.
+    - Remote API mode (default): When model_file_dir is None, delegates separation
+      to a remote audio-separator API server.
+
+    Within each mode, separation can be configured via:
     - Preset mode (default): Uses ensemble presets for higher quality separation.
-      Presets are resolved by the audio-separator API server.
+      Presets are resolved by the audio-separator API server (remote) or local
+      preset definitions (local GPU).
     - Model mode (legacy): Uses explicit model filenames for per-job overrides.
 
     Args:
         temp_dir: Temporary directory for processing
+        model_file_dir: Directory containing local model files for GPU separation.
+            When set, enables local GPU mode. When None (default), uses remote API.
         clean_instrumental_model: Model for clean instrumental (legacy, overrides preset)
         backing_vocals_models: Models for backing vocals (legacy, overrides preset)
         other_stems_models: Models for other stems (legacy, default empty)
@@ -241,7 +251,7 @@ def create_audio_processor(
         logger=audio_logger,
         log_level=logging.INFO,
         log_formatter=None,
-        model_file_dir=None,  # No local models, using remote API
+        model_file_dir=model_file_dir,
         lossless_output_format="FLAC",
         clean_instrumental_model=effective_clean_model,
         backing_vocals_models=effective_backing_models,
@@ -249,7 +259,7 @@ def create_audio_processor(
         ffmpeg_base_command=ffmpeg_base_command,
     )
 
-    # Set preset configuration (used by _process_audio_separation_remote)
+    # Set preset configuration (used by both remote and local paths)
     processor.instrumental_preset = instrumental_preset or DEFAULT_INSTRUMENTAL_PRESET
     processor.karaoke_preset = karaoke_preset or DEFAULT_KARAOKE_PRESET
 
