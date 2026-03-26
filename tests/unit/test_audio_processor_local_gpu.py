@@ -1,8 +1,10 @@
 import os
+import logging
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from backend.workers.audio_worker import create_audio_processor, process_audio_separation
+from karaoke_gen.audio_processor import AudioProcessor
 
 
 class TestCreateAudioProcessorLocalGPU:
@@ -171,3 +173,72 @@ class TestProcessAudioSeparationMode:
             # Should fail because no separation mode is configured
             result = await process_audio_separation("test-job-id")
             assert result is False
+
+
+class TestLocalSeparationWithPresets:
+    """Tests for local audio separation using ensemble presets."""
+
+    def setup_method(self):
+        self.processor = AudioProcessor(
+            logger=logging.getLogger("test"),
+            log_level=logging.DEBUG,
+            log_formatter=None,
+            model_file_dir="/models",
+            lossless_output_format="FLAC",
+            clean_instrumental_model="model_bs_roformer_ep_317_sdr_12.9755.ckpt",
+            backing_vocals_models=["mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"],
+            other_stems_models=[],
+            ffmpeg_base_command="ffmpeg",
+        )
+        self.processor.instrumental_preset = "instrumental_clean"
+        self.processor.karaoke_preset = "karaoke"
+
+    @patch.dict(os.environ, {}, clear=False)
+    @patch("karaoke_gen.audio_processor.shutil")
+    @patch("karaoke_gen.audio_processor.Separator")
+    def test_local_separation_uses_ensemble_preset_for_stage1(self, mock_separator_cls, mock_shutil):
+        """Stage 1 uses instrumental_preset on the Separator constructor."""
+        os.environ.pop("AUDIO_SEPARATOR_API_URL", None)
+
+        # Disable karaoke_preset so stage 2 is skipped, isolating stage 1
+        self.processor.karaoke_preset = None
+        self.processor.backing_vocals_models = []
+
+        mock_sep = MagicMock()
+        mock_sep.separate.return_value = ["/tmp/stems/vocals.flac", "/tmp/stems/instrumental.flac"]
+        mock_separator_cls.return_value = mock_sep
+
+        with patch.object(self.processor, '_create_stems_directory', return_value="/tmp/stems"):
+            with patch.object(self.processor, '_normalize_audio_files'):
+                with patch.object(self.processor, '_generate_combined_instrumentals', return_value={}):
+                    self.processor.process_audio_separation(
+                        "/tmp/test.wav", "Artist - Title", "/tmp/output"
+                    )
+
+        # Verify Separator was constructed with ensemble_preset="instrumental_clean"
+        mock_separator_cls.assert_called_once()
+        constructor_kwargs = mock_separator_cls.call_args[1]
+        assert constructor_kwargs.get("ensemble_preset") == "instrumental_clean"
+
+    @patch.dict(os.environ, {}, clear=False)
+    @patch("karaoke_gen.audio_processor.shutil")
+    @patch("karaoke_gen.audio_processor.Separator")
+    def test_local_separation_uses_karaoke_preset_for_stage2(self, mock_separator_cls, mock_shutil):
+        """Stage 2 uses karaoke_preset on a fresh Separator for BV separation."""
+        os.environ.pop("AUDIO_SEPARATOR_API_URL", None)
+
+        mock_sep = MagicMock()
+        mock_sep.separate.return_value = ["/tmp/stems/vocals.flac", "/tmp/stems/instrumental.flac"]
+        mock_separator_cls.return_value = mock_sep
+
+        with patch.object(self.processor, '_create_stems_directory', return_value="/tmp/stems"):
+            with patch.object(self.processor, '_normalize_audio_files'):
+                with patch.object(self.processor, '_generate_combined_instrumentals', return_value={}):
+                    self.processor.process_audio_separation(
+                        "/tmp/test.wav", "Artist - Title", "/tmp/output"
+                    )
+
+        # Separator should be instantiated twice: once for stage 1, once for stage 2
+        assert mock_separator_cls.call_count == 2
+        stage2_kwargs = mock_separator_cls.call_args_list[1][1]
+        assert stage2_kwargs.get("ensemble_preset") == "karaoke"
