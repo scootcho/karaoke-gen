@@ -20,6 +20,14 @@ except ImportError:
     REMOTE_API_AVAILABLE = False
     AudioSeparatorAPIClient = None
 
+# Try to import the Separator for local GPU processing
+try:
+    from audio_separator.separator import Separator
+    SEPARATOR_AVAILABLE = True
+except ImportError:
+    SEPARATOR_AVAILABLE = False
+    Separator = None
+
 
 # Placeholder class or functions for audio processing
 class AudioProcessor:
@@ -116,8 +124,6 @@ class AudioProcessor:
             f"instantiating Separator with model_file_dir: {self.model_file_dir}, model_filename: {model_name} output_format: {self.lossless_output_format}"
         )
 
-        from audio_separator.separator import Separator
-
         separator = Separator(
             log_level=self.log_level,
             log_formatter=self.log_formatter,
@@ -198,7 +204,10 @@ class AudioProcessor:
             self.logger.info("AUDIO_SEPARATOR_API_URL not set, using local audio separation. "
                            "Set this environment variable to use remote GPU processing.")
         
-        from audio_separator.separator import Separator
+        if not SEPARATOR_AVAILABLE:
+            raise ImportError(
+                "audio-separator package not installed. Install with: pip install audio-separator[gpu]"
+            )
 
         self.logger.info(f"Starting local audio separation process for {artist_title}")
 
@@ -271,29 +280,93 @@ class AudioProcessor:
                 continue
 
         try:
-            separator = Separator(
-                log_level=self.log_level,
-                log_formatter=self.log_formatter,
-                model_file_dir=self.model_file_dir,
-                output_format=self.lossless_output_format,
-            )
-
             stems_dir = self._create_stems_directory(track_output_dir)
             result = {"clean_instrumental": {}, "other_stems": {}, "backing_vocals": {}, "combined_instrumentals": {}}
 
             if os.environ.get("KARAOKE_GEN_SKIP_AUDIO_SEPARATION"):
                 return result
 
-            result["clean_instrumental"] = self._separate_clean_instrumental(
-                separator, audio_file, artist_title, track_output_dir, stems_dir
-            )
-            result["other_stems"] = self._separate_other_stems(separator, audio_file, artist_title, stems_dir)
-            result["backing_vocals"] = self._separate_backing_vocals(
-                separator, result["clean_instrumental"]["vocals"], artist_title, stems_dir
-            )
-            result["combined_instrumentals"] = self._generate_combined_instrumentals(
-                result["clean_instrumental"]["instrumental"], result["backing_vocals"], artist_title, track_output_dir
-            )
+            # Check if we have ensemble presets configured
+            instrumental_preset = getattr(self, 'instrumental_preset', None)
+            karaoke_preset = getattr(self, 'karaoke_preset', None)
+
+            if instrumental_preset:
+                # Stage 1: Ensemble preset mode — higher quality, uses multiple models
+                self.logger.info(f"Stage 1: Using ensemble preset '{instrumental_preset}'")
+                separator = Separator(
+                    log_level=self.log_level,
+                    log_formatter=self.log_formatter,
+                    model_file_dir=self.model_file_dir,
+                    output_format=self.lossless_output_format,
+                    output_dir=stems_dir,
+                    ensemble_preset=instrumental_preset,
+                )
+                output_files = separator.separate(audio_file)
+                self.logger.info(f"Stage 1 ensemble produced {len(output_files)} files: {output_files}")
+
+                # Find vocals and instrumental from ensemble output
+                # Output filenames follow: {base}_(Vocals)_preset_{name}.flac
+                # Check instrumental/no_vocal first to avoid substring false match
+                for f in output_files:
+                    basename = os.path.basename(f).lower()
+                    if "no_vocal" in basename or "instrumental" in basename:
+                        # Move instrumental to track_output_dir per convention
+                        final_path = os.path.join(track_output_dir, os.path.basename(f))
+                        if f != final_path:
+                            shutil.move(f, final_path)
+                        result["clean_instrumental"]["instrumental"] = final_path
+                    elif "vocal" in basename:
+                        result["clean_instrumental"]["vocals"] = f
+            else:
+                # Legacy mode — individual model calls (existing code)
+                separator = Separator(
+                    log_level=self.log_level,
+                    log_formatter=self.log_formatter,
+                    model_file_dir=self.model_file_dir,
+                    output_format=self.lossless_output_format,
+                )
+                result["clean_instrumental"] = self._separate_clean_instrumental(
+                    separator, audio_file, artist_title, track_output_dir, stems_dir
+                )
+                result["other_stems"] = self._separate_other_stems(separator, audio_file, artist_title, stems_dir)
+
+            # Stage 2: Backing vocals separation
+            vocals_path = result["clean_instrumental"].get("vocals")
+            has_backing_config = karaoke_preset or self.backing_vocals_models
+
+            if vocals_path and has_backing_config:
+                if karaoke_preset:
+                    self.logger.info(f"Stage 2: Using ensemble preset '{karaoke_preset}'")
+                    bv_separator = Separator(
+                        log_level=self.log_level,
+                        log_formatter=self.log_formatter,
+                        model_file_dir=self.model_file_dir,
+                        output_format=self.lossless_output_format,
+                        output_dir=stems_dir,
+                        ensemble_preset=karaoke_preset,
+                    )
+                    bv_output_files = bv_separator.separate(vocals_path)
+                    self.logger.info(f"Stage 2 ensemble produced {len(bv_output_files)} files: {bv_output_files}")
+
+                    bv_key = karaoke_preset
+                    result["backing_vocals"][bv_key] = {}
+                    for f in bv_output_files:
+                        basename = os.path.basename(f).lower()
+                        if "instrumental" in basename or "backing" in basename or "no_vocal" in basename:
+                            result["backing_vocals"][bv_key]["backing_vocals"] = f
+                        elif "vocal" in basename:
+                            result["backing_vocals"][bv_key]["lead_vocals"] = f
+                else:
+                    # Legacy: individual model calls (existing code)
+                    result["backing_vocals"] = self._separate_backing_vocals(
+                        separator, vocals_path, artist_title, stems_dir
+                    )
+
+            # Combined instrumentals + normalization
+            if result["clean_instrumental"].get("instrumental") and result["backing_vocals"]:
+                result["combined_instrumentals"] = self._generate_combined_instrumentals(
+                    result["clean_instrumental"]["instrumental"], result["backing_vocals"], artist_title, track_output_dir
+                )
             self._normalize_audio_files(result, artist_title, track_output_dir)
 
             self.logger.info("Audio separation, combination, and normalization process completed")

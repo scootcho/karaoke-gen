@@ -10,6 +10,8 @@ from pulumi_gcp import cloudrun, cloudrunv2
 
 from config import PROJECT_ID, REGION
 
+AUDIO_WORKER_GPU_REGION = "us-east4"  # L4 GPU quota available here
+
 
 def create_domain_mapping() -> cloudrun.DomainMapping:
     """
@@ -165,13 +167,14 @@ def create_audio_separation_job(
     service_account: gcp.serviceaccount.Account,
 ) -> cloudrunv2.Job:
     """
-    Create the Cloud Run Job for audio separation.
+    Create the Cloud Run Job for audio separation with L4 GPU.
 
-    Cloud Run Jobs run to completion without HTTP request lifecycle concerns,
-    avoiding the instance termination issue where Cloud Run would shut down
-    instances mid-processing when using BackgroundTasks.
+    Runs the Separator class directly with GPU acceleration, eliminating
+    the HTTP call to the separate audio-separator service.
 
-    Typical duration: 10-20 minutes (Modal API for GPU separation)
+    Deployed in us-east4 where L4 GPU quota is available.
+
+    Typical duration: 5-10 minutes (local GPU separation)
 
     Args:
         bucket: The GCS bucket for job artifacts.
@@ -183,17 +186,18 @@ def create_audio_separation_job(
     audio_separation_job = cloudrunv2.Job(
         "audio-separation-job",
         name="audio-separation-job",
-        location=REGION,
+        location=AUDIO_WORKER_GPU_REGION,
         template=cloudrunv2.JobTemplateArgs(
             template=cloudrunv2.JobTemplateTemplateArgs(
                 containers=[
                     cloudrunv2.JobTemplateTemplateContainerArgs(
-                        image=f"{REGION}-docker.pkg.dev/{PROJECT_ID}/karaoke-repo/karaoke-backend:latest",
+                        image=f"{AUDIO_WORKER_GPU_REGION}-docker.pkg.dev/{PROJECT_ID}/karaoke-backend-gpu/karaoke-backend:latest",
                         args=["python", "-m", "backend.workers.audio_worker"],
                         resources=cloudrunv2.JobTemplateTemplateContainerResourcesArgs(
                             limits={
-                                "cpu": "2",
-                                "memory": "4Gi",
+                                "cpu": "4",
+                                "memory": "16Gi",
+                                "nvidia.com/gpu": "1",
                             },
                         ),
                         envs=[
@@ -207,10 +211,10 @@ def create_audio_separation_job(
                                     ),
                                 ),
                             ),
-                            # Audio separator API (Cloud Run GPU service in us-east4)
+                            # Model directory (baked into GPU image, triggers local GPU mode)
                             cloudrunv2.JobTemplateTemplateContainerEnvArgs(
-                                name="AUDIO_SEPARATOR_API_URL",
-                                value="https://audio-separator-718638054799.us-east4.run.app",
+                                name="MODEL_DIR",
+                                value="/models",
                             ),
                             # Cloud Run service URL for Cloud Tasks targeting
                             cloudrunv2.JobTemplateTemplateContainerEnvArgs(
@@ -229,7 +233,7 @@ def create_audio_separation_job(
                             ),
                             cloudrunv2.JobTemplateTemplateContainerEnvArgs(
                                 name="GCP_REGION",
-                                value=REGION,
+                                value=AUDIO_WORKER_GPU_REGION,
                             ),
                             cloudrunv2.JobTemplateTemplateContainerEnvArgs(
                                 name="GCS_BUCKET_NAME",
@@ -242,8 +246,11 @@ def create_audio_separation_job(
                         ],
                     )
                 ],
+                node_selector=cloudrunv2.JobTemplateTemplateNodeSelectorArgs(
+                    accelerator="nvidia-l4",
+                ),
                 service_account=service_account.email,
-                timeout="2400s",  # 40 minutes max per task (Modal can be slow)
+                timeout="1800s",  # 30 minutes (local GPU is faster than remote API)
                 max_retries=2,
             ),
         ),
