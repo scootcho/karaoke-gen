@@ -53,6 +53,16 @@ With `concurrency=1`, Cloud Run guarantees only one active request per instance.
 - `audio_separator_service.py` — concurrency=1, GCS bucket, Firestore IAM, env vars
 - `database.py` — Firestore composite index for cleanup queries
 
+## Phase 2: Migrate to Cloud Run Jobs
+
+The current synchronous-service approach works but is not the ideal architecture. Cloud Run Jobs would be a natural fit — karaoke-gen already uses them for the audio worker itself. Benefits:
+- No HTTP timeout concern (Jobs run up to 24h, no client connection needed)
+- Native scaling (each execution gets its own container/GPU)
+- Fire-and-forget + poll pattern (submit job, poll Firestore, download from GCS)
+- Eliminates the `concurrency=1` workaround for autoscaling
+
+The Firestore job store and GCS output store built in this session are the right foundations — they'd be reused directly by the Jobs-based approach.
+
 ## Lessons learned
 
 1. **Cloud Run can't track background threads** — fire-and-forget makes the instance look idle, so the autoscaler doesn't scale. If you need the platform to scale for you, keep the request active.
