@@ -7,8 +7,10 @@ avoiding cold-start model download latency in Cloud Run Jobs.
 
 Usage: python backend/scripts/download_models.py /models
 """
+import json
 import sys
 import logging
+import importlib.resources as resources
 from audio_separator.separator import Separator
 
 logging.basicConfig(level=logging.INFO)
@@ -19,17 +21,25 @@ PRESETS_TO_DOWNLOAD = ["instrumental_clean", "karaoke"]
 
 
 def download_preset_models(model_dir: str) -> None:
-    """Download all models for the configured presets."""
-    for preset in PRESETS_TO_DOWNLOAD:
-        logger.info(f"Downloading models for preset: {preset}")
-        sep = Separator(
-            model_file_dir=model_dir,
-            output_format="FLAC",
-            ensemble_preset=preset,
-        )
-        # load_model triggers the download for each model in the preset
-        sep.load_model()
-        logger.info(f"Preset '{preset}' models downloaded to {model_dir}")
+    """Download all models for the configured presets individually.
+
+    Ensemble presets resolve to multiple model filenames. We must download
+    each model individually via load_model(model_filename) — calling
+    load_model() with no args on an ensemble preset doesn't trigger downloads.
+    """
+    with resources.open_text("audio_separator", "ensemble_presets.json") as f:
+        presets = json.load(f)["presets"]
+
+    models_to_download = set()
+    for preset_name in PRESETS_TO_DOWNLOAD:
+        models_to_download.update(presets[preset_name]["models"])
+
+    logger.info(f"Downloading {len(models_to_download)} models for presets: {PRESETS_TO_DOWNLOAD}")
+    for model in sorted(models_to_download):
+        logger.info(f"  Downloading: {model}")
+        sep = Separator(model_file_dir=model_dir)
+        sep.load_model(model)
+        logger.info(f"  Done: {model}")
 
 
 if __name__ == "__main__":
