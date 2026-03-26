@@ -336,13 +336,22 @@ async def process_audio_separation(job_id: str) -> bool:
                 job_log.info(f"Starting audio separation for {job.artist} - {job.title}")
                 logger.info(f"[job:{job_id}] Starting audio separation for {job.artist} - {job.title}")
                 
-                # Ensure AUDIO_SEPARATOR_API_URL is set
+                # Determine separation mode: local GPU or remote API
                 api_url = os.environ.get("AUDIO_SEPARATOR_API_URL")
-                if not api_url:
-                    raise Exception("AUDIO_SEPARATOR_API_URL environment variable not set. "
-                                  "Cannot perform audio separation without remote API access.")
-                job_log.info(f"Audio separator API: {api_url}")
-                add_span_attribute("audio_separator_api", api_url)
+                model_dir = os.environ.get("MODEL_DIR")
+                if api_url:
+                    job_log.info(f"Audio separator mode: remote API at {api_url}")
+                    add_span_attribute("audio_separator_mode", "remote")
+                    add_span_attribute("audio_separator_api", api_url)
+                elif model_dir:
+                    job_log.info(f"Audio separator mode: local GPU (models at {model_dir})")
+                    add_span_attribute("audio_separator_mode", "local_gpu")
+                    add_span_attribute("model_dir", model_dir)
+                else:
+                    raise Exception(
+                        "Audio separation not configured. Set either AUDIO_SEPARATOR_API_URL "
+                        "(remote API) or MODEL_DIR (local GPU with baked-in models)."
+                    )
                 
                 # Download audio file from GCS or URL
                 with job_span("download-audio", job_id) as download_span:
@@ -381,6 +390,7 @@ async def process_audio_separation(job_id: str) -> bool:
                     clean_instrumental_model=job.clean_instrumental_model,
                     backing_vocals_models=job.backing_vocals_models,
                     other_stems_models=job.other_stems_models,
+                    model_file_dir=model_dir,
                 )
                 audio_processor.job_id = job_id  # Used as filename prefix (avoids artist/title encoding issues)
 
