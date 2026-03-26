@@ -161,7 +161,7 @@ LyricsTranscriber                 LyricsTranscriber
 
 | Service | Purpose | Required |
 |---------|---------|----------|
-| Cloud Run GPU (L4) | Audio stem separation (us-east4) | Yes |
+| Cloud Run GPU Job (L4, us-east4) | Audio stem separation — `Separator` runs directly in the audio worker Job (no HTTP hop) | Yes |
 | AudioShake | Lyrics transcription | Yes |
 | Vertex AI | Agentic AI correction (Gemini 3 Flash) | Default off (SKIP_CORRECTION=false to enable) |
 | Genius | Reference lyrics | Yes |
@@ -369,7 +369,7 @@ Audio and lyrics workers run as **Cloud Run Jobs** - standalone batch containers
 │                                                                 │
 │  audio-download-job          - 30s-5 min (flacfetch/YouTube)     │
 │  lyrics-transcription-job    - 5-15 min (AudioShake + correction)│
-│  audio-separation-job        - 10-20 min (Cloud Run GPU)            │
+│  audio-separation-job        - 10-20 min (L4 GPU, us-east4, direct) │
 │  video-encoding-job          - up to 60 min (optional)          │
 │                                                                 │
 │  Triggered via: google.cloud.run_v2.JobsClient.run_job()        │
@@ -405,6 +405,32 @@ Screens and render workers run via internal HTTP endpoints with BackgroundTasks,
 - On shutdown signal, checks `worker_registry.has_active_workers()`
 - If workers active, calls `wait_for_completion(timeout=600)` (10 min max)
 - Logs which workers are still running for debugging
+
+## Audio Separation Architecture
+
+Audio stem separation runs **directly inside the audio worker Cloud Run Job** — the `Separator` class from `audio-separator` is imported and called in-process. There is no separate GPU microservice.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│  audio-separation-job  (Cloud Run Job, L4 GPU, us-east4)         │
+│                                                                  │
+│  AudioWorker                                                     │
+│  ├── download audio from GCS                                     │
+│  ├── create_audio_processor()  ← Separator(model_file_dir=...)   │
+│  ├── Stage 1: instrumental_clean preset                          │
+│  │   └── produces: vocals.flac, instrumental_clean.flac          │
+│  ├── Stage 2: karaoke preset                                     │
+│  │   └── produces: instrumental_with_backing.flac                │
+│  └── upload stems to GCS                                         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Key decisions:**
+- **Direct GPU** — No HTTP hop to a separate service. Jobs can run up to 24h; no timeout concerns.
+- **Two-stage ensemble preset** — `instrumental_clean` (stage 1) + `karaoke` (stage 2).
+- **Model cache** — Models are downloaded to `model_file_dir` (GCS-backed or local) and reused across executions.
+
+**Rollback**: The old audio-separator Cloud Run Service (HTTP endpoint) is kept for rollback but no longer receives traffic. It will be removed in a future phase.
 
 ## Multitenancy
 

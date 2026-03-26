@@ -57,6 +57,16 @@ When pending CI jobs are detected, keep runners alive but don't refresh their `l
 
 **Rule of thumb**: If you need the platform's autoscaler to work for you, the request must stay active. Background threads are invisible to the platform.
 
+### Direct GPU in Cloud Run Jobs > HTTP Microservice
+
+When a Cloud Run Job needs GPU processing, attach the GPU directly to the Job instead of calling a separate GPU service over HTTP. Benefits:
+- No HTTP timeout concerns (Jobs can run up to 24h)
+- No connection management, retry logic, or polling
+- Simpler architecture (1 hop instead of 3)
+- Platform handles scaling naturally (each Job execution gets its own GPU)
+
+The audio separator started as a separate Cloud Run Service called via HTTP from the audio worker Job. This required 1800s HTTP timeouts, complex retry logic, and caused a production outage when the fire-and-forget pattern interacted badly with Cloud Run's autoscaler. Moving the GPU work directly into the Job eliminated all of this complexity.
+
 ---
 
 ## Architecture Decisions
