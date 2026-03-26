@@ -237,7 +237,7 @@
 ```
 Upload Audio → Parallel Processing → Human Review → Video Generation → Download
                    │                      │
-           (Modal + AudioShake)    (LyricsTranscriber UI)
+        (Cloud Run GPU + AudioShake)  (LyricsTranscriber UI)
 ```
 
 ## For AI Agents

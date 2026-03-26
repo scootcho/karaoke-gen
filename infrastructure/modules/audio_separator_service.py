@@ -124,7 +124,7 @@ def create_service(
                 min_instance_count=0,
                 max_instance_count=5,  # Cloud Run GPU services limited to 5 max instances
             ),
-            max_instance_request_concurrency=50,  # GPU serialized via semaphore; allow polling/download requests through
+            max_instance_request_concurrency=1,  # One GPU job per instance; forces Cloud Run to scale to new instances for concurrent jobs
             gpu_zonal_redundancy_disabled=True,  # Not needed for batch workloads
             # Keep instances warm for 600s (10 min) between Stage 1 → Stage 2
             session_affinity=True,
