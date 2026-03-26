@@ -96,7 +96,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Install audio-separator with GPU support (PyTorch + CUDA + onnxruntime-gpu)
 # This is separate from pip install -e . to keep layer caching granular
+#
+# IMPORTANT: Install PyTorch cu126 FIRST, then audio-separator[gpu].
+# The default audio-separator[gpu] pulls PyTorch cu130, but Cloud Run L4 GPUs
+# have NVIDIA driver 570 which only supports up to CUDA 12.8. PyTorch cu130
+# fails with "NVIDIA driver is too old". PyTorch cu126 works with 12.8 drivers.
+# Installing torch first means audio-separator[gpu] sees it as already satisfied.
 RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch==2.6.0+cu126 torchvision==0.21.0+cu126 --index-url https://download.pytorch.org/whl/cu126 && \
     pip install "audio-separator[gpu]"
 
 # Now copy actual source code (AFTER deps installed, so code changes don't
