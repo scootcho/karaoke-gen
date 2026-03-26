@@ -50,6 +50,7 @@ def create_output_bucket() -> gcp.storage.Bucket:
         name="nomadkaraoke-audio-separator-outputs",
         location="US",
         force_destroy=True,
+        uniform_bucket_level_access=True,
         lifecycle_rules=[
             gcp.storage.BucketLifecycleRuleArgs(
                 action=gcp.storage.BucketLifecycleRuleActionArgs(type="Delete"),
@@ -121,7 +122,7 @@ def create_service(
         template=cloudrunv2.ServiceTemplateArgs(
             scaling=cloudrunv2.ServiceTemplateScalingArgs(
                 min_instance_count=0,
-                max_instance_count=10,  # Cloud Run GPU services; increased for async workloads
+                max_instance_count=5,  # Cloud Run GPU services limited to 5 max instances
             ),
             max_instance_request_concurrency=50,  # GPU serialized via semaphore; allow polling/download requests through
             gpu_zonal_redundancy_disabled=True,  # Not needed for batch workloads
