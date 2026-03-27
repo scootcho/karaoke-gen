@@ -67,6 +67,20 @@ When a Cloud Run Job needs GPU processing, attach the GPU directly to the Job in
 
 The audio separator started as a separate Cloud Run Service called via HTTP from the audio worker Job. This required 1800s HTTP timeouts, complex retry logic, and caused a production outage when the fire-and-forget pattern interacted badly with Cloud Run's autoscaler. Moving the GPU work directly into the Job eliminated all of this complexity.
 
+### GPU Docker Images: Pin CUDA-Specific Package Versions (Mar 2026)
+
+**`pip install audio-separator[gpu]` pulls the latest PyTorch, which may require a newer CUDA than your runtime provides.** Cloud Run L4 GPUs have NVIDIA driver 570 (CUDA 12.8 max), but the default torch install gets `cu130` (requires CUDA 13.0), which fails silently — PyTorch reports "NVIDIA driver is too old" and falls back to CPU, then ONNX models fail to load.
+
+**Fix:** Pin torch to a CUDA version your driver supports (`torch==2.6.0+cu126` from `--index-url https://download.pytorch.org/whl/cu126`), install it BEFORE `audio-separator[gpu]`, and protect it from being overwritten by later `pip install` commands (use `--no-deps` in the app layer).
+
+**Validate with the actual Docker image, not just packages.** We proved the package combo worked interactively on a VM but missed that the app Dockerfile's `pip install -e .` (with `torch>=2.7` in pyproject.toml) upgraded torch back to cu130. The fastest debugging loop: spin up a GCE L4 VM (~$1/hr), build the Docker image locally, run separation inside the container with `--gpus all`, tear down.
+
+### audio-separator Ensemble Presets Require Explicit load_model() (Mar 2026)
+
+**Always call `separator.load_model()` before `separator.separate()`, even when using ensemble presets.** The Separator constructor with `ensemble_preset=` resolves the preset to model names but does NOT load them into memory. Calling `separate()` without `load_model()` fails with "Initialization failed or model not loaded."
+
+Similarly, **baking models into Docker images requires downloading each model individually** — `Separator(ensemble_preset=...).load_model()` with no args doesn't trigger downloads. Use `sep.load_model(model_filename)` for each model file in the preset.
+
 ---
 
 ## Architecture Decisions
