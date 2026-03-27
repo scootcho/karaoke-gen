@@ -411,14 +411,40 @@ class WorkerService:
         """Trigger screen generation worker."""
         return await self.trigger_worker("screens", job_id)
     
+    def _warmup_encoding_worker(self, job_id: str) -> None:
+        """Fire-and-forget warmup of the encoding worker VM.
+
+        Called before dispatching video/render workers so the GCE encoding
+        VM starts booting while the worker downloads files and prepares.
+        Failures are logged but never block worker dispatch.
+        """
+        try:
+            from backend.services.encoding_worker_manager import EncodingWorkerManager
+            from google.cloud import compute_v1, firestore
+            db = firestore.Client(project=self.settings.google_cloud_project)
+            compute_client = compute_v1.InstancesClient()
+            manager = EncodingWorkerManager(
+                db=db,
+                compute_client=compute_client,
+                project_id=self.settings.google_cloud_project,
+            )
+            result = manager.ensure_primary_running()
+            if result["started"]:
+                logger.info(f"[job:{job_id}] Encoding worker warmup: started VM {result['vm_name']}")
+            else:
+                logger.info(f"[job:{job_id}] Encoding worker warmup: VM {result['vm_name']} already running")
+        except Exception as e:
+            logger.warning(f"[job:{job_id}] Encoding worker warmup failed (non-fatal): {e}")
+
     async def trigger_video_worker(self, job_id: str) -> bool:
         """
         Trigger video generation worker.
-        
+
         When USE_CLOUD_RUN_JOBS_FOR_VIDEO=true and ENABLE_CLOUD_TASKS=true,
         uses Cloud Run Jobs for execution (supports >30 min encoding).
         Otherwise, uses Cloud Tasks or direct HTTP.
         """
+        self._warmup_encoding_worker(job_id)
         if self._use_cloud_tasks and self.settings.use_cloud_run_jobs_for_video:
             return await self._trigger_cloud_run_job(job_id)
         return await self.trigger_worker("video", job_id)
@@ -511,6 +537,7 @@ class WorkerService:
     
     async def trigger_render_video_worker(self, job_id: str) -> bool:
         """Trigger render video worker (post-review)."""
+        self._warmup_encoding_worker(job_id)
         return await self.trigger_worker("render-video", job_id)
 
     async def schedule_idle_reminder(
