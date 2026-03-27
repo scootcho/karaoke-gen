@@ -239,6 +239,37 @@ class TestRequestWithRetry:
                 await encoding_service.submit_encoding_job("j1", "gs://in", "gs://out", {})
 
 
+class TestWarmupFallback:
+    """Tests for _warmup_encoding_worker_fallback() in the retry loop."""
+
+    def test_warmup_fallback_called_on_first_connection_failure(self, encoding_service):
+        """Warmup fallback is called when the first connection attempt fails."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": True, "vm_name": "encoding-worker-b", "primary_url": "http://1.2.3.4:8080"
+        }
+        encoding_service._worker_manager = mock_manager
+
+        encoding_service._warmup_encoding_worker_fallback("test-job")
+
+        mock_manager.ensure_primary_running.assert_called_once()
+
+    def test_warmup_fallback_noop_without_worker_manager(self, encoding_service):
+        """Warmup fallback is a no-op when worker_manager is not set (dev mode)."""
+        encoding_service._worker_manager = None
+        # Should not raise
+        encoding_service._warmup_encoding_worker_fallback("test-job")
+
+    def test_warmup_fallback_swallows_exceptions(self, encoding_service):
+        """Warmup fallback never raises — failures are logged but non-fatal."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.side_effect = Exception("Compute API down")
+        encoding_service._worker_manager = mock_manager
+
+        # Should not raise
+        encoding_service._warmup_encoding_worker_fallback("test-job")
+
+
 class TestWaitForCompletionPollTolerance:
     """Tests for wait_for_completion() transient failure tolerance."""
 
