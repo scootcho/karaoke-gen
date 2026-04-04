@@ -365,6 +365,24 @@ async def verify_magic_link(
     elif credit_status == "denied":
         logger.info(f"Welcome credits denied for {_mask_email(user.email)}")
 
+    # Referral attribution (first login only, if referral code provided)
+    referral_code = http_request.headers.get("x-referral-code")
+    if referral_code and is_first_login:
+        try:
+            from backend.services.referral_service import get_referral_service
+            referral_svc = get_referral_service()
+            attr_success, attr_msg = referral_svc.attribute_referral(
+                referred_email=user.email,
+                referral_code=referral_code,
+            )
+            if attr_success:
+                attr_data = referral_svc.get_attribution_data(referral_code)
+                if attr_data:
+                    user_service.update_user(user.email, **attr_data)
+                    logger.info(f"Referral attributed for {_mask_email(user.email)} via code '{referral_code}'")
+        except Exception as ref_err:
+            logger.warning(f"Referral attribution failed for {_mask_email(user.email)}: {ref_err}")
+
     # Persist user's locale preference (from Accept-Language header)
     if locale and locale != (user.locale or "en"):
         try:
@@ -546,9 +564,21 @@ async def create_checkout(
     if not stripe_service.is_configured():
         raise HTTPException(status_code=503, detail="Payment processing is not available")
 
+    # Check for referral discount
+    referral_coupon_id = None
+    try:
+        from backend.services.referral_service import get_referral_service
+        referral_svc = get_referral_service()
+        discount_info = referral_svc.get_discount_for_checkout(request.email)
+        if discount_info:
+            referral_coupon_id = discount_info["coupon_id"]
+    except Exception as ref_err:
+        logger.warning(f"Referral discount lookup failed: {ref_err}")
+
     success, checkout_url, message = stripe_service.create_checkout_session(
         package_id=request.package_id,
         user_email=request.email,
+        coupon_id=referral_coupon_id,
     )
 
     if not success or not checkout_url:
@@ -1017,6 +1047,25 @@ async def stripe_webhook(
                         # Send confirmation email
                         email_service.send_credits_added(user_email, credits, new_balance)
                         logger.info(f"Added {credits} credits to {user_email}, new balance: {new_balance}")
+
+                        # Record referral earning if applicable
+                        try:
+                            from backend.services.referral_service import get_referral_service
+                            referral_svc = get_referral_service()
+                            amount_charged = session.get("amount_total", 0)
+                            if amount_charged > 0:
+                                earning_result = referral_svc.record_earning(
+                                    referred_email=user_email,
+                                    stripe_session_id=session_id,
+                                    purchase_amount_cents=amount_charged,
+                                )
+                                if earning_result:
+                                    logger.info(
+                                        f"Referral earning: ${earning_result['earning_amount_cents'] / 100:.2f} "
+                                        f"for {earning_result['referrer_email']}"
+                                    )
+                        except Exception as ref_err:
+                            logger.warning(f"Referral earning recording failed: {ref_err}")
                     else:
                         logger.error(f"Failed to add credits: {credit_msg}")
 

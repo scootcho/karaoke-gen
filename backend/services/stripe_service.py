@@ -96,6 +96,7 @@ class StripeService:
         user_email: str,
         success_url: Optional[str] = None,
         cancel_url: Optional[str] = None,
+        coupon_id: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], str]:
         """
         Create a Stripe Checkout session for purchasing credits.
@@ -150,6 +151,11 @@ class StripeService:
                 # Allow promotion codes
                 'allow_promotion_codes': True,
             }
+
+            # If a referral coupon is applied, use discounts instead of allow_promotion_codes
+            if coupon_id:
+                session_params.pop('allow_promotion_codes', None)
+                session_params['discounts'] = [{'coupon': coupon_id}]
 
             # Add payment method configuration if set (enables Google Pay, Link, etc.)
             if self.payment_method_config:
@@ -349,6 +355,68 @@ class StripeService:
             return dict(session)
         except Exception as e:
             logger.error(f"Error retrieving session {session_id}: {e}")
+            return None
+
+    def get_or_create_referral_coupon(self, discount_percent: int) -> Optional[str]:
+        """Get or create a Stripe coupon for a referral discount percentage."""
+        if not self.is_configured():
+            return None
+        coupon_id = f"referral-{discount_percent}pct"
+        try:
+            stripe.Coupon.retrieve(coupon_id)
+            return coupon_id
+        except stripe.error.InvalidRequestError:
+            try:
+                stripe.Coupon.create(
+                    id=coupon_id,
+                    percent_off=discount_percent,
+                    duration="once",
+                    name=f"Referral {discount_percent}% off",
+                )
+                logger.info(f"Created Stripe coupon: {coupon_id}")
+                return coupon_id
+            except stripe.error.StripeError as e:
+                logger.error(f"Failed to create coupon {coupon_id}: {e}")
+                return None
+
+    def create_connect_account(self, email: str) -> Tuple[Optional[str], Optional[str]]:
+        """Create a Stripe Connect Express account. Returns (account_id, onboarding_url)."""
+        if not self.is_configured():
+            return None, None
+        try:
+            account = stripe.Account.create(
+                type="express",
+                email=email,
+                capabilities={"transfers": {"requested": True}},
+                metadata={"source": "nomad_karaoke_referrals"},
+            )
+            account_link = stripe.AccountLink.create(
+                account=account.id,
+                refresh_url=f"{self.frontend_url}/app?tab=referrals&connect=refresh",
+                return_url=f"{self.frontend_url}/app?tab=referrals&connect=complete",
+                type="account_onboarding",
+            )
+            logger.info(f"Created Connect account {account.id} for {email}")
+            return account.id, account_link.url
+        except stripe.error.StripeError as e:
+            logger.error(f"Failed to create Connect account for {email}: {e}")
+            return None, None
+
+    def create_transfer(self, amount_cents: int, destination_account_id: str, description: str = "Nomad Karaoke referral payout") -> Optional[str]:
+        """Create a transfer to a Connect account. Returns transfer ID."""
+        if not self.is_configured():
+            return None
+        try:
+            transfer = stripe.Transfer.create(
+                amount=amount_cents,
+                currency="usd",
+                destination=destination_account_id,
+                description=description,
+            )
+            logger.info(f"Created transfer {transfer.id}: ${amount_cents / 100:.2f} to {destination_account_id}")
+            return transfer.id
+        except stripe.error.StripeError as e:
+            logger.error(f"Failed to create transfer to {destination_account_id}: {e}")
             return None
 
     def create_customer(self, email: str, name: Optional[str] = None) -> Optional[str]:
