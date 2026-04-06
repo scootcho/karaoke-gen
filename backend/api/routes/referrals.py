@@ -11,6 +11,8 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from backend.api.dependencies import require_auth, require_admin
 from backend.models.referral import (
@@ -18,12 +20,18 @@ from backend.models.referral import (
     UpdateReferralLinkRequest,
     ReferralInterstitialResponse,
 )
+from backend.services.flyer_service import get_flyer_service, FlyerError
 from backend.services.referral_service import get_referral_service
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
+
+
+class GenerateFlyerRequest(BaseModel):
+    theme: str = Field(..., pattern="^(light|dark)$")
+    qr_data_url: str = Field(..., max_length=500_000)
 
 
 # ============================================================================
@@ -116,6 +124,35 @@ async def start_stripe_connect(auth=Depends(require_auth)):
     user_service.update_user(auth.user_email, stripe_connect_account_id=account_id)
 
     return {"account_id": account_id, "onboarding_url": onboarding_url}
+
+
+@router.post("/me/flyer")
+async def generate_flyer(
+    request: GenerateFlyerRequest,
+    auth=Depends(require_auth),
+):
+    """Generate a personalized referral flyer PDF."""
+    service = get_referral_service()
+    link = service.get_or_create_link(auth.user_email)
+
+    try:
+        flyer_service = get_flyer_service()
+        pdf_bytes = flyer_service.generate_pdf(
+            theme=request.theme,
+            referral_code=link.code,
+            discount_percent=link.discount_percent,
+            qr_data_url=request.qr_data_url,
+        )
+    except FlyerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="nomad-karaoke-referral-flyer.pdf"',
+        },
+    )
 
 
 # ============================================================================
@@ -231,3 +268,36 @@ async def update_link(
         raise HTTPException(status_code=404, detail=message)
 
     return {"ok": True, "message": message}
+
+
+@router.post("/admin/links/{code}/flyer")
+async def admin_generate_flyer(
+    code: str,
+    request: GenerateFlyerRequest,
+    auth=Depends(require_admin),
+):
+    """Admin: generate a personalized referral flyer PDF for any code."""
+    service = get_referral_service()
+    link = service.get_link_by_code(code)
+
+    if not link:
+        raise HTTPException(status_code=404, detail=f"Referral link '{code}' not found")
+
+    try:
+        flyer_service = get_flyer_service()
+        pdf_bytes = flyer_service.generate_pdf(
+            theme=request.theme,
+            referral_code=link.code,
+            discount_percent=link.discount_percent,
+            qr_data_url=request.qr_data_url,
+        )
+    except FlyerError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="nomad-karaoke-flyer-{link.code}.pdf"',
+        },
+    )
