@@ -61,6 +61,8 @@ except Exception:
     NewFeedbackStore = None  # type: ignore
     CorrectionAnnotation = None  # type: ignore
 
+from karaoke_gen.lyrics_transcriber.review.session_store import LocalReviewSessionStore
+
 
 class ReviewServer:
     """Handles the review process through a web interface."""
@@ -107,6 +109,10 @@ class ReviewServer:
         self.with_backing_path = with_backing_path
         self.backing_vocals_path = backing_vocals_path
         self.instrumental_selection: Optional[str] = None
+        # Duet mode flag — set from the is_duet field in submit_corrections
+        # / complete_review request bodies. Exposed after start() returns so the
+        # CLI caller can propagate it to the final-render OutputConfig.
+        self.is_duet: bool = False
 
         # Create FastAPI instance and configure
         self.app = FastAPI()
@@ -126,6 +132,14 @@ class ReviewServer:
             self._annotation_store = NewFeedbackStore(storage_dir=self.output_config.cache_dir) if NewFeedbackStore else None
         except Exception:
             self._annotation_store = None
+
+        # Session-history store — JSON-on-disk persistence for the restore
+        # dialog and auto-save timer. Keyed by audio_hash so each song has
+        # its own history and restores survive karaoke-gen re-runs.
+        self._review_sessions = LocalReviewSessionStore(
+            cache_dir=self.output_config.cache_dir,
+            logger=self.logger,
+        )
         # Metrics aggregator
         self._metrics = MetricsAggregator() if MetricsAggregator else None
         # LangFuse (optional)
@@ -177,6 +191,7 @@ class ReviewServer:
         frontend_dir = str(get_nextjs_assets_dir())
         self.logger.info(f"Using Next.js frontend from {frontend_dir}")
         self._frontend_dir = frontend_dir  # Store for use in route handlers
+        self._locales = self._discover_locales(frontend_dir)
 
         # Mount Next.js static assets directory
         nextjs_static = os.path.join(frontend_dir, "_next")
@@ -186,6 +201,59 @@ class ReviewServer:
         # Mount the entire frontend directory for static files, but use html=False
         # so it doesn't serve index.html automatically for directories
         self.app.mount("/static", StaticFiles(directory=frontend_dir), name="frontend_static")
+
+    @staticmethod
+    def _discover_locales(frontend_dir: str) -> set:
+        """Return the set of locale subdirs present in the Next.js static export.
+
+        The i18n build generates `/{locale}/...` mirrors of every page for
+        each configured locale (e.g. `en`, `es`, `de`, `ja`). The
+        LocaleRedirect client component on the legacy root paths unconditionally
+        navigates to `/{locale}/...` based on browser preference, so the server
+        must accept those locale-prefixed URLs too or every local-mode review
+        browser load 404s.
+        """
+        locales: set = set()
+        if not os.path.isdir(frontend_dir):
+            return locales
+        for name in os.listdir(frontend_dir):
+            if len(name) == 2 and name.isalpha() and name.islower():
+                if os.path.isdir(os.path.join(frontend_dir, name)):
+                    locales.add(name)
+        return locales
+
+    def _render_local_review_html(self, locale_prefix: str = "") -> "HTMLResponse":
+        """Read the local-review index.html and patch in the missing Turbopack chunk.
+
+        Shared between the legacy non-locale route and the locale-prefixed
+        routes so both paths get the same chunk-injection workaround.
+        """
+        from fastapi.responses import HTMLResponse
+        frontend_dir = self._frontend_dir
+        base = os.path.join(frontend_dir, locale_prefix) if locale_prefix else frontend_dir
+        local_review_html = os.path.join(base, "app", "jobs", "local", "review", "index.html")
+        if not os.path.exists(local_review_html):
+            raise HTTPException(status_code=404, detail="Review page not found")
+
+        with open(local_review_html, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+
+        # Find the missing chunk that contains JobRouterClient (module 78280)
+        # The chunk name is determined at build time, so we need to find it dynamically
+        # We look for ",78280," which is the Turbopack module ID pattern
+        import glob
+        chunks_dir = os.path.join(frontend_dir, "_next", "static", "chunks")
+        for chunk_file in glob.glob(os.path.join(chunks_dir, "*.js")):
+            chunk_name = os.path.basename(chunk_file)
+            with open(chunk_file, 'r', encoding='utf-8') as cf:
+                chunk_content = cf.read(500)
+                if ",78280," in chunk_content:
+                    script_tag = f'<script src="/_next/static/chunks/{chunk_name}" async=""></script>'
+                    if chunk_name not in html_content:
+                        html_content = html_content.replace('</head>', f'{script_tag}</head>')
+                    break
+
+        return HTMLResponse(content=html_content, media_type="text/html")
 
     def _register_spa_routes(self) -> None:
         """Register SPA fallback routes for Next.js client-side routing."""
@@ -203,45 +271,31 @@ class ReviewServer:
         @self.app.get("/app/jobs/local/review")
         async def serve_local_review():
             """Serve pre-rendered local review page with patched chunk loading."""
-            from fastapi.responses import HTMLResponse
-            local_review_html = os.path.join(frontend_dir, "app", "jobs", "local", "review", "index.html")
-            if os.path.exists(local_review_html):
-                # Read the HTML and inject the missing chunk script
-                # This works around a Turbopack static export issue where the RSC stream
-                # references module chunks that don't contain the actual code
-                with open(local_review_html, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
+            return self._render_local_review_html()
 
-                # Find the missing chunk that contains JobRouterClient (module 78280)
-                # The chunk name is determined at build time, so we need to find it dynamically
-                # We look for ",78280," which is the Turbopack module ID pattern
-                import glob
-                chunks_dir = os.path.join(frontend_dir, "_next", "static", "chunks")
-                for chunk_file in glob.glob(os.path.join(chunks_dir, "*.js")):
-                    chunk_name = os.path.basename(chunk_file)
-                    # Check if this chunk contains module 78280 (JobRouterClient)
-                    with open(chunk_file, 'r', encoding='utf-8') as cf:
-                        chunk_content = cf.read(500)  # Module ID is near the start
-                        if ",78280," in chunk_content:
-                            # Inject this chunk script if not already present
-                            script_tag = f'<script src="/_next/static/chunks/{chunk_name}" async=""></script>'
-                            if chunk_name not in html_content:
-                                # Insert before closing </head>
-                                html_content = html_content.replace('</head>', f'{script_tag}</head>')
-                            break
-
-                return HTMLResponse(content=html_content, media_type="text/html")
-            # Fallback to jobs index
-            jobs_html = os.path.join(frontend_dir, "app", "jobs", "index.html")
-            if os.path.exists(jobs_html):
-                return FileResponse(jobs_html, media_type="text/html")
-            raise HTTPException(status_code=404, detail="Review page not found")
+        # Locale-prefixed variant — the LocaleRedirect client component bounces
+        # legacy non-locale paths to /{locale}/... paths, so we need to serve
+        # those too from the corresponding locale subdir in the static build.
+        @self.app.get("/{locale}/app/jobs/local/review")
+        async def serve_local_review_localized(locale: str):
+            if locale not in self._locales:
+                raise HTTPException(status_code=404, detail="Unknown locale")
+            return self._render_local_review_html(locale)
 
         # Job routes - serve the jobs page HTML for client-side routing
         @self.app.get("/app/jobs/{path:path}")
         async def serve_jobs_routes(path: str):
             """Serve jobs index.html for all /app/jobs/* routes (SPA routing)."""
             jobs_html = os.path.join(frontend_dir, "app", "jobs", "index.html")
+            if os.path.exists(jobs_html):
+                return FileResponse(jobs_html, media_type="text/html")
+            raise HTTPException(status_code=404, detail="Jobs page not found")
+
+        @self.app.get("/{locale}/app/jobs/{path:path}")
+        async def serve_jobs_routes_localized(locale: str, path: str):
+            if locale not in self._locales:
+                raise HTTPException(status_code=404, detail="Unknown locale")
+            jobs_html = os.path.join(frontend_dir, locale, "app", "jobs", "index.html")
             if os.path.exists(jobs_html):
                 return FileResponse(jobs_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Jobs page not found")
@@ -255,6 +309,28 @@ class ReviewServer:
                 return FileResponse(app_html, media_type="text/html")
             # Fallback to root index.html
             index_html = os.path.join(frontend_dir, "index.html")
+            if os.path.exists(index_html):
+                return FileResponse(index_html, media_type="text/html")
+            raise HTTPException(status_code=404, detail="Frontend not found")
+
+        @self.app.get("/{locale}/app/{path:path}")
+        async def serve_app_routes_localized(locale: str, path: str):
+            if locale not in self._locales:
+                raise HTTPException(status_code=404, detail="Unknown locale")
+            app_html = os.path.join(frontend_dir, locale, "app", "index.html")
+            if os.path.exists(app_html):
+                return FileResponse(app_html, media_type="text/html")
+            index_html = os.path.join(frontend_dir, locale, "index.html")
+            if os.path.exists(index_html):
+                return FileResponse(index_html, media_type="text/html")
+            raise HTTPException(status_code=404, detail="Frontend not found")
+
+        # Locale root — covers `/en`, `/es`, etc.
+        @self.app.get("/{locale}")
+        async def serve_locale_root(locale: str):
+            if locale not in self._locales:
+                raise HTTPException(status_code=404, detail="Unknown locale")
+            index_html = os.path.join(frontend_dir, locale, "index.html")
             if os.path.exists(index_html):
                 return FileResponse(index_html, media_type="text/html")
             raise HTTPException(status_code=404, detail="Frontend not found")
@@ -321,6 +397,80 @@ class ReviewServer:
         async def get_preview_video_with_job_id(job_id: str, preview_hash: str):
             return await self.get_preview_video(preview_hash)
         self.app.add_api_route("/api/review/{job_id}/preview-video/{preview_hash}", get_preview_video_with_job_id, methods=["GET"])
+
+        # More review-prefixed aliases that the unified Next.js frontend expects.
+        # These mirror the cloud backend's /api/review/{job_id}/... routes so the
+        # same frontend build works against the local CLI ReviewServer too.
+        self.app.add_api_route("/api/review/{job_id}/search-lyrics", self.search_lyrics, methods=["POST"])
+        self.app.add_api_route("/api/review/{job_id}/add-lyrics", self.add_lyrics, methods=["POST"])
+        self.app.add_api_route("/api/review/{job_id}/handlers", self.update_handlers_cloud, methods=["POST"])
+        self.app.add_api_route("/api/review/{job_id}/instrumental-analysis", self.get_instrumental_analysis, methods=["GET"])
+        self.app.add_api_route("/api/review/{job_id}/waveform-data", self.get_waveform_data, methods=["GET"])
+
+        # The cloud backend exposes `/api/review/{job_id}/audio/{stem_or_hash}`
+        # as one endpoint that serves both the original audio (by hash) and
+        # the separated stems (by name). Mirror that here by dispatching on
+        # whether the segment matches a known stem name before falling back
+        # to audio-by-hash.
+        _stem_names = {"clean", "with_backing", "backing_vocals"}
+        async def get_audio_with_job_id(job_id: str, audio_hash: str):
+            if audio_hash in _stem_names:
+                return await self.get_instrumental_audio(audio_hash)
+            return await self.get_audio(audio_hash)
+        self.app.add_api_route("/api/review/{job_id}/audio/{audio_hash}", get_audio_with_job_id, methods=["GET"])
+
+        # The frontend posts `{annotations: [...]}` to the review-prefixed path
+        # on final submit. The cloud backend accepts both that batch form and
+        # a single annotation dict. Normalize into individual calls to the
+        # existing post_annotation handler; if the local annotation store
+        # isn't available, return success so the submit flow doesn't break.
+        async def submit_annotations_with_job_id(
+            job_id: str, payload: Dict[str, Any] = Body(...)
+        ):
+            if isinstance(payload, dict) and "annotations" in payload:
+                items = payload.get("annotations") or []
+            else:
+                items = [payload]
+            if not self._annotation_store:
+                return {"status": "success", "saved_count": 0, "total_count": 0}
+            saved = 0
+            for item in items:
+                try:
+                    await self.post_annotation(item)
+                    saved += 1
+                except HTTPException:
+                    continue
+                except Exception:
+                    continue
+            return {"status": "success", "saved_count": saved, "total_count": saved}
+        self.app.add_api_route(
+            "/api/review/{job_id}/v1/annotations",
+            submit_annotations_with_job_id,
+            methods=["POST"],
+        )
+
+        # Review sessions — persistent snapshots for the LyricsAnalyzer's
+        # restore dialog and auto-save timer. Backed by JSON files under
+        # {cache_dir}/review_sessions/{audio_hash}/. Sessions are keyed by
+        # audio_hash (not job_id) so that restoring progress works across
+        # karaoke-gen re-runs for the same song and is isolated between
+        # songs sharing one cache_dir.
+        self.app.add_api_route(
+            "/api/review/{job_id}/sessions", self._list_review_sessions, methods=["GET"]
+        )
+        self.app.add_api_route(
+            "/api/review/{job_id}/sessions", self._save_review_session, methods=["POST"]
+        )
+        self.app.add_api_route(
+            "/api/review/{job_id}/sessions/{session_id}",
+            self._get_review_session,
+            methods=["GET"],
+        )
+        self.app.add_api_route(
+            "/api/review/{job_id}/sessions/{session_id}",
+            self._delete_review_session,
+            methods=["DELETE"],
+        )
 
         # Instrumental review data endpoints
         self.app.add_api_route("/api/jobs/{job_id}/instrumental-analysis", self.get_instrumental_analysis, methods=["GET"])
@@ -712,6 +862,86 @@ class ReviewServer:
             self.logger.error(f"Failed to get annotation statistics: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    # ------------------------------
+    # Review session history
+    # ------------------------------
+
+    def _review_session_audio_hash(self) -> str:
+        """The audio_hash the session store partitions under."""
+        if self.correction_result and self.correction_result.metadata:
+            return self.correction_result.metadata.get("audio_hash") or "local"
+        return "local"
+
+    def _review_session_wire_meta(self, envelope: Dict[str, Any], job_id: str) -> Dict[str, Any]:
+        """Shape a stored envelope into the `ReviewSession` TS contract.
+
+        The frontend expects `job_id`/`user_email`/`audio_duration_seconds`
+        even though our on-disk model doesn't persist them (job_id is the
+        placeholder `local` and user_email is cloud-only). Fill them in
+        at the wire boundary rather than polluting the stored data.
+        """
+        return {
+            "session_id": envelope.get("session_id"),
+            "job_id": job_id,
+            "user_email": "",
+            "created_at": envelope.get("created_at"),
+            "updated_at": envelope.get("updated_at") or envelope.get("created_at"),
+            "edit_count": envelope.get("edit_count", 0),
+            "trigger": envelope.get("trigger", "auto"),
+            "audio_duration_seconds": envelope.get("audio_duration_seconds"),
+            "artist": envelope.get("artist"),
+            "title": envelope.get("title"),
+            "summary": envelope.get("summary") or {},
+        }
+
+    async def _list_review_sessions(self, job_id: str):
+        envelopes = self._review_sessions.list_sessions(
+            audio_hash=self._review_session_audio_hash()
+        )
+        return {
+            "sessions": [
+                self._review_session_wire_meta(env, job_id) for env in envelopes
+            ]
+        }
+
+    async def _save_review_session(
+        self, job_id: str, payload: Dict[str, Any] = Body(...)
+    ):
+        correction_data = payload.get("correction_data")
+        if not isinstance(correction_data, dict):
+            raise HTTPException(
+                status_code=400, detail="correction_data is required"
+            )
+        metadata = self.correction_result.metadata if self.correction_result else {}
+        result = self._review_sessions.save(
+            audio_hash=self._review_session_audio_hash(),
+            correction_data=correction_data,
+            edit_count=payload.get("edit_count", 0),
+            trigger=payload.get("trigger", "auto"),
+            summary=payload.get("summary") or {},
+            artist=(metadata or {}).get("artist"),
+            title=(metadata or {}).get("title"),
+        )
+        return result
+
+    async def _get_review_session(self, job_id: str, session_id: str):
+        envelope = self._review_sessions.get_session(
+            audio_hash=self._review_session_audio_hash(), session_id=session_id
+        )
+        if not envelope:
+            raise HTTPException(status_code=404, detail="Review session not found")
+        response = self._review_session_wire_meta(envelope, job_id)
+        response["correction_data"] = envelope.get("correction_data")
+        return response
+
+    async def _delete_review_session(self, job_id: str, session_id: str):
+        # Return 200 regardless of prior existence — the frontend treats delete
+        # as idempotent and a 404 here just pops a toast for the user.
+        self._review_sessions.delete_session(
+            audio_hash=self._review_session_audio_hash(), session_id=session_id
+        )
+        return {"status": "deleted"}
+
     def _update_correction_result(self, base_result: CorrectionResult, updated_data: Dict[str, Any]) -> CorrectionResult:
         """Update a CorrectionResult with new correction data."""
         return CorrectionOperations.update_correction_result_with_data(base_result, updated_data)
@@ -723,6 +953,16 @@ class ReviewServer:
         The corrections are saved but the review is not marked as complete yet.
         """
         try:
+            # Capture the duet flag if the frontend included one. We track this
+            # separately from pending_corrections so the CLI can read it after
+            # start() returns (the final-render OutputConfig needs is_duet to
+            # produce per-singer styles — the preview path plumbs it via
+            # updated_data, but the CLI's post-review render path doesn't).
+            is_duet_raw = request_body.get("is_duet")
+            if isinstance(is_duet_raw, bool):
+                self.is_duet = is_duet_raw
+                self.logger.info(f"Duet mode: {self.is_duet}")
+
             # Extract the corrections data from the wrapper
             corrections_data = request_body.get("corrections", request_body)
 
@@ -746,6 +986,22 @@ class ReviewServer:
             if instrumental_selection:
                 self.instrumental_selection = instrumental_selection
                 self.logger.info(f"Instrumental selection: {instrumental_selection}")
+
+            # Capture duet flag if the frontend supplied one on the final submit.
+            # Latch-up-only: we never downgrade True→False here because the
+            # InstrumentalSelector component's submit payload often sends
+            # `is_duet: false` (it reads from the freshly-fetched correctionData
+            # which doesn't round-trip the flag) and we don't want that to
+            # clobber a True set by the earlier lyrics-review submit_corrections.
+            is_duet_raw = updated_data.pop("is_duet", None)
+            if is_duet_raw is True:
+                self.is_duet = True
+                self.logger.info("Duet mode (from complete): True")
+            elif is_duet_raw is False and self.is_duet:
+                self.logger.info(
+                    "Ignoring is_duet=False on complete — already set True by "
+                    "lyrics-review submit; keeping True"
+                )
 
             # Apply pending corrections if they were saved earlier
             if self.pending_corrections:
@@ -965,6 +1221,80 @@ class ReviewServer:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             self.logger.error(f"Failed to add lyrics: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+    async def search_lyrics(self, data: Dict[str, Any] = Body(...)):
+        """Search all configured lyrics providers and re-run correction.
+
+        Mirrors the cloud `POST /api/review/{job_id}/search-lyrics` endpoint
+        but operates in-memory on `self.correction_result` instead of
+        reading/writing GCS. Used by the review UI's "Search All Providers"
+        button.
+        """
+        try:
+            artist = (data.get("artist") or "").strip()
+            title = (data.get("title") or "").strip()
+            force_sources = data.get("force_sources") or []
+
+            if not artist or not title:
+                raise HTTPException(status_code=400, detail="artist and title are required")
+
+            self.logger.info(
+                f"Local review: searching lyrics for '{artist}' - '{title}' (force={force_sources})"
+            )
+
+            search_result = CorrectionOperations.search_lyrics_sources(
+                correction_result=self.correction_result,
+                artist=artist,
+                title=title,
+                cache_dir=self.output_config.cache_dir,
+                force_sources=force_sources,
+                logger=self.logger,
+            )
+
+            sources_added = search_result["sources_added"]
+            sources_rejected = search_result["sources_rejected"]
+            sources_not_found = search_result["sources_not_found"]
+            updated_result = search_result["updated_result"]
+
+            if not sources_added or updated_result is None:
+                self.logger.info(
+                    f"Local review: no lyrics found via search "
+                    f"(rejected={list(sources_rejected.keys())}, not_found={sources_not_found})"
+                )
+                return {
+                    "status": "no_results",
+                    "message": "No new lyrics sources found",
+                    "sources_added": [],
+                    "sources_rejected": sources_rejected,
+                    "sources_not_found": sources_not_found,
+                }
+
+            # Preserve the audio_hash on the updated result so playback keeps working
+            if self.correction_result.metadata:
+                preserved_hash = self.correction_result.metadata.get("audio_hash")
+                if preserved_hash:
+                    if not updated_result.metadata:
+                        updated_result.metadata = {}
+                    updated_result.metadata["audio_hash"] = preserved_hash
+
+            self.correction_result = updated_result
+
+            return {
+                "status": "success",
+                "data": updated_result.to_dict(),
+                "sources_added": sources_added,
+                "sources_rejected": sources_rejected,
+                "sources_not_found": sources_not_found,
+            }
+
+        except HTTPException:
+            raise
+        except ValueError as e:
+            self.logger.warning(f"Invalid search_lyrics request: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            self.logger.error(f"Failed to search lyrics: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail=str(e))
 
     def start(self) -> CorrectionResult:

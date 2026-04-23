@@ -612,6 +612,136 @@ class TestHelperFunctions:
             "end": {"existing_image": "/path/to/end.png"},
         }
         title_img, end_img = get_existing_images(style_params)
-        
+
         assert title_img == "/path/to/title.png"
         assert end_img == "/path/to/end.png"
+
+
+class TestKaraokeSingersBlock:
+    """Tests for the optional per-singer colors block under karaoke style."""
+
+    def test_default_karaoke_style_has_singers_block(self):
+        from karaoke_gen.style_loader import DEFAULT_KARAOKE_STYLE
+        assert "singers" in DEFAULT_KARAOKE_STYLE
+        # The nomad defaults ship with blue / pink / yellow presets
+        singers = DEFAULT_KARAOKE_STYLE["singers"]
+        assert set(singers.keys()) == {"1", "2", "both"}
+
+    def test_singer2_has_pink_unhighlighted(self):
+        """Duet model: secondary (pre-sung) is the singer's signature color."""
+        from karaoke_gen.style_loader import DEFAULT_KARAOKE_STYLE
+        assert DEFAULT_KARAOKE_STYLE["singers"]["2"]["secondary_color"] == "247, 112, 180, 255"
+
+    def test_both_has_yellow_unhighlighted(self):
+        from karaoke_gen.style_loader import DEFAULT_KARAOKE_STYLE
+        assert DEFAULT_KARAOKE_STYLE["singers"]["both"]["secondary_color"] == "252, 211, 77, 255"
+
+    def test_highlighted_primaries_are_near_white(self):
+        """Duet model: primary (post-sung) is near-white with a subtle hue tint."""
+        from karaoke_gen.style_loader import DEFAULT_KARAOKE_STYLE
+        for key in ("1", "2", "both"):
+            primary = DEFAULT_KARAOKE_STYLE["singers"][key]["primary_color"]
+            r, g, b, _ = [int(x.strip()) for x in primary.split(",")]
+            # Every channel should be ≥ 230 (near-white) but at least one should
+            # differ from pure white to preserve the singer's hue hint.
+            assert r >= 230 and g >= 230 and b >= 230, f"Singer {key} primary not near-white: {primary}"
+            assert (r, g, b) != (255, 255, 255), f"Singer {key} primary is pure white, should have tint"
+
+
+class TestResolveSingerColors:
+    """Tests for resolve_singer_colors — per-singer color resolution."""
+
+    def test_resolve_singer1_falls_back_to_default_palette_when_theme_has_no_override(self):
+        """Theme with empty singers block → fall back to DEFAULT_KARAOKE_STYLE's
+        built-in blue/pink/yellow palette so duets still look distinct even
+        when the theme doesn't declare per-singer colors."""
+        from karaoke_gen.style_loader import resolve_singer_colors, DEFAULT_KARAOKE_STYLE
+        karaoke = {
+            "primary_color": "1, 1, 1, 255",
+            "secondary_color": "2, 2, 2, 255",
+            "outline_color": "3, 3, 3, 255",
+            "back_color": "0, 0, 0, 0",
+            "singers": {},
+        }
+        colors = resolve_singer_colors(karaoke, 1)
+        default_singer1 = DEFAULT_KARAOKE_STYLE["singers"]["1"]
+        assert colors["primary_color"] == default_singer1["primary_color"]
+        assert colors["outline_color"] == default_singer1["outline_color"]
+
+    def test_resolve_singer2_theme_override_wins_over_defaults(self):
+        """Theme-supplied per-singer override takes precedence over the
+        built-in default palette; non-overridden fields fall back to the
+        default palette (not the flat theme colors)."""
+        from karaoke_gen.style_loader import resolve_singer_colors, DEFAULT_KARAOKE_STYLE
+        karaoke = {
+            "primary_color": "1, 1, 1, 255",
+            "secondary_color": "2, 2, 2, 255",
+            "outline_color": "3, 3, 3, 255",
+            "back_color": "0, 0, 0, 0",
+            "singers": {"2": {"primary_color": "9, 9, 9, 255"}},
+        }
+        colors = resolve_singer_colors(karaoke, 2)
+        default_singer2 = DEFAULT_KARAOKE_STYLE["singers"]["2"]
+        assert colors["primary_color"] == "9, 9, 9, 255"
+        # Fields not overridden fall back to the default duet palette
+        assert colors["secondary_color"] == default_singer2["secondary_color"]
+        assert colors["outline_color"] == default_singer2["outline_color"]
+
+    def test_resolve_both_uses_both_key_not_numeric(self):
+        from karaoke_gen.style_loader import resolve_singer_colors
+        karaoke = {
+            "primary_color": "1, 1, 1, 255",
+            "secondary_color": "2, 2, 2, 255",
+            "outline_color": "3, 3, 3, 255",
+            "back_color": "0, 0, 0, 0",
+            "singers": {"both": {"primary_color": "7, 7, 7, 255"}},
+        }
+        colors = resolve_singer_colors(karaoke, 0)
+        assert colors["primary_color"] == "7, 7, 7, 255"
+
+    def test_resolve_handles_missing_singers_block(self):
+        """Theme with no "singers" key at all falls back to DEFAULT_KARAOKE_STYLE's
+        built-in palette for per-singer colors."""
+        from karaoke_gen.style_loader import resolve_singer_colors, DEFAULT_KARAOKE_STYLE
+        karaoke = {
+            "primary_color": "1, 1, 1, 255",
+            "secondary_color": "2, 2, 2, 255",
+            "outline_color": "3, 3, 3, 255",
+            "back_color": "0, 0, 0, 0",
+            # no "singers" key
+        }
+        colors = resolve_singer_colors(karaoke, 2)
+        # Primary color comes from the built-in Singer 2 default (pink signature)
+        assert colors["primary_color"] == DEFAULT_KARAOKE_STYLE["singers"]["2"]["primary_color"]
+
+
+class TestCdgDuetSingers:
+    def test_cdg_duet_singers_has_three_entries(self):
+        from karaoke_gen.style_loader import CDG_DUET_SINGERS
+        assert len(CDG_DUET_SINGERS) == 3
+
+    def test_cdg_duet_singer_colors_are_rgb_tuples(self):
+        from karaoke_gen.style_loader import CDG_DUET_SINGERS
+        for s in CDG_DUET_SINGERS:
+            assert len(s.active_fill) == 3
+            assert all(isinstance(c, int) for c in s.active_fill)
+
+    def test_cdg_duet_singer_1_is_blue(self):
+        from karaoke_gen.style_loader import CDG_DUET_SINGERS
+        # Color model (post-flip): inactive = signature color (pre-sung),
+        # active = white (sweep highlight). Singer 1 signature = sky blue
+        # (brightened from #7070F7 to #9AA8FF for contrast on dark backgrounds).
+        assert CDG_DUET_SINGERS[0].inactive_fill == (154, 168, 255)
+        assert CDG_DUET_SINGERS[0].active_fill == (255, 255, 255)
+
+    def test_cdg_duet_singer_2_is_pink(self):
+        from karaoke_gen.style_loader import CDG_DUET_SINGERS
+        # Singer 2 signature = pink
+        assert CDG_DUET_SINGERS[1].inactive_fill == (247, 112, 180)
+        assert CDG_DUET_SINGERS[1].active_fill == (255, 255, 255)
+
+    def test_cdg_duet_singer_both_is_yellow(self):
+        from karaoke_gen.style_loader import CDG_DUET_SINGERS
+        # Both (SingerId 0 → CDG singer 3) signature = yellow
+        assert CDG_DUET_SINGERS[2].inactive_fill == (252, 211, 77)
+        assert CDG_DUET_SINGERS[2].active_fill == (255, 255, 255)

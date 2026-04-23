@@ -181,26 +181,39 @@ class LyricsLine:
         return [main_event]
 
     def create_ass_events(
-        self, 
-        state: LineState, 
-        style: Style, 
+        self,
+        state: LineState,
+        style: Style,
         config: ScreenConfig,
-        previous_end_time: Optional[float] = None
+        previous_end_time: Optional[float] = None,
+        styles_by_singer: Optional[dict] = None,
     ) -> List[Event]:
-        """Create ASS events for this line. Returns [main_event] or [lead_in_event, main_event]."""
+        """Create ASS events for this line.
+
+        If styles_by_singer is provided, the main event is tagged with the
+        style for self.segment.singer (falling back to singer 1 when
+        self.segment.singer is None). Otherwise the fallback `style` is used
+        (solo / backward-compat path).
+        """
         self.previous_end_time = previous_end_time
         events = []
-        
+
+        # Pick the style for this line
+        line_style = style
+        if styles_by_singer:
+            singer_key = self.segment.singer if self.segment.singer is not None else 1
+            line_style = styles_by_singer.get(singer_key, style)
+
         # Create lead-in event if needed
-        lead_in_event = self._create_lead_in_event(state, style, config.video_width, config)
+        lead_in_event = self._create_lead_in_event(state, line_style, config.video_width, config)
         if lead_in_event:
             events.extend(lead_in_event)
-        
+
         # Create main lyrics event
         main_event = Event()
         main_event.type = "Dialogue"
         main_event.Layer = 0
-        main_event.Style = style
+        main_event.Style = line_style
         main_event.Start = state.timing.fade_in_time
         main_event.End = state.timing.end_time
 
@@ -214,7 +227,10 @@ class LyricsLine:
         )
 
         # Add the main lyrics text with karaoke timing
-        text += self._create_ass_text(timedelta(seconds=state.timing.fade_in_time))
+        text += self._create_ass_text(
+            timedelta(seconds=state.timing.fade_in_time),
+            styles_by_singer=styles_by_singer,
+        )
 
         main_event.Text = text
         events.append(main_event)
@@ -234,16 +250,22 @@ class LyricsLine:
         else:  # "none" or any other value
             return text
 
-    def _create_ass_text(self, start_ts: timedelta) -> str:
-        """Create the ASS text with karaoke timing tags."""
+    def _create_ass_text(
+        self,
+        start_ts: timedelta,
+        styles_by_singer: Optional[dict] = None,
+    ) -> str:
+        """Create the ASS text with karaoke timing tags and word-level singer overrides."""
         # Initial delay before first word
         first_word_time = self.segment.start_time
-        
+
         # Add initial delay for regular lines
         start_time = max(0, (first_word_time - start_ts.total_seconds()) * 100)
         text = r"{\k" + str(int(round(start_time))) + r"}"
 
         prev_end_time = first_word_time
+        segment_singer = self.segment.singer if self.segment.singer is not None else 1
+        current_inline_singer = None  # tracks whether we've emitted a color override
 
         for word in self.segment.words:
             # Add gap between words if needed
@@ -259,9 +281,44 @@ class LyricsLine:
             # loss so we guard against it at the output boundary too.
             clean_word_text = word.text.replace("\n", "").strip()
             transformed_text = self._apply_case_transform(clean_word_text)
+
+            # Determine whether this word has a singer override
+            word_singer = word.singer if word.singer is not None else segment_singer
+            needs_override = (
+                styles_by_singer is not None
+                and word_singer != segment_singer
+            )
+
+            if needs_override and current_inline_singer != word_singer:
+                override_style = styles_by_singer.get(word_singer)
+                if override_style is not None:
+                    # ASS inline format: &HBBGGRR&. Override primary (post-sung
+                    # tint), secondary (pre-sung signature) and outline so the
+                    # word is fully themed to its override singer, not just the
+                    # after-sung tint.
+                    def _bgr(rgba):
+                        r, g, b = rgba[:3]
+                        return f"{b:02X}{g:02X}{r:02X}"
+                    text += r"{\1c&H" + _bgr(override_style.PrimaryColour) + r"&}"
+                    text += r"{\2c&H" + _bgr(override_style.SecondaryColour) + r"&}"
+                    text += r"{\3c&H" + _bgr(override_style.OutlineColour) + r"&}"
+                    current_inline_singer = word_singer
+                elif current_inline_singer is not None:
+                    # Missing singer in map — reset to line's base style so the
+                    # previous override color doesn't bleed onto this word.
+                    text += r"{\r}"
+                    current_inline_singer = None
+            elif not needs_override and current_inline_singer is not None:
+                text += r"{\r}"
+                current_inline_singer = None
+
             text += r"{\kf" + str(duration) + r"}" + transformed_text + " "
 
             prev_end_time = word.end_time  # Track the actual end time of the word
+
+        # Close any lingering override
+        if current_inline_singer is not None:
+            text += r"{\r}"
 
         return text.rstrip()
 

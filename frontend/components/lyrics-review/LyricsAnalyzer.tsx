@@ -51,6 +51,7 @@ import {
 } from '@/lib/lyrics-review/utils/keyboardHandlers'
 import { createEditLog, addEditEntry, attachFeedback } from '@/lib/lyrics-review/utils/editLog'
 import { useReviewSessionAutoSave } from '@/hooks/use-review-session-autosave'
+import { hasMultipleSingers } from '@/lib/lyrics-review/duet'
 import SessionRestoreDialog from './SessionRestoreDialog'
 import Header from './Header'
 import GapNavigator from './GapNavigator'
@@ -68,14 +69,14 @@ declare global {
 }
 
 interface ApiClient {
-  submitCorrections: (data: CorrectionData) => Promise<void>
+  submitCorrections: (data: CorrectionData, isDuet?: boolean) => Promise<void>
   submitAnnotations: (annotations: never[]) => Promise<void>
   submitEditLog: (editLog: EditLog) => Promise<void>
   updateHandlers: (handlers: string[]) => Promise<CorrectionData>
   addLyrics: (source: string, lyrics: string) => Promise<CorrectionData>
   searchLyrics?: (artist: string, title: string, forceSources?: string[]) => Promise<SearchLyricsResponse>
   getAudioUrl: (hash: string) => string
-  generatePreviewVideo: (data: CorrectionData) => Promise<{
+  generatePreviewVideo: (data: CorrectionData, isDuet?: boolean) => Promise<{
     status: string
     message?: string
     preview_hash?: string
@@ -167,6 +168,12 @@ export default function LyricsAnalyzer({
   const [sessionsLoading, setSessionsLoading] = useState(false)
 
   // Advanced mode for transcription view (Simple/Advanced toggle)
+  const [isDuet, setIsDuet] = useState<boolean>(
+    (initialData as any).is_duet ?? false
+  )
+
+  const [focusedSegmentIndex, setFocusedSegmentIndex] = useState<number | null>(null)
+
   const [advancedMode, setAdvancedMode] = useState(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('lyricsReviewAdvancedMode') === 'true'
@@ -240,14 +247,25 @@ export default function LyricsAnalyzer({
     setHistoryIndex(0)
   }, [initialData])
 
+  // Apply restored data: replace history AND turn the duet toggle on if the
+  // restored segments encode multi-singer assignments. We never turn duet
+  // OFF here — a user who toggled duet mid-edit and then restored an early
+  // solo snapshot probably still wants the toggle on for their next edit.
+  const applyRestoredData = useCallback((restored: CorrectionData) => {
+    setHistory([restored])
+    setHistoryIndex(0)
+    if (hasMultipleSingers(restored.corrected_segments || [])) {
+      setIsDuet(true)
+    }
+  }, [])
+
   // Load saved sessions on mount - check server first, fall back to localStorage
   useEffect(() => {
     if (isReadOnly || !apiClient?.listReviewSessions) {
       // Local mode or read-only: use localStorage fallback
       const savedData = loadSavedData(initialData)
       if (savedData && typeof window !== 'undefined' && window.confirm('Found saved progress for this song. Would you like to restore it?')) {
-        setHistory([savedData])
-        setHistoryIndex(0)
+        applyRestoredData(savedData)
       }
       return
     }
@@ -265,8 +283,7 @@ export default function LyricsAnalyzer({
         // Fall back to localStorage if no server sessions
         const savedData = loadSavedData(initialData)
         if (savedData && typeof window !== 'undefined' && window.confirm('Found saved progress for this song. Would you like to restore it?')) {
-          setHistory([savedData])
-          setHistoryIndex(0)
+          applyRestoredData(savedData)
         }
       }
     }).catch(() => {
@@ -275,8 +292,7 @@ export default function LyricsAnalyzer({
       // Fall back to localStorage on error
       const savedData = loadSavedData(initialData)
       if (savedData && typeof window !== 'undefined' && window.confirm('Found saved progress for this song. Would you like to restore it?')) {
-        setHistory([savedData])
-        setHistoryIndex(0)
+        applyRestoredData(savedData)
       }
     })
 
@@ -285,9 +301,8 @@ export default function LyricsAnalyzer({
 
   // Handler for restoring a session from the dialog
   const handleSessionRestore = useCallback((correctionData: CorrectionData) => {
-    setHistory([correctionData])
-    setHistoryIndex(0)
-  }, [])
+    applyRestoredData(correctionData)
+  }, [applyRestoredData])
 
   // Handler to open session browser from toolbar
   const handleOpenSessionBrowser = useCallback(async () => {
@@ -429,6 +444,13 @@ export default function LyricsAnalyzer({
       setIsCtrlPressed,
       onNextGap: handleNextGap,
       onPrevGap: handlePrevGap,
+      isDuet,
+      focusedSegmentIndex,
+      onAssignSegmentSinger: (idx, singer) => {
+        const segments = [...data.corrected_segments]
+        segments[idx] = { ...segments[idx], singer }
+        updateDataWithHistory({ ...data, corrected_segments: segments }, 'singer change')
+      },
     })
 
     window.addEventListener('keydown', handleKeyDown)
@@ -445,7 +467,7 @@ export default function LyricsAnalyzer({
       document.body.style.userSelect = ''
       cleanup()
     }
-  }, [isAnyModalOpen, handleNextGap, handlePrevGap])
+  }, [isAnyModalOpen, handleNextGap, handlePrevGap, isDuet, focusedSegmentIndex, data, updateDataWithHistory])
 
   // Update modal state tracking
   useEffect(() => {
@@ -905,8 +927,8 @@ export default function LyricsAnalyzer({
       const dataToSubmit =
         timingOffsetMs !== 0 ? applyOffsetToCorrectionData(data, timingOffsetMs) : data
 
-      // 1. Save corrections (not final submission yet)
-      await apiClient.submitCorrections(dataToSubmit)
+      // 1. Save corrections (not final submission yet), including current duet flag
+      await apiClient.submitCorrections(dataToSubmit, isDuet)
 
       // 2. Save edit log (non-blocking)
       if (editLog.entries.length > 0) {
@@ -928,7 +950,7 @@ export default function LyricsAnalyzer({
         toast.success('Lyrics saved! Using uploaded instrumental, generating video...')
         try {
           const correctionData = await lyricsReviewApi.getCorrectionData(jobId)
-          await lyricsReviewApi.completeReview(jobId, correctionData, 'custom')
+          await lyricsReviewApi.completeReview(jobId, correctionData, 'custom', isDuet)
           setShowSuccess(true)
           setCountdown(3)
         } catch (err) {
@@ -1261,6 +1283,8 @@ export default function LyricsAnalyzer({
         onAcceptAllCorrections={handleAcceptAllCorrections}
         onAcceptHighConfidenceCorrections={handleAcceptHighConfidenceCorrections}
         onRevertAllCorrections={handleRevertAllCorrections}
+        isDuet={isDuet}
+        onToggleDuet={() => setIsDuet(d => !d)}
       />
 
       <div className={cn('grid gap-2', isMobile ? 'grid-cols-1' : 'grid-cols-2')}>
@@ -1287,6 +1311,13 @@ export default function LyricsAnalyzer({
           advancedMode={advancedMode}
           onAdvancedModeToggle={handleAdvancedModeToggle}
           editedWordIds={editedWordIds}
+          isDuet={isDuet}
+          onSegmentSingerChange={(segmentIdx, next) => {
+            const segments = [...data.corrected_segments]
+            segments[segmentIdx] = { ...segments[segmentIdx], singer: next }
+            updateDataWithHistory({ ...data, corrected_segments: segments }, 'singer change')
+          }}
+          onSegmentFocus={setFocusedSegmentIndex}
         />
         <ReferenceView
           referenceSources={data.reference_lyrics}
@@ -1424,6 +1455,7 @@ export default function LyricsAnalyzer({
         isSubmitting={isSubmitting}
         apiClient={apiClient}
         timingOffsetMs={timingOffsetMs}
+        isDuet={isDuet}
       />
 
       <AddLyricsModal

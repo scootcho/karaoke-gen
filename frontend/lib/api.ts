@@ -2871,14 +2871,14 @@ export interface ReviewSessionWithData extends ReviewSession {
 }
 
 export interface LyricsReviewApiClient {
-  submitCorrections: (data: CorrectionData) => Promise<void>
+  submitCorrections: (data: CorrectionData, isDuet?: boolean) => Promise<void>
   submitAnnotations: (annotations: Omit<CorrectionAnnotation, 'annotation_id' | 'timestamp'>[]) => Promise<void>
   submitEditLog: (editLog: EditLog) => Promise<void>
   updateHandlers: (handlers: string[]) => Promise<CorrectionData>
   addLyrics: (source: string, lyrics: string) => Promise<CorrectionData>
   searchLyrics: (artist: string, title: string, forceSources?: string[]) => Promise<SearchLyricsResponse>
   getAudioUrl: (hash: string) => string
-  generatePreviewVideo: (data: CorrectionData) => Promise<{
+  generatePreviewVideo: (data: CorrectionData, isDuet?: boolean) => Promise<{
     status: string
     message?: string
     preview_hash?: string
@@ -2904,15 +2904,20 @@ export function createLyricsReviewApiClient(jobId: string): LyricsReviewApiClien
      * - 'lines' and 'metadata' are required by Pydantic validator
      * - 'corrected_segments' and 'corrections' array are needed by render worker
      */
-    async submitCorrections(data: CorrectionData): Promise<void> {
+    async submitCorrections(data: CorrectionData, isDuet?: boolean): Promise<void> {
       // Wrap CorrectionData in the structure expected by CorrectionsSubmission
       // - 'lines' is an alias for corrected_segments (required by validator)
       // - Include full data for render worker compatibility
-      const payload = {
+      const payload: Record<string, unknown> = {
         corrections: {
           ...data,
           lines: data.corrected_segments,
         }
+      }
+      // Only include is_duet when explicitly provided — omitting it preserves any
+      // previously-persisted flag rather than overwriting with false.
+      if (isDuet !== undefined) {
+        payload.is_duet = isDuet
       }
       const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/corrections`, {
         method: 'POST',
@@ -3015,18 +3020,22 @@ export function createLyricsReviewApiClient(jobId: string): LyricsReviewApiClien
     /**
      * Generate a preview video from the current correction data
      */
-    async generatePreviewVideo(data: CorrectionData): Promise<{
+    async generatePreviewVideo(data: CorrectionData, isDuet?: boolean): Promise<{
       status: string
       message?: string
       preview_hash?: string
     }> {
+      const body: Record<string, unknown> = { ...data }
+      if (isDuet !== undefined) {
+        body.is_duet = isDuet
+      }
       const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/preview-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders()
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
       return handleResponse(response)
     },
@@ -3121,7 +3130,8 @@ export const lyricsReviewApi = {
   async completeReview(
     jobId: string,
     correctionData: CorrectionData,
-    instrumentalSelection: InstrumentalSelectionType
+    instrumentalSelection: InstrumentalSelectionType,
+    isDuet?: boolean
   ): Promise<{ status: string; instrumental_selection: string }> {
     const response = await fetch(`${API_BASE_URL}/api/review/${jobId}/complete`, {
       method: 'POST',
@@ -3131,7 +3141,8 @@ export const lyricsReviewApi = {
       },
       body: JSON.stringify({
         ...correctionData,
-        instrumental_selection: instrumentalSelection
+        instrumental_selection: instrumentalSelection,
+        is_duet: isDuet ?? false,
       })
     })
     return handleResponse(response)

@@ -1136,4 +1136,109 @@ For this bug, the missing test was: "does `transcribe_lyrics()` return `lyrics_d
 
 **Fix:** (1) Add locale prefix to all hash-based links via `useLocale()`. (2) Make `fetchUser` check for `AbortError` before clearing auth — navigation-triggered aborts should not destroy the session.
 
+## Multi-Singer / Duet Support (Apr 2026)
+
+- The CDG composer (`cdgmaker/composer.py`) already supports up to 3
+  singers, but the path had never been exercised against real inputs
+  before this feature. Mitigation during rollout: manual validation
+  with real tracks before PR merge.
+- Word-level singer overrides render only in the MP4/ASS output. CDG
+  is a line-level format (`SettingsLyric.singer` is an int per line);
+  splitting lines at word boundaries would produce visually distinct
+  display lines on the CDG and make the output worse, not better.
+- Theme JSON gains an optional `singers` block under `karaoke` for
+  per-singer color overrides. Themes without it fall back to the
+  built-in blue/pink/yellow duet palette in `DEFAULT_KARAOKE_STYLE`
+  (via `resolve_singer_colors`) — previously they collapsed to the
+  flat theme colors, rendering all three "singers" identically.
+- `build_karaoke_styles._make_style` must use `.get("font_size", 250)`
+  rather than `karaoke_style["font_size"]`: themes stored in GCS don't
+  always declare `font_size` at the karaoke-block level (the CLI /
+  video-resolution param is the authoritative source and the caller
+  overrides `s.Fontsize` after the factory returns anyway). Without
+  the fallback, `/preview-video` and the ASS generator crash with
+  `KeyError('font_size')`.
+- CDG TOML structure for duets: ONE `SettingsLyric` with `text` that
+  contains every visual line prefixed as `N|text` (e.g. `1|HELLO`,
+  `2|WORLD`, `3|TOGETHER`). The composer parses `N|` per-line to
+  override the lyric-level default singer. `config.singers` carries
+  the palette in 1-indexed order. Visual-line breaks at segment
+  boundaries are forced by prefixing the first word of each segment
+  (except the first) with `/` so `format_lyrics` flushes `current_line`
+  before starting the next singer's words.
+- Countdown offset matters for CDG: video rendering pads vocals with
+  a countdown intro which shifts segment times forward. CDG renders
+  against the *unpadded* instrumental, so when loading segments for
+  the CDG path, shift all times back by `countdown_padding_seconds`
+  and drop any segment whose end is now <=0. Otherwise CDG lyrics
+  drift 3 seconds behind the audio.
+- Color model for duet rendering (shared by ASS and CDG, after the
+  flip in commit `b2f20b43`): pre-sung text shows the singer's
+  signature color (blue/pink/yellow) so performers can read ahead
+  and see who sings what; the karaoke sweep turns words white. For
+  CDG this is `active_fill=#FFFFFF, inactive_fill=<signature>`. If
+  you ever think "white default, color on highlight" seems more
+  obvious, remember that it removes the singer-identification cue
+  and makes duet charts much harder to perform.
+- Singer 1's blue was originally `#7070F7`; brightened to `#9AA8FF`
+  (sky blue) because the original luminance was too close to dark
+  navy backgrounds like `#111427`. When choosing CDG singer colors,
+  consider the readable contrast against the theme's background
+  color — CDG's 16-color palette leaves little room for subtlety.
+- `is_duet` has to be latched True through the submit→complete flow.
+  The InstrumentalSelector component's submit payload can send
+  `is_duet: false` (it reads from `correctionData.is_duet` which
+  isn't round-tripped through `/corrections`), and if the
+  `complete_review` endpoint writes that unconditionally, a prior
+  True from `submit_corrections` gets clobbered and the final render
+  silently reverts to solo. Both local `ReviewServer` and cloud
+  `backend/api/routes/review.py::complete_review` enforce an
+  up-only latch.
+- The GCE encoding worker (`backend/services/gce_encoding/main.py`)
+  needs `is_duet` on its `RenderVideoRequest` model — plumbing it
+  only through `render_video_worker.py`'s payload dict is insufficient
+  because the worker's Pydantic model discards unknown fields.
+- Duet CDG in the standard-encoding path requires `KaraokeFinalise`
+  to know both `is_duet` AND receive a corrections JSON path; the
+  LRC-based `generate_cdg_from_lrc` has no singer info so it always
+  produces solo output. When `is_duet=True` + a corrections JSON is
+  available, use `CDGGenerator.generate_cdg(segments=...)` instead.
+
 **Key insight:** Module-level side effects that start async work (like `fetchUser()` on import) are dangerous when pages exist solely to redirect. The async work starts, the redirect fires, the fetch aborts, and error handlers run with destructive consequences. Either guard redirecting pages from triggering side effects, or make error handlers resilient to abort errors.
+
+## Local ReviewServer Drift from Cloud Backend (Apr 2026)
+
+The unified Next.js frontend is built once and serves both the cloud
+deployment and the local CLI's `ReviewServer`. It does not branch its API
+calls by mode — `createLyricsReviewApiClient(jobId)` always hits
+`/api/review/{jobId}/...`. That means the local server is effectively a
+contract implementation of `backend/api/routes/review.py`, and any route
+added to the cloud side has to get an alias on the local side or the
+review UI silently breaks (audio 404s, auto-save 404 spam, submit 404 on
+`/v1/annotations`, etc.).
+
+Things that are NOT worth locally implementing:
+
+- **Audio editor endpoints** (`/api/review/{jobId}/input-audio-info`,
+  `/audio-edit-sessions`, `/audio-edit/apply|undo|redo|submit|upload`) —
+  only reachable via the `audio-edit` route type, which the local CLI
+  never enters (it opens `/app/jobs/local/review` directly). Adding
+  stubs here just invites drift; if they ever start being called from
+  the review flow, fail loudly and revisit.
+
+Things that *are* worth stubbing even without real persistence:
+
+- **Review sessions** (`/sessions`, `/sessions/{id}`). `LyricsAnalyzer`
+  probes the list endpoint on mount and the auto-save timer hits it on
+  a schedule. Without a stub each local run spams 404s and surfaces an
+  error on first load.
+
+Operational note on reference_lyrics: the relevance filter rejects
+Spotify hits with <30% relevance, which is the correct behavior when
+the Spotify search returns a totally different song (a common failure
+mode with unusual/long track titles like test fixtures containing
+`(145s duet clip)` suffixes). A 0% match *should* be rejected. Users
+can recover via the review UI's "Search All Providers" control with
+`force_sources=["spotify"]` (registered at
+`/api/review/{job_id}/search-lyrics`); no code change to the filter is
+warranted.

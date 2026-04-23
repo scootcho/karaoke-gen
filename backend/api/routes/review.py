@@ -327,10 +327,23 @@ async def complete_review(
             detail=t("en", "review.invalidInstrumentalSelection", valid_selections=valid_selections)
         )
 
+    # === is_duet flag (optional) — latch-up-only ===
+    # InstrumentalSelector may send is_duet=False on the complete call when
+    # correctionData.is_duet is undefined (the flag doesn't round-trip through
+    # the /corrections response on the cloud path). Never downgrade True→False:
+    # if a prior submit_corrections already persisted True, honor that.
+    is_duet_raw = updated_data.get("is_duet", None)
+    if is_duet_raw is not None and not isinstance(is_duet_raw, bool):
+        raise HTTPException(
+            status_code=400,
+            detail=t("en", "review.invalidIsDuetFlag"),
+        )
+
     try:
-        # Remove instrumental_selection from updated_data before saving to corrections
-        # (it's stored separately in state_data)
-        corrections_to_save = {k: v for k, v in updated_data.items() if k != "instrumental_selection"}
+        # Remove instrumental_selection and is_duet from updated_data before saving corrections
+        # (they're stored separately in state_data)
+        excluded_fields = {"instrumental_selection", "is_duet"}
+        corrections_to_save = {k: v for k, v in updated_data.items() if k not in excluded_fields}
 
         # Only write corrections_updated.json if there's actual correction data.
         # Writing an empty dict causes KeyError downstream when render workers
@@ -347,6 +360,24 @@ async def complete_review(
         # This will be used by render_video_worker to skip AWAITING_INSTRUMENTAL_SELECTION
         job_manager.update_state_data(job_id, 'instrumental_selection', instrumental_selection)
         logger.info(f"Job {job_id}: Stored instrumental selection: {instrumental_selection}")
+
+        # Store duet flag so render worker knows to use multi-singer styles.
+        # Latch-up-only: True overwrites; False is ignored if a prior submit
+        # already persisted True.
+        if is_duet_raw is True:
+            job_manager.update_state_data(job_id, 'is_duet', True)
+            logger.info(f"Job {job_id}: Stored is_duet flag: True (from complete)")
+        elif is_duet_raw is False:
+            job = job_manager.get_job(job_id)
+            prior = bool(job.state_data.get('is_duet', False)) if job else False
+            if prior:
+                logger.info(
+                    f"Job {job_id}: Ignoring is_duet=False on complete — already True from prior submit"
+                )
+            else:
+                job_manager.update_state_data(job_id, 'is_duet', False)
+                logger.info(f"Job {job_id}: Stored is_duet flag: False")
+        # else is_duet_raw is None: leave existing state_data value untouched
 
         # Clear worker progress keys to ensure workers will run fresh (not skip due to idempotency)
         # This handles cases where a job is re-reviewed after completion or where state was inconsistent.
@@ -690,7 +721,17 @@ async def generate_preview_video(
 
     # Check if user wants theme background image (slower) or black background (faster, default)
     use_background_image = updated_data.get("use_background_image", False)
-    logger.info(f"Job {job_id}: Generating preview video (GCE: {use_gce_preview}, background image: {use_background_image})")
+
+    # === is_duet flag (optional, defaults to False) ===
+    is_duet_raw = updated_data.get("is_duet", False)
+    if not isinstance(is_duet_raw, bool):
+        raise HTTPException(
+            status_code=400,
+            detail=t("en", "review.invalidIsDuetFlag"),
+        )
+    is_duet = is_duet_raw
+
+    logger.info(f"Job {job_id}: Generating preview video (GCE: {use_gce_preview}, background image: {use_background_image}, is_duet: {is_duet})")
 
     # Use tracing and job_log_context for full observability
     with create_span("generate-preview-video", {"job_id": job_id, "use_gce": use_gce_preview}) as span:
@@ -738,6 +779,7 @@ async def generate_preview_video(
                         output_dir=output_dir,
                         cache_dir=cache_dir,
                         video_resolution="360p",
+                        is_duet=is_duet,
                     )
 
                     # 6. Generate preview (ASS-only if using GCE, or full video if local)

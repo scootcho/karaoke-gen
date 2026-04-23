@@ -100,7 +100,39 @@ DEFAULT_KARAOKE_STYLE = {
     # Layout settings
     "max_line_length": 40,
     "top_padding": 200,
-    "font_size": 100,
+    "font_size": 250,
+    # NEW: optional per-singer color overrides. Keys: "1" / "2" / "both".
+    # Missing singer or missing field falls back to the flat colors above.
+    # Key note: "both" corresponds to SingerId 0.
+    #
+    # Duet color model: UNHIGHLIGHTED text shows the singer's signature colour
+    # (blue / pink / yellow) so viewers can read ahead and see who's about to
+    # sing. As each word is sung, the karaoke sweep fills it with a near-white
+    # tint of the same hue, signalling "this has been sung" while subtly
+    # preserving the singer identity. Outline stays dark-hue for contrast.
+    "singers": {
+        # Singer 1: blue pre-sung → subtle blue-tinted near-white when sung
+        "1": {
+            "primary_color":   "230, 230, 255, 255",
+            "secondary_color": "112, 112, 247, 255",
+            "outline_color":   "26, 58, 235, 255",
+            "back_color":      "0, 0, 0, 0",
+        },
+        # Singer 2: pink pre-sung → subtle pink-tinted near-white when sung
+        "2": {
+            "primary_color":   "255, 235, 245, 255",
+            "secondary_color": "247, 112, 180, 255",
+            "outline_color":   "158, 26, 96, 255",
+            "back_color":      "0, 0, 0, 0",
+        },
+        # Both: yellow pre-sung → subtle yellow-tinted near-white when sung
+        "both": {
+            "primary_color":   "255, 252, 230, 255",
+            "secondary_color": "252, 211, 77, 255",
+            "outline_color":   "146, 108, 0, 255",
+            "back_color":      "0, 0, 0, 0",
+        },
+    },
 }
 
 DEFAULT_CDG_STYLE = {
@@ -117,6 +149,47 @@ DEFAULT_STYLE_PARAMS = {
     "karaoke": DEFAULT_KARAOKE_STYLE.copy(),
     "cdg": DEFAULT_CDG_STYLE.copy(),
 }
+
+
+# =============================================================================
+# SINGER COLOR RESOLUTION (for multi-singer / duet rendering)
+# =============================================================================
+
+# Map an internal SingerId (0, 1, 2) to the theme's singers-block key.
+_SINGER_KEY_MAP = {0: "both", 1: "1", 2: "2"}
+
+_SINGER_COLOR_FIELDS = ("primary_color", "secondary_color", "outline_color", "back_color")
+
+
+def resolve_singer_colors(karaoke_style: Dict[str, Any], singer_id: int) -> Dict[str, str]:
+    """Return the resolved color dict for a given SingerId.
+
+    Resolution order (first match wins) per color field:
+      1. karaoke_style["singers"][key] from the theme JSON (author-specified
+         per-singer override).
+      2. DEFAULT_KARAOKE_STYLE["singers"][key] (built-in blue/pink/yellow
+         duet palette — used when the theme doesn't declare singer colors).
+      3. karaoke_style[field] (theme's flat color).
+
+    The default-palette fallback (step 2) means duets rendered with themes
+    that don't declare singer colors still get distinct blue/pink/yellow
+    singer identification instead of collapsing to a single color.
+
+    singer_id must be 0 ("both"), 1, or 2.
+    """
+    key = _SINGER_KEY_MAP[singer_id]
+    theme_singers = karaoke_style.get("singers") or {}
+    theme_override = theme_singers.get(key) or {}
+    default_override = DEFAULT_KARAOKE_STYLE.get("singers", {}).get(key, {})
+
+    def _pick(field: str):
+        if field in theme_override:
+            return theme_override[field]
+        if field in default_override:
+            return default_override[field]
+        return karaoke_style.get(field)
+
+    return {field: _pick(field) for field in _SINGER_COLOR_FIELDS}
 
 
 # =============================================================================
@@ -631,10 +704,73 @@ def get_video_durations(style_params: Dict[str, Any]) -> Tuple[int, int]:
 def get_existing_images(style_params: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
     """
     Get existing title and end images from style parameters.
-    
+
     Returns:
         Tuple of (existing_title_image, existing_end_image) paths or None.
     """
     existing_title_image = style_params.get("intro", {}).get("existing_image")
     existing_end_image = style_params.get("end", {}).get("existing_image")
     return existing_title_image, existing_end_image
+
+
+# =============================================================================
+# CDG DUET PALETTE (hardcoded — CDG has a 16-color palette budget)
+# =============================================================================
+
+# CDG singer colors (RGB tuples).
+# Ordering: [Singer 1, Singer 2, Both]. CDG composer is 1-indexed so this
+# list maps to SettingsLyric.singer = 1, 2, 3 respectively. Our internal
+# SingerId 0 (Both) maps to CDG singer 3.
+#
+# Imported lazily to avoid circular imports; see karaoke_gen/lyrics_transcriber/output/cdg.py
+# for usage.
+def _build_cdg_duet_singers():
+    # Imported here to avoid top-level import of the cdgmaker package
+    from karaoke_gen.lyrics_transcriber.output.cdgmaker.config import SettingsSinger
+    # Color model (matches the ASS/MP4 path, commit b2f20b43):
+    #   inactive (pre-sung / upcoming)  → the singer's signature color, so
+    #                                     performers can read ahead and see
+    #                                     who sings what.
+    #   active (currently being sung)   → white, making the sweep read
+    #                                     clearly against the colored text.
+    # CDG composer semantics: "active" = highlighted/sweep-fill,
+    # "inactive" = the resting color before/after the sweep.
+    return [
+        # Singer 1: blue pre-sung → white when sung.
+        # Brightened from #7070F7 to #9AA8FF (sky blue) so it reads clearly
+        # against dark backgrounds like the nomad #111427 navy.
+        SettingsSinger(
+            active_fill="#FFFFFF", active_stroke="#505050",
+            inactive_fill="#9AA8FF", inactive_stroke="#2A4AEB",
+        ),
+        # Singer 2: pink pre-sung → white when sung
+        SettingsSinger(
+            active_fill="#FFFFFF", active_stroke="#505050",
+            inactive_fill="#F770B4", inactive_stroke="#9E1A60",
+        ),
+        # Both: yellow pre-sung → white when sung
+        SettingsSinger(
+            active_fill="#FFFFFF", active_stroke="#505050",
+            inactive_fill="#FCD34D", inactive_stroke="#926C00",
+        ),
+    ]
+
+
+# Use a module-level lazy accessor so first access triggers the import
+class _CdgDuetSingersLazy:
+    _cache = None
+    def __iter__(self):
+        if self._cache is None:
+            self._cache = _build_cdg_duet_singers()
+        return iter(self._cache)
+    def __getitem__(self, idx):
+        if self._cache is None:
+            self._cache = _build_cdg_duet_singers()
+        return self._cache[idx]
+    def __len__(self):
+        if self._cache is None:
+            self._cache = _build_cdg_duet_singers()
+        return len(self._cache)
+
+
+CDG_DUET_SINGERS = _CdgDuetSingersLazy()
