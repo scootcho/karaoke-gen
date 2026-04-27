@@ -242,32 +242,196 @@ class TestRequestWithRetry:
 class TestWarmupFallback:
     """Tests for _warmup_encoding_worker_fallback() in the retry loop."""
 
-    def test_warmup_fallback_called_on_first_connection_failure(self, encoding_service):
+    @pytest.mark.asyncio
+    async def test_warmup_fallback_called_on_first_connection_failure(self, encoding_service):
         """Warmup fallback is called when the first connection attempt fails."""
         mock_manager = MagicMock()
         mock_manager.ensure_primary_running.return_value = {
-            "started": True, "vm_name": "encoding-worker-b", "primary_url": "http://1.2.3.4:8080"
+            "started": False, "vm_name": "encoding-worker-b", "primary_url": "http://1.2.3.4:8080"
         }
         encoding_service._worker_manager = mock_manager
 
-        encoding_service._warmup_encoding_worker_fallback("test-job")
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
 
         mock_manager.ensure_primary_running.assert_called_once()
 
-    def test_warmup_fallback_noop_without_worker_manager(self, encoding_service):
+    @pytest.mark.asyncio
+    async def test_warmup_fallback_noop_without_worker_manager(self, encoding_service):
         """Warmup fallback is a no-op when worker_manager is not set (dev mode)."""
         encoding_service._worker_manager = None
         # Should not raise
-        encoding_service._warmup_encoding_worker_fallback("test-job")
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
 
-    def test_warmup_fallback_swallows_exceptions(self, encoding_service):
+    @pytest.mark.asyncio
+    async def test_warmup_fallback_swallows_exceptions(self, encoding_service):
         """Warmup fallback never raises — failures are logged but non-fatal."""
         mock_manager = MagicMock()
         mock_manager.ensure_primary_running.side_effect = Exception("Compute API down")
         encoding_service._worker_manager = mock_manager
 
         # Should not raise
-        encoding_service._warmup_encoding_worker_fallback("test-job")
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
+
+    @pytest.mark.asyncio
+    async def test_warmup_skips_readiness_wait_when_vm_already_running(self, encoding_service):
+        """When started=False (deploy restart), DO NOT await readiness — fall back to fast retry."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": False, "vm_name": "encoding-worker-b", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock()
+        encoding_service._worker_manager = mock_manager
+
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
+
+        mock_manager.wait_for_worker_ready.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_warmup_awaits_readiness_when_cold_started(self, encoding_service):
+        """When started=True (VM was TERMINATED), AWAIT wait_for_worker_ready."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": True, "vm_name": "encoding-worker-a", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock()
+        encoding_service._worker_manager = mock_manager
+
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
+
+        mock_manager.wait_for_worker_ready.assert_awaited_once_with(
+            "encoding-worker-a",
+            "http://1.2.3.4:8080/health",
+        )
+
+    @pytest.mark.asyncio
+    async def test_warmup_swallows_readiness_timeout(self, encoding_service):
+        """If wait_for_worker_ready times out, log and return — main retry loop will surface it."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": True, "vm_name": "encoding-worker-a", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock(side_effect=TimeoutError("VM stuck in STAGING"))
+        encoding_service._worker_manager = mock_manager
+
+        # Should not raise
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
+
+        mock_manager.wait_for_worker_ready.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_warmup_swallows_readiness_unexpected_error(self, encoding_service):
+        """If wait_for_worker_ready raises a non-TimeoutError, log and return — never propagate."""
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": True, "vm_name": "encoding-worker-a", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock(side_effect=RuntimeError("compute API error"))
+        encoding_service._worker_manager = mock_manager
+
+        # Should not raise
+        await encoding_service._warmup_encoding_worker_fallback("test-job")
+
+        mock_manager.wait_for_worker_ready.assert_awaited_once()
+
+
+class TestColdStartIntegration:
+    """End-to-end: first request fails, warmup awaits readiness, retry succeeds."""
+
+    @pytest.mark.asyncio
+    async def test_cold_start_recovery_no_retry_exhaustion(self, encoding_service):
+        """
+        Simulates the 2026-04-24 incident path with the fix in place:
+          1. First HTTP attempt raises ClientConnectorError (VM was TERMINATED).
+          2. Warmup fallback runs, ensure_primary_running returns started=True.
+          3. wait_for_worker_ready resolves quickly (mocked).
+          4. Second HTTP attempt succeeds.
+        With the fix, no 8-retry exhaustion happens.
+        """
+        # Mock worker manager
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": True, "vm_name": "encoding-worker-a", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock()
+        encoding_service._worker_manager = mock_manager
+
+        # First call raises, second call succeeds
+        call_count = {"n": 0}
+
+        class _Resp:
+            def __init__(self, status, payload):
+                self.status = status
+                self._payload = payload
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return None
+            async def json(self): return self._payload
+            async def text(self): return ""
+
+        class _Session:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return None
+            def post(self, *a, **kw):
+                call_count["n"] += 1
+                if call_count["n"] == 1:
+                    raise aiohttp.ClientConnectorError(MagicMock(), OSError())
+                return _Resp(200, {"status": "accepted", "job_id": "j1"})
+
+        with patch("backend.services.encoding_service.aiohttp.ClientSession", return_value=_Session()), \
+             patch("backend.services.encoding_service.asyncio.sleep", new_callable=AsyncMock):
+            result = await encoding_service._request_with_retry(
+                "POST",
+                "http://1.2.3.4:8080/encode",
+                headers={},
+                json_payload={},
+                timeout=5.0,
+                job_id="j1",
+            )
+
+        assert result["status"] == 200
+        assert call_count["n"] == 2  # one fail, one success — no retry exhaustion
+        mock_manager.ensure_primary_running.assert_called_once()
+        mock_manager.wait_for_worker_ready.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_warmup_only_runs_on_first_attempt(self, encoding_service):
+        """
+        Regression guard: the `if attempt == 0` guard in _request_with_retry must
+        keep the warmup fallback from re-running on every retry. If someone
+        refactored that guard out, every retry would re-trigger the readiness
+        wait — wasteful and possibly buggy. This test pins the contract.
+        """
+        mock_manager = MagicMock()
+        mock_manager.ensure_primary_running.return_value = {
+            "started": False, "vm_name": "encoding-worker-a", "primary_url": "http://1.2.3.4:8080"
+        }
+        mock_manager.wait_for_worker_ready = AsyncMock()
+        encoding_service._worker_manager = mock_manager
+
+        # All 3 calls fail — exhausts retries to confirm the guard holds across many attempts
+        call_count = {"n": 0}
+
+        class _Session:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return None
+            def post(self, *a, **kw):
+                call_count["n"] += 1
+                raise aiohttp.ClientConnectorError(MagicMock(), OSError())
+
+        with patch("backend.services.encoding_service.aiohttp.ClientSession", return_value=_Session()), \
+             patch("backend.services.encoding_service.asyncio.sleep", new_callable=AsyncMock), \
+             pytest.raises(aiohttp.ClientConnectorError):
+            await encoding_service._request_with_retry(
+                "POST",
+                "http://1.2.3.4:8080/encode",
+                headers={},
+                json_payload={},
+                timeout=5.0,
+                job_id="j1",
+            )
+
+        # All MAX_RETRIES + 1 attempts ran, but warmup fired exactly once.
+        assert call_count["n"] == MAX_RETRIES + 1
+        mock_manager.ensure_primary_running.assert_called_once()
 
 
 class TestWaitForCompletionPollTolerance:
@@ -401,3 +565,28 @@ class TestDynamicURLResolution:
 
         url = service._get_worker_url()
         assert url == "http://static:8080"
+
+
+class TestFormatException:
+    """Tests for the _format_exception helper used in retry logs."""
+
+    def test_renders_message_when_present(self):
+        from backend.services.encoding_service import _format_exception
+        e = RuntimeError("something broke")
+        assert _format_exception(e) == "RuntimeError: something broke"
+
+    def test_renders_type_only_when_message_empty(self):
+        """aiohttp.ClientConnectorError often has empty str(e) — show type."""
+        from backend.services.encoding_service import _format_exception
+
+        class _SilentError(Exception):
+            def __str__(self):
+                return ""
+
+        assert _format_exception(_SilentError()) == "_SilentError"
+
+    def test_handles_real_aiohttp_connector_error(self):
+        from backend.services.encoding_service import _format_exception
+        e = aiohttp.ClientConnectorError(MagicMock(), OSError())
+        # Type name should always appear
+        assert "ClientConnectorError" in _format_exception(e)

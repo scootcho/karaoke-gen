@@ -45,6 +45,18 @@ MAX_BACKOFF_SECONDS = 15.0
 MAX_CONSECUTIVE_POLL_FAILURES = 5
 
 
+def _format_exception(e: BaseException) -> str:
+    """Render an exception with type info.
+
+    Some aiohttp connection errors have empty str(e), which made the original
+    "GCE worker connection failed after 8 attempts: " log line useless during
+    the 2026-04-24 cold-start incident (job 2c577535). Always include the
+    type name so operators can tell what failure class hit them.
+    """
+    msg = str(e)
+    return f"{type(e).__name__}: {msg}" if msg else type(e).__name__
+
+
 class EncodingService:
     """Service for dispatching encoding jobs to GCE worker."""
 
@@ -115,27 +127,56 @@ class EncodingService:
         """Check if GCE preview encoding is enabled and configured."""
         return self.settings.use_gce_preview_encoding and self.is_configured
 
-    def _warmup_encoding_worker_fallback(self, job_id: str) -> None:
+    async def _warmup_encoding_worker_fallback(self, job_id: str) -> None:
         """Safety net: try to start the encoding worker VM on first connection failure.
 
-        If the worker_manager is available, calls ensure_primary_running() so the VM
-        starts booting during the retry window. If worker_manager is not set (e.g. dev
-        mode with static URL), this is a no-op.
+        Two paths:
+          - VM already RUNNING/STAGING (deploy restart): return after the start
+            attempt; the existing 90s retry loop covers the systemctl restart window.
+          - VM was TERMINATED (cold start): block on wait_for_worker_ready until
+            the VM is up and /health returns 200. The next retry attempt will
+            then succeed immediately. If the readiness wait times out, log and
+            return — the retry loop will surface the failure with a clear error.
+
+        If the worker_manager is not set (e.g. dev mode with static URL), this
+        is a no-op.
         """
         if not self._worker_manager:
             return
         try:
             result = self._worker_manager.ensure_primary_running()
-            if result["started"]:
-                logger.warning(
-                    f"[job:{job_id}] Encoding worker unreachable — started VM {result['vm_name']} as fallback"
-                )
-            else:
-                logger.info(
-                    f"[job:{job_id}] Encoding worker unreachable — VM {result['vm_name']} already running/starting"
-                )
         except Exception as e:
-            logger.warning(f"[job:{job_id}] Encoding worker warmup fallback failed (non-fatal): {e}")
+            logger.warning(
+                f"[job:{job_id}] Encoding worker warmup fallback failed (non-fatal): "
+                f"{_format_exception(e)}"
+            )
+            return
+
+        if result["started"]:
+            logger.warning(
+                f"[job:{job_id}] Encoding worker unreachable — started VM {result['vm_name']} as fallback"
+            )
+            try:
+                await self._worker_manager.wait_for_worker_ready(
+                    result["vm_name"],
+                    f"{result['primary_url']}/health",
+                )
+                logger.info(
+                    f"[job:{job_id}] Cold-started VM {result['vm_name']} is now ready"
+                )
+            except TimeoutError as e:
+                logger.warning(
+                    f"[job:{job_id}] Cold-start readiness wait timed out: {e}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[job:{job_id}] Cold-start readiness wait failed (non-fatal): "
+                    f"{_format_exception(e)}"
+                )
+        else:
+            logger.info(
+                f"[job:{job_id}] Encoding worker unreachable — VM {result['vm_name']} already running/starting"
+            )
 
     async def _request_with_retry(
         self,
@@ -199,17 +240,19 @@ class EncodingService:
             except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError, asyncio.TimeoutError) as e:
                 last_exception = e
                 if attempt == 0:
-                    self._warmup_encoding_worker_fallback(job_id)
+                    await self._warmup_encoding_worker_fallback(job_id)
                 if attempt < MAX_RETRIES:
                     logger.warning(
-                        f"[job:{job_id}] GCE worker connection failed (attempt {attempt + 1}/{MAX_RETRIES + 1}): {e}. "
+                        f"[job:{job_id}] GCE worker connection failed "
+                        f"(attempt {attempt + 1}/{MAX_RETRIES + 1}): {_format_exception(e)}. "
                         f"Retrying in {backoff:.1f}s..."
                     )
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
                 else:
                     logger.error(
-                        f"[job:{job_id}] GCE worker connection failed after {MAX_RETRIES + 1} attempts: {e}"
+                        f"[job:{job_id}] GCE worker connection failed "
+                        f"after {MAX_RETRIES + 1} attempts: {_format_exception(e)}"
                     )
 
         raise last_exception
