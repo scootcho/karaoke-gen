@@ -8,9 +8,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { X, ArrowLeft, ClipboardPaste, Sparkles, Info, Check, AlertTriangle } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { LyricsSegment, Word } from '@/lib/lyrics-review/types'
-import { createWordsWithDistributedTiming } from '@/lib/lyrics-review/utils/wordUtils'
+import { segmentsFromLines } from '@/lib/lyrics-review/utils/segmentsFromLines'
 import { applyCaseToSegments, convertCase, type CaseType } from '@/lib/lyrics-review/utils/caseConversion'
 import ModeSelectionModal from './ModeSelectionModal'
+import CustomLyricsMode from './CustomLyricsMode'
 import LyricsSynchronizer from '../synchronizer/LyricsSynchronizer'
 
 declare global {
@@ -21,9 +22,9 @@ declare global {
   }
 }
 
-type ModalMode = 'selection' | 'replace' | 'resync' | 'replaceSegments' | 'changeCase'
+type ModalMode = 'selection' | 'replace' | 'resync' | 'replaceSegments' | 'changeCase' | 'customLyrics'
 
-export type ReplaceAllOperation = 'replace_all_lyrics' | 'change_case'
+export type ReplaceAllOperation = 'replace_all_lyrics' | 'change_case' | 'custom_lyrics_replace'
 
 export interface ReplaceAllSaveMeta {
   operation: ReplaceAllOperation
@@ -38,6 +39,10 @@ interface ReplaceAllLyricsModalProps {
   currentTime?: number
   setModalSpacebarHandler: (handler: ((e: KeyboardEvent) => void) | undefined) => void
   existingSegments?: LyricsSegment[]
+  jobId?: string
+  artist?: string
+  title?: string
+  authToken?: string
 }
 
 export default function ReplaceAllLyricsModal({
@@ -48,6 +53,10 @@ export default function ReplaceAllLyricsModal({
   currentTime = 0,
   setModalSpacebarHandler,
   existingSegments = [],
+  jobId = '',
+  artist,
+  title,
+  authToken,
 }: ReplaceAllLyricsModalProps) {
   const t = useTranslations('lyricsReview.modals.replaceAllLyrics')
   const [mode, setMode] = useState<ModalMode>('selection')
@@ -150,44 +159,7 @@ export default function ReplaceAllLyricsModal({
   // and only update the word text — so case-only or single-word edits don't drop timing.
   const handleApplyReplaceSegments = useCallback(() => {
     const newLines = inputText.split('\n')
-    const updatedSegments: LyricsSegment[] = existingSegments.map((segment, i) => {
-      const newLineText = newLines[i]?.trim() ?? ''
-      const originalText = segment.text.trim()
-
-      if (newLineText === originalText) {
-        // Unchanged — deep copy to avoid mutation
-        return JSON.parse(JSON.stringify(segment))
-      }
-
-      const newWordTexts = newLineText.split(/\s+/).filter((w) => w.length > 0)
-
-      // Same word count — preserve timing, only swap text per word
-      if (newWordTexts.length === segment.words.length && newWordTexts.length > 0) {
-        const updatedWords = segment.words.map((word, idx) => ({
-          ...word,
-          text: newWordTexts[idx],
-        }))
-        return {
-          ...segment,
-          text: newLineText,
-          words: updatedWords,
-        }
-      }
-
-      // Word count changed — distribute timing across new words
-      const newWords = createWordsWithDistributedTiming(
-        newLineText,
-        segment.start_time,
-        segment.end_time
-      )
-
-      return {
-        ...segment,
-        text: newLineText,
-        words: newWords,
-      }
-    })
-
+    const updatedSegments = segmentsFromLines(newLines, existingSegments)
     onSave(updatedSegments)
     handleClose()
   }, [inputText, existingSegments, onSave, handleClose])
@@ -219,6 +191,28 @@ export default function ReplaceAllLyricsModal({
     setSelectedCase('upper')
     setMode('changeCase')
   }, [])
+
+  const handleSelectCustomLyrics = useCallback(() => {
+    setMode('customLyrics')
+  }, [])
+
+  const handleCustomLyricsSave = useCallback(
+    (
+      newSegments: LyricsSegment[],
+      meta: { source: 'text' | 'file'; filename?: string; model: string },
+    ) => {
+      onSave(newSegments, {
+        operation: 'custom_lyrics_replace',
+        details: {
+          source: meta.source,
+          filename: meta.filename ?? null,
+          model: meta.model,
+        },
+      })
+      handleClose()
+    },
+    [onSave, handleClose],
+  )
 
   // Apply case change: transform every segment/word text, keep all timing
   const handleApplyChangeCase = useCallback(() => {
@@ -266,6 +260,7 @@ export default function ReplaceAllLyricsModal({
         onSelectResync={handleSelectResync}
         onSelectReplaceSegments={handleSelectReplaceSegments}
         onSelectChangeCase={handleSelectChangeCase}
+        onSelectCustomLyrics={handleSelectCustomLyrics}
         hasExistingLyrics={hasExistingLyrics}
       />
 
@@ -502,6 +497,19 @@ export default function ReplaceAllLyricsModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Custom Lyrics Mode (LLM-powered) */}
+      <CustomLyricsMode
+        open={open && mode === 'customLyrics'}
+        jobId={jobId}
+        artist={artist}
+        title={title}
+        authToken={authToken}
+        existingSegments={existingSegments}
+        onSave={handleCustomLyricsSave}
+        onCancel={handleClose}
+        onBack={handleBackToSelection}
+      />
     </>
   )
 }
