@@ -1167,7 +1167,44 @@
         "tooManyLines": "{diff}줄이 너무 많습니다. 예상 {expected}줄, 현재 {actual}줄. 줄을 삭제하거나 '재생성'을 클릭하세요.",
         "cancel": "취소",
         "cancelGeneration": "취소",
-        "genericError": "문제가 발생했습니다. 다시 시도해 주세요."
+        "genericError": "문제가 발생했습니다. 다시 시도해 주세요.",
+        "settings": {
+          "allowOmit": "클라이언트 가사 생략 허용",
+          "allowOmitHint": "노래 구조에 맞지 않는 클라이언트의 내용을 AI가 생략할 수 있도록 허용합니다.",
+          "allowReword": "클라이언트 가사 수정 허용",
+          "allowRewordHint": "노래에 맞게 AI가 클라이언트의 텍스트를 의역하거나 줄일 수 있도록 허용합니다.",
+          "contradictionWarning": "가사 수정이 비활성화되어 AI가 음절 수를 맞추지 못할 수 있습니다. 가사 수정을 활성화하거나 '원문 그대로(Verbatim)' 엄격도를 사용해 주세요.",
+          "fixedLineCount": "원본 세그먼트 수 유지",
+          "fixedLineCountHint": "원곡과 동일한 줄 수를 유지합니다.",
+          "strictness": "가창 적합성 엄격도",
+          "strictnessBalanced": "균형",
+          "strictnessHintBalanced": "각 줄의 음절 수를 ±2 범위 내에서 맞춥니다.",
+          "strictnessHintLoose": "가능한 경우 음절 수를 대략적으로 맞춥니다.",
+          "strictnessHintStrict": "정확한 음절 일치. 리듬의 정확성을 최우선으로 합니다.",
+          "strictnessHintTight": "음절 수를 ±1 범위 내에서 가깝게 맞춥니다.",
+          "strictnessHintVerbatim": "클라이언트의 텍스트를 그대로 사용합니다. 리듬을 맞추는 것은 고려하지 않습니다.",
+          "strictnessLoose": "느슨함",
+          "strictnessStrict": "엄격함",
+          "strictnessTight": "타이트함",
+          "strictnessVerbatim": "원문 그대로",
+          "title": "생성 설정"
+        },
+        "preview": {
+          "iterationsBadge": "AI 반복: {n}",
+          "lineNumberLabel": "{n}번째 줄",
+          "linesPassingBadge": "{passing}/{total}줄 통과",
+          "severityMajor": "심각",
+          "severityMinor": "경미",
+          "severityOk": "정상",
+          "stopReasonLineCountMismatch": "출력 줄 수가 일치하지 않습니다. 저장하기 전에 수동으로 수정해 주세요.",
+          "stopReasonMaxIters": "최대 수정 시도 횟수에 도달했습니다. 일부 줄이 여전히 허용치를 초과합니다.",
+          "stopReasonPlateau": "AI가 더 이상 개선할 수 없습니다. 일부 줄이 여전히 허용치를 초과합니다.",
+          "stopReasonSuccess": "모든 줄이 음절 수 허용치에 맞습니다.",
+          "stopReasonVerbatimSkip": "원문 모드: 음절 수 맞추기가 강제되지 않습니다.",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "목표 {target} / 실제 {actual}",
+          "variableLineCountBanner": "출력 결과가 원본 {expected}줄 대비 {actual}줄입니다. 구간이 비율에 맞춰 다시 조정됩니다. 저장 후 각 구간을 수동으로 동기화해 주세요."
+        }
       }
     },
     "synchronizer": {

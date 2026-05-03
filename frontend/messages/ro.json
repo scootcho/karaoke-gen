@@ -1167,7 +1167,44 @@
         "tooManyLines": "Ai {diff} rând(uri) în plus. Așteptat {expected}, obținut {actual}. Elimină rânduri sau apasă pe Regenerează.",
         "cancel": "Anulează",
         "cancelGeneration": "Anulează",
-        "genericError": "Ceva nu a mers bine. Te rog să încerci din nou."
+        "genericError": "Ceva nu a mers bine. Te rog să încerci din nou.",
+        "settings": {
+          "allowOmit": "Permite omiterea versurilor clientului",
+          "allowOmitHint": "Lasă AI-ul să omită materialul clientului care nu se potrivește cu structura melodiei.",
+          "allowReword": "Permite reformularea versurilor clientului",
+          "allowRewordHint": "Lasă AI-ul să parafrazeze sau să scurteze textul clientului pentru a se potrivi cu melodia.",
+          "contradictionWarning": "Reformularea este dezactivată; s-ar putea ca AI-ul să nu poată potrivi numărul de silabe. Activează reformularea sau folosește strictețea Textuală.",
+          "fixedLineCount": "Menține numărul original de segmente",
+          "fixedLineCountHint": "Păstrează același număr de versuri ca în melodia originală.",
+          "strictness": "Strictețea cantabilității",
+          "strictnessBalanced": "Echilibrat",
+          "strictnessHintBalanced": "Potrivește numărul de silabe al fiecărui vers cu o marjă de ±2.",
+          "strictnessHintLoose": "Potrivește aproximativ numărul de silabe acolo unde este convenabil.",
+          "strictnessHintStrict": "Potrivire exactă a silabelor. Precizia ritmului este prioritatea.",
+          "strictnessHintTight": "Potrivește îndeaproape numărul de silabe, ±1.",
+          "strictnessHintVerbatim": "Folosește textul clientului așa cum este. Potrivirea ritmului nu este un obiectiv.",
+          "strictnessLoose": "Lejer",
+          "strictnessStrict": "Strict",
+          "strictnessTight": "Strâns",
+          "strictnessVerbatim": "Textual",
+          "title": "Setări de generare"
+        },
+        "preview": {
+          "iterationsBadge": "Iterații AI: {n}",
+          "lineNumberLabel": "Linia {n}",
+          "linesPassingBadge": "{passing}/{total} linii valide",
+          "severityMajor": "Major",
+          "severityMinor": "Minor",
+          "severityOk": "OK",
+          "stopReasonLineCountMismatch": "Numărul de linii rezultate nu se potrivește — corectează manual înainte de a salva.",
+          "stopReasonMaxIters": "Numărul maxim de încercări de reparare a fost atins; unele linii depășesc încă bugetul.",
+          "stopReasonPlateau": "AI-ul nu a putut îmbunătăți mai mult; unele linii depășesc încă bugetul.",
+          "stopReasonSuccess": "Toate liniile se încadrează în bugetul de silabe.",
+          "stopReasonVerbatimSkip": "Modul verbatim: potrivirea silabelor nu este impusă.",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "țintă {target} / actual {actual}",
+          "variableLineCountBanner": "Rezultatul are {actual} linii față de {expected} original. Segmentele vor fi re-sincronizate proporțional — sincronizează fiecare segment manual după salvare."
+        }
       }
     },
     "synchronizer": {

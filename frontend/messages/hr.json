@@ -1167,7 +1167,44 @@
         "tooManyLines": "Imaš {diff} linija viška. Očekivano {expected}, dobiveno {actual}. Ukloni linije ili klikni Generiraj ponovno.",
         "cancel": "Odustani",
         "cancelGeneration": "Odustani",
-        "genericError": "Nešto je pošlo po zlu. Pokušaj ponovno."
+        "genericError": "Nešto je pošlo po zlu. Pokušaj ponovno.",
+        "settings": {
+          "allowOmit": "Dopusti izostavljanje teksta klijenta",
+          "allowOmitHint": "Neka AI izbaci materijal klijenta koji se ne uklapa u strukturu pjesme.",
+          "allowReword": "Dopusti preformuliranje teksta klijenta",
+          "allowRewordHint": "Neka AI parafrazira ili skrati tekst klijenta kako bi odgovarao pjesmi.",
+          "contradictionWarning": "Preformuliranje je onemogućeno; AI možda neće moći uskladiti broj slogova. Omogući preformuliranje ili koristi strogost 'Doslovno'.",
+          "fixedLineCount": "Zadrži originalni broj segmenata",
+          "fixedLineCountHint": "Zadrži isti broj redaka kao u originalnoj pjesmi.",
+          "strictness": "Strogost pjevnosti",
+          "strictnessBalanced": "Uravnoteženo",
+          "strictnessHintBalanced": "Uskladi broj slogova svakog retka unutar ±2.",
+          "strictnessHintLoose": "Grubo uskladi broj slogova gdje je to prikladno.",
+          "strictnessHintStrict": "Točno podudaranje slogova. Preciznost ritma je prioritet.",
+          "strictnessHintTight": "Usko uskladi broj slogova, ±1.",
+          "strictnessHintVerbatim": "Koristi tekst klijenta točno onakav kakav jest. Usklađivanje ritma nije cilj.",
+          "strictnessLoose": "Slobodno",
+          "strictnessStrict": "Strogo",
+          "strictnessTight": "Čvrsto",
+          "strictnessVerbatim": "Doslovno",
+          "title": "Postavke generiranja"
+        },
+        "preview": {
+          "iterationsBadge": "AI iteracije: {n}",
+          "lineNumberLabel": "Redak {n}",
+          "linesPassingBadge": "{passing}/{total} redaka prolazi",
+          "severityMajor": "Značajno",
+          "severityMinor": "Manje",
+          "severityOk": "OK",
+          "stopReasonLineCountMismatch": "Broj izlaznih redaka se ne podudara — ispravi ručno prije spremanja.",
+          "stopReasonMaxIters": "Dosegnut je maksimalan broj pokušaja popravka; neki reci i dalje premašuju ograničenje.",
+          "stopReasonPlateau": "AI nije mogao dodatno poboljšati; neki reci i dalje premašuju ograničenje.",
+          "stopReasonSuccess": "Svi reci se uklapaju u ograničenje slogova.",
+          "stopReasonVerbatimSkip": "Doslovni način rada: podudaranje slogova nije obavezno.",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "ciljano {target} / stvarno {actual}",
+          "variableLineCountBanner": "Izlaz ima {actual} redaka u usporedbi s {expected} originalnih. Segmenti će biti proporcionalno vremenski prilagođeni — sinkroniziraj svaki segment ručno nakon spremanja."
+        }
       }
     },
     "synchronizer": {

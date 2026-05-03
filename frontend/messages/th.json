@@ -1167,7 +1167,44 @@
         "tooManyLines": "เนื้อเพลงเกินมา {diff} บรรทัด (ต้องการ {expected} ได้มา {actual}) โปรดลบบรรทัดหรือคลิกสร้างใหม่",
         "cancel": "ยกเลิก",
         "cancelGeneration": "ยกเลิก",
-        "genericError": "เกิดข้อผิดพลาดบางอย่าง โปรดลองอีกครั้ง"
+        "genericError": "เกิดข้อผิดพลาดบางอย่าง โปรดลองอีกครั้ง",
+        "settings": {
+          "allowOmit": "อนุญาตให้ละเว้นเนื้อเพลงของลูกค้า",
+          "allowOmitHint": "ให้ AI ตัดเนื้อหาของลูกค้าที่ไม่เข้ากับโครงสร้างเพลงออก",
+          "allowReword": "อนุญาตให้ปรับแก้คำในเนื้อเพลงของลูกค้า",
+          "allowRewordHint": "ให้ AI ปรับแก้หรือย่อข้อความของลูกค้าให้เข้ากับเพลง",
+          "contradictionWarning": "การปรับแก้คำถูกปิดใช้งาน AI อาจไม่สามารถจับคู่จำนวนพยางค์ได้ โปรดเปิดใช้งานการปรับแก้คำหรือใช้ความเข้มงวดแบบคงคำเดิม",
+          "fixedLineCount": "คงจำนวนท่อนเพลงตามต้นฉบับ",
+          "fixedLineCountHint": "รักษาจำนวนบรรทัดให้เท่ากับเพลงต้นฉบับ",
+          "strictness": "ความเข้มงวดในการร้อง",
+          "strictnessBalanced": "สมดุล",
+          "strictnessHintBalanced": "จับคู่จำนวนพยางค์ในแต่ละบรรทัดโดยคลาดเคลื่อนไม่เกิน ±2",
+          "strictnessHintLoose": "จับคู่จำนวนพยางค์คร่าวๆ ตามความเหมาะสม",
+          "strictnessHintStrict": "จับคู่พยางค์แบบเป๊ะๆ โดยเน้นความแม่นยำของจังหวะเป็นหลัก",
+          "strictnessHintTight": "จับคู่จำนวนพยางค์อย่างใกล้เคียง โดยคลาดเคลื่อนไม่เกิน ±1",
+          "strictnessHintVerbatim": "ใช้ข้อความของลูกค้าตามต้นฉบับ โดยไม่เน้นการจับคู่จังหวะ",
+          "strictnessLoose": "ยืดหยุ่น",
+          "strictnessStrict": "เข้มงวด",
+          "strictnessTight": "รัดกุม",
+          "strictnessVerbatim": "คงคำเดิม",
+          "title": "การตั้งค่าการสร้าง"
+        },
+        "preview": {
+          "iterationsBadge": "รอบการทำงานของ AI: {n}",
+          "lineNumberLabel": "บรรทัดที่ {n}",
+          "linesPassingBadge": "ผ่าน {passing}/{total} บรรทัด",
+          "severityMajor": "มาก",
+          "severityMinor": "เล็กน้อย",
+          "severityOk": "ปกติ",
+          "stopReasonLineCountMismatch": "จำนวนบรรทัดของผลลัพธ์ไม่ตรงกัน — โปรดแก้ไขด้วยตนเองก่อนบันทึก",
+          "stopReasonMaxIters": "ถึงขีดจำกัดการพยายามแก้ไขแล้ว บางบรรทัดยังคงเกินกำหนด",
+          "stopReasonPlateau": "AI ไม่สามารถปรับปรุงให้ดีขึ้นได้อีก บางบรรทัดยังคงเกินกำหนด",
+          "stopReasonSuccess": "ทุกบรรทัดพอดีกับจำนวนพยางค์ที่กำหนด",
+          "stopReasonVerbatimSkip": "โหมดคำต่อคำ: ไม่บังคับการจับคู่พยางค์",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "เป้าหมาย {target} / จริง {actual}",
+          "variableLineCountBanner": "ผลลัพธ์มี {actual} บรรทัด เทียบกับต้นฉบับ {expected} บรรทัด ส่วนต่างๆ จะถูกปรับเวลาตามสัดส่วน — โปรดซิงค์แต่ละส่วนด้วยตนเองหลังจากบันทึก"
+        }
       }
     },
     "synchronizer": {

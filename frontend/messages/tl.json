@@ -1167,7 +1167,44 @@
         "tooManyLines": "Sobra ng {diff} na linya. Inaasahang {expected}, pero {actual} ang nakuha. Magbawas ng mga linya o i-click ang Bumuo Muli.",
         "cancel": "Kanselahin",
         "cancelGeneration": "Kanselahin",
-        "genericError": "May nangyaring mali. Pakisubukan muli."
+        "genericError": "May nangyaring mali. Pakisubukan muli.",
+        "settings": {
+          "allowOmit": "Payagang alisin ang lyrics ng kliyente",
+          "allowOmitHint": "Hayaan ang AI na alisin ang materyal ng kliyente na hindi akma sa istraktura ng kanta.",
+          "allowReword": "Payagang baguhin ang mga salita ng lyrics ng kliyente",
+          "allowRewordHint": "Hayaan ang AI na i-paraphrase o paikliin ang text ng kliyente para sumakto sa kanta.",
+          "contradictionWarning": "Naka-disable ang pagbabago ng salita; maaaring hindi mapantayan ng AI ang bilang ng pantig. I-enable ang pagbabago ng salita o gamitin ang Verbatim na higpit.",
+          "fixedLineCount": "Panatilihin ang orihinal na bilang ng segment",
+          "fixedLineCountHint": "Panatilihin ang parehong bilang ng mga linya gaya ng orihinal na kanta.",
+          "strictness": "Higpit sa pagkanta",
+          "strictnessBalanced": "Balanse",
+          "strictnessHintBalanced": "Tumbasan ang bilang ng pantig ng bawat linya sa loob ng ±2.",
+          "strictnessHintLoose": "Tumbasan nang bahagya ang bilang ng pantig kung saan madali.",
+          "strictnessHintStrict": "Eksaktong tugma ng pantig. Priyoridad ang katumpakan ng ritmo.",
+          "strictnessHintTight": "Tumbasan nang malapit ang bilang ng pantig, ±1.",
+          "strictnessHintVerbatim": "Gamitin ang text ng kliyente kung ano ito. Hindi layunin ang pagtugma sa ritmo.",
+          "strictnessLoose": "Maluwag",
+          "strictnessStrict": "Mahigpit",
+          "strictnessTight": "Lapat",
+          "strictnessVerbatim": "Verbatim",
+          "title": "Mga setting ng pagbuo"
+        },
+        "preview": {
+          "iterationsBadge": "Mga AI iteration: {n}",
+          "lineNumberLabel": "Linya {n}",
+          "linesPassingBadge": "{passing}/{total} linyang pumasa",
+          "severityMajor": "Major",
+          "severityMinor": "Minor",
+          "severityOk": "OK",
+          "stopReasonLineCountMismatch": "Hindi tugma ang bilang ng linya ng output — ayusin nang manual bago i-save.",
+          "stopReasonMaxIters": "Naabot na ang max na pagsubok sa pag-aayos; lumampas pa rin sa budget ang ilang linya.",
+          "stopReasonPlateau": "Hindi na mapabuti pa ng AI; lumampas pa rin sa budget ang ilang linya.",
+          "stopReasonSuccess": "Pasok sa syllable budget ang lahat ng linya.",
+          "stopReasonVerbatimSkip": "Verbatim mode: hindi ipinapatupad ang pagtutugma ng pantig.",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "target {target} / aktwal {actual}",
+          "variableLineCountBanner": "May {actual} na linya ang output kumpara sa {expected} na orihinal. I-a-adjust ang oras ng mga segment nang proporsyonal — i-sync nang manual ang bawat segment pagkatapos i-save."
+        }
       }
     },
     "synchronizer": {

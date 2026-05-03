@@ -1167,7 +1167,44 @@
         "tooManyLines": "Tens {diff} línia/es de més. Se n'esperaven {expected}, n'hi ha {actual}. Elimina línies o fes clic a Regenera.",
         "cancel": "Cancel·la",
         "cancelGeneration": "Cancel·la",
-        "genericError": "Alguna cosa ha anat malament. Torna-ho a provar."
+        "genericError": "Alguna cosa ha anat malament. Torna-ho a provar.",
+        "settings": {
+          "allowOmit": "Permet ometre la lletra del client",
+          "allowOmitHint": "Deixa que la IA ometi el material del client que no s'ajusti a l'estructura de la cançó.",
+          "allowReword": "Permet reescriure la lletra del client",
+          "allowRewordHint": "Deixa que la IA parafrasegi o escurci el text del client perquè s'ajusti a la cançó.",
+          "contradictionWarning": "La reescriptura està desactivada; és possible que la IA no pugui quadrar el recompte de síl·labes. Activa la reescriptura o utilitza el rigor Literal.",
+          "fixedLineCount": "Mantén el nombre de segments original",
+          "fixedLineCountHint": "Mantén el mateix nombre de línies que la cançó original.",
+          "strictness": "Rigor de cantabilitat",
+          "strictnessBalanced": "Equilibrat",
+          "strictnessHintBalanced": "Quadra el recompte de síl·labes de cada línia amb un marge de ±2.",
+          "strictnessHintLoose": "Quadra aproximadament el recompte de síl·labes quan convingui.",
+          "strictnessHintStrict": "Coincidència exacta de síl·labes. La precisió del ritme és la prioritat.",
+          "strictnessHintTight": "Quadra de prop el recompte de síl·labes, ±1.",
+          "strictnessHintVerbatim": "Utilitza el text del client tal qual. Quadrar el ritme no és un objectiu.",
+          "strictnessLoose": "Flexible",
+          "strictnessStrict": "Estricte",
+          "strictnessTight": "Ajustat",
+          "strictnessVerbatim": "Literal",
+          "title": "Configuració de generació"
+        },
+        "preview": {
+          "iterationsBadge": "Iteracions d'IA: {n}",
+          "lineNumberLabel": "Línia {n}",
+          "linesPassingBadge": "{passing}/{total} línies correctes",
+          "severityMajor": "Greu",
+          "severityMinor": "Lleu",
+          "severityOk": "OK",
+          "stopReasonLineCountMismatch": "El nombre de línies de sortida no coincideix — arregla-ho manualment abans de desar.",
+          "stopReasonMaxIters": "S'ha assolit el màxim d'intents de reparació; algunes línies encara superen el límit.",
+          "stopReasonPlateau": "La IA no ha pogut millorar més; algunes línies encara superen el límit.",
+          "stopReasonSuccess": "Totes les línies s'ajusten al límit de síl·labes.",
+          "stopReasonVerbatimSkip": "Mode literal: no s'aplica la coincidència de síl·labes.",
+          "syllableDelta": "Δ{delta}",
+          "syllableSummary": "objectiu {target} / real {actual}",
+          "variableLineCountBanner": "La sortida té {actual} línies en comparació amb les {expected} originals. Els segments es resincronitzaran proporcionalment — sincronitza cada segment manualment després de desar."
+        }
       }
     },
     "synchronizer": {
