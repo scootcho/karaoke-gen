@@ -12,11 +12,16 @@ from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch, call, AsyncMock
 
 from backend.services.encoding_worker_manager import (
+    EncodingWorkerCandidate,
     EncodingWorkerConfig,
     EncodingWorkerManager,
     CONFIG_COLLECTION,
     CONFIG_DOCUMENT,
     ENCODING_WORKER_PORT,
+)
+from backend.services.encoding_errors import (
+    EncodingWorkerCapacityError,
+    EncodingWorkerStartError,
 )
 
 
@@ -231,12 +236,21 @@ class TestVMLifecycle:
         mock_instance.status = "TERMINATED"
         mock_compute.get.return_value = mock_instance
 
+        # Successful start: operation has no error_code/error_message and
+        # .result() returns without raising.
+        op = MagicMock()
+        op.error_code = ""
+        op.error_message = ""
+        op.result.return_value = None
+        mock_compute.start.return_value = op
+
         manager.start_vm("encoding-worker-blue")
         mock_compute.start.assert_called_once_with(
             project="nomadkaraoke",
             zone="us-central1-c",
             instance="encoding-worker-blue",
         )
+        op.result.assert_called_once()
 
     def test_start_vm_skips_if_already_running(self, manager, mock_compute):
         mock_instance = MagicMock()
@@ -272,6 +286,12 @@ class TestVMLifecycle:
         mock_instance.status = "TERMINATED"
         mock_compute.get.return_value = mock_instance
 
+        op = MagicMock()
+        op.error_code = ""
+        op.error_message = ""
+        op.result.return_value = None
+        mock_compute.start.return_value = op
+
         with patch("backend.services.encoding_worker_manager.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 3, 24, 15, 0, 0, tzinfo=UTC)
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -281,6 +301,7 @@ class TestVMLifecycle:
         assert result["vm_name"] == "encoding-worker-blue"
         assert result["primary_url"] == "http://10.128.0.50:8080"
         mock_compute.start.assert_called_once()
+        op.result.assert_called_once()
 
     def test_ensure_primary_running_already_running(self, manager, mock_db, mock_compute):
         """When primary is already running, should not start and still update activity."""
@@ -329,6 +350,268 @@ class TestVMLifecycle:
 
         manager.stop_vm("encoding-worker-blue")
         mock_compute.stop.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # Operation-result inspection (capacity / start error classification)
+    # ------------------------------------------------------------------
+
+    def test_start_vm_raises_capacity_error_when_zone_exhausted(self, manager, mock_compute):
+        """start_vm must surface ZONE_RESOURCE_POOL_EXHAUSTED as a typed exception.
+
+        Without this, the GCE error stays hidden behind a fire-and-forget call
+        and the readiness gate eventually times out with no useful message.
+        """
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+
+        op = MagicMock()
+        op.error_code = "ZONE_RESOURCE_POOL_EXHAUSTED"
+        op.error_message = "The zone does not have enough resources available"
+        op.result.return_value = None
+        mock_compute.start.return_value = op
+
+        with pytest.raises(EncodingWorkerCapacityError) as exc_info:
+            manager.start_vm("encoding-worker-blue")
+
+        assert exc_info.value.code == "ZONE_RESOURCE_POOL_EXHAUSTED"
+        assert exc_info.value.vm_name == "encoding-worker-blue"
+        assert exc_info.value.zone == "us-central1-c"
+        assert "ZONE_RESOURCE_POOL_EXHAUSTED" in str(exc_info.value)
+
+    def test_start_vm_raises_generic_start_error_for_other_codes(self, manager, mock_compute):
+        """start_vm raises EncodingWorkerStartError for non-capacity GCE errors."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+
+        op = MagicMock()
+        op.error_code = "RESOURCE_NOT_READY"
+        op.error_message = "VM is in transition"
+        op.result.return_value = None
+        mock_compute.start.return_value = op
+
+        with pytest.raises(EncodingWorkerStartError) as exc_info:
+            manager.start_vm("encoding-worker-blue")
+
+        assert not isinstance(exc_info.value, EncodingWorkerCapacityError)
+        assert exc_info.value.code == "RESOURCE_NOT_READY"
+
+    def test_start_vm_raises_when_operation_result_throws(self, manager, mock_compute):
+        """If operation.result() raises (e.g. timeout), surface as a start error."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+
+        op = MagicMock()
+        op.error_code = ""
+        op.error_message = ""
+        op.result.side_effect = TimeoutError("operation timed out")
+        mock_compute.start.return_value = op
+
+        with pytest.raises(EncodingWorkerStartError) as exc_info:
+            manager.start_vm("encoding-worker-blue")
+
+        assert "timed out" in str(exc_info.value).lower() or "operation" in str(exc_info.value).lower()
+
+    def test_ensure_primary_running_raises_capacity_error(
+        self, manager, mock_db, mock_compute
+    ):
+        """ensure_primary_running propagates capacity errors so callers can react."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+
+        op = MagicMock()
+        op.error_code = "ZONE_RESOURCE_POOL_EXHAUSTED"
+        op.error_message = "out of capacity"
+        op.result.return_value = None
+        mock_compute.start.return_value = op
+
+        with patch("backend.services.encoding_worker_manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 5, 5, 9, 0, 0, tzinfo=UTC)
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            with pytest.raises(EncodingWorkerCapacityError):
+                manager.ensure_primary_running()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: multi-zone failover (ensure_any_running)
+# ---------------------------------------------------------------------------
+
+
+def _ok_op():
+    """Build a successful compute Operation mock."""
+    op = MagicMock()
+    op.error_code = ""
+    op.error_message = ""
+    op.result.return_value = None
+    return op
+
+
+def _capacity_op():
+    """Build a ZONE_RESOURCE_POOL_EXHAUSTED Operation mock."""
+    op = MagicMock()
+    op.error_code = "ZONE_RESOURCE_POOL_EXHAUSTED"
+    op.error_message = "out of capacity"
+    op.result.return_value = None
+    return op
+
+
+class TestEnsureAnyRunning:
+    """Tests for ensure_any_running() — capacity-fallback iteration."""
+
+    def test_starts_first_candidate_when_available(self, manager, mock_db, mock_compute):
+        """When the primary candidate has capacity, it's used and no fallback engaged."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+        mock_compute.start.return_value = _ok_op()
+
+        candidates = [
+            EncodingWorkerCandidate(vm_name="encoding-worker-blue", zone="us-central1-c", ip="10.0.0.1"),
+            EncodingWorkerCandidate(vm_name="encoding-worker-fb-a", zone="us-central1-a", ip="10.0.0.2"),
+        ]
+
+        with patch("backend.services.encoding_worker_manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 5, 5, 9, 0, 0, tzinfo=UTC)
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = manager.ensure_any_running(candidates)
+
+        assert result["fell_back"] is False
+        assert result["vm_name"] == "encoding-worker-blue"
+        assert result["zone"] == "us-central1-c"
+        # Only the first candidate's start was attempted.
+        mock_compute.start.assert_called_once()
+
+    def test_falls_through_to_next_zone_on_capacity_error(self, manager, mock_db, mock_compute):
+        """Capacity error on candidate 1 triggers a try of candidate 2."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+        # First start: capacity error. Second start: succeeds.
+        mock_compute.start.side_effect = [_capacity_op(), _ok_op()]
+
+        candidates = [
+            EncodingWorkerCandidate(vm_name="encoding-worker-blue", zone="us-central1-c", ip="10.0.0.1"),
+            EncodingWorkerCandidate(vm_name="encoding-worker-fb-a", zone="us-central1-a", ip="10.0.0.2"),
+        ]
+
+        with patch("backend.services.encoding_worker_manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 5, 5, 9, 0, 0, tzinfo=UTC)
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = manager.ensure_any_running(candidates)
+
+        assert result["fell_back"] is True
+        assert result["vm_name"] == "encoding-worker-fb-a"
+        assert result["zone"] == "us-central1-a"
+
+        # Both starts were attempted, in order.
+        assert mock_compute.start.call_count == 2
+
+        # Active override was persisted in Firestore.
+        doc_ref = mock_db.collection.return_value.document.return_value
+        # Multiple update calls (for activity + override) — find the override one
+        override_calls = [
+            c for c in doc_ref.update.call_args_list
+            if "active_override_vm" in c.args[0]
+        ]
+        assert override_calls, "Expected Firestore update with active_override_vm"
+        override_data = override_calls[0].args[0]
+        assert override_data["active_override_vm"] == "encoding-worker-fb-a"
+        assert override_data["active_override_zone"] == "us-central1-a"
+        assert override_data["active_override_ip"] == "10.0.0.2"
+
+    def test_raises_when_all_candidates_exhausted(self, manager, mock_db, mock_compute):
+        """If every candidate hits capacity error, the last one is re-raised."""
+        from backend.services.encoding_errors import EncodingWorkerCapacityError
+
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+        mock_compute.start.side_effect = [_capacity_op(), _capacity_op(), _capacity_op()]
+
+        candidates = [
+            EncodingWorkerCandidate(vm_name="vm-c", zone="us-central1-c", ip="1.1.1.1"),
+            EncodingWorkerCandidate(vm_name="vm-a", zone="us-central1-a", ip="1.1.1.2"),
+            EncodingWorkerCandidate(vm_name="vm-f", zone="us-central1-f", ip="1.1.1.3"),
+        ]
+
+        with pytest.raises(EncodingWorkerCapacityError):
+            manager.ensure_any_running(candidates)
+
+        # All three were attempted before giving up.
+        assert mock_compute.start.call_count == 3
+
+    def test_clears_override_when_primary_succeeds(self, manager, mock_db, mock_compute):
+        """When the primary starts successfully, any stale active_override is cleared."""
+        mock_instance = MagicMock()
+        mock_instance.status = "TERMINATED"
+        mock_compute.get.return_value = mock_instance
+        mock_compute.start.return_value = _ok_op()
+
+        # Pretend Firestore has an override set from a prior fallback.
+        snapshot = MagicMock()
+        snapshot.exists = True
+        snapshot.to_dict.return_value = {
+            "active_override_vm": "encoding-worker-fb-a",
+            "active_override_ip": "10.0.0.2",
+            "active_override_zone": "us-central1-a",
+        }
+        mock_db.collection.return_value.document.return_value.get.return_value = snapshot
+
+        candidates = [
+            EncodingWorkerCandidate(vm_name="encoding-worker-blue", zone="us-central1-c", ip="10.0.0.1"),
+        ]
+
+        with patch("backend.services.encoding_worker_manager.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 5, 5, 9, 0, 0, tzinfo=UTC)
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            result = manager.ensure_any_running(candidates)
+
+        assert result["fell_back"] is False
+
+        # Verify the clear-override write happened.
+        doc_ref = mock_db.collection.return_value.document.return_value
+        clear_calls = [
+            c for c in doc_ref.update.call_args_list
+            if c.args[0].get("active_override_vm") is None and "active_override_vm" in c.args[0]
+        ]
+        assert clear_calls, "Expected an update call clearing active_override_vm to None"
+
+    def test_empty_candidates_raises_value_error(self, manager):
+        with pytest.raises(ValueError):
+            manager.ensure_any_running([])
+
+
+class TestActiveUrl:
+    """Tests for EncodingWorkerConfig.active_url override behavior."""
+
+    def test_active_url_returns_primary_when_no_override(self):
+        config = EncodingWorkerConfig(
+            primary_vm="vm-a", primary_ip="10.0.0.1", primary_version="1.0.0",
+            primary_deployed_at=None,
+            secondary_vm="vm-b", secondary_ip="10.0.0.2", secondary_version=None,
+            secondary_deployed_at=None,
+            last_swap_at=None, last_activity_at=None,
+            deploy_in_progress=False, deploy_in_progress_since=None,
+        )
+        assert config.active_url == f"http://10.0.0.1:{ENCODING_WORKER_PORT}"
+
+    def test_active_url_returns_override_when_set(self):
+        config = EncodingWorkerConfig(
+            primary_vm="vm-a", primary_ip="10.0.0.1", primary_version="1.0.0",
+            primary_deployed_at=None,
+            secondary_vm="vm-b", secondary_ip="10.0.0.2", secondary_version=None,
+            secondary_deployed_at=None,
+            last_swap_at=None, last_activity_at=None,
+            deploy_in_progress=False, deploy_in_progress_since=None,
+            active_override_vm="vm-fb-a",
+            active_override_ip="34.5.6.7",
+            active_override_zone="us-central1-a",
+            active_override_set_at="2026-05-05T09:00:00+00:00",
+        )
+        assert config.active_url == f"http://34.5.6.7:{ENCODING_WORKER_PORT}"
 
 
 # ---------------------------------------------------------------------------

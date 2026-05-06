@@ -426,6 +426,32 @@ recover_stuck_downloads_scheduler = cloudscheduler.Job(
     ),
 )
 
+# Cloud Scheduler job to auto-retry render jobs parked on GCE capacity exhaustion.
+# When us-central1-c is out of c4d-highcpu-32 capacity, the render worker now
+# parks the job in RENDER_PENDING_CAPACITY (instead of failing it) and this
+# scheduler retries up to 1 job per tick until it succeeds or hits the 24h
+# permanent-failure timeout.
+retry_pending_render_jobs_scheduler = cloudscheduler.Job(
+    "retry-pending-render-jobs-scheduler",
+    name="retry-pending-render-jobs",
+    description="Auto-retry render jobs parked on GCE encoding capacity exhaustion",
+    region=REGION,
+    schedule="*/5 * * * *",  # Every 5 minutes
+    time_zone="America/Los_Angeles",
+    http_target=cloudscheduler.JobHttpTargetArgs(
+        uri="https://api.nomadkaraoke.com/api/internal/retry-pending-render-jobs",
+        http_method="POST",
+        oidc_token=cloudscheduler.JobHttpTargetOidcTokenArgs(
+            service_account_email=backend_service_account.email,
+        ),
+    ),
+    retry_config=cloudscheduler.JobRetryConfigArgs(
+        retry_count=1,
+        min_backoff_duration="60s",
+        max_backoff_duration="300s",
+    ),
+)
+
 # ==================== Divebar Mirror (Phase 1) ====================
 # Index diveBar Karaoke Google Drive files into BigQuery for search
 
@@ -505,6 +531,16 @@ encoding_worker_ips = encoding_worker_vm.create_encoding_worker_ips()
 encoding_worker_instances = encoding_worker_vm.create_encoding_worker_vms(
     encoding_worker_ips, encoding_worker_sa
 )
+
+# Capacity-fallback Encoding Worker VMs in alternate zones
+# (us-central1-a, -f). Provisioned stopped; only started by the application
+# when the primary zone (us-central1-c) returns ZONE_RESOURCE_POOL_EXHAUSTED.
+# Cost when idle: ~$10/mo each for the boot disk.
+encoding_worker_fallback_ips = encoding_worker_vm.create_encoding_worker_fallback_ips()
+encoding_worker_fallback_instances = encoding_worker_vm.create_encoding_worker_fallback_vms(
+    encoding_worker_fallback_ips, encoding_worker_sa
+)
+
 encoding_worker_firewall = encoding_worker_vm.create_encoding_worker_firewall()
 
 # Grant backend SA permission to start encoding worker VMs
@@ -641,6 +677,18 @@ pulumi.export("encoding_worker_a_ip", encoding_worker_ips[0].address)
 pulumi.export("encoding_worker_b_ip", encoding_worker_ips[1].address)
 pulumi.export("encoding_worker_a_url", encoding_worker_ips[0].address.apply(lambda ip: f"http://{ip}:8080"))
 pulumi.export("encoding_worker_b_url", encoding_worker_ips[1].address.apply(lambda ip: f"http://{ip}:8080"))
+
+# Capacity-fallback VM exports (us-central1-a, -f)
+pulumi.export("encoding_worker_fallback_a_ip", encoding_worker_fallback_ips[0].address)
+pulumi.export("encoding_worker_fallback_f_ip", encoding_worker_fallback_ips[1].address)
+pulumi.export(
+    "encoding_worker_fallback_a_url",
+    encoding_worker_fallback_ips[0].address.apply(lambda ip: f"http://{ip}:8080"),
+)
+pulumi.export(
+    "encoding_worker_fallback_f_url",
+    encoding_worker_fallback_ips[1].address.apply(lambda ip: f"http://{ip}:8080"),
+)
 pulumi.export("encoding_worker_service_account", encoding_worker_sa.email)
 pulumi.export("encoding_worker_a_name", encoding_worker_instances[0].name)
 pulumi.export("encoding_worker_b_name", encoding_worker_instances[1].name)
